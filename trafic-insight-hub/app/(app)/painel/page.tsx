@@ -10,6 +10,7 @@ import { VisaoGeral } from "@/components/painel/visao-geral";
 import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
 import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { WhatsappGroupCell } from "@/components/painel/whatsapp-group-cell";
+import { PublicLinkCell } from "@/components/painel/public-link-cell";
 
 interface AccountBinding {
   ad_account_id: string;
@@ -46,6 +47,7 @@ export default function PainelPage() {
   const [focusGroups, setFocusGroups] = useState<FocusGroup[]>([]);
   const [activeFocusGroupId, setActiveFocusGroupId] = useState<string | null>(null);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
+  const [publicLinks, setPublicLinks] = useState<Record<string, string>>({});
 
   // Carrega seleção, contas do Meta e vínculos (cliente/metas) em paralelo.
   useEffect(() => {
@@ -79,6 +81,14 @@ export default function PainelPage() {
     fetch("/api/focus-groups")
       .then((r) => r.json())
       .then((d) => setFocusGroups(d.groups ?? []));
+
+    fetch("/api/public-dashboards")
+      .then((r) => r.json())
+      .then((d) => {
+        const map: Record<string, string> = {};
+        for (const p of d.dashboards ?? []) map[p.ad_account_id] = p.public_token;
+        setPublicLinks(map);
+      });
   }, []);
 
   async function saveFocusGroups(groups: FocusGroup[]) {
@@ -298,6 +308,7 @@ export default function PainelPage() {
                     <th className="px-4 py-2 text-right font-medium">Invest. mensal</th>
                     <th className="px-4 py-2 text-right font-medium">Invest. diário</th>
                     <th className="px-4 py-2 font-medium">Grupo WhatsApp</th>
+                    <th className="px-4 py-2 font-medium">Link público</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -352,6 +363,21 @@ export default function PainelPage() {
                             void patchBinding(acc.account_id, {
                               wa_group_id: g?.id ?? null,
                               wa_group_name: g?.name ?? null,
+                            })
+                          }
+                        />
+                      </td>
+                      <td className="px-4 py-2">
+                        <PublicLinkCell
+                          accountId={acc.account_id}
+                          accountName={binding?.client_name || acc.name}
+                          token={publicLinks[acc.account_id] ?? null}
+                          onChange={(token) =>
+                            setPublicLinks((prev) => {
+                              const next = { ...prev };
+                              if (token) next[acc.account_id] = token;
+                              else delete next[acc.account_id];
+                              return next;
                             })
                           }
                         />

@@ -25,8 +25,16 @@ público ligada) e de Erros de veiculação (anúncio reprovado/restrito/em
 análise, ou conjunto ativo sem nenhum anúncio ativo) — o botão "Verificar
 agora" roda na hora e pausa sozinho o que encontrar de errado, e um segundo
 hook público (`audit-tick`) permite automatizar essa verificação pelo n8n
-em intervalos maiores (ex.: a cada 30-60 minutos). CRM, Mensagens →
-Relatórios/Avisos e Configurações → Status continuam como placeholder.
+em intervalos maiores (ex.: a cada 30-60 minutos). CRM também já funciona
+de verdade: instâncias de funil com kanban simples (Novo → Em contato →
+Qualificado → Proposta → Venda/Perdido), detalhe do lead com histórico, e
+ingestão de leads via n8n (hook público `crm-lead-ingest`). Cada instância
+tem um link público (`/c/:token`) pro cliente acompanhar sem login, e cada
+conta do Painel pode gerar um link público de dashboard (`/d/:token`) —
+os dois são somente leitura. Quando um lead entra no estágio "Venda", o
+app notifica um webhook do n8n (se configurado na instância) automaticamente.
+Mensagens → Relatórios/Avisos e Configurações → Status continuam como
+placeholder.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -49,6 +57,14 @@ internos do sistema). Sugestão de intervalo: a cada 30-60 minutos — é uma
 verificação mais pesada que o tick de mensagens, porque consulta a Graph
 API de todas as contas vinculadas.
 
+⚠️ **Pra ingestão automática de leads no CRM (opcional)**: no n8n, quando um
+lead novo chegar (formulário, WhatsApp etc.), faça um `POST` pra
+`https://SEU_DOMINIO/api/public/hooks/crm-lead-ingest` com o header
+`x-webhook-secret` (mesmo valor de `WHATSAPP_DISPATCH_SECRET`) e corpo
+`{"public_token": "...", "name": "...", "phone": "...", "source": {...}}`
+— o `public_token` é o mesmo do link público da instância (`/c/:token`),
+copiável na tela de CRM.
+
 ## 1. Criar o projeto no Supabase
 
 1. Acesse [supabase.com](https://supabase.com) → **New project**.
@@ -65,6 +81,9 @@ API de todas as contas vinculadas.
 3. Cole o conteúdo de `supabase/migrations/0002_whatsapp_instance_unique.sql`
    e rode também (adiciona uma constraint que faltava — só precisa rodar
    uma vez).
+4. Cole o conteúdo de `supabase/migrations/0003_crm_public_links.sql` e rode
+   (webhook de venda por instância do CRM + constraint pra gerar o link
+   público de cada conta sem duplicar).
    (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
    formato que `supabase db push` espera — ele aplica só as migrações que
    ainda não rodaram.)
@@ -126,11 +145,13 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
 ```
 app/
   login/, esqueci-senha/, redefinir-senha/, auth/callback/   → autenticação
+  d/[token]/      → dashboard público de UMA conta, somente leitura, sem login
+  c/[token]/      → CRM público de UMA instância (kanban somente leitura), sem login
   (app)/                                                     → área logada
     painel/         → contas exibidas, KPIs, Acompanhamento de Resultados
     mensagens/      → aba Envio funcional; Relatórios/Avisos ainda placeholder
     auditoria/      → Localização e Erros de veiculação, funcionais
-    crm/            → ainda placeholder
+    crm/            → instâncias, kanban, detalhe do lead — funcional
     configuracoes/   → abas Meta e WhatsApp funcionais; Status ainda placeholder
   api/
     meta/credentials, meta/accounts, meta/insights, meta/breakdown,
@@ -139,8 +160,12 @@ app/
     whatsapp/disconnect, whatsapp/groups, whatsapp/alerts-group,
     whatsapp/send, whatsapp/message-templates, whatsapp/scheduled-dispatches
     audit/location, audit/errors  → "Verificar agora" de cada auditoria
+    crm/instances, crm/instances/[id], crm/leads, crm/leads/[id],
+    crm/leads/[id]/events  → CRUD do CRM (instâncias, leads, histórico)
+    public-dashboards  → gera/remove o link público (/d/:token) de uma conta
     public/hooks/whatsapp-dispatch-tick  → chamado pelo n8n, não pelo navegador
     public/hooks/audit-tick              → idem, roda as duas auditorias
+    public/hooks/crm-lead-ingest         → idem, cria lead novo por public_token
     selected-accounts, account-bindings, pix-accounts, focus-groups
 lib/meta/
   client.ts     → chamadas cruas à Graph API (get/getAll/post, presets de data)
@@ -159,6 +184,11 @@ lib/audit/
                   usuário) e o hook público audit-tick (service role): roda a
                   auditoria, pausa o que encontrar, grava/atualiza/limpa as
                   tabelas audit_location_status e audit_error_status
+lib/crm/
+  pipeline.ts       → os 6 estágios fixos do funil (Novo…Perdido)
+  sale-webhook.ts   → notifica o webhook de venda da instância (se configurado)
+                      quando um lead entra no estágio "Venda", e registra a
+                      entrega em crm_sale_webhook_deliveries
 lib/whatsapp/
   client.ts     → chamadas cruas à API do uazapi (status/connect/disconnect/grupos/envio)
   instance.ts   → helpers pra pegar a instância uazapi salva do usuário
@@ -173,6 +203,7 @@ lib/current-user.ts → helpers pra pegar o usuário logado e o token Meta salvo
 proxy.ts        → (antigo middleware.ts) protege as rotas logadas e renova a sessão
 supabase/migrations/0001_init.sql → schema completo
 supabase/migrations/0002_whatsapp_instance_unique.sql → constraint pra upsert de instância WhatsApp
+supabase/migrations/0003_crm_public_links.sql → webhook de venda do CRM + constraint do link público de conta
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
@@ -195,4 +226,8 @@ supabase/migrations/0002_whatsapp_instance_unique.sql → constraint pra upsert 
    e Erros de veiculação (anúncio reprovado/restrito/em análise, conjunto
    ativo sem anúncio ativo), com pausa automática do que encontrar. Hook
    `audit-tick` permite automatizar pelo n8n
-6. CRM + links públicos (`/d/:token`, `/c/:token`)
+6. ~~CRM + links públicos~~ ✅ — instâncias de funil, kanban com 6 estágios
+   fixos, detalhe do lead com histórico, ingestão via hook `crm-lead-ingest`
+   (n8n), webhook de venda automático quando um lead vira "Venda", link
+   público por instância (`/c/:token`) e link público de dashboard por
+   conta (`/d/:token`, gerado a partir do Painel) — os dois somente leitura
