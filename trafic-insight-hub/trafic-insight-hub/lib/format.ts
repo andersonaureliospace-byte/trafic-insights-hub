@@ -24,8 +24,13 @@ export const PAYMENT_TYPES = [
 ] as const;
 
 export const PRIORITY_OPTIONS = [
+  { id: "inauguracao", label: "Inauguração", color: "#38bdf8" },
   { id: "baixa", label: "Baixa", color: "#22c55e" },
   { id: "media", label: "Média", color: "#eab308" },
   { id: "alta", label: "Alta", color: "#f97316" },
   { id: "critica", label: "Crítica", color: "#ef4444" },
 ] as const;
+
+export function isInauguracao(priority: string | null | undefined): boolean {
+  return priority === "inauguracao";
+}

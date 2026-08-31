@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MetaCredentialsForm } from "@/components/meta-credentials-form";
+import { WhatsappTab } from "@/components/configuracoes/whatsapp-tab";
 
 const TABS = [
   { id: "meta", label: "Meta (Facebook)" },
@@ -33,11 +34,7 @@ export default function ConfiguracoesPage() {
       </div>
 
       {tab === "meta" ? <MetaCredentialsForm /> : null}
-      {tab === "whatsapp" ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Em construção — conexão da instância uazapi (QR code, grupo de alertas).
-        </p>
-      ) : null}
+      {tab === "whatsapp" ? <WhatsappTab /> : null}
       {tab === "status" ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           Em construção — personalizar os rótulos de prioridade usados no Painel.

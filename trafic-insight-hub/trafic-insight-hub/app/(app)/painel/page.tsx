@@ -7,6 +7,9 @@ import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog
 import { InlineNumber } from "@/components/painel/inline-number";
 import { ControleSaldo } from "@/components/painel/controle-saldo";
 import { VisaoGeral } from "@/components/painel/visao-geral";
+import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
+import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
+import { WhatsappGroupCell } from "@/components/painel/whatsapp-group-cell";
 
 interface AccountBinding {
   ad_account_id: string;
@@ -15,6 +18,8 @@ interface AccountBinding {
   monthly_investment: number | null;
   daily_investment_target: number | null;
   priority: string | null;
+  wa_group_id: string | null;
+  wa_group_name: string | null;
 }
 
 interface PixRow {
@@ -38,6 +43,9 @@ export default function PainelPage() {
   const [preset, setPreset] = useState<PresetId>("last_7d");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [focusGroups, setFocusGroups] = useState<FocusGroup[]>([]);
+  const [activeFocusGroupId, setActiveFocusGroupId] = useState<string | null>(null);
+  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
 
   // Carrega seleção, contas do Meta e vínculos (cliente/metas) em paralelo.
   useEffect(() => {
@@ -67,7 +75,20 @@ export default function PainelPage() {
         for (const p of d.pixAccounts ?? []) map[p.ad_account_id] = p;
         setPixAccounts(map);
       });
+
+    fetch("/api/focus-groups")
+      .then((r) => r.json())
+      .then((d) => setFocusGroups(d.groups ?? []));
   }, []);
+
+  async function saveFocusGroups(groups: FocusGroup[]) {
+    setFocusGroups(groups);
+    await fetch("/api/focus-groups", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groups }),
+    });
+  }
 
   const selectedAccounts = useMemo(() => {
     if (!allAccounts || !selectedIds) return [];
@@ -106,7 +127,16 @@ export default function PainelPage() {
   }
 
   async function patchBinding(accountId: string, patch: BindingPatch) {
-    const current = bindings[accountId] ?? { ad_account_id: accountId, client_name: null, cpa_target: null, monthly_investment: null, daily_investment_target: null, priority: null };
+    const current = bindings[accountId] ?? {
+      ad_account_id: accountId,
+      client_name: null,
+      cpa_target: null,
+      monthly_investment: null,
+      daily_investment_target: null,
+      priority: null,
+      wa_group_id: null,
+      wa_group_name: null,
+    };
     const next = { ...current, ...patch };
     setBindings((prev) => ({ ...prev, [accountId]: next }));
     await fetch("/api/account-bindings", {
@@ -127,25 +157,39 @@ export default function PainelPage() {
     });
   }
 
+  const allRows = useMemo(() => {
+    return selectedAccounts.map((acc) => {
+      const binding = bindings[acc.account_id];
+      const insight = insights[acc.account_id];
+      return {
+        acc,
+        binding,
+        insight,
+        clientName: binding?.client_name || acc.name,
+      };
+    });
+  }, [selectedAccounts, bindings, insights]);
+
+  const activeFocusGroup = useMemo(
+    () => focusGroups.find((g) => g.id === activeFocusGroupId) ?? null,
+    [focusGroups, activeFocusGroupId],
+  );
+
+  const focusFilteredRows = useMemo(() => {
+    if (!activeFocusGroup) return allRows;
+    const set = new Set(activeFocusGroup.accountIds);
+    return allRows.filter((r) => set.has(r.acc.account_id));
+  }, [allRows, activeFocusGroup]);
+
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return selectedAccounts
-      .map((acc) => {
-        const binding = bindings[acc.account_id];
-        const insight = insights[acc.account_id];
-        return {
-          acc,
-          binding,
-          insight,
-          clientName: binding?.client_name || acc.name,
-        };
-      })
+    return focusFilteredRows
       .filter(
         (r) =>
           !q || r.clientName.toLowerCase().includes(q) || r.acc.name.toLowerCase().includes(q),
       )
       .sort((a, b) => (b.insight?.spend ?? 0) - (a.insight?.spend ?? 0));
-  }, [selectedAccounts, bindings, insights, search]);
+  }, [focusFilteredRows, search]);
 
   const totals = useMemo(() => {
     let spend = 0;
@@ -208,6 +252,13 @@ export default function PainelPage() {
                 Acompanhamento de Resultados {loadingInsights ? "· atualizando…" : ""}
               </h2>
               <div className="flex flex-wrap items-center gap-2">
+                <FocusGroupsBar
+                  accounts={selectedAccounts}
+                  groups={focusGroups}
+                  activeGroupId={activeFocusGroupId}
+                  onGroupsChange={saveFocusGroups}
+                  onActiveGroupChange={setActiveFocusGroupId}
+                />
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -225,6 +276,12 @@ export default function PainelPage() {
                     </option>
                   ))}
                 </select>
+                <button
+                  onClick={() => setBulkStatusOpen(true)}
+                  className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium dark:border-zinc-700"
+                >
+                  Atualizar status em massa
+                </button>
               </div>
             </div>
 
@@ -240,6 +297,7 @@ export default function PainelPage() {
                     <th className="px-4 py-2 text-right font-medium">Valor usado</th>
                     <th className="px-4 py-2 text-right font-medium">Invest. mensal</th>
                     <th className="px-4 py-2 text-right font-medium">Invest. diário</th>
+                    <th className="px-4 py-2 font-medium">Grupo WhatsApp</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -286,6 +344,18 @@ export default function PainelPage() {
                         />
                       </td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
+                      <td className="px-4 py-2">
+                        <WhatsappGroupCell
+                          groupId={binding?.wa_group_id ?? null}
+                          groupName={binding?.wa_group_name ?? null}
+                          onChange={(g) =>
+                            void patchBinding(acc.account_id, {
+                              wa_group_id: g?.id ?? null,
+                              wa_group_name: g?.name ?? null,
+                            })
+                          }
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -309,6 +379,18 @@ export default function PainelPage() {
         onClose={() => setPickerOpen(false)}
         selectedIds={selectedIds}
         onSave={saveSelectedAccounts}
+      />
+
+      <BulkStatusDialog
+        open={bulkStatusOpen}
+        onClose={() => setBulkStatusOpen(false)}
+        candidates={rows.map((r) => ({
+          accountId: r.acc.account_id,
+          clientName: r.clientName,
+          cpaTarget: r.binding?.cpa_target ?? null,
+          priority: r.binding?.priority ?? null,
+        }))}
+        onApply={(accountId, priority) => patchBinding(accountId, { priority })}
       />
     </div>
   );
