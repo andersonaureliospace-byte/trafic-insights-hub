@@ -12,8 +12,16 @@ diário, Cliente/Meta de CPA/Investimento mensal editáveis), grupos de foco
 (agrupar contas e focar a tabela num grupo), atualização de status em massa
 (classifica a prioridade pelo CPA dos últimos 3 dias vs. a meta cadastrada),
 Controle de Saldo/PIX e Visão Geral por Campanhas/Conjuntos/Anúncios com
-pausar/ativar nos 3 níveis. Configurações → Meta já salva o token.
-Mensagens, Auditoria e CRM continuam como placeholder.
+pausar/ativar nos 3 níveis. Configurações → Meta e Configurações → WhatsApp
+já funcionam de verdade (conectar a instância uazapi via QR ou código de
+pareamento, ver status, desconectar, e escolher o grupo que recebe os
+avisos de saldo). Mensagens, Auditoria, CRM e Configurações → Status
+continuam como placeholder.
+
+⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
+(`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
+(além da 0001, que você já rodou) antes de usar a aba WhatsApp, senão o
+"Salvar" das credenciais vai dar erro de conflito.
 
 ## 1. Criar o projeto no Supabase
 
@@ -28,8 +36,12 @@ Mensagens, Auditoria e CRM continuam como placeholder.
 
 1. No painel do Supabase, abra **SQL Editor**.
 2. Cole o conteúdo de `supabase/migrations/0001_init.sql` e rode.
+3. Cole o conteúdo de `supabase/migrations/0002_whatsapp_instance_unique.sql`
+   e rode também (adiciona uma constraint que faltava — só precisa rodar
+   uma vez).
    (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
-   formato que `supabase db push` espera.)
+   formato que `supabase db push` espera — ele aplica só as migrações que
+   ainda não rodaram.)
 
 ## 3. Criar o seu usuário (login único, sem cadastro público)
 
@@ -75,10 +87,12 @@ app/
   (app)/                                                     → área logada
     painel/         → contas exibidas, KPIs, Acompanhamento de Resultados
     mensagens/ auditoria/ crm/   → ainda placeholder
-    configuracoes/   → aba Meta funcional; WhatsApp/Status ainda placeholder
+    configuracoes/   → abas Meta e WhatsApp funcionais; Status ainda placeholder
   api/
     meta/credentials, meta/accounts, meta/insights, meta/breakdown,
     meta/status, meta/daily-cpa
+    whatsapp/credentials, whatsapp/status, whatsapp/connect,
+    whatsapp/disconnect, whatsapp/groups, whatsapp/alerts-group
     selected-accounts, account-bindings, pix-accounts, focus-groups
 lib/meta/
   client.ts     → chamadas cruas à Graph API (get/getAll/post, presets de data)
@@ -89,6 +103,9 @@ lib/meta/
   breakdown.ts  → detalhamento por Campanha/Conjunto/Anúncio (Visão Geral)
   status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral)
   daily-cpa.ts  → CPA diário por conta, usado na atualização de status em massa
+lib/whatsapp/
+  client.ts     → chamadas cruas à API do uazapi (status/connect/disconnect/grupos)
+  instance.ts   → helpers pra pegar a instância uazapi salva do usuário
 lib/supabase/
   client.ts     → cliente do navegador (Client Components)
   server.ts     → cliente do servidor (Server Components / Route Handlers)
@@ -97,6 +114,7 @@ lib/supabase/
 lib/current-user.ts → helpers pra pegar o usuário logado e o token Meta salvo
 proxy.ts        → (antigo middleware.ts) protege as rotas logadas e renova a sessão
 supabase/migrations/0001_init.sql → schema completo
+supabase/migrations/0002_whatsapp_instance_unique.sql → constraint pra upsert de instância WhatsApp
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
@@ -105,7 +123,9 @@ supabase/migrations/0001_init.sql → schema completo
 2. ~~Painel de leitura~~ ✅ — completo: contas exibidas, KPIs, Acompanhamento
    de Resultados, grupos de foco, status em massa, Controle de Saldo/PIX,
    Visão Geral com pausar/ativar
-3. Configurações → WhatsApp (uazapi) e Status
-4. Mensagens + fluxos n8n de disparo/relatório
+3. Configurações → WhatsApp ✅ — conectar/desconectar (QR ou código de
+   pareamento), status, grupo de alertas de saldo. Falta ainda a aba Status
+   (personalizar rótulos/cores de prioridade)
+4. Mensagens (Envio/Templates/Relatórios) + fluxos n8n de disparo/relatório
 5. Auditoria + fluxos n8n de auditoria/saldo
 6. CRM + links públicos (`/d/:token`, `/c/:token`)
