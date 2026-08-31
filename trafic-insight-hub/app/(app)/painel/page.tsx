@@ -9,6 +9,7 @@ import { ControleSaldo } from "@/components/painel/controle-saldo";
 import { VisaoGeral } from "@/components/painel/visao-geral";
 import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
 import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
+import { WhatsappGroupCell } from "@/components/painel/whatsapp-group-cell";
 
 interface AccountBinding {
   ad_account_id: string;
@@ -17,6 +18,8 @@ interface AccountBinding {
   monthly_investment: number | null;
   daily_investment_target: number | null;
   priority: string | null;
+  wa_group_id: string | null;
+  wa_group_name: string | null;
 }
 
 interface PixRow {
@@ -124,7 +127,16 @@ export default function PainelPage() {
   }
 
   async function patchBinding(accountId: string, patch: BindingPatch) {
-    const current = bindings[accountId] ?? { ad_account_id: accountId, client_name: null, cpa_target: null, monthly_investment: null, daily_investment_target: null, priority: null };
+    const current = bindings[accountId] ?? {
+      ad_account_id: accountId,
+      client_name: null,
+      cpa_target: null,
+      monthly_investment: null,
+      daily_investment_target: null,
+      priority: null,
+      wa_group_id: null,
+      wa_group_name: null,
+    };
     const next = { ...current, ...patch };
     setBindings((prev) => ({ ...prev, [accountId]: next }));
     await fetch("/api/account-bindings", {
@@ -285,6 +297,7 @@ export default function PainelPage() {
                     <th className="px-4 py-2 text-right font-medium">Valor usado</th>
                     <th className="px-4 py-2 text-right font-medium">Invest. mensal</th>
                     <th className="px-4 py-2 text-right font-medium">Invest. diário</th>
+                    <th className="px-4 py-2 font-medium">Grupo WhatsApp</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -331,6 +344,18 @@ export default function PainelPage() {
                         />
                       </td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
+                      <td className="px-4 py-2">
+                        <WhatsappGroupCell
+                          groupId={binding?.wa_group_id ?? null}
+                          groupName={binding?.wa_group_name ?? null}
+                          onChange={(g) =>
+                            void patchBinding(acc.account_id, {
+                              wa_group_id: g?.id ?? null,
+                              wa_group_name: g?.name ?? null,
+                            })
+                          }
+                        />
+                      </td>
                     </tr>
                   ))}
                 </tbody>

@@ -67,6 +67,13 @@ export function extractConnect(json: unknown): WhatsappConnectResult {
   };
 }
 
+export async function sendText(creds: WhatsappCreds, groupId: string, text: string): Promise<void> {
+  await waFetch(creds, "/send/text", {
+    method: "POST",
+    body: JSON.stringify({ number: groupId, text }),
+  });
+}
+
 export interface WhatsappGroup {
   id: string;
   name: string;
