@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { PRIORITY_OPTIONS, isInauguracao } from "@/lib/format";
+import { isInauguracao } from "@/lib/format";
+import { usePriorityOptions } from "@/lib/priority-context";
 
 interface Candidate {
   accountId: string;
@@ -27,10 +28,6 @@ function classify(cpa: number, target: number): string {
   return "critica";
 }
 
-function labelFor(id?: string | null) {
-  return PRIORITY_OPTIONS.find((p) => p.id === id)?.label ?? "—";
-}
-
 export function BulkStatusDialog({
   open,
   onClose,
@@ -42,8 +39,13 @@ export function BulkStatusDialog({
   candidates: Candidate[];
   onApply: (accountId: string, priority: string) => Promise<void>;
 }) {
+  const { options: priorityOptions } = usePriorityOptions();
   const [phase, setPhase] = useState<"confirm" | "running" | "done">("confirm");
   const [results, setResults] = useState<ResultRow[]>([]);
+
+  function labelFor(id?: string | null) {
+    return priorityOptions.find((p) => p.id === id)?.label ?? "—";
+  }
 
   if (!open) return null;
 

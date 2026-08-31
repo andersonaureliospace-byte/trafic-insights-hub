@@ -43,7 +43,13 @@ pré-paga/híbrida com um limite definido (campo "Alertar quando <" no
 Controle de Saldo/PIX, ou 20% do Valor base se ficar em branco) — manda
 pro grupo configurado em Configurações → WhatsApp, com um "Verificar
 agora" manual na tela e um quarto hook público (`balance-alert-tick`) pra
-automatizar pelo n8n. Configurações → Status continua como placeholder.
+automatizar pelo n8n. Configurações → Status também já funciona de
+verdade: personalizar o rótulo e a cor de cada nível de prioridade
+(Inauguração/Baixa/Média/Alta/Crítica) usado no Painel — o critério de
+classificação automática (CPA vs. meta) continua o mesmo, só muda como
+aparece na tela. Com isso, todas as áreas do plano original + os extras
+pedidos ao longo do caminho estão funcionando; só ficam de fora os anexos
+de mídia em Mensagens (precisa de um bucket no Supabase Storage).
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -189,7 +195,7 @@ app/
     mensagens/      → abas Envio, Relatórios e Avisos, todas funcionais
     auditoria/      → Localização e Erros de veiculação, funcionais
     crm/            → instâncias, kanban, detalhe do lead — funcional
-    configuracoes/   → abas Meta e WhatsApp funcionais; Status ainda placeholder
+    configuracoes/   → abas Meta, WhatsApp e Status, todas funcionais
   api/
     meta/credentials, meta/accounts, meta/insights, meta/breakdown,
     meta/status, meta/daily-cpa
@@ -201,6 +207,7 @@ app/
     crm/leads/[id]/events  → CRUD do CRM (instâncias, leads, histórico)
     reports/templates, reports/scheduled  → modelos e agendamentos de Relatórios
     alerts/balance  → status de saldo baixo + "Verificar agora" (Mensagens > Avisos)
+    priority-labels → rótulos/cores de prioridade personalizados (Configurações > Status)
     public-dashboards  → gera/remove o link público (/d/:token) de uma conta
     public/hooks/whatsapp-dispatch-tick  → chamado pelo n8n, não pelo navegador
     public/hooks/audit-tick              → idem, roda as duas auditorias
@@ -242,6 +249,9 @@ lib/alerts/
 lib/scheduling.ts → regra de recorrência genérica (soma o intervalo à última
                     ocorrência, preservando dia da semana/mês) — usada pelos
                     disparos de WhatsApp e pelos relatórios agendados
+lib/priority-context.tsx → Context/Provider dos rótulos de prioridade
+                            personalizados (busca uma vez, compartilha entre
+                            Painel, diálogo de status em massa e Configurações)
 lib/whatsapp/
   client.ts     → chamadas cruas à API do uazapi (status/connect/disconnect/grupos/envio)
   instance.ts   → helpers pra pegar a instância uazapi salva do usuário
@@ -267,9 +277,10 @@ supabase/migrations/0005_balance_alerts.sql → limite de alerta + controle de r
 2. ~~Painel de leitura~~ ✅ — completo: contas exibidas, KPIs, Acompanhamento
    de Resultados, grupos de foco, status em massa, Controle de Saldo/PIX,
    Visão Geral com pausar/ativar
-3. Configurações → WhatsApp ✅ — conectar/desconectar (QR ou código de
-   pareamento), status, grupo de alertas de saldo. Falta ainda a aba Status
-   (personalizar rótulos/cores de prioridade)
+3. ~~Configurações~~ ✅ — WhatsApp: conectar/desconectar (QR ou código de
+   pareamento), status, grupo de alertas de saldo. Status: personalizar
+   rótulo/cor de cada nível de prioridade (Painel > Acompanhamento de
+   Resultados)
 4. ~~Mensagens~~ ✅ — Envio: destinatários pelos grupos do WhatsApp (com nome
    do cliente vinculado no Painel → coluna "Grupo WhatsApp"), modelos
    salvos, envio imediato e agendamento (único/recorrente) via hook
@@ -288,3 +299,8 @@ supabase/migrations/0005_balance_alerts.sql → limite de alerta + controle de r
    (n8n), webhook de venda automático quando um lead vira "Venda", link
    público por instância (`/c/:token`) e link público de dashboard por
    conta (`/d/:token`, gerado a partir do Painel) — os dois somente leitura
+
+Com isso, as 6 áreas do plano original estão 100% concluídas. Único item
+que ficou de fora (deliberadamente, desde o início): anexos de mídia
+(imagem/vídeo/áudio/documento) em Mensagens → Envio, porque precisa de um
+bucket no Supabase Storage — avise quando quiser esse incremento.

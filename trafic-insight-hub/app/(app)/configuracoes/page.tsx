@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { MetaCredentialsForm } from "@/components/meta-credentials-form";
 import { WhatsappTab } from "@/components/configuracoes/whatsapp-tab";
+import { StatusTab } from "@/components/configuracoes/status-tab";
 
 const TABS = [
   { id: "meta", label: "Meta (Facebook)" },
@@ -35,11 +36,7 @@ export default function ConfiguracoesPage() {
 
       {tab === "meta" ? <MetaCredentialsForm /> : null}
       {tab === "whatsapp" ? <WhatsappTab /> : null}
-      {tab === "status" ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Em construção — personalizar os rótulos de prioridade usados no Painel.
-        </p>
-      ) : null}
+      {tab === "status" ? <StatusTab /> : null}
     </div>
   );
 }

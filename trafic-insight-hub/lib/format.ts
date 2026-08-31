@@ -23,13 +23,27 @@ export const PAYMENT_TYPES = [
   { id: "postpaid", label: "Pós-paga" },
 ] as const;
 
-export const PRIORITY_OPTIONS = [
+export interface PriorityOption {
+  id: string;
+  label: string;
+  color: string;
+}
+
+// Os 5 IDs abaixo são fixos — a classificação automática (atualização de
+// status em massa) e o isInauguracao() dependem deles por valor. O que dá
+// pra personalizar em Configurações > Status é só o rótulo e a cor (ver
+// lib/priority-context.tsx) — a lista de IDs em si nunca muda.
+export const DEFAULT_PRIORITY_OPTIONS: PriorityOption[] = [
   { id: "inauguracao", label: "Inauguração", color: "#38bdf8" },
   { id: "baixa", label: "Baixa", color: "#22c55e" },
   { id: "media", label: "Média", color: "#eab308" },
   { id: "alta", label: "Alta", color: "#f97316" },
   { id: "critica", label: "Crítica", color: "#ef4444" },
-] as const;
+];
+
+// Mantido pelo nome antigo pra quem só precisa dos rótulos padrão (ex.: a
+// classificação automática, que sempre raciocina em cima dos IDs fixos).
+export const PRIORITY_OPTIONS = DEFAULT_PRIORITY_OPTIONS;
 
 export function isInauguracao(priority: string | null | undefined): boolean {
   return priority === "inauguracao";

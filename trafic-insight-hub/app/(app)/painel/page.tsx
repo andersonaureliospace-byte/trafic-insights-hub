@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
-import { DATE_PRESETS, PRIORITY_OPTIONS, fmtCurrency, type PresetId } from "@/lib/format";
+import { DATE_PRESETS, fmtCurrency, type PresetId } from "@/lib/format";
+import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
 import { InlineNumber } from "@/components/painel/inline-number";
 import { ControleSaldo } from "@/components/painel/controle-saldo";
@@ -35,6 +36,7 @@ type BindingPatch = Partial<Omit<AccountBinding, "ad_account_id">>;
 type PixPatch = Partial<Omit<PixRow, "ad_account_id">>;
 
 export default function PainelPage() {
+  const { options: priorityOptions } = usePriorityOptions();
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [allAccounts, setAllAccounts] = useState<AdAccount[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -340,7 +342,7 @@ export default function PainelPage() {
                           className="rounded border border-zinc-200 bg-transparent px-1 py-0.5 text-xs dark:border-zinc-700"
                         >
                           <option value="">—</option>
-                          {PRIORITY_OPTIONS.map((p) => (
+                          {priorityOptions.map((p) => (
                             <option key={p.id} value={p.id}>
                               {p.label}
                             </option>
