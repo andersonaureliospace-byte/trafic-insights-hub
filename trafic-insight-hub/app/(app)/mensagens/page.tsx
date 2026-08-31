@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { EnvioTab } from "@/components/mensagens/envio-tab";
+import { RelatoriosTab } from "@/components/mensagens/relatorios-tab";
 
 const TABS = [
   { id: "envio", label: "Envio" },
@@ -37,11 +38,7 @@ export default function MensagensPage() {
       </div>
 
       {tab === "envio" ? <EnvioTab /> : null}
-      {tab === "relatorios" ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Em construção — relatórios agendados por WhatsApp (fluxo n8n).
-        </p>
-      ) : null}
+      {tab === "relatorios" ? <RelatoriosTab /> : null}
       {tab === "avisos" ? (
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
           Em construção — a tela de Alertas de performance foi cortada do escopo, mas os avisos

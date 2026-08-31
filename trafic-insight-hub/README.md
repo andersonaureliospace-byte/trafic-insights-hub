@@ -33,8 +33,12 @@ tem um link público (`/c/:token`) pro cliente acompanhar sem login, e cada
 conta do Painel pode gerar um link público de dashboard (`/d/:token`) —
 os dois são somente leitura. Quando um lead entra no estágio "Venda", o
 app notifica um webhook do n8n (se configurado na instância) automaticamente.
-Mensagens → Relatórios/Avisos e Configurações → Status continuam como
-placeholder.
+Mensagens → Relatórios também já funciona de verdade: modelos de relatório
+com variáveis (`{cliente}`, `{investido}`, `{resultados}`, `{cpa}`, etc.),
+agendamento por conta(s) + grupo do WhatsApp + recorrência (diária/semanal/
+mensal), pausar/retomar/excluir — o envio de fato é efetivado por um
+terceiro hook público (`report-tick`) chamado pelo n8n. Mensagens → Avisos
+e Configurações → Status continuam como placeholder.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -65,6 +69,12 @@ lead novo chegar (formulário, WhatsApp etc.), faça um `POST` pra
 — o `public_token` é o mesmo do link público da instância (`/c/:token`),
 copiável na tela de CRM.
 
+⚠️ **Pra relatórios agendados realmente saírem**: configure um terceiro
+workflow no n8n chamando `POST https://SEU_DOMINIO/api/public/hooks/report-tick`
+com o mesmo header `x-webhook-secret`, a cada 15-30 minutos (o relatório
+sai na primeira checagem depois do horário agendado, não no minuto exato —
+por isso não precisa ser tão frequente quanto o tick de mensagens).
+
 ## 1. Criar o projeto no Supabase
 
 1. Acesse [supabase.com](https://supabase.com) → **New project**.
@@ -84,6 +94,9 @@ copiável na tela de CRM.
 4. Cole o conteúdo de `supabase/migrations/0003_crm_public_links.sql` e rode
    (webhook de venda por instância do CRM + constraint pra gerar o link
    público de cada conta sem duplicar).
+5. Cole o conteúdo de `supabase/migrations/0004_scheduled_reports_next_run.sql`
+   e rode (adiciona o "próximo disparo" e o pausar/retomar dos relatórios
+   agendados).
    (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
    formato que `supabase db push` espera — ele aplica só as migrações que
    ainda não rodaram.)
@@ -139,6 +152,11 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
    com o mesmo header `x-webhook-secret`. Isso roda as duas verificações da
    Auditoria (Localização e Erros de veiculação) sozinho, sem precisar
    entrar no painel e clicar em "Verificar agora".
+7. (Opcional, mas recomendado) Crie um terceiro workflow no n8n com
+   **Schedule Trigger** a cada 15-30 minutos → **HTTP Request** `POST` para
+   `https://SEU_DOMINIO/api/public/hooks/report-tick` com o mesmo header
+   `x-webhook-secret`. Isso faz os relatórios agendados em Mensagens →
+   Relatórios saírem sozinhos na hora certa.
 
 ## Estrutura
 
@@ -149,7 +167,7 @@ app/
   c/[token]/      → CRM público de UMA instância (kanban somente leitura), sem login
   (app)/                                                     → área logada
     painel/         → contas exibidas, KPIs, Acompanhamento de Resultados
-    mensagens/      → aba Envio funcional; Relatórios/Avisos ainda placeholder
+    mensagens/      → abas Envio e Relatórios funcionais; Avisos ainda placeholder
     auditoria/      → Localização e Erros de veiculação, funcionais
     crm/            → instâncias, kanban, detalhe do lead — funcional
     configuracoes/   → abas Meta e WhatsApp funcionais; Status ainda placeholder
@@ -162,10 +180,12 @@ app/
     audit/location, audit/errors  → "Verificar agora" de cada auditoria
     crm/instances, crm/instances/[id], crm/leads, crm/leads/[id],
     crm/leads/[id]/events  → CRUD do CRM (instâncias, leads, histórico)
+    reports/templates, reports/scheduled  → modelos e agendamentos de Relatórios
     public-dashboards  → gera/remove o link público (/d/:token) de uma conta
     public/hooks/whatsapp-dispatch-tick  → chamado pelo n8n, não pelo navegador
     public/hooks/audit-tick              → idem, roda as duas auditorias
     public/hooks/crm-lead-ingest         → idem, cria lead novo por public_token
+    public/hooks/report-tick             → idem, dispara os relatórios agendados
     selected-accounts, account-bindings, pix-accounts, focus-groups
 lib/meta/
   client.ts     → chamadas cruas à Graph API (get/getAll/post, presets de data)
@@ -189,11 +209,18 @@ lib/crm/
   sale-webhook.ts   → notifica o webhook de venda da instância (se configurado)
                       quando um lead entra no estágio "Venda", e registra a
                       entrega em crm_sale_webhook_deliveries
+lib/reports/
+  generate.ts   → monta o texto do relatório a partir do modelo + métricas reais
+                  da(s) conta(s) (uma ou mais, concatenadas), com variáveis tipo
+                  {cliente}/{investido}/{cpa}
+lib/scheduling.ts → regra de recorrência genérica (soma o intervalo à última
+                    ocorrência, preservando dia da semana/mês) — usada pelos
+                    disparos de WhatsApp e pelos relatórios agendados
 lib/whatsapp/
   client.ts     → chamadas cruas à API do uazapi (status/connect/disconnect/grupos/envio)
   instance.ts   → helpers pra pegar a instância uazapi salva do usuário
-  dispatch.ts   → regra de recorrência (próxima data) e interpolação de {cliente},
-                  compartilhados entre a criação do agendamento e o hook de disparo
+  dispatch.ts   → tipos do disparo de WhatsApp e interpolação de {cliente}
+                  (a regra de recorrência em si vem de lib/scheduling.ts)
 lib/supabase/
   client.ts     → cliente do navegador (Client Components)
   server.ts     → cliente do servidor (Server Components / Route Handlers)
@@ -204,6 +231,7 @@ proxy.ts        → (antigo middleware.ts) protege as rotas logadas e renova a s
 supabase/migrations/0001_init.sql → schema completo
 supabase/migrations/0002_whatsapp_instance_unique.sql → constraint pra upsert de instância WhatsApp
 supabase/migrations/0003_crm_public_links.sql → webhook de venda do CRM + constraint do link público de conta
+supabase/migrations/0004_scheduled_reports_next_run.sql → próximo disparo + pausar dos relatórios agendados
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
@@ -215,13 +243,14 @@ supabase/migrations/0003_crm_public_links.sql → webhook de venda do CRM + cons
 3. Configurações → WhatsApp ✅ — conectar/desconectar (QR ou código de
    pareamento), status, grupo de alertas de saldo. Falta ainda a aba Status
    (personalizar rótulos/cores de prioridade)
-4. Mensagens → Envio ✅ — destinatários pelos grupos do WhatsApp (com nome
+4. Mensagens ✅ — Envio: destinatários pelos grupos do WhatsApp (com nome
    do cliente vinculado no Painel → coluna "Grupo WhatsApp"), modelos
    salvos, envio imediato e agendamento (único/recorrente) via hook
-   `whatsapp-dispatch-tick` chamado pelo n8n. Falta ainda: Relatórios
-   (relatório periódico por WhatsApp), Avisos (avisos automáticos —
-   além do de saldo, que já funciona), e anexos de mídia (fica pra depois,
-   precisa de um bucket no Supabase Storage)
+   `whatsapp-dispatch-tick` chamado pelo n8n. Relatórios: modelos com
+   variáveis ({cliente}/{investido}/{cpa}/etc.), agendamento por conta(s) +
+   grupo + recorrência via hook `report-tick`. Falta ainda: Avisos (avisos
+   automáticos — além do de saldo, que já funciona) e anexos de mídia (fica
+   pra depois, precisa de um bucket no Supabase Storage)
 5. ~~Auditoria~~ ✅ — Localização (Brasil país inteiro / expansão de público)
    e Erros de veiculação (anúncio reprovado/restrito/em análise, conjunto
    ativo sem anúncio ativo), com pausa automática do que encontrar. Hook

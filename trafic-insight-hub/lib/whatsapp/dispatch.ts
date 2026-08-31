@@ -9,25 +9,10 @@ export interface DispatchTarget {
   wa_group_name: string;
 }
 
-export type Recurrence = "none" | "daily" | "weekly" | "monthly";
-
-export function nextOccurrence(from: Date, recurrence: Recurrence): Date | null {
-  if (recurrence === "none") return null;
-  const next = new Date(from);
-  if (recurrence === "daily") {
-    next.setDate(next.getDate() + 1);
-    return next;
-  }
-  if (recurrence === "weekly") {
-    next.setDate(next.getDate() + 7);
-    return next;
-  }
-  if (recurrence === "monthly") {
-    next.setMonth(next.getMonth() + 1);
-    return next;
-  }
-  return null;
-}
+// A regra de recorrência em si mora em lib/scheduling.ts (reaproveitada
+// pelos relatórios agendados) — reexportada aqui pra não quebrar quem já
+// importa esses dois símbolos deste módulo.
+export { nextOccurrence, type Recurrence } from "@/lib/scheduling";
 
 export function interpolate(message: string, clientName: string): string {
   return (message ?? "").replaceAll("{cliente}", clientName);
