@@ -17,6 +17,12 @@ export const DATE_PRESETS = [
 
 export type PresetId = (typeof DATE_PRESETS)[number]["id"];
 
+export const PAYMENT_TYPES = [
+  { id: "prepaid", label: "Pré-paga" },
+  { id: "hybrid", label: "Híbrida" },
+  { id: "postpaid", label: "Pós-paga" },
+] as const;
+
 export const PRIORITY_OPTIONS = [
   { id: "baixa", label: "Baixa", color: "#22c55e" },
   { id: "media", label: "Média", color: "#eab308" },

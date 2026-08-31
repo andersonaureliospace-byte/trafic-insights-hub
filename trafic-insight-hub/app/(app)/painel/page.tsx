@@ -5,6 +5,7 @@ import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, PRIORITY_OPTIONS, fmtCurrency, type PresetId } from "@/lib/format";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
 import { InlineNumber } from "@/components/painel/inline-number";
+import { ControleSaldo } from "@/components/painel/controle-saldo";
 
 interface AccountBinding {
   ad_account_id: string;
@@ -15,13 +16,22 @@ interface AccountBinding {
   priority: string | null;
 }
 
+interface PixRow {
+  ad_account_id: string;
+  payment_type: string | null;
+  base_amount: number | null;
+  notes: string | null;
+}
+
 type BindingPatch = Partial<Omit<AccountBinding, "ad_account_id">>;
+type PixPatch = Partial<Omit<PixRow, "ad_account_id">>;
 
 export default function PainelPage() {
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [allAccounts, setAllAccounts] = useState<AdAccount[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [bindings, setBindings] = useState<Record<string, AccountBinding>>({});
+  const [pixAccounts, setPixAccounts] = useState<Record<string, PixRow>>({});
   const [insights, setInsights] = useState<Record<string, AccountInsight>>({});
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [preset, setPreset] = useState<PresetId>("last_7d");
@@ -47,6 +57,14 @@ export default function PainelPage() {
         const map: Record<string, AccountBinding> = {};
         for (const b of d.bindings ?? []) map[b.ad_account_id] = b;
         setBindings(map);
+      });
+
+    fetch("/api/pix-accounts")
+      .then((r) => r.json())
+      .then((d) => {
+        const map: Record<string, PixRow> = {};
+        for (const p of d.pixAccounts ?? []) map[p.ad_account_id] = p;
+        setPixAccounts(map);
       });
   }, []);
 
@@ -91,6 +109,17 @@ export default function PainelPage() {
     const next = { ...current, ...patch };
     setBindings((prev) => ({ ...prev, [accountId]: next }));
     await fetch("/api/account-bindings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ad_account_id: accountId, ...patch }),
+    });
+  }
+
+  async function patchPix(accountId: string, patch: PixPatch) {
+    const current = pixAccounts[accountId] ?? { ad_account_id: accountId, payment_type: "prepaid", base_amount: null, notes: null };
+    const next = { ...current, ...patch };
+    setPixAccounts((prev) => ({ ...prev, [accountId]: next }));
+    await fetch("/api/pix-accounts", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ad_account_id: accountId, ...patch }),
@@ -262,6 +291,13 @@ export default function PainelPage() {
               </table>
             </div>
           </div>
+
+          <ControleSaldo
+            accounts={selectedAccounts}
+            clientNames={Object.fromEntries(rows.map((r) => [r.acc.account_id, r.clientName]))}
+            pixByAccount={pixAccounts}
+            onPatch={patchPix}
+          />
         </>
       )}
 
