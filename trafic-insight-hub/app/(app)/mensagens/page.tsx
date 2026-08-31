@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { EnvioTab } from "@/components/mensagens/envio-tab";
 import { RelatoriosTab } from "@/components/mensagens/relatorios-tab";
+import { AvisosTab } from "@/components/mensagens/avisos-tab";
 
 const TABS = [
   { id: "envio", label: "Envio" },
@@ -39,12 +40,7 @@ export default function MensagensPage() {
 
       {tab === "envio" ? <EnvioTab /> : null}
       {tab === "relatorios" ? <RelatoriosTab /> : null}
-      {tab === "avisos" ? (
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          Em construção — a tela de Alertas de performance foi cortada do escopo, mas os avisos
-          de saldo baixo (via grupo configurado em Configurações → WhatsApp) ainda vêm por aqui.
-        </p>
-      ) : null}
+      {tab === "avisos" ? <AvisosTab /> : null}
     </div>
   );
 }

@@ -28,6 +28,7 @@ interface PixRow {
   payment_type: string | null;
   base_amount: number | null;
   notes: string | null;
+  alert_threshold: number | null;
 }
 
 type BindingPatch = Partial<Omit<AccountBinding, "ad_account_id">>;
@@ -157,7 +158,13 @@ export default function PainelPage() {
   }
 
   async function patchPix(accountId: string, patch: PixPatch) {
-    const current = pixAccounts[accountId] ?? { ad_account_id: accountId, payment_type: "prepaid", base_amount: null, notes: null };
+    const current = pixAccounts[accountId] ?? {
+      ad_account_id: accountId,
+      payment_type: "prepaid",
+      base_amount: null,
+      notes: null,
+      alert_threshold: null,
+    };
     const next = { ...current, ...patch };
     setPixAccounts((prev) => ({ ...prev, [accountId]: next }));
     await fetch("/api/pix-accounts", {

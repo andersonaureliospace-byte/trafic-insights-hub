@@ -10,6 +10,7 @@ interface PixRow {
   payment_type: string | null;
   base_amount: number | null;
   notes: string | null;
+  alert_threshold: number | null;
 }
 
 export function ControleSaldo({
@@ -71,6 +72,7 @@ export function ControleSaldo({
                           <th className="px-4 py-1.5 font-medium">Conta</th>
                           <th className="px-4 py-1.5 text-right font-medium">Saldo</th>
                           <th className="px-4 py-1.5 text-right font-medium">Valor base</th>
+                          <th className="px-4 py-1.5 text-right font-medium">Alertar quando &lt;</th>
                           <th className="px-4 py-1.5 font-medium">Observação</th>
                           <th className="px-4 py-1.5 font-medium">Tipo</th>
                         </tr>
@@ -89,6 +91,12 @@ export function ControleSaldo({
                                 <InlineNumber
                                   value={pix?.base_amount ?? null}
                                   onSave={(v) => onPatch(acc.account_id, { base_amount: v })}
+                                />
+                              </td>
+                              <td className="px-4 py-2 text-right">
+                                <InlineNumber
+                                  value={pix?.alert_threshold ?? null}
+                                  onSave={(v) => onPatch(acc.account_id, { alert_threshold: v })}
                                 />
                               </td>
                               <td className="px-4 py-2">

@@ -20,7 +20,7 @@ export async function PATCH(request: Request) {
     if (!ad_account_id) throw new Error("ad_account_id é obrigatório.");
 
     const patch: Record<string, unknown> = { user_id: user.id, ad_account_id, updated_at: new Date().toISOString() };
-    for (const key of ["payment_type", "base_amount", "notes"]) {
+    for (const key of ["payment_type", "base_amount", "notes", "alert_threshold"]) {
       if (key in body) patch[key] = body[key];
     }
 

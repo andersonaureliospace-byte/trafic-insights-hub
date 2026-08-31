@@ -38,7 +38,12 @@ com variáveis (`{cliente}`, `{investido}`, `{resultados}`, `{cpa}`, etc.),
 agendamento por conta(s) + grupo do WhatsApp + recorrência (diária/semanal/
 mensal), pausar/retomar/excluir — o envio de fato é efetivado por um
 terceiro hook público (`report-tick`) chamado pelo n8n. Mensagens → Avisos
-e Configurações → Status continuam como placeholder.
+também já funciona de verdade: aviso automático de saldo baixo pra contas
+pré-paga/híbrida com um limite definido (campo "Alertar quando <" no
+Controle de Saldo/PIX, ou 20% do Valor base se ficar em branco) — manda
+pro grupo configurado em Configurações → WhatsApp, com um "Verificar
+agora" manual na tela e um quarto hook público (`balance-alert-tick`) pra
+automatizar pelo n8n. Configurações → Status continua como placeholder.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -75,6 +80,12 @@ com o mesmo header `x-webhook-secret`, a cada 15-30 minutos (o relatório
 sai na primeira checagem depois do horário agendado, não no minuto exato —
 por isso não precisa ser tão frequente quanto o tick de mensagens).
 
+⚠️ **Pra o aviso de saldo baixo rodar sozinho**: configure um quarto
+workflow no n8n chamando `POST https://SEU_DOMINIO/api/public/hooks/balance-alert-tick`
+com o mesmo header `x-webhook-secret`, a cada 3-6 horas (saldo não muda de
+minuto a minuto, não precisa checar com frequência). Cada conta só é
+reavisada depois de 24h, mesmo que o hook rode mais vezes que isso.
+
 ## 1. Criar o projeto no Supabase
 
 1. Acesse [supabase.com](https://supabase.com) → **New project**.
@@ -97,6 +108,9 @@ por isso não precisa ser tão frequente quanto o tick de mensagens).
 5. Cole o conteúdo de `supabase/migrations/0004_scheduled_reports_next_run.sql`
    e rode (adiciona o "próximo disparo" e o pausar/retomar dos relatórios
    agendados).
+6. Cole o conteúdo de `supabase/migrations/0005_balance_alerts.sql` e rode
+   (adiciona o limite de alerta e o controle de reaviso do Controle de
+   Saldo/PIX).
    (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
    formato que `supabase db push` espera — ele aplica só as migrações que
    ainda não rodaram.)
@@ -157,6 +171,11 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
    `https://SEU_DOMINIO/api/public/hooks/report-tick` com o mesmo header
    `x-webhook-secret`. Isso faz os relatórios agendados em Mensagens →
    Relatórios saírem sozinhos na hora certa.
+8. (Opcional, mas recomendado) Crie um quarto workflow no n8n com
+   **Schedule Trigger** a cada 3-6 horas → **HTTP Request** `POST` para
+   `https://SEU_DOMINIO/api/public/hooks/balance-alert-tick` com o mesmo
+   header `x-webhook-secret`. Isso faz o aviso de saldo baixo em Mensagens
+   → Avisos rodar sozinho.
 
 ## Estrutura
 
@@ -167,7 +186,7 @@ app/
   c/[token]/      → CRM público de UMA instância (kanban somente leitura), sem login
   (app)/                                                     → área logada
     painel/         → contas exibidas, KPIs, Acompanhamento de Resultados
-    mensagens/      → abas Envio e Relatórios funcionais; Avisos ainda placeholder
+    mensagens/      → abas Envio, Relatórios e Avisos, todas funcionais
     auditoria/      → Localização e Erros de veiculação, funcionais
     crm/            → instâncias, kanban, detalhe do lead — funcional
     configuracoes/   → abas Meta e WhatsApp funcionais; Status ainda placeholder
@@ -181,11 +200,13 @@ app/
     crm/instances, crm/instances/[id], crm/leads, crm/leads/[id],
     crm/leads/[id]/events  → CRUD do CRM (instâncias, leads, histórico)
     reports/templates, reports/scheduled  → modelos e agendamentos de Relatórios
+    alerts/balance  → status de saldo baixo + "Verificar agora" (Mensagens > Avisos)
     public-dashboards  → gera/remove o link público (/d/:token) de uma conta
     public/hooks/whatsapp-dispatch-tick  → chamado pelo n8n, não pelo navegador
     public/hooks/audit-tick              → idem, roda as duas auditorias
     public/hooks/crm-lead-ingest         → idem, cria lead novo por public_token
     public/hooks/report-tick             → idem, dispara os relatórios agendados
+    public/hooks/balance-alert-tick      → idem, checa e avisa saldo baixo
     selected-accounts, account-bindings, pix-accounts, focus-groups
 lib/meta/
   client.ts     → chamadas cruas à Graph API (get/getAll/post, presets de data)
@@ -213,6 +234,11 @@ lib/reports/
   generate.ts   → monta o texto do relatório a partir do modelo + métricas reais
                   da(s) conta(s) (uma ou mais, concatenadas), com variáveis tipo
                   {cliente}/{investido}/{cpa}
+lib/alerts/
+  balance.ts    → checa saldo baixo (pré-paga/híbrida com limite definido) e
+                  manda o aviso pro grupo — compartilhado entre "Verificar
+                  agora" (sessão) e o hook público balance-alert-tick (service
+                  role); tem cooldown de 24h por conta pra não reavisar toda hora
 lib/scheduling.ts → regra de recorrência genérica (soma o intervalo à última
                     ocorrência, preservando dia da semana/mês) — usada pelos
                     disparos de WhatsApp e pelos relatórios agendados
@@ -232,6 +258,7 @@ supabase/migrations/0001_init.sql → schema completo
 supabase/migrations/0002_whatsapp_instance_unique.sql → constraint pra upsert de instância WhatsApp
 supabase/migrations/0003_crm_public_links.sql → webhook de venda do CRM + constraint do link público de conta
 supabase/migrations/0004_scheduled_reports_next_run.sql → próximo disparo + pausar dos relatórios agendados
+supabase/migrations/0005_balance_alerts.sql → limite de alerta + controle de reaviso do saldo
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
@@ -243,14 +270,15 @@ supabase/migrations/0004_scheduled_reports_next_run.sql → próximo disparo + p
 3. Configurações → WhatsApp ✅ — conectar/desconectar (QR ou código de
    pareamento), status, grupo de alertas de saldo. Falta ainda a aba Status
    (personalizar rótulos/cores de prioridade)
-4. Mensagens ✅ — Envio: destinatários pelos grupos do WhatsApp (com nome
+4. ~~Mensagens~~ ✅ — Envio: destinatários pelos grupos do WhatsApp (com nome
    do cliente vinculado no Painel → coluna "Grupo WhatsApp"), modelos
    salvos, envio imediato e agendamento (único/recorrente) via hook
    `whatsapp-dispatch-tick` chamado pelo n8n. Relatórios: modelos com
    variáveis ({cliente}/{investido}/{cpa}/etc.), agendamento por conta(s) +
-   grupo + recorrência via hook `report-tick`. Falta ainda: Avisos (avisos
-   automáticos — além do de saldo, que já funciona) e anexos de mídia (fica
-   pra depois, precisa de um bucket no Supabase Storage)
+   grupo + recorrência via hook `report-tick`. Avisos: aviso automático de
+   saldo baixo (limite por conta ou 20% do Valor base) via hook
+   `balance-alert-tick`. Falta ainda: anexos de mídia (fica pra depois,
+   precisa de um bucket no Supabase Storage)
 5. ~~Auditoria~~ ✅ — Localização (Brasil país inteiro / expansão de público)
    e Erros de veiculação (anúncio reprovado/restrito/em análise, conjunto
    ativo sem anúncio ativo), com pausa automática do que encontrar. Hook
