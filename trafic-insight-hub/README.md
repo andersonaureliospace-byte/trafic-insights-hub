@@ -4,9 +4,13 @@ Painel interno de acompanhamento de tráfego pago (Meta Ads) — reconstrução 
 projeto original, agora como instância única (um só login) hospedada na
 Vercel, com Supabase, n8n e uazapi (WhatsApp).
 
-Estado atual: **etapa 1 do plano** — base do Supabase e login único. As
-telas de Painel, Mensagens, Auditoria, CRM e Configurações existem como
-placeholder, indicando o que entra em cada uma nas próximas etapas.
+Estado atual: **etapas 1 e 2 do plano concluídas** — base do Supabase/login
+único, e o Painel já funciona de verdade: seletor de "contas exibidas" (só
+mostra o que você marcar, nunca todas as contas do seu token), KPIs, e a
+tabela de Acompanhamento de Resultados puxando dados reais da Meta (CPA,
+valor usado, investimento diário) com Cliente/Meta de CPA/Investimento
+mensal editáveis. Configurações → Meta já salva o token. Mensagens,
+Auditoria e CRM continuam como placeholder.
 
 ## 1. Criar o projeto no Supabase
 
@@ -66,22 +70,35 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
 app/
   login/, esqueci-senha/, redefinir-senha/, auth/callback/   → autenticação
   (app)/                                                     → área logada
-    painel/ mensagens/ auditoria/ crm/ configuracoes/
+    painel/         → contas exibidas, KPIs, Acompanhamento de Resultados
+    mensagens/ auditoria/ crm/   → ainda placeholder
+    configuracoes/   → aba Meta funcional; WhatsApp/Status ainda placeholder
+  api/
+    meta/credentials, meta/accounts, meta/insights, meta/status
+    selected-accounts, account-bindings
+lib/meta/
+  client.ts     → chamadas cruas à Graph API (get/getAll/post, presets de data)
+  insights.ts   → getAdAccounts + getAccountInsight (regra de negócio: ignora
+                  campanhas [VAGA], objetivos de reconhecimento/tráfego, soma
+                  orçamento diário com CBO e lifetime→diário)
+  status.ts     → pausar/ativar (ainda não ligado a uma tela — vem no próximo passo)
 lib/supabase/
   client.ts     → cliente do navegador (Client Components)
   server.ts     → cliente do servidor (Server Components / Route Handlers)
                   + createServiceClient() para os links públicos e os
                   endpoints chamados pelo n8n
-middleware.ts   → protege as rotas logadas e renova a sessão
+lib/current-user.ts → helpers pra pegar o usuário logado e o token Meta salvo
+proxy.ts        → (antigo middleware.ts) protege as rotas logadas e renova a sessão
 supabase/migrations/0001_init.sql → schema completo
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
 
-1. ~~Base — Supabase + login único~~ ✅ (este commit)
-2. Painel de leitura (contas exibidas, KPIs, Acompanhamento de Resultados,
-   Controle de Saldo, pausar/ativar)
-3. Configurações (Meta, WhatsApp/uazapi, Status)
+1. ~~Base — Supabase + login único~~ ✅
+2. ~~Painel de leitura~~ ✅ — falta ainda: Controle de Saldo/PIX, Visão Geral
+   por Campanhas/Conjuntos/Anúncios, grupos de foco, status em massa, e ligar
+   o pausar/ativar (`lib/meta/status.ts` já existe, falta a UI)
+3. Configurações → WhatsApp (uazapi) e Status
 4. Mensagens + fluxos n8n de disparo/relatório
 5. Auditoria + fluxos n8n de auditoria/saldo
 6. CRM + links públicos (`/d/:token`, `/c/:token`)
