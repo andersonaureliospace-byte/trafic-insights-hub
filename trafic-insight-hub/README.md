@@ -5,12 +5,15 @@ projeto original, agora como instância única (um só login) hospedada na
 Vercel, com Supabase, n8n e uazapi (WhatsApp).
 
 Estado atual: **etapas 1 e 2 do plano concluídas** — base do Supabase/login
-único, e o Painel já funciona de verdade: seletor de "contas exibidas" (só
-mostra o que você marcar, nunca todas as contas do seu token), KPIs, e a
-tabela de Acompanhamento de Resultados puxando dados reais da Meta (CPA,
-valor usado, investimento diário) com Cliente/Meta de CPA/Investimento
-mensal editáveis. Configurações → Meta já salva o token. Mensagens,
-Auditoria e CRM continuam como placeholder.
+único, e o Painel já fecha 100%: seletor de "contas exibidas" (só mostra o
+que você marcar, nunca todas as contas do seu token), KPIs, Acompanhamento
+de Resultados com dados reais da Meta (CPA, valor usado, investimento
+diário, Cliente/Meta de CPA/Investimento mensal editáveis), grupos de foco
+(agrupar contas e focar a tabela num grupo), atualização de status em massa
+(classifica a prioridade pelo CPA dos últimos 3 dias vs. a meta cadastrada),
+Controle de Saldo/PIX e Visão Geral por Campanhas/Conjuntos/Anúncios com
+pausar/ativar nos 3 níveis. Configurações → Meta já salva o token.
+Mensagens, Auditoria e CRM continuam como placeholder.
 
 ## 1. Criar o projeto no Supabase
 
@@ -74,14 +77,18 @@ app/
     mensagens/ auditoria/ crm/   → ainda placeholder
     configuracoes/   → aba Meta funcional; WhatsApp/Status ainda placeholder
   api/
-    meta/credentials, meta/accounts, meta/insights, meta/status
-    selected-accounts, account-bindings
+    meta/credentials, meta/accounts, meta/insights, meta/breakdown,
+    meta/status, meta/daily-cpa
+    selected-accounts, account-bindings, pix-accounts, focus-groups
 lib/meta/
   client.ts     → chamadas cruas à Graph API (get/getAll/post, presets de data)
+  shared.ts     → helpers compartilhados (isVaga, objetivos excluídos, acesso à Página)
   insights.ts   → getAdAccounts + getAccountInsight (regra de negócio: ignora
                   campanhas [VAGA], objetivos de reconhecimento/tráfego, soma
                   orçamento diário com CBO e lifetime→diário)
-  status.ts     → pausar/ativar (ainda não ligado a uma tela — vem no próximo passo)
+  breakdown.ts  → detalhamento por Campanha/Conjunto/Anúncio (Visão Geral)
+  status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral)
+  daily-cpa.ts  → CPA diário por conta, usado na atualização de status em massa
 lib/supabase/
   client.ts     → cliente do navegador (Client Components)
   server.ts     → cliente do servidor (Server Components / Route Handlers)
@@ -95,9 +102,9 @@ supabase/migrations/0001_init.sql → schema completo
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
 
 1. ~~Base — Supabase + login único~~ ✅
-2. ~~Painel de leitura~~ ✅ — falta ainda: Controle de Saldo/PIX, Visão Geral
-   por Campanhas/Conjuntos/Anúncios, grupos de foco, status em massa, e ligar
-   o pausar/ativar (`lib/meta/status.ts` já existe, falta a UI)
+2. ~~Painel de leitura~~ ✅ — completo: contas exibidas, KPIs, Acompanhamento
+   de Resultados, grupos de foco, status em massa, Controle de Saldo/PIX,
+   Visão Geral com pausar/ativar
 3. Configurações → WhatsApp (uazapi) e Status
 4. Mensagens + fluxos n8n de disparo/relatório
 5. Auditoria + fluxos n8n de auditoria/saldo

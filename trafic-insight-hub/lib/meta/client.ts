@@ -16,7 +16,7 @@ export type DatePreset =
 
 export type DateRangeInput = DatePreset | { since: string; until: string };
 
-function spDate(d: Date): string {
+export function spDate(d: Date): string {
   // YYYY-MM-DD no fuso America/Sao_Paulo
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "America/Sao_Paulo",

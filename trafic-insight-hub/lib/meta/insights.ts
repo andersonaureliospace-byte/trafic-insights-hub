@@ -11,6 +11,7 @@
 //    dos conjuntos ativos, convertendo lifetime_budget pro equivalente diário
 
 import { metaGet, metaGetAll, presetParams, type DateRangeInput } from "./client";
+import { isVaga, EXCLUDED_OBJECTIVES, pickFirstNumeric, lifetimeToDailyEquivalent } from "./shared";
 
 export interface AdAccount {
   id: string;
@@ -42,69 +43,6 @@ export async function getAdAccounts(token: string): Promise<AdAccount[]> {
   });
   return data.data ?? [];
 }
-
-function pickFirstNumeric(
-  arr: Array<{ values?: Array<{ value?: string }> }> | undefined,
-): number | null {
-  if (!arr) return null;
-  for (const item of arr) {
-    let sum = 0;
-    let found = false;
-    for (const v of item?.values ?? []) {
-      const n = Number(v?.value);
-      if (Number.isFinite(n) && n > 0) {
-        sum += n;
-        found = true;
-      }
-    }
-    if (found) return sum;
-  }
-  return null;
-}
-
-function lifetimeToDailyEquivalent(
-  lifetimeCents: string | number | undefined | null,
-  startTime?: string | null,
-  stopTime?: string | null,
-  createdTime?: string | null,
-): number {
-  if (lifetimeCents == null) return 0;
-  const lifetime = Number(lifetimeCents) / 100;
-  if (!Number.isFinite(lifetime) || lifetime <= 0) return 0;
-
-  const start = startTime || createdTime;
-  if (start && stopTime) {
-    const s = new Date(start).getTime();
-    const e = new Date(stopTime).getTime();
-    if (Number.isFinite(s) && Number.isFinite(e) && e > s) {
-      const totalDays = Math.max(1, Math.round((e - s) / 86_400_000));
-      return lifetime / totalDays;
-    }
-  }
-  const now = new Date();
-  if (stopTime) {
-    const stop = new Date(stopTime).getTime();
-    const remaining = Math.ceil((stop - now.getTime()) / 86_400_000);
-    return lifetime / Math.max(remaining, 1);
-  }
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-  const remaining = daysInMonth - now.getDate() + 1;
-  return lifetime / Math.max(remaining, 1);
-}
-
-const isVaga = (name?: string) => !!name && /(vaga|seguidores)/i.test(name);
-
-const EXCLUDED_OBJECTIVES = new Set([
-  "OUTCOME_AWARENESS",
-  "BRAND_AWARENESS",
-  "REACH",
-  "OUTCOME_TRAFFIC",
-  "LINK_CLICKS",
-  "VIDEO_VIEWS",
-  "POST_ENGAGEMENT",
-  "PAGE_LIKES",
-  "EVENT_RESPONSES",
-]);
 
 interface CampaignRow {
   id?: string;
