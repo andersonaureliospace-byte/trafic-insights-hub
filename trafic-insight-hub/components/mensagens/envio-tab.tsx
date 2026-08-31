@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 interface Group {
   id: string;
@@ -68,6 +68,13 @@ export function EnvioTab() {
   const [sending, setSending] = useState(false);
   const [sendProgress, setSendProgress] = useState<{ done: number; total: number } | null>(null);
   const [sendSummary, setSendSummary] = useState<{ ok: number; fail: number } | null>(null);
+
+  const [attachment, setAttachment] = useState<{ url: string; mime: string; fileName: string; path: string } | null>(
+    null,
+  );
+  const [attaching, setAttaching] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -164,7 +171,7 @@ export function EnvioTab() {
   const selectedTargets = useMemo(() => targets.filter((t) => selected.has(t.id)), [targets, selected]);
 
   async function sendNow() {
-    if (selectedTargets.length === 0 || !message.trim()) return;
+    if (selectedTargets.length === 0 || (!message.trim() && !attachment)) return;
     setSending(true);
     setSendSummary(null);
     let ok = 0;
@@ -177,7 +184,11 @@ export function EnvioTab() {
         const res = await fetch("/api/whatsapp/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ groupId: t.id, text }),
+          body: JSON.stringify({
+            groupId: t.id,
+            text,
+            media: attachment ? { url: attachment.url, mime: attachment.mime, fileName: attachment.fileName } : undefined,
+          }),
         });
         const d = await res.json();
         if (d.error) fail++;
@@ -192,6 +203,38 @@ export function EnvioTab() {
     setSendProgress(null);
     setSending(false);
     setSendSummary({ ok, fail });
+  }
+
+  async function attachFile(file: File) {
+    setAttaching(true);
+    setAttachError(null);
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      const res = await fetch("/api/whatsapp/media", { method: "POST", body: form });
+      const d = await res.json();
+      if (d.error) {
+        setAttachError(d.error);
+      } else {
+        setAttachment({ url: d.url, mime: d.mime, fileName: d.fileName, path: d.path });
+      }
+    } catch {
+      setAttachError("Falha ao enviar o arquivo.");
+    }
+    setAttaching(false);
+  }
+
+  async function removeAttachment() {
+    if (attachment) {
+      await fetch("/api/whatsapp/media", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: attachment.path }),
+      });
+    }
+    setAttachment(null);
+    setAttachError(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   async function saveTemplate() {
@@ -320,10 +363,45 @@ export function EnvioTab() {
             <span>{message.length}/4096</span>
           </div>
 
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void attachFile(f);
+              }}
+            />
+            {attachment ? (
+              <span className="flex items-center gap-2 rounded-md border border-zinc-300 px-2.5 py-1 text-xs dark:border-zinc-700">
+                📎 <span className="max-w-[180px] truncate">{attachment.fileName}</span>
+                <button onClick={() => void removeAttachment()} className="font-medium text-red-600">
+                  Remover
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={attaching}
+                className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium disabled:opacity-60 dark:border-zinc-700"
+              >
+                {attaching ? "Enviando arquivo…" : "📎 Anexar imagem/vídeo/áudio/documento"}
+              </button>
+            )}
+            {attachError ? <span className="text-xs text-red-600">{attachError}</span> : null}
+          </div>
+          {attachment ? (
+            <p className="mt-1 text-xs text-zinc-400">
+              Anexos só valem pro envio imediato — a mensagem vira legenda do arquivo. Não é possível anexar em disparos agendados.
+            </p>
+          ) : null}
+
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
               onClick={() => void sendNow()}
-              disabled={sending || selectedTargets.length === 0 || !message.trim()}
+              disabled={sending || selectedTargets.length === 0 || (!message.trim() && !attachment)}
               className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
             >
               {sending

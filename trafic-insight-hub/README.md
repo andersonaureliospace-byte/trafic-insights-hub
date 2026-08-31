@@ -47,9 +47,11 @@ automatizar pelo n8n. Configurações → Status também já funciona de
 verdade: personalizar o rótulo e a cor de cada nível de prioridade
 (Inauguração/Baixa/Média/Alta/Crítica) usado no Painel — o critério de
 classificação automática (CPA vs. meta) continua o mesmo, só muda como
-aparece na tela. Com isso, todas as áreas do plano original + os extras
-pedidos ao longo do caminho estão funcionando; só ficam de fora os anexos
-de mídia em Mensagens (precisa de um bucket no Supabase Storage).
+aparece na tela. Mensagens → Envio agora também suporta anexo de mídia
+(imagem/vídeo/áudio/documento) no envio imediato — sobe pro Supabase
+Storage e vai como legenda pelo uazapi; disparos agendados continuam só
+texto. Com isso, todas as áreas do plano original + os extras pedidos ao
+longo do caminho estão 100% concluídas.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -92,6 +94,17 @@ com o mesmo header `x-webhook-secret`, a cada 3-6 horas (saldo não muda de
 minuto a minuto, não precisa checar com frequência). Cada conta só é
 reavisada depois de 24h, mesmo que o hook rode mais vezes que isso.
 
+⚠️ **Pra anexos de mídia funcionarem em Mensagens → Envio**: rode a
+migração `0006_whatsapp_media_bucket.sql` (veja o passo 6) — ela cria o
+bucket `whatsapp-media` no Supabase Storage. Se o seu projeto Supabase
+bloquear a criação de bucket público por SQL (política do próprio
+Supabase, varia por plano), crie manualmente em **Storage → New bucket**
+com o nome exato `whatsapp-media` marcando **Public bucket**, e rode só a
+parte das `create policy` da migração. O contrato exato do `POST
+/send/media` do uazapi (`{number, type, file, text, docName}`) foi
+assumido por analogia com `/send/text` — não verificado contra a
+documentação oficial, então confirme no primeiro envio de teste.
+
 ## 1. Criar o projeto no Supabase
 
 1. Acesse [supabase.com](https://supabase.com) → **New project**.
@@ -117,6 +130,9 @@ reavisada depois de 24h, mesmo que o hook rode mais vezes que isso.
 6. Cole o conteúdo de `supabase/migrations/0005_balance_alerts.sql` e rode
    (adiciona o limite de alerta e o controle de reaviso do Controle de
    Saldo/PIX).
+7. Cole o conteúdo de `supabase/migrations/0006_whatsapp_media_bucket.sql`
+   e rode (cria o bucket `whatsapp-media` no Storage, público pra leitura,
+   com upload/remoção restritos ao dono).
    (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
    formato que `supabase db push` espera — ele aplica só as migrações que
    ainda não rodaram.)
@@ -182,6 +198,9 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
    `https://SEU_DOMINIO/api/public/hooks/balance-alert-tick` com o mesmo
    header `x-webhook-secret`. Isso faz o aviso de saldo baixo em Mensagens
    → Avisos rodar sozinho.
+9. Anexos de mídia (Mensagens → Envio) não precisam de nenhum workflow novo
+   no n8n — é um upload síncrono direto pro Supabase Storage, disparado na
+   hora do envio.
 
 ## Estrutura
 
@@ -201,7 +220,8 @@ app/
     meta/status, meta/daily-cpa
     whatsapp/credentials, whatsapp/status, whatsapp/connect,
     whatsapp/disconnect, whatsapp/groups, whatsapp/alerts-group,
-    whatsapp/send, whatsapp/message-templates, whatsapp/scheduled-dispatches
+    whatsapp/send, whatsapp/media, whatsapp/message-templates,
+    whatsapp/scheduled-dispatches
     audit/location, audit/errors  → "Verificar agora" de cada auditoria
     crm/instances, crm/instances/[id], crm/leads, crm/leads/[id],
     crm/leads/[id]/events  → CRUD do CRM (instâncias, leads, histórico)
@@ -253,7 +273,8 @@ lib/priority-context.tsx → Context/Provider dos rótulos de prioridade
                             personalizados (busca uma vez, compartilha entre
                             Painel, diálogo de status em massa e Configurações)
 lib/whatsapp/
-  client.ts     → chamadas cruas à API do uazapi (status/connect/disconnect/grupos/envio)
+  client.ts     → chamadas cruas à API do uazapi (status/connect/disconnect/
+                  grupos/envio de texto e mídia)
   instance.ts   → helpers pra pegar a instância uazapi salva do usuário
   dispatch.ts   → tipos do disparo de WhatsApp e interpolação de {cliente}
                   (a regra de recorrência em si vem de lib/scheduling.ts)
@@ -269,6 +290,7 @@ supabase/migrations/0002_whatsapp_instance_unique.sql → constraint pra upsert 
 supabase/migrations/0003_crm_public_links.sql → webhook de venda do CRM + constraint do link público de conta
 supabase/migrations/0004_scheduled_reports_next_run.sql → próximo disparo + pausar dos relatórios agendados
 supabase/migrations/0005_balance_alerts.sql → limite de alerta + controle de reaviso do saldo
+supabase/migrations/0006_whatsapp_media_bucket.sql → bucket whatsapp-media (Storage) + policies de dono/leitura pública
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
@@ -283,13 +305,13 @@ supabase/migrations/0005_balance_alerts.sql → limite de alerta + controle de r
    Resultados)
 4. ~~Mensagens~~ ✅ — Envio: destinatários pelos grupos do WhatsApp (com nome
    do cliente vinculado no Painel → coluna "Grupo WhatsApp"), modelos
-   salvos, envio imediato e agendamento (único/recorrente) via hook
-   `whatsapp-dispatch-tick` chamado pelo n8n. Relatórios: modelos com
-   variáveis ({cliente}/{investido}/{cpa}/etc.), agendamento por conta(s) +
-   grupo + recorrência via hook `report-tick`. Avisos: aviso automático de
-   saldo baixo (limite por conta ou 20% do Valor base) via hook
-   `balance-alert-tick`. Falta ainda: anexos de mídia (fica pra depois,
-   precisa de um bucket no Supabase Storage)
+   salvos, envio imediato (com anexo opcional de imagem/vídeo/áudio/
+   documento, via Supabase Storage) e agendamento (único/recorrente, só
+   texto) via hook `whatsapp-dispatch-tick` chamado pelo n8n. Relatórios:
+   modelos com variáveis ({cliente}/{investido}/{cpa}/etc.), agendamento
+   por conta(s) + grupo + recorrência via hook `report-tick`. Avisos: aviso
+   automático de saldo baixo (limite por conta ou 20% do Valor base) via
+   hook `balance-alert-tick`
 5. ~~Auditoria~~ ✅ — Localização (Brasil país inteiro / expansão de público)
    e Erros de veiculação (anúncio reprovado/restrito/em análise, conjunto
    ativo sem anúncio ativo), com pausa automática do que encontrar. Hook
@@ -300,7 +322,7 @@ supabase/migrations/0005_balance_alerts.sql → limite de alerta + controle de r
    público por instância (`/c/:token`) e link público de dashboard por
    conta (`/d/:token`, gerado a partir do Painel) — os dois somente leitura
 
-Com isso, as 6 áreas do plano original estão 100% concluídas. Único item
-que ficou de fora (deliberadamente, desde o início): anexos de mídia
-(imagem/vídeo/áudio/documento) em Mensagens → Envio, porque precisa de um
-bucket no Supabase Storage — avise quando quiser esse incremento.
+Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
+do caminho (CRM, links públicos, Relatórios, Avisos, Status, anexos de
+mídia) estão 100% concluídos. Não há mais nenhum item pendente do escopo
+combinado — próximos pedidos são novos incrementos, a critério seu.

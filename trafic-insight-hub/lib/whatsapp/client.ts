@@ -74,6 +74,34 @@ export async function sendText(creds: WhatsappCreds, groupId: string, text: stri
   });
 }
 
+export type WhatsappMediaType = "image" | "video" | "audio" | "document";
+
+export function mediaTypeFromMime(mime: string): WhatsappMediaType {
+  if (mime.startsWith("image/")) return "image";
+  if (mime.startsWith("video/")) return "video";
+  if (mime.startsWith("audio/")) return "audio";
+  return "document";
+}
+
+// uazapi: POST /send/media — contrato assumido por analogia com /send/text
+// (não verificado contra a documentação real; confirmar no primeiro teste).
+export async function sendMedia(
+  creds: WhatsappCreds,
+  groupId: string,
+  media: { url: string; type: WhatsappMediaType; caption?: string; fileName?: string },
+): Promise<void> {
+  await waFetch(creds, "/send/media", {
+    method: "POST",
+    body: JSON.stringify({
+      number: groupId,
+      type: media.type,
+      file: media.url,
+      text: media.caption ?? "",
+      docName: media.fileName ?? "",
+    }),
+  });
+}
+
 export interface WhatsappGroup {
   id: string;
   name: string;
