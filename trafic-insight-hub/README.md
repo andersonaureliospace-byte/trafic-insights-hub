@@ -19,8 +19,14 @@ avisos de saldo). Mensagens → Envio também já funciona de verdade: escolher
 destinatários pelos grupos do WhatsApp (com o nome do cliente vinculado no
 Painel), enviar agora, agendar (uma vez ou recorrente) e cancelar
 agendamentos — o disparo agendado é efetivado por um hook público que o n8n
-chama periodicamente. Auditoria, CRM, Mensagens → Relatórios/Avisos e
-Configurações → Status continuam como placeholder.
+chama periodicamente. Auditoria também já funciona de verdade: verificação
+de Localização (conjunto ativo com Brasil país inteiro ou expansão de
+público ligada) e de Erros de veiculação (anúncio reprovado/restrito/em
+análise, ou conjunto ativo sem nenhum anúncio ativo) — o botão "Verificar
+agora" roda na hora e pausa sozinho o que encontrar de errado, e um segundo
+hook público (`audit-tick`) permite automatizar essa verificação pelo n8n
+em intervalos maiores (ex.: a cada 30-60 minutos). CRM, Mensagens →
+Relatórios/Avisos e Configurações → Status continuam como placeholder.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -33,6 +39,15 @@ que chame `POST https://SEU_DOMINIO/api/public/hooks/whatsapp-dispatch-tick`
 a cada 1 minuto, enviando o mesmo valor no header `x-webhook-secret`. Sem
 isso, os agendamentos ficam salvos como "pending" mas nunca são enviados —
 o Vercel sozinho não dispara nada por conta própria.
+
+⚠️ **Pra Auditoria rodar sozinha (sem precisar clicar em "Verificar
+agora")**: configure um segundo workflow no n8n chamando
+`POST https://SEU_DOMINIO/api/public/hooks/audit-tick` com o mesmo header
+`x-webhook-secret` (a variável `WHATSAPP_DISPATCH_SECRET` protege os dois
+hooks — o nome ficou do WhatsApp, mas hoje é o segredo geral dos hooks
+internos do sistema). Sugestão de intervalo: a cada 30-60 minutos — é uma
+verificação mais pesada que o tick de mensagens, porque consulta a Graph
+API de todas as contas vinculadas.
 
 ## 1. Criar o projeto no Supabase
 
@@ -99,6 +114,12 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
    header `x-webhook-secret: <o mesmo valor de WHATSAPP_DISPATCH_SECRET>`.
    Ative o workflow — é isso que faz os agendamentos de Mensagens
    realmente saírem na hora certa.
+6. (Opcional, mas recomendado) Crie um segundo workflow no n8n, igual ao de
+   cima, mas com **Schedule Trigger** a cada 30-60 minutos → **HTTP
+   Request** `POST` para `https://SEU_DOMINIO/api/public/hooks/audit-tick`
+   com o mesmo header `x-webhook-secret`. Isso roda as duas verificações da
+   Auditoria (Localização e Erros de veiculação) sozinho, sem precisar
+   entrar no painel e clicar em "Verificar agora".
 
 ## Estrutura
 
@@ -108,7 +129,8 @@ app/
   (app)/                                                     → área logada
     painel/         → contas exibidas, KPIs, Acompanhamento de Resultados
     mensagens/      → aba Envio funcional; Relatórios/Avisos ainda placeholder
-    auditoria/ crm/   → ainda placeholder
+    auditoria/      → Localização e Erros de veiculação, funcionais
+    crm/            → ainda placeholder
     configuracoes/   → abas Meta e WhatsApp funcionais; Status ainda placeholder
   api/
     meta/credentials, meta/accounts, meta/insights, meta/breakdown,
@@ -116,7 +138,9 @@ app/
     whatsapp/credentials, whatsapp/status, whatsapp/connect,
     whatsapp/disconnect, whatsapp/groups, whatsapp/alerts-group,
     whatsapp/send, whatsapp/message-templates, whatsapp/scheduled-dispatches
+    audit/location, audit/errors  → "Verificar agora" de cada auditoria
     public/hooks/whatsapp-dispatch-tick  → chamado pelo n8n, não pelo navegador
+    public/hooks/audit-tick              → idem, roda as duas auditorias
     selected-accounts, account-bindings, pix-accounts, focus-groups
 lib/meta/
   client.ts     → chamadas cruas à Graph API (get/getAll/post, presets de data)
@@ -125,8 +149,16 @@ lib/meta/
                   campanhas [VAGA], objetivos de reconhecimento/tráfego, soma
                   orçamento diário com CBO e lifetime→diário)
   breakdown.ts  → detalhamento por Campanha/Conjunto/Anúncio (Visão Geral)
-  status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral)
+  status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral e na Auditoria)
   daily-cpa.ts  → CPA diário por conta, usado na atualização de status em massa
+lib/audit/
+  location.ts   → verificação de localização (Brasil país inteiro / expansão de público)
+  errors.ts     → verificação de erros de veiculação (anúncio reprovado/restrito/
+                  em análise, conjunto ativo sem anúncio ativo)
+  run.ts        → lógica compartilhada entre a rota "Verificar agora" (sessão do
+                  usuário) e o hook público audit-tick (service role): roda a
+                  auditoria, pausa o que encontrar, grava/atualiza/limpa as
+                  tabelas audit_location_status e audit_error_status
 lib/whatsapp/
   client.ts     → chamadas cruas à API do uazapi (status/connect/disconnect/grupos/envio)
   instance.ts   → helpers pra pegar a instância uazapi salva do usuário
@@ -159,5 +191,8 @@ supabase/migrations/0002_whatsapp_instance_unique.sql → constraint pra upsert 
    (relatório periódico por WhatsApp), Avisos (avisos automáticos —
    além do de saldo, que já funciona), e anexos de mídia (fica pra depois,
    precisa de um bucket no Supabase Storage)
-5. Auditoria + fluxos n8n de auditoria/saldo
+5. ~~Auditoria~~ ✅ — Localização (Brasil país inteiro / expansão de público)
+   e Erros de veiculação (anúncio reprovado/restrito/em análise, conjunto
+   ativo sem anúncio ativo), com pausa automática do que encontrar. Hook
+   `audit-tick` permite automatizar pelo n8n
 6. CRM + links públicos (`/d/:token`, `/c/:token`)
