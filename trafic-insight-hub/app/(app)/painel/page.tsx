@@ -9,6 +9,7 @@ import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog
 import { ControleSaldo } from "@/components/painel/controle-saldo";
 import { VisaoGeral } from "@/components/painel/visao-geral";
 import { AnaliseTab } from "@/components/painel/analise-tab";
+import { ClientesTab } from "@/components/painel/clientes-tab";
 import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
 import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { EditClientDialog } from "@/components/painel/edit-client-dialog";
@@ -22,6 +23,9 @@ interface AccountBinding {
   priority: string | null;
   wa_group_id: string | null;
   wa_group_name: string | null;
+  meta_leads: number | null;
+  whatsapp_contact: string | null;
+  address: string | null;
 }
 
 interface PixRow {
@@ -41,6 +45,7 @@ type PixPatch = Partial<Omit<PixRow, "ad_account_id">>;
 const TABS = [
   { id: "geral", label: "Geral" },
   { id: "acompanhamento", label: "Acompanhamento" },
+  { id: "clientes", label: "Clientes" },
   { id: "saldo", label: "Controle de Saldo" },
   { id: "visao-geral", label: "Visão Geral" },
   { id: "analise", label: "Análise" },
@@ -161,6 +166,9 @@ export default function PainelPage() {
       priority: null,
       wa_group_id: null,
       wa_group_name: null,
+      meta_leads: null,
+      whatsapp_contact: null,
+      address: null,
     };
     const next = { ...current, ...patch };
     setBindings((prev) => ({ ...prev, [accountId]: next }));
@@ -417,6 +425,8 @@ export default function PainelPage() {
                 </div>
               </div>
             ) : null}
+
+            {tab === "clientes" ? <ClientesTab accounts={selectedAccounts} bindings={bindings} onPatch={patchBinding} /> : null}
 
             {tab === "saldo" ? (
               <ControleSaldo

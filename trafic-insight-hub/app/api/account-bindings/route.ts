@@ -32,6 +32,9 @@ export async function PATCH(request: Request) {
       "priority",
       "wa_group_id",
       "wa_group_name",
+      "meta_leads",
+      "whatsapp_contact",
+      "address",
     ]) {
       if (key in body) patch[key] = body[key];
     }

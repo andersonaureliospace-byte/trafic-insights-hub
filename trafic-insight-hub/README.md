@@ -6,22 +6,28 @@ Vercel, com Supabase, n8n e uazapi (WhatsApp).
 
 Estado atual: **etapas 1 e 2 do plano concluídas** — base do Supabase/login
 único, e o Painel já fecha 100%, agora organizado em subgrupos na lateral
-esquerda (Geral, Acompanhamento, Controle de Saldo, Visão Geral, Análise) —
-cada um só busca dado do Meta enquanto estiver ativo, pra não gastar
-requisição à toa com abas que você não está olhando. Geral mostra os KPIs
-gerais (Investido/Resultados/CPA médio) de todas as contas selecionadas.
-Acompanhamento tem a tabela de resultados com dados reais da Meta (CPA,
-valor usado, investimento diário), grupos de foco (agrupar contas e focar a
-tabela num grupo), atualização de status em massa (classifica a prioridade
-pelo CPA dos últimos 3 dias vs. a meta cadastrada) e um botão "Editar" por
-cliente que abre a Meta CPA/Meta de Investimento/Grupo WhatsApp num modal —
-esses 3 campos não aparecem mais direto na tabela. Controle de Saldo/PIX e
-Visão Geral por Campanhas/Conjuntos/Anúncios (agora só lista campanha com
-impressão de verdade no período) continuam com pausar/ativar nos 3 níveis.
-Análise é novo: mostra todo criativo com custo por conversa iniciada R$ 4
-ou mais acima da Meta CPA do cliente, agrupado por cliente, com filtro de
-período (padrão "Últimos 3 dias + hoje") e botão de pausar manual por
-anúncio — nada é pausado sozinho aqui. Configurações → Meta e Configurações → WhatsApp
+esquerda (Geral, Acompanhamento, Clientes, Controle de Saldo, Visão Geral,
+Análise) — cada um só busca dado do Meta enquanto estiver ativo, pra não
+gastar requisição à toa com abas que você não está olhando. Geral mostra os
+KPIs gerais (Investido/Resultados/CPA médio) de todas as contas
+selecionadas. Acompanhamento tem a tabela de resultados com dados reais da
+Meta (CPA, valor usado, investimento diário), grupos de foco (agrupar
+contas e focar a tabela num grupo), atualização de status em massa
+(classifica a prioridade pelo CPA dos últimos 3 dias vs. a meta cadastrada)
+e um botão "Editar" por cliente que abre a Meta CPA/Meta de
+Investimento/Grupo WhatsApp num modal — esses 3 campos não aparecem mais
+direto na tabela. Clientes é novo: ficha única por cliente com Nome, Conta
+(link pro Facebook), ID da conta (com botão de copiar), e os campos
+preenchidos à mão — CPA ideal, Investimento mensal, Meta de leads, WhatsApp
+de contato, Grupo WhatsApp (o mesmo vínculo usado nos disparos) e Endereço.
+Controle de Saldo/PIX e Visão Geral por Campanhas/Conjuntos/Anúncios (agora
+só lista campanha com impressão de verdade no período) continuam com
+pausar/ativar nos 3 níveis, e o nome da conta em Acompanhamento, Clientes,
+Controle de Saldo e Visão Geral é link direto pro Gerenciador de Anúncios
+daquela conta. Análise é novo: mostra todo criativo com custo por conversa
+iniciada R$ 4 ou mais acima da Meta CPA do cliente, agrupado por cliente,
+com filtro de período (padrão "Últimos 3 dias + hoje") e botão de pausar
+manual por anúncio — nada é pausado sozinho aqui. Configurações → Meta e Configurações → WhatsApp
 já funcionam de verdade (conectar a instância uazapi via QR ou código de
 pareamento, ver status, desconectar, e escolher o grupo que recebe os
 avisos de saldo). Mensagens → Envio também já funciona de verdade: escolher
@@ -164,6 +170,9 @@ se quiser apagá-la de vez (opcional, não afeta nada não rodar).
    e rode só se quiser apagar a tabela do antigo link público de dashboard
    (`/d/:token`, removido nessa entrega) — sem rodar essa, o app funciona
    normalmente do mesmo jeito.
+9. Cole o conteúdo de `supabase/migrations/0008_client_profile_fields.sql`
+   e rode (adiciona Meta de leads, WhatsApp de contato e Endereço na ficha
+   de cliente — Painel > Clientes).
    (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
    formato que `supabase db push` espera — ele aplica só as migrações que
    ainda não rodaram.)
@@ -240,9 +249,9 @@ app/
   login/, esqueci-senha/, redefinir-senha/, auth/callback/   → autenticação
   c/[token]/      → CRM público de UMA instância (kanban somente leitura), sem login
   (app)/                                                     → área logada
-    painel/         → subgrupos na lateral: Geral, Acompanhamento, Controle
-                      de Saldo, Visão Geral, Análise — cada um só busca no
-                      Meta enquanto está ativo
+    painel/         → subgrupos na lateral: Geral, Acompanhamento, Clientes,
+                      Controle de Saldo, Visão Geral, Análise — cada um só
+                      busca no Meta enquanto está ativo
     mensagens/      → abas Envio, Relatórios e Avisos, todas funcionais
     auditoria/      → Localização e Erros de veiculação, funcionais
     crm/            → instâncias, kanban, detalhe do lead — funcional
@@ -327,6 +336,7 @@ supabase/migrations/0004_scheduled_reports_next_run.sql → próximo disparo + p
 supabase/migrations/0005_balance_alerts.sql → limite de alerta + controle de reaviso do saldo
 supabase/migrations/0006_whatsapp_media_bucket.sql → bucket whatsapp-media (Storage) + policies de dono/leitura pública
 supabase/migrations/0007_drop_public_dashboards.sql → (opcional) apaga a tabela do link público de dashboard removido
+supabase/migrations/0008_client_profile_fields.sql → Meta de leads, WhatsApp de contato e Endereço na ficha de cliente
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
@@ -367,8 +377,14 @@ supabase/migrations/0007_drop_public_dashboards.sql → (opcional) apaga a tabel
    manual, sem limite de quantos aparecem); nome da conta agora é link
    direto pro Gerenciador de Anúncios daquela conta (Acompanhamento,
    Controle de Saldo e um atalho "Abrir no Facebook" na Visão Geral)
+8. ~~Painel > Clientes (Etapa 13)~~ ✅ — nova aba com a ficha de cada
+   cliente numa tela só: Nome, Conta (link pro Facebook), ID da conta (com
+   botão de copiar), CPA ideal, Investimento mensal, Meta de leads,
+   WhatsApp de contato, Grupo WhatsApp e Endereço — os 3 primeiros
+   preenchidos automaticamente pela Meta, o resto é tudo manual
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
-Painel) estão 100% concluídos. Não há mais nenhum item pendente do escopo
-combinado — próximos pedidos são novos incrementos, a critério seu.
+Painel, ficha de Clientes) estão 100% concluídos. Não há mais nenhum item
+pendente do escopo combinado — próximos pedidos são novos incrementos, a
+critério seu.
