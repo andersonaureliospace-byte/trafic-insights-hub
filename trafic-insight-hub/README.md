@@ -24,7 +24,16 @@ Controle de Saldo/PIX e Visão Geral por Campanhas/Conjuntos/Anúncios (agora
 só lista campanha com impressão de verdade no período) continuam com
 pausar/ativar nos 3 níveis, e o nome da conta em Acompanhamento, Clientes,
 Controle de Saldo e Visão Geral é link direto pro Gerenciador de Anúncios
-daquela conta. Análise é novo: mostra todo criativo com custo por conversa
+daquela conta. O quadro do Painel agora ocupa a tela inteira (sem limite de
+largura), e em Acompanhamento o Status vem colorido de acordo com a cor
+cadastrada em Configurações → Status pra cada nível — pra mudar a cor da
+"Inauguração" (ou de qualquer outro nível), não precisa mexer em código, é
+só trocar a cor lá. Em Acompanhamento também dá pra arrastar e soltar as
+linhas pra reordenar os clientes do jeito que quiser — a ordem é salva por
+conta no Supabase (atrelada ao seu login/e-mail), nunca no navegador, então
+abre igual em qualquer computador/navegador que você use; a reordenação só
+fica disponível com a busca e o grupo de foco desligados (com filtro ativo,
+a posição na tela não bate com a posição real entre todas as contas). Análise é novo: mostra todo criativo com custo por conversa
 iniciada R$ 4 ou mais acima da Meta CPA do cliente, agrupado por cliente,
 com filtro de período (padrão "Últimos 3 dias + hoje") e botão de pausar
 manual por anúncio — nada é pausado sozinho aqui. Configurações → Meta e Configurações → WhatsApp
@@ -138,6 +147,13 @@ atualização (a rota foi removida). A tabela `public_dashboards` continua no
 banco sem uso — rode `supabase/migrations/0007_drop_public_dashboards.sql`
 se quiser apagá-la de vez (opcional, não afeta nada não rodar).
 
+⚠️ **Pra arrastar e reordenar em Acompanhamento**: essa entrega inclui a
+migração `0009_account_sort_order.sql` (veja o passo 10) — sem rodar ela, a
+reordenação dá erro ao salvar. A ordem fica gravada em `account_bindings`
+por usuário/conta (nunca em localStorage/sessionStorage do navegador), então
+funciona igual em qualquer computador ou navegador que você usar pra
+acessar o Painel.
+
 ## 1. Criar o projeto no Supabase
 
 1. Acesse [supabase.com](https://supabase.com) → **New project**.
@@ -173,9 +189,12 @@ se quiser apagá-la de vez (opcional, não afeta nada não rodar).
 9. Cole o conteúdo de `supabase/migrations/0008_client_profile_fields.sql`
    e rode (adiciona Meta de leads, WhatsApp de contato e Endereço na ficha
    de cliente — Painel > Clientes).
-   (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
-   formato que `supabase db push` espera — ele aplica só as migrações que
-   ainda não rodaram.)
+10. Cole o conteúdo de `supabase/migrations/0009_account_sort_order.sql` e
+    rode (adiciona a coluna que guarda a ordem manual dos clientes em
+    Acompanhamento).
+    (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
+    formato que `supabase db push` espera — ele aplica só as migrações que
+    ainda não rodaram.)
 
 ## 3. Criar o seu usuário (login único, sem cadastro público)
 
@@ -275,7 +294,8 @@ app/
     public/hooks/crm-lead-ingest         → idem, cria lead novo por public_token
     public/hooks/report-tick             → idem, dispara os relatórios agendados
     public/hooks/balance-alert-tick      → idem, checa e avisa saldo baixo
-    selected-accounts, account-bindings, pix-accounts, focus-groups
+    selected-accounts, account-bindings, account-bindings/reorder,
+    pix-accounts, focus-groups
 lib/meta/
   client.ts     → chamadas cruas à Graph API (get/getAll/post, presets de data)
   shared.ts     → helpers compartilhados (isVaga, objetivos excluídos, acesso à Página)
@@ -337,6 +357,7 @@ supabase/migrations/0005_balance_alerts.sql → limite de alerta + controle de r
 supabase/migrations/0006_whatsapp_media_bucket.sql → bucket whatsapp-media (Storage) + policies de dono/leitura pública
 supabase/migrations/0007_drop_public_dashboards.sql → (opcional) apaga a tabela do link público de dashboard removido
 supabase/migrations/0008_client_profile_fields.sql → Meta de leads, WhatsApp de contato e Endereço na ficha de cliente
+supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop) dos clientes em Acompanhamento
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
@@ -382,9 +403,16 @@ supabase/migrations/0008_client_profile_fields.sql → Meta de leads, WhatsApp d
    botão de copiar), CPA ideal, Investimento mensal, Meta de leads,
    WhatsApp de contato, Grupo WhatsApp e Endereço — os 3 primeiros
    preenchidos automaticamente pela Meta, o resto é tudo manual
+9. ~~Painel em tela cheia + Status colorido + reordenar clientes (Etapa
+   14)~~ ✅ — o quadro do Painel não tem mais limite de largura; o Status em
+   Acompanhamento agora é colorido com a cor de cada nível (personalizável
+   em Configurações → Status, sem precisar mexer em código); e dá pra
+   arrastar e soltar os clientes em Acompanhamento pra reordenar do jeito
+   que quiser, com a ordem salva no Supabase por conta/usuário (nunca no
+   navegador) — funciona igual em qualquer computador que você acessar
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
-Painel, ficha de Clientes) estão 100% concluídos. Não há mais nenhum item
-pendente do escopo combinado — próximos pedidos são novos incrementos, a
-critério seu.
+Painel, ficha de Clientes, tela cheia/status colorido/reordenar) estão 100%
+concluídos. Não há mais nenhum item pendente do escopo combinado — próximos
+pedidos são novos incrementos, a critério seu.
