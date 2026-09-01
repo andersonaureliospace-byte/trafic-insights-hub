@@ -33,19 +33,38 @@ export function ControleSaldo({
     own_store: true,
   });
 
-  // Puxa o tipo de pagamento (pré-paga/pós-paga) direto da Meta uma vez por
-  // conta — só quando ainda não tem nada salvo. Depois disso o campo é 100%
-  // editável (inclusive pra Híbrida/Loja própria, que a Meta não sabe
-  // classificar) e nunca mais é sobrescrito automaticamente.
+  // Puxa o tipo de pagamento (pré-paga/pós-paga) direto da Meta — só na
+  // "criação" da conta aqui na tela, ou seja, só pra quem ainda não tem
+  // Tipo salvo nenhum. Não faz parte da listagem de contas de sempre (que
+  // roda a cada carregamento do Painel) de propósito: é uma consulta à
+  // parte, feita uma única vez por conta — depois de salvo (puxado ou
+  // escolhido à mão), nunca mais é chamada de novo nem sobrescrita
+  // automaticamente, mesmo revisitando essa aba.
   const syncedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    for (const acc of accounts) {
-      if (syncedRef.current.has(acc.account_id)) continue;
-      syncedRef.current.add(acc.account_id);
-      if (pixByAccount[acc.account_id]?.payment_type) continue;
-      if (acc.is_prepay_account == null) continue;
-      void onPatch(acc.account_id, { payment_type: acc.is_prepay_account ? "prepaid" : "postpaid" });
-    }
+    const newIds = accounts
+      .map((a) => a.account_id)
+      .filter((id) => !syncedRef.current.has(id) && !pixByAccount[id]?.payment_type);
+    if (newIds.length === 0) return;
+    newIds.forEach((id) => syncedRef.current.add(id));
+    fetch("/api/meta/payment-type", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountIds: newIds }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        const isPrepay: Record<string, boolean | null> = d.isPrepay ?? {};
+        for (const id of newIds) {
+          const v = isPrepay[id];
+          if (v == null) continue;
+          void onPatch(id, { payment_type: v ? "prepaid" : "postpaid" });
+        }
+      })
+      .catch(() => {
+        // falha ao consultar a Meta — a conta fica sem tipo salvo, pra
+        // escolha manual (tenta de novo só se essa aba for reaberta).
+      });
   }, [accounts, pixByAccount, onPatch]);
 
   const groups: Record<string, AdAccount[]> = { prepaid: [], hybrid: [], postpaid: [], own_store: [] };

@@ -3,10 +3,24 @@ import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";
 import type { DateRangeInput } from "@/lib/meta/client";
 
-// Painel > Análise: custo por conversa iniciada acima da Meta CPA + R$ 4,
-// por cliente. Só avalia contas com Meta CPA cadastrada (sem meta não dá
-// pra saber o que é "acima"); as demais voltam em "skipped".
+// Painel > Análise: só criativo ativo, com custo por conversa iniciada R$ 4
+// ou mais acima da Meta CPA — ou, quando não teve NENHUMA conversa iniciada
+// (não dá pra calcular custo por conversa), com o próprio gasto R$ 4 ou
+// mais acima da Meta CPA (ex.: CPA ideal R$6, gastou R$10, zero conversa).
+// Só avalia contas com Meta CPA cadastrada (sem meta não dá pra saber o que
+// é "acima"); as demais voltam em "skipped". Criativo pausado nunca entra
+// aqui — isso já é filtrado lá em getCreativeCostAnalysis.
 const THRESHOLD_ABOVE_TARGET = 4;
+
+function isFlagged(row: CreativeCostRow, cpaTarget: number): boolean {
+  const noConversion = !row.conversations || row.conversations <= 0;
+  if (noConversion) return row.spend - cpaTarget >= THRESHOLD_ABOVE_TARGET;
+  return row.cost_per_conversation != null && row.cost_per_conversation - cpaTarget >= THRESHOLD_ABOVE_TARGET;
+}
+
+function sortKey(row: CreativeCostRow): number {
+  return row.cost_per_conversation ?? row.spend;
+}
 
 interface Group {
   accountId: string;
@@ -45,11 +59,7 @@ export async function POST(request: Request) {
         }
         try {
           const rows = await getCreativeCostAnalysis(token, accountId, datePreset);
-          const above = rows
-            .filter(
-              (r) => r.cost_per_conversation != null && r.cost_per_conversation - cpaTarget >= THRESHOLD_ABOVE_TARGET,
-            )
-            .sort((a, b) => (b.cost_per_conversation ?? 0) - (a.cost_per_conversation ?? 0));
+          const above = rows.filter((r) => isFlagged(r, cpaTarget)).sort((a, b) => sortKey(b) - sortKey(a));
           if (above.length > 0) groups.push({ accountId, clientName, cpaTarget, ads: above });
         } catch (e) {
           console.error("creative analysis err (non-fatal)", accountId, e);

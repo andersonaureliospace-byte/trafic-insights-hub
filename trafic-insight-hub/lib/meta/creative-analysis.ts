@@ -78,8 +78,13 @@ export async function getCreativeCostAnalysis(
     if (!row.ad_id) continue;
     if (isVaga(row.campaign_name)) continue;
 
+    // Só criativo ativo entra na Análise — pausado não é gasto acontecendo
+    // agora, então não faz sentido mostrar (nem oferecer pausar de novo).
+    const status = statusMap.get(row.ad_id) ?? null;
+    if (status !== "ACTIVE") continue;
+
     const spend = row.spend ? Number(row.spend) : 0;
-    if (spend <= 0) continue; // sem gasto não há custo por conversa pra avaliar
+    if (spend <= 0) continue; // sem gasto não há o que avaliar
 
     const costEntry = (row.cost_per_action_type ?? []).find((a) => isMessagingConversationAction(a.action_type));
     const actionEntry = (row.actions ?? []).find((a) => isMessagingConversationAction(a.action_type));
@@ -89,7 +94,10 @@ export async function getCreativeCostAnalysis(
     if (costPerConversation == null && conversations && conversations > 0) {
       costPerConversation = spend / conversations;
     }
-    if (costPerConversation == null) continue; // esse anúncio não teve conversa iniciada no período
+    // Ao contrário de antes, NÃO pula mais quando não há conversa iniciada
+    // (cost_per_conversation fica null) — é justamente o outro caso que a
+    // Análise precisa sinalizar: gasto alto sem nenhuma conversa iniciada.
+    // Quem decide o que entra na lista final é a rota (app/api/analysis/creatives).
 
     rows.push({
       id: row.ad_id,
@@ -99,7 +107,7 @@ export async function getCreativeCostAnalysis(
       spend,
       conversations,
       cost_per_conversation: costPerConversation,
-      status: statusMap.get(row.ad_id) ?? null,
+      status,
     });
   }
   return rows;

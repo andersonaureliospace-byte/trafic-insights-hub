@@ -23,12 +23,8 @@ export interface AdAccount {
   amount_spent: string;
   spend_cap?: string;
   disable_reason?: number;
-  // Tipo de pagamento (pré-paga/pós-paga) e Business Manager dono da conta —
-  // pedidos pelo Graph API junto com a listagem de contas (sem chamada
-  // extra). is_prepay_account exige acesso de admin na conta; quando o token
-  // não tem esse nível, o Graph API só omite o campo (undefined aqui), e o
-  // Controle de Saldo deixa o tipo em branco pra escolha manual.
-  is_prepay_account?: boolean;
+  // Business Manager dono da conta — pedido junto com a listagem de contas
+  // (sem chamada extra), usado no link de Cobranças e Pagamentos.
   business?: { id: string; name?: string } | null;
 }
 
@@ -45,11 +41,38 @@ export interface AccountInsight {
 
 export async function getAdAccounts(token: string): Promise<AdAccount[]> {
   const data = await metaGet<{ data: AdAccount[] }>(token, "/me/adaccounts", {
-    fields:
-      "id,account_id,name,account_status,disable_reason,balance,currency,amount_spent,spend_cap,is_prepay_account,business{id,name}",
+    fields: "id,account_id,name,account_status,disable_reason,balance,currency,amount_spent,spend_cap,business{id,name}",
     limit: "200",
   });
   return data.data ?? [];
+}
+
+// Tipo de pagamento (pré-paga/pós-paga) direto da Meta — de propósito FORA
+// da listagem de contas de sempre (getAdAccounts, chamada a cada carregamento
+// do Painel): isso só precisa ser puxado uma única vez por conta, na
+// primeira vez que ela aparece em Controle de Saldo sem tipo salvo ainda
+// (ver ControleSaldo). is_prepay_account exige acesso de admin na conta;
+// sem esse nível o Graph API simplesmente não retorna o campo, e a conta
+// fica null (Controle de Saldo deixa em branco pra escolha manual).
+export async function getIsPrepayAccounts(
+  token: string,
+  accountIds: string[],
+): Promise<Record<string, boolean | null>> {
+  const out: Record<string, boolean | null> = {};
+  await Promise.all(
+    accountIds.map(async (actId) => {
+      const id = actId.startsWith("act_") ? actId : `act_${actId}`;
+      try {
+        const data = await metaGet<{ is_prepay_account?: boolean }>(token, `/${id}`, {
+          fields: "is_prepay_account",
+        });
+        out[actId] = typeof data.is_prepay_account === "boolean" ? data.is_prepay_account : null;
+      } catch {
+        out[actId] = null;
+      }
+    }),
+  );
+  return out;
 }
 
 interface CampaignRow {

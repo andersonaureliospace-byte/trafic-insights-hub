@@ -103,8 +103,9 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
             Custo por conversa iniciada {loading ? "· atualizando…" : ""}
           </h2>
           <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-            Criativos com custo por conversa iniciada R$ 4 ou mais acima da Meta CPA do cliente — nada é pausado
-            sozinho, o botão é manual.
+            Só criativos ativos (pausado não entra aqui), com custo por conversa iniciada R$ 4 ou mais acima da Meta
+            CPA — ou, sem nenhuma conversa iniciada, com o próprio gasto R$ 4 ou mais acima da Meta CPA. Nada é
+            pausado sozinho, o botão é manual.
           </p>
         </div>
         <select
@@ -125,7 +126,7 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
       ) : !groups ? (
         <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p>
       ) : totalAds === 0 ? (
-        <p className="px-4 py-6 text-sm text-zinc-500">Nenhum criativo acima do limite nesse período.</p>
+        <p className="px-4 py-6 text-sm text-zinc-500">Nenhum criativo ativo acima do limite nesse período.</p>
       ) : (
         <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
           {groups.map((g) => (
@@ -154,7 +155,10 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                   <tbody>
                     {g.ads.map((ad) => {
                       const active = ad.status?.toUpperCase() === "ACTIVE";
-                      const diff = (ad.cost_per_conversation ?? 0) - g.cpaTarget;
+                      const noConversion = !ad.conversations || ad.conversations <= 0;
+                      // Sem conversa iniciada, não existe "custo por conversa" pra comparar — o sinal
+                      // vira o próprio gasto (ex.: CPA ideal R$6, gastou R$10, zero conversa).
+                      const diff = noConversion ? ad.spend - g.cpaTarget : (ad.cost_per_conversation ?? 0) - g.cpaTarget;
                       return (
                         <tr key={ad.id} className="border-t border-zinc-100 dark:border-zinc-800/60">
                           <td className="max-w-[240px] truncate px-4 py-2" title={ad.name}>
@@ -167,7 +171,13 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                             {ad.adset_name ?? "—"}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums font-medium text-amber-700 dark:text-amber-400">
-                            {fmtCurrency(ad.cost_per_conversation)}
+                            {noConversion ? (
+                              <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
+                                —
+                              </span>
+                            ) : (
+                              fmtCurrency(ad.cost_per_conversation)
+                            )}
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums text-red-600 dark:text-red-400">
                             +{fmtCurrency(diff)}

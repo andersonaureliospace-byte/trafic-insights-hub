@@ -48,10 +48,15 @@ linhas pra reordenar os clientes do jeito que quiser — a ordem é salva por
 conta no Supabase (atrelada ao seu login/e-mail), nunca no navegador, então
 abre igual em qualquer computador/navegador que você use; a reordenação só
 fica disponível com a busca e o grupo de foco desligados (com filtro ativo,
-a posição na tela não bate com a posição real entre todas as contas). Análise é novo: mostra todo criativo com custo por conversa
-iniciada R$ 4 ou mais acima da Meta CPA do cliente, agrupado por cliente,
-com filtro de período (padrão "Últimos 3 dias + hoje") e botão de pausar
-manual por anúncio — nada é pausado sozinho aqui. Configurações → Meta e Configurações → WhatsApp
+a posição na tela não bate com a posição real entre todas as contas). Análise mostra todo criativo ATIVO (pausado nunca entra) com custo por
+conversa iniciada R$ 4 ou mais acima da Meta CPA do cliente — ou, quando não
+teve nenhuma conversa iniciada, com o próprio gasto R$ 4 ou mais acima da
+Meta CPA (ex.: CPA ideal R$6, gastou R$10, zero conversa, também entra) —,
+agrupado por cliente, com filtro de período (padrão "Últimos 3 dias + hoje")
+e botão de pausar manual por anúncio — nada é pausado sozinho aqui. O Tipo
+de conta em Controle de Saldo (ver abaixo) é puxado da Meta uma única vez,
+na primeira vez que a conta aparece sem tipo salvo — não fica reconsultando
+isso a cada carregamento do Painel. Configurações → Meta e Configurações → WhatsApp
 já funcionam de verdade (conectar a instância uazapi via QR ou código de
 pareamento, ver status, desconectar, e escolher o grupo que recebe os
 avisos de saldo). Mensagens → Envio também já funciona de verdade: escolher
@@ -154,7 +159,12 @@ qualquer `action_type` que contenha `messaging_conversation_started`, o que
 cobre a maioria dos casos, mas vale conferir os primeiros números contra o
 Gerenciador de Anúncios antes de confiar de olhos fechados. Só entram na
 lista contas com Meta CPA cadastrada (sem meta não dá pra saber o que é
-"acima") — o rodapé da aba avisa quais ficaram de fora por esse motivo.
+"acima") — o rodapé da aba avisa quais ficaram de fora por esse motivo. Só
+entra criativo ATIVO (pausado é descartado antes mesmo de calcular custo).
+Um criativo também entra quando gastou R$ 4+ acima da Meta CPA mas não teve
+NENHUMA conversa iniciada no período — nesse caso a coluna "Custo/conversa"
+mostra "—" (não dá pra calcular sem conversa) e a "Diferença" usa o próprio
+gasto menos a Meta CPA.
 
 ⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
 link `/d/:token` numa entrega anterior, ele para de funcionar com essa
@@ -163,13 +173,17 @@ banco sem uso — rode `supabase/migrations/0007_drop_public_dashboards.sql`
 se quiser apagá-la de vez (opcional, não afeta nada não rodar).
 
 ⚠️ **Sobre o Tipo de conta puxado automaticamente (Controle de Saldo)**: a
-Meta só informa `is_prepay_account` (pré-paga/pós-paga) e o Business Manager
-dono da conta pra quem tem acesso de admin naquela conta — se o seu token só
-tiver acesso de anúncios/análise numa conta específica, esses dois campos
-voltam vazios e (a) o Tipo daquela conta fica em branco pra você escolher
-manualmente (nunca trava em "Pré-paga" por engano) e (b) o link de Cobranças
-e Pagamentos daquela conta abre sem o parâmetro do Business Manager — ainda
-funciona, só não vem pré-filtrado pelo negócio.
+Meta só informa `is_prepay_account` (pré-paga/pós-paga) pra quem tem acesso
+de admin naquela conta especificamente — se o seu token só tiver acesso de
+anúncios/análise numa conta, esse campo volta vazio e o Tipo dela fica em
+branco pra você escolher manualmente (nunca trava em "Pré-paga" por
+engano). Essa consulta é separada da listagem de contas de sempre e só roda
+uma vez por conta nova (a que ainda não tem Tipo salvo) — não fica
+reconsultando a Meta toda vez que o Painel carrega. O Business Manager dono
+da conta (usado no link de Cobranças e Pagamentos) é diferente: vem junto
+da listagem normal de contas, e quando a Meta não informa (conta sem
+Business Manager, ou sem esse nível de acesso), o link ainda funciona, só
+não vem pré-filtrado pelo negócio.
 
 ⚠️ **Sobre o "Saldo disponível" (Controle de Saldo e Avisos)**: o cálculo é
 teto de gasto da conta (`spend_cap`) menos o já gasto (`amount_spent`) — é a
@@ -314,6 +328,7 @@ app/
   api/
     meta/credentials, meta/accounts, meta/insights, meta/breakdown,
     meta/status, meta/daily-cpa
+    meta/payment-type  → puxa Pré-paga/Pós-paga da Meta, só p/ conta sem Tipo salvo (Controle de Saldo)
     analysis/creatives  → custo por conversa iniciada acima da Meta CPA (Painel > Análise)
     whatsapp/credentials, whatsapp/status, whatsapp/connect,
     whatsapp/disconnect, whatsapp/groups, whatsapp/alerts-group,
@@ -342,7 +357,7 @@ lib/meta/
                   no nível campanha só entra quem teve impressão no período
   status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral, Auditoria e Análise)
   daily-cpa.ts  → CPA diário por conta, usado na atualização de status em massa
-  creative-analysis.ts → custo por conversa iniciada por anúncio (Painel > Análise)
+  creative-analysis.ts → custo por conversa iniciada por anúncio, só ativos (Painel > Análise)
   ads-manager-link.ts → monta a URL do Gerenciador de Anúncios (campanhas) e a
                          de Cobranças e Pagamentos (billing hub, usada só no
                          Controle de Saldo) a partir do ID da conta e do
@@ -465,10 +480,19 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     gasto menos já gasto, não mais o campo bruto da Meta que parecia gasto
     recente; mesma correção aplicada no cálculo do aviso automático de
     saldo baixo, que usava o mesmo campo errado
+12. ~~Tipo de conta 1x só + Análise refinada (Etapa 17)~~ ✅ — o Tipo de
+    conta (Controle de Saldo) agora é uma consulta separada da listagem de
+    contas de sempre, feita só uma vez por conta nova, sem ficar
+    reconsultando a Meta a cada carregamento do Painel. Análise agora só
+    lista criativo ativo (pausado nunca entra) e passou a também sinalizar
+    criativo sem nenhuma conversa iniciada cujo gasto já está R$ 4+ acima
+    da Meta CPA (antes esse caso era descartado por não ter custo por
+    conversa calculável)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
-Pagamentos/Tipo de conta automático, saldo disponível corrigido) estão 100%
-concluídos. Não há mais nenhum item pendente do escopo combinado — próximos
+Pagamentos/Tipo de conta automático, saldo disponível corrigido, Tipo de
+conta 1x só + Análise refinada) estão 100% concluídos. Não há mais nenhum
+item pendente do escopo combinado — próximos
 pedidos são novos incrementos, a critério seu.
