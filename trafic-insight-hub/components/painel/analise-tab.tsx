@@ -43,7 +43,7 @@ function statusLabel(status: string | null): string {
 export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
   const [preset, setPreset] = useState("last_3d_plus_today");
   const [search, setSearch] = useState("");
-  const [showPaused, setShowPaused] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"active" | "all">("active");
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
   const [loading, setLoading] = useState(false);
@@ -65,7 +65,7 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
       body: JSON.stringify({
         accountIds: accounts.map((a) => a.account_id),
         datePreset: preset,
-        statuses: showPaused ? ["ACTIVE", "PAUSED"] : ["ACTIVE"],
+        statuses: statusFilter === "all" ? ["ACTIVE", "PAUSED"] : ["ACTIVE"],
       }),
     });
     const d = await res.json();
@@ -76,7 +76,7 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
     }
     setGroups(d.groups ?? []);
     setSkipped(d.skipped ?? []);
-  }, [accounts, preset, showPaused]);
+  }, [accounts, preset, statusFilter]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas exibidas/período/filtro de status
@@ -170,21 +170,29 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
 
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
         <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Status</span>
-        <span
-          title="Ativo sempre entra — fixo"
-          className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+        <button
+          type="button"
+          onClick={() => setStatusFilter("active")}
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+            statusFilter === "active"
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+              : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+          }`}
         >
           Ativos
-        </span>
-        <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-400">
-          <input
-            type="checkbox"
-            checked={showPaused}
-            onChange={(e) => setShowPaused(e.target.checked)}
-            className="h-3.5 w-3.5"
-          />
-          Incluir pausados
-        </label>
+        </button>
+        <button
+          type="button"
+          onClick={() => setStatusFilter("all")}
+          title="Ativos e pausados"
+          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+            statusFilter === "all"
+              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+              : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
+          }`}
+        >
+          Todos
+        </button>
       </div>
 
       {error ? (

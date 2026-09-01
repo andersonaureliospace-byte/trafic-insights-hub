@@ -54,7 +54,8 @@ Acompanhamento também tem a coluna Ritmo: quanto falta investir por dia
 dias) pra bater o Investimento mensal cadastrado — (Investimento mensal −
 Valor usado no mês corrente) ÷ dias restantes; fica vermelho quando negativo
 (já passou do investimento mensal pro ritmo dos dias que restam). Análise
-mostra criativo ATIVO (pausado é opcional, tem um filtro pra incluir) com
+mostra criativo, com o filtro de Status "Ativos" (padrão) ou "Todos" (ativos +
+pausados), com
 custo por conversa iniciada R$ 4 ou mais acima da Meta CPA do cliente — ou,
 quando não teve nenhuma conversa iniciada, com o próprio gasto R$ 4 ou mais
 acima da Meta CPA (ex.: CPA ideal R$6, gastou R$10, zero conversa, também
@@ -520,7 +521,7 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     Acompanhamento (Etapa 19)~~ ✅ — Análise ganhou busca por nome de
     criativo (global, todas as contas), botão Atualizar (sem precisar dar
     F5), o nome da conta virou link direto pro Gerenciador de Anúncios, e
-    um filtro de status com Ativos fixo + Pausados opcional. Acompanhamento
+    um filtro de status Ativos (padrão) / Todos. Acompanhamento
     ganhou a coluna Ritmo: quanto investir por dia até o fim do mês (sempre
     considerado com 30 dias) pra bater o Investimento mensal cadastrado
 
