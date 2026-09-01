@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency } from "@/lib/format";
+import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 
 // "Últimos 3 dias + hoje" entra como padrão recomendado (pega problema
 // recente rápido); os demais períodos já usados no resto do Painel ficam
@@ -32,13 +33,24 @@ interface Skipped {
   clientName: string;
 }
 
+function statusLabel(status: string | null): string {
+  const s = status?.toUpperCase();
+  if (s === "ACTIVE") return "Ativo";
+  if (s === "PAUSED") return "Pausado";
+  return status || "—";
+}
+
 export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
   const [preset, setPreset] = useState("last_3d_plus_today");
+  const [search, setSearch] = useState("");
+  const [showPaused, setShowPaused] = useState(false);
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const accountNameById = useMemo(() => new Map(accounts.map((a) => [a.account_id, a.name])), [accounts]);
 
   const load = useCallback(async () => {
     if (accounts.length === 0) {
@@ -50,7 +62,11 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
     const res = await fetch("/api/analysis/creatives", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountIds: accounts.map((a) => a.account_id), datePreset: preset }),
+      body: JSON.stringify({
+        accountIds: accounts.map((a) => a.account_id),
+        datePreset: preset,
+        statuses: showPaused ? ["ACTIVE", "PAUSED"] : ["ACTIVE"],
+      }),
     });
     const d = await res.json();
     setLoading(false);
@@ -60,10 +76,10 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
     }
     setGroups(d.groups ?? []);
     setSkipped(d.skipped ?? []);
-  }, [accounts, preset]);
+  }, [accounts, preset, showPaused]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas exibidas/período
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas exibidas/período/filtro de status
     void load();
   }, [load]);
 
@@ -89,7 +105,24 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
     );
   }
 
-  const totalAds = (groups ?? []).reduce((s, g) => s + g.ads.length, 0);
+  // Busca por nome — de propósito global: filtra o criativo em qualquer
+  // conta/cliente ao mesmo tempo, não só dentro de um grupo por vez.
+  const q = search.trim().toLowerCase();
+  const filteredGroups = (groups ?? [])
+    .map((g) => ({
+      ...g,
+      ads: q
+        ? g.ads.filter(
+            (ad) =>
+              ad.name.toLowerCase().includes(q) ||
+              (ad.adset_name ?? "").toLowerCase().includes(q) ||
+              (ad.campaign_name ?? "").toLowerCase().includes(q),
+          )
+        : g.ads,
+    }))
+    .filter((g) => g.ads.length > 0);
+
+  const totalAds = filteredGroups.reduce((s, g) => s + g.ads.length, 0);
 
   if (accounts.length === 0) {
     return <p className="text-sm text-zinc-500">Nenhuma conta selecionada.</p>;
@@ -103,22 +136,55 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
             Custo por conversa iniciada {loading ? "· atualizando…" : ""}
           </h2>
           <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-            Só criativos ativos (pausado não entra aqui), com custo por conversa iniciada R$ 4 ou mais acima da Meta
-            CPA — ou, sem nenhuma conversa iniciada, com o próprio gasto R$ 4 ou mais acima da Meta CPA. Nada é
-            pausado sozinho, o botão é manual.
+            Com custo por conversa iniciada R$ 4 ou mais acima da Meta CPA — ou, sem nenhuma conversa iniciada, com o
+            próprio gasto R$ 4 ou mais acima da Meta CPA. Nada é pausado sozinho, o botão é manual.
           </p>
         </div>
-        <select
-          value={preset}
-          onChange={(e) => setPreset(e.target.value)}
-          className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
+        <div className="flex flex-wrap items-center gap-2">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar criativo por nome…"
+            className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
+          />
+          <select
+            value={preset}
+            onChange={(e) => setPreset(e.target.value)}
+            className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
+          >
+            {ANALYSIS_PRESETS.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.label}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={() => void load()}
+            disabled={loading}
+            className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+          >
+            {loading ? "Atualizando…" : "↻ Atualizar"}
+          </button>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
+        <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Status</span>
+        <span
+          title="Ativo sempre entra — fixo"
+          className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
         >
-          {ANALYSIS_PRESETS.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
+          Ativos
+        </span>
+        <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-400">
+          <input
+            type="checkbox"
+            checked={showPaused}
+            onChange={(e) => setShowPaused(e.target.checked)}
+            className="h-3.5 w-3.5"
+          />
+          Incluir pausados
+        </label>
       </div>
 
       {error ? (
@@ -126,13 +192,24 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
       ) : !groups ? (
         <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p>
       ) : totalAds === 0 ? (
-        <p className="px-4 py-6 text-sm text-zinc-500">Nenhum criativo ativo acima do limite nesse período.</p>
+        <p className="px-4 py-6 text-sm text-zinc-500">
+          {q ? "Nenhum criativo encontrado com esse nome." : "Nenhum criativo acima do limite nesse período."}
+        </p>
       ) : (
         <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-          {groups.map((g) => (
+          {filteredGroups.map((g) => (
             <div key={g.accountId}>
               <div className="flex flex-wrap items-center gap-2 bg-zinc-50 px-4 py-2 dark:bg-zinc-800/40">
                 <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{g.clientName}</span>
+                <a
+                  href={adsManagerUrl(g.accountId)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir no Gerenciador de Anúncios"
+                  className="text-xs text-zinc-500 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                >
+                  {accountNameById.get(g.accountId) ?? g.accountId}
+                </a>
                 <span className="text-xs text-zinc-500 dark:text-zinc-400">Meta CPA: {fmtCurrency(g.cpaTarget)}</span>
                 <span className="ml-auto rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
                   {g.ads.length} criativo(s)
@@ -192,7 +269,7 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                                   : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
                               }`}
                             >
-                              {active ? "Ativo" : ad.status || "—"}
+                              {statusLabel(ad.status)}
                             </span>
                           </td>
                           <td className="px-4 py-2 text-right">

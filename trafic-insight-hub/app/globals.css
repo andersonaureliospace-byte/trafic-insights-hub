@@ -3,6 +3,13 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  /* Sem isso, o navegador sempre desenha os controles nativos (o popup
+     de opções do <select>, scrollbar, etc.) no tema claro, não importa a
+     cor que a gente escolha no Tailwind — daí a letra clara em fundo claro
+     nos filtros no modo escuro. "light dark" avisa que a página suporta os
+     dois, e o navegador escolhe automaticamente conforme o mesmo
+     prefers-color-scheme que já troca --background/--foreground abaixo. */
+  color-scheme: light dark;
 }
 
 @theme inline {

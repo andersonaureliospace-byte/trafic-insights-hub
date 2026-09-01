@@ -78,10 +78,10 @@ export async function getCreativeCostAnalysis(
     if (!row.ad_id) continue;
     if (isVaga(row.campaign_name)) continue;
 
-    // Só criativo ativo entra na Análise — pausado não é gasto acontecendo
-    // agora, então não faz sentido mostrar (nem oferecer pausar de novo).
+    // Devolve o status de todo criativo (ativo ou pausado) — quem decide
+    // quais status entram na lista final é a rota (app/api/analysis/creatives),
+    // conforme o filtro escolhido na tela (Ativos é o padrão fixo).
     const status = statusMap.get(row.ad_id) ?? null;
-    if (status !== "ACTIVE") continue;
 
     const spend = row.spend ? Number(row.spend) : 0;
     if (spend <= 0) continue; // sem gasto não há o que avaliar

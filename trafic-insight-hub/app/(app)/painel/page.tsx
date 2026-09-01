@@ -68,6 +68,19 @@ function rowSortKey(row: { binding?: AccountBinding; insight?: AccountInsight })
   return row.binding?.sort_order ?? (1_000_000_000 - (row.insight?.spend ?? 0));
 }
 
+// Ritmo (Acompanhamento): quanto falta investir por dia, dos dias que
+// restam no mês (incluindo hoje), pra bater a meta de Investimento mensal.
+// Mês sempre considerado com 30 dias, por pedido — não os 28-31 reais do
+// calendário. Sem Investimento mensal cadastrado, não dá pra calcular.
+function ritmo(monthlyInvestment: number | null | undefined, spentThisMonth: number | undefined): number | null {
+  if (monthlyInvestment == null) return null;
+  const dayOfMonth = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", day: "numeric" }).format(new Date()),
+  );
+  const remainingDays = Math.max(30 - dayOfMonth + 1, 1); // hoje conta como 1 dos dias restantes
+  return (monthlyInvestment - (spentThisMonth ?? 0)) / remainingDays;
+}
+
 // Subgrupos na lateral — cada um só busca dados do Meta (o que pesa nas
 // requisições) enquanto estiver ativo. Trocar de aba não deixa nada
 // "grudado" buscando em segundo plano.
@@ -90,6 +103,7 @@ export default function PainelPage() {
   const [bindings, setBindings] = useState<Record<string, AccountBinding>>({});
   const [pixAccounts, setPixAccounts] = useState<Record<string, PixRow>>({});
   const [insights, setInsights] = useState<Record<string, AccountInsight>>({});
+  const [monthlyInsights, setMonthlyInsights] = useState<Record<string, AccountInsight>>({});
   const [loadingInsights, setLoadingInsights] = useState(false);
   const [preset, setPreset] = useState<PresetId>("last_7d");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -176,6 +190,31 @@ export default function PainelPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca os insights ao entrar na aba, ou quando seleção/período mudam com a aba já ativa
     void loadInsights();
   }, [loadInsights, tab]);
+
+  // Ritmo (coluna de Acompanhamento) precisa do gasto do MÊS CORRENTE
+  // sempre, independente do período escolhido no filtro da tabela acima —
+  // por isso é uma busca à parte, presa em "this_month" e não em `preset`.
+  // Só depende da seleção de contas, não do período, pra não duplicar
+  // chamada toda vez que o filtro de data da tabela mudar.
+  const loadMonthlyInsights = useCallback(async () => {
+    if (selectedAccounts.length === 0) {
+      setMonthlyInsights({});
+      return;
+    }
+    const res = await fetch("/api/meta/insights", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountIds: selectedAccounts.map((a) => a.account_id), datePreset: "this_month" }),
+    });
+    const d = await res.json();
+    setMonthlyInsights(d.insights ?? {});
+  }, [selectedAccounts]);
+
+  useEffect(() => {
+    if (tab !== "acompanhamento") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca o gasto do mês (fixo, pro Ritmo) ao entrar na aba ou trocar a seleção de contas
+    void loadMonthlyInsights();
+  }, [loadMonthlyInsights, tab]);
 
   async function saveSelectedAccounts(ids: string[]) {
     setSelectedIds(ids);
@@ -426,12 +465,19 @@ export default function PainelPage() {
                         <th className="px-4 py-2 text-right font-medium">CPA</th>
                         <th className="px-4 py-2 text-right font-medium">Valor usado</th>
                         <th className="px-4 py-2 text-right font-medium">Invest. diário</th>
+                        <th
+                          className="px-4 py-2 text-right font-medium"
+                          title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês (mês sempre considerado com 30 dias, incluindo hoje como 1 dos dias restantes)"
+                        >
+                          Ritmo
+                        </th>
                         <th className="px-4 py-2 font-medium"></th>
                       </tr>
                     </thead>
                     <tbody>
                       {rows.map(({ acc, binding, insight }) => {
                         const priorityOption = priorityOptions.find((p) => p.id === binding?.priority);
+                        const rowRitmo = ritmo(binding?.monthly_investment, monthlyInsights[acc.account_id]?.spend);
                         return (
                           <tr
                             key={acc.id}
@@ -506,6 +552,14 @@ export default function PainelPage() {
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.cost_per_result)}</td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
+                            <td
+                              className={`px-4 py-2 text-right tabular-nums ${
+                                rowRitmo != null && rowRitmo < 0 ? "text-red-600 dark:text-red-400" : ""
+                              }`}
+                              title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês"
+                            >
+                              {fmtCurrency(rowRitmo)}
+                            </td>
                             <td className="px-4 py-2 text-right">
                               <button
                                 onClick={() => setEditingAccountId(acc.account_id)}

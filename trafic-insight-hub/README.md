@@ -48,15 +48,24 @@ linhas pra reordenar os clientes do jeito que quiser — a ordem é salva por
 conta no Supabase (atrelada ao seu login/e-mail), nunca no navegador, então
 abre igual em qualquer computador/navegador que você use; a reordenação só
 fica disponível com a busca e o grupo de foco desligados (com filtro ativo,
-a posição na tela não bate com a posição real entre todas as contas). Análise mostra todo criativo ATIVO (pausado nunca entra) com custo por
-conversa iniciada R$ 4 ou mais acima da Meta CPA do cliente — ou, quando não
-teve nenhuma conversa iniciada, com o próprio gasto R$ 4 ou mais acima da
-Meta CPA (ex.: CPA ideal R$6, gastou R$10, zero conversa, também entra) —,
-agrupado por cliente, com filtro de período (padrão "Últimos 3 dias + hoje")
-e botão de pausar manual por anúncio — nada é pausado sozinho aqui. O Tipo
-de conta em Controle de Saldo (ver abaixo) é puxado da Meta uma única vez,
-na primeira vez que a conta aparece sem tipo salvo — não fica reconsultando
-isso a cada carregamento do Painel. Configurações → Meta e Configurações → WhatsApp
+a posição na tela não bate com a posição real entre todas as contas). Em
+Acompanhamento também tem a coluna Ritmo: quanto falta investir por dia
+(dos dias que restam no mês, contando hoje, mês sempre considerado com 30
+dias) pra bater o Investimento mensal cadastrado — (Investimento mensal −
+Valor usado no mês corrente) ÷ dias restantes; fica vermelho quando negativo
+(já passou do investimento mensal pro ritmo dos dias que restam). Análise
+mostra criativo ATIVO (pausado é opcional, tem um filtro pra incluir) com
+custo por conversa iniciada R$ 4 ou mais acima da Meta CPA do cliente — ou,
+quando não teve nenhuma conversa iniciada, com o próprio gasto R$ 4 ou mais
+acima da Meta CPA (ex.: CPA ideal R$6, gastou R$10, zero conversa, também
+entra) —, agrupado por cliente (nome da conta é link direto pro Gerenciador
+de Anúncios), com busca por nome de criativo (vale pra todas as contas ao
+mesmo tempo), botão de Atualizar (sem precisar dar F5), filtro de período
+(padrão "Últimos 3 dias + hoje") e botão de pausar manual por anúncio —
+nada é pausado sozinho aqui. O Tipo de conta em Controle de Saldo (ver
+abaixo) é puxado da Meta uma única vez, na primeira vez que a conta aparece
+sem tipo salvo — não fica reconsultando isso a cada carregamento do
+Painel. Configurações → Meta e Configurações → WhatsApp
 já funcionam de verdade (conectar a instância uazapi via QR ou código de
 pareamento, ver status, desconectar, e escolher o grupo que recebe os
 avisos de saldo). Mensagens → Envio também já funciona de verdade: escolher
@@ -96,8 +105,12 @@ classificação automática (CPA vs. meta) continua o mesmo, só muda como
 aparece na tela. Mensagens → Envio agora também suporta anexo de mídia
 (imagem/vídeo/áudio/documento) no envio imediato — sobe pro Supabase
 Storage e vai como legenda pelo uazapi; disparos agendados continuam só
-texto. Com isso, todas as áreas do plano original + os extras pedidos ao
-longo do caminho estão 100% concluídas.
+texto. Os filtros de seletor (período, tipo, prioridade etc.) no modo
+escuro do navegador não ficam mais com letra clara em fundo claro dentro do
+menu suspenso — o app avisa o navegador que suporta os dois temas
+(`color-scheme`), então ele desenha esse menu no tema certo em vez de
+sempre no claro por padrão. Com isso, todas as áreas do plano original + os
+extras pedidos ao longo do caminho estão 100% concluídas.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -196,6 +209,16 @@ mostrado. Vale conferir os primeiros números contra a tela de Cobranças e
 Pagamentos de uma conta pré-paga antes de confiar de olhos fechados,
 principalmente se você notar alguma diferença por causa de imposto/desconto
 que a Meta aplica na cobrança e que a API não reflete.
+
+⚠️ **Sobre a coluna Ritmo (Acompanhamento)**: o cálculo é (Investimento
+mensal − Valor usado no mês corrente) ÷ dias restantes do mês, sempre
+considerando o mês com 30 dias (não os 28-31 reais do calendário) e contando
+hoje como um dos dias restantes (ex.: dia 20, restam 11 dias — 30 − 20 + 1).
+"Valor usado no mês corrente" é sempre o gasto de `this_month` da Meta,
+independente do período escolhido no filtro da tabela (Hoje/Últimos 7
+dias/etc. são pra CPA e Valor usado, não pro Ritmo). Sem Investimento
+mensal cadastrado (Painel > Clientes ou no modal Editar), a coluna fica em
+branco — não dá pra calcular ritmo sem meta.
 
 ⚠️ **Pra arrastar e reordenar em Acompanhamento**: essa entrega inclui a
 migração `0009_account_sort_order.sql` (veja o passo 10) — sem rodar ela, a
@@ -357,7 +380,7 @@ lib/meta/
                   no nível campanha só entra quem teve impressão no período
   status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral, Auditoria e Análise)
   daily-cpa.ts  → CPA diário por conta, usado na atualização de status em massa
-  creative-analysis.ts → custo por conversa iniciada por anúncio, só ativos (Painel > Análise)
+  creative-analysis.ts → custo por conversa iniciada por anúncio, com status (Painel > Análise)
   ads-manager-link.ts → monta a URL do Gerenciador de Anúncios (campanhas) e a
                          de Cobranças e Pagamentos (billing hub, usada só no
                          Controle de Saldo) a partir do ID da conta e do
@@ -488,11 +511,24 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     criativo sem nenhuma conversa iniciada cujo gasto já está R$ 4+ acima
     da Meta CPA (antes esse caso era descartado por não ter custo por
     conversa calculável)
+13. ~~Menu suspenso legível no modo escuro (Etapa 18)~~ ✅ — os `<select>`
+    de filtro (período, prioridade, tipo de conta etc.) tinham o menu
+    suspenso com letra clara em fundo claro no modo escuro do navegador
+    (ilegível) — corrigido globalmente com `color-scheme` no CSS, sem
+    precisar mexer em cada filtro um por um
+14. ~~Análise: busca, atualizar, link e filtro de status + Ritmo em
+    Acompanhamento (Etapa 19)~~ ✅ — Análise ganhou busca por nome de
+    criativo (global, todas as contas), botão Atualizar (sem precisar dar
+    F5), o nome da conta virou link direto pro Gerenciador de Anúncios, e
+    um filtro de status com Ativos fixo + Pausados opcional. Acompanhamento
+    ganhou a coluna Ritmo: quanto investir por dia até o fim do mês (sempre
+    considerado com 30 dias) pra bater o Investimento mensal cadastrado
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
 Pagamentos/Tipo de conta automático, saldo disponível corrigido, Tipo de
-conta 1x só + Análise refinada) estão 100% concluídos. Não há mais nenhum
-item pendente do escopo combinado — próximos
-pedidos são novos incrementos, a critério seu.
+conta 1x só + Análise refinada, menu suspenso legível no escuro, Análise
+com busca/atualizar/link/filtro de status + Ritmo) estão 100% concluídos.
+Não há mais nenhum item pendente do escopo combinado — próximos pedidos
+são novos incrementos, a critério seu.

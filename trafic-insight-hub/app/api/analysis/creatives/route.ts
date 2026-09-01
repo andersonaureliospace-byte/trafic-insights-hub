@@ -3,14 +3,15 @@ import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";
 import type { DateRangeInput } from "@/lib/meta/client";
 
-// Painel > Análise: só criativo ativo, com custo por conversa iniciada R$ 4
-// ou mais acima da Meta CPA — ou, quando não teve NENHUMA conversa iniciada
-// (não dá pra calcular custo por conversa), com o próprio gasto R$ 4 ou
-// mais acima da Meta CPA (ex.: CPA ideal R$6, gastou R$10, zero conversa).
-// Só avalia contas com Meta CPA cadastrada (sem meta não dá pra saber o que
-// é "acima"); as demais voltam em "skipped". Criativo pausado nunca entra
-// aqui — isso já é filtrado lá em getCreativeCostAnalysis.
+// Painel > Análise: com custo por conversa iniciada R$ 4 ou mais acima da
+// Meta CPA — ou, quando não teve NENHUMA conversa iniciada (não dá pra
+// calcular custo por conversa), com o próprio gasto R$ 4 ou mais acima da
+// Meta CPA (ex.: CPA ideal R$6, gastou R$10, zero conversa). Só avalia
+// contas com Meta CPA cadastrada (sem meta não dá pra saber o que é
+// "acima"); as demais voltam em "skipped". `statuses` filtra por status do
+// anúncio (default: só ACTIVE — Pausado é opt-in, ligado pela própria tela).
 const THRESHOLD_ABOVE_TARGET = 4;
+const DEFAULT_STATUSES = ["ACTIVE"];
 
 function isFlagged(row: CreativeCostRow, cpaTarget: number): boolean {
   const noConversion = !row.conversations || row.conversations <= 0;
@@ -36,6 +37,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const accountIds: string[] = Array.isArray(body.accountIds) ? body.accountIds : [];
     const datePreset = (body.datePreset ?? "last_3d_plus_today") as DateRangeInput;
+    const statuses: string[] =
+      Array.isArray(body.statuses) && body.statuses.length > 0 ? body.statuses : DEFAULT_STATUSES;
     if (accountIds.length === 0) return NextResponse.json({ groups: [], skipped: [] });
 
     const { data: bindings } = await supabase
@@ -59,7 +62,10 @@ export async function POST(request: Request) {
         }
         try {
           const rows = await getCreativeCostAnalysis(token, accountId, datePreset);
-          const above = rows.filter((r) => isFlagged(r, cpaTarget)).sort((a, b) => sortKey(b) - sortKey(a));
+          const above = rows
+            .filter((r) => statuses.includes((r.status ?? "").toUpperCase()))
+            .filter((r) => isFlagged(r, cpaTarget))
+            .sort((a, b) => sortKey(b) - sortKey(a));
           if (above.length > 0) groups.push({ accountId, clientName, cpaTarget, ads: above });
         } catch (e) {
           console.error("creative analysis err (non-fatal)", accountId, e);
