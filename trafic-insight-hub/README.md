@@ -278,6 +278,7 @@ lib/meta/
   status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral, Auditoria e Análise)
   daily-cpa.ts  → CPA diário por conta, usado na atualização de status em massa
   creative-analysis.ts → custo por conversa iniciada por anúncio (Painel > Análise)
+  ads-manager-link.ts → monta a URL do Gerenciador de Anúncios a partir do ID da conta
 lib/audit/
   location.ts   → verificação de localização (Brasil país inteiro / expansão de público)
   errors.ts     → verificação de erros de veiculação (anúncio reprovado/restrito/
@@ -363,7 +364,9 @@ supabase/migrations/0007_drop_public_dashboards.sql → (opcional) apaga a tabel
    "Editar" por cliente; Visão Geral só lista campanha com impressão no
    período; nova aba Análise com custo por conversa iniciada por criativo
    (filtro "3 dias + hoje" + demais períodos, agrupado por cliente, pausar
-   manual, sem limite de quantos aparecem)
+   manual, sem limite de quantos aparecem); nome da conta agora é link
+   direto pro Gerenciador de Anúncios daquela conta (Acompanhamento,
+   Controle de Saldo e um atalho "Abrir no Facebook" na Visão Geral)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

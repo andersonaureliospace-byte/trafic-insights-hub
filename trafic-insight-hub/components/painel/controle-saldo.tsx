@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { PAYMENT_TYPES, fmtCurrency } from "@/lib/format";
+import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { InlineNumber } from "@/components/painel/inline-number";
 
 interface PixRow {
@@ -83,7 +84,17 @@ export function ControleSaldo({
                           return (
                             <tr key={acc.id} className="border-t border-zinc-100 dark:border-zinc-800/60">
                               <td className="px-4 py-2">{clientNames[acc.account_id] ?? acc.name}</td>
-                              <td className="px-4 py-2 text-zinc-500 dark:text-zinc-400">{acc.name}</td>
+                              <td className="px-4 py-2">
+                                <a
+                                  href={adsManagerUrl(acc.account_id)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  title="Abrir no Gerenciador de Anúncios"
+                                  className="text-zinc-500 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                                >
+                                  {acc.name}
+                                </a>
+                              </td>
                               <td className="px-4 py-2 text-right tabular-nums">
                                 {fmtCurrency(Number(acc.balance) / 100, acc.currency)}
                               </td>

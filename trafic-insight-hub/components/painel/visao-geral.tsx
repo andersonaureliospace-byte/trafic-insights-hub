@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import type { BreakdownLevel, BreakdownRow } from "@/lib/meta/breakdown";
 import { DATE_PRESETS, fmtCurrency, type PresetId } from "@/lib/format";
+import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 
 const LEVELS: { id: BreakdownLevel; label: string }[] = [
   { id: "campaign", label: "Campanhas" },
@@ -98,6 +99,16 @@ export function VisaoGeral({ accounts, preset: painelPreset }: { accounts: AdAcc
               </option>
             ))}
           </select>
+          {accountId ? (
+            <a
+              href={adsManagerUrl(accountId)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium leading-8 text-zinc-600 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-100"
+            >
+              Abrir no Facebook ↗
+            </a>
+          ) : null}
         </div>
       </div>
 

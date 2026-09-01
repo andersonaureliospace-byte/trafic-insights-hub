@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, type PresetId } from "@/lib/format";
+import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
 import { ControleSaldo } from "@/components/painel/controle-saldo";
@@ -373,7 +374,17 @@ export default function PainelPage() {
                               className="w-36 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm outline-none hover:border-zinc-300 focus:border-zinc-900 dark:hover:border-zinc-700 dark:focus:border-zinc-100"
                             />
                           </td>
-                          <td className="px-4 py-2 text-zinc-500 dark:text-zinc-400">{acc.name}</td>
+                          <td className="px-4 py-2">
+                            <a
+                              href={adsManagerUrl(acc.account_id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title="Abrir no Gerenciador de Anúncios"
+                              className="text-zinc-500 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                            >
+                              {acc.name}
+                            </a>
+                          </td>
                           <td className="px-4 py-2">
                             <select
                               value={binding?.priority ?? ""}
