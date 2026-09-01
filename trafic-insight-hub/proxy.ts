@@ -4,7 +4,6 @@ import { NextResponse, type NextRequest } from "next/server";
 // Rotas que não exigem login.
 const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/redefinir-senha"];
 const isPublicApi = (pathname: string) =>
-  pathname.startsWith("/d/") ||
   pathname.startsWith("/c/") ||
   pathname.startsWith("/api/public") ||
   pathname.startsWith("/auth/callback");

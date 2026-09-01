@@ -5,13 +5,12 @@ import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, type PresetId } from "@/lib/format";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
-import { InlineNumber } from "@/components/painel/inline-number";
 import { ControleSaldo } from "@/components/painel/controle-saldo";
 import { VisaoGeral } from "@/components/painel/visao-geral";
+import { AnaliseTab } from "@/components/painel/analise-tab";
 import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
 import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
-import { WhatsappGroupCell } from "@/components/painel/whatsapp-group-cell";
-import { PublicLinkCell } from "@/components/painel/public-link-cell";
+import { EditClientDialog } from "@/components/painel/edit-client-dialog";
 
 interface AccountBinding {
   ad_account_id: string;
@@ -35,8 +34,21 @@ interface PixRow {
 type BindingPatch = Partial<Omit<AccountBinding, "ad_account_id">>;
 type PixPatch = Partial<Omit<PixRow, "ad_account_id">>;
 
+// Subgrupos na lateral — cada um só busca dados do Meta (o que pesa nas
+// requisições) enquanto estiver ativo. Trocar de aba não deixa nada
+// "grudado" buscando em segundo plano.
+const TABS = [
+  { id: "geral", label: "Geral" },
+  { id: "acompanhamento", label: "Acompanhamento" },
+  { id: "saldo", label: "Controle de Saldo" },
+  { id: "visao-geral", label: "Visão Geral" },
+  { id: "analise", label: "Análise" },
+] as const;
+type TabId = (typeof TABS)[number]["id"];
+
 export default function PainelPage() {
   const { options: priorityOptions } = usePriorityOptions();
+  const [tab, setTab] = useState<TabId>("geral");
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [allAccounts, setAllAccounts] = useState<AdAccount[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -50,9 +62,12 @@ export default function PainelPage() {
   const [focusGroups, setFocusGroups] = useState<FocusGroup[]>([]);
   const [activeFocusGroupId, setActiveFocusGroupId] = useState<string | null>(null);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
-  const [publicLinks, setPublicLinks] = useState<Record<string, string>>({});
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
 
-  // Carrega seleção, contas do Meta e vínculos (cliente/metas) em paralelo.
+  // Carrega seleção, contas do Meta (1 chamada só) e vínculos/PIX (Supabase,
+  // barato) de cara — o que é pesado de verdade (insights/breakdown/análise
+  // do Meta) só é buscado quando a aba correspondente está ativa, mais
+  // abaixo.
   useEffect(() => {
     fetch("/api/selected-accounts")
       .then((r) => r.json())
@@ -84,14 +99,6 @@ export default function PainelPage() {
     fetch("/api/focus-groups")
       .then((r) => r.json())
       .then((d) => setFocusGroups(d.groups ?? []));
-
-    fetch("/api/public-dashboards")
-      .then((r) => r.json())
-      .then((d) => {
-        const map: Record<string, string> = {};
-        for (const p of d.dashboards ?? []) map[p.ad_account_id] = p.public_token;
-        setPublicLinks(map);
-      });
   }, []);
 
   async function saveFocusGroups(groups: FocusGroup[]) {
@@ -126,9 +133,13 @@ export default function PainelPage() {
   }, [selectedAccounts, preset]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca os insights sempre que a seleção/período mudam
+    // Só busca no Meta (o que consome requisição de verdade) quando a aba
+    // que precisa desse dado está ativa — Geral (KPIs) e Acompanhamento
+    // (tabela). Nas outras abas, essa chamada não roda.
+    if (tab !== "geral" && tab !== "acompanhamento") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca os insights ao entrar na aba, ou quando seleção/período mudam com a aba já ativa
     void loadInsights();
-  }, [loadInsights]);
+  }, [loadInsights, tab]);
 
   async function saveSelectedAccounts(ids: string[]) {
     setSelectedIds(ids);
@@ -210,15 +221,19 @@ export default function PainelPage() {
       .sort((a, b) => (b.insight?.spend ?? 0) - (a.insight?.spend ?? 0));
   }, [focusFilteredRows, search]);
 
-  const totals = useMemo(() => {
+  // KPIs da aba Geral são a visão geral de tudo que está selecionado — sem
+  // filtro de grupo de foco/busca, que só se aplica à tabela de Acompanhamento.
+  const overallTotals = useMemo(() => {
     let spend = 0;
     let results = 0;
-    for (const r of rows) {
+    for (const r of allRows) {
       spend += r.insight?.spend ?? 0;
       results += r.insight?.results ?? 0;
     }
     return { spend, results, cpa: results > 0 ? spend / results : null };
-  }, [rows]);
+  }, [allRows]);
+
+  const editingRow = editingAccountId ? allRows.find((r) => r.acc.account_id === editingAccountId) : undefined;
 
   if (selectedIds === null) {
     return <div className="p-8 text-sm text-zinc-500">Carregando…</div>;
@@ -258,155 +273,154 @@ export default function PainelPage() {
           </button>
         </div>
       ) : (
-        <>
-          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <KpiCard label="Investido no período" value={fmtCurrency(totals.spend)} />
-            <KpiCard label="Resultados" value={totals.results ? String(Math.round(totals.results)) : "—"} />
-            <KpiCard label="CPA médio" value={fmtCurrency(totals.cpa)} />
-          </div>
+        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr] md:gap-6">
+          <aside className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setTab(t.id)}
+                className={`shrink-0 rounded-md px-3 py-2 text-left text-sm font-medium transition-colors ${
+                  tab === t.id
+                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </aside>
 
-          <div className="mt-6 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-              <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                Acompanhamento de Resultados {loadingInsights ? "· atualizando…" : ""}
-              </h2>
-              <div className="flex flex-wrap items-center gap-2">
-                <FocusGroupsBar
-                  accounts={selectedAccounts}
-                  groups={focusGroups}
-                  activeGroupId={activeFocusGroupId}
-                  onGroupsChange={saveFocusGroups}
-                  onActiveGroupChange={setActiveFocusGroupId}
-                />
-                <input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Buscar cliente ou conta…"
-                  className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
-                />
-                <select
-                  value={preset}
-                  onChange={(e) => setPreset(e.target.value as PresetId)}
-                  className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
-                >
-                  {DATE_PRESETS.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.label}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={() => setBulkStatusOpen(true)}
-                  className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium dark:border-zinc-700"
-                >
-                  Atualizar status em massa
-                </button>
+          <div className="min-w-0">
+            {tab === "geral" ? (
+              <div className="flex flex-col gap-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <KpiCard label="Investido no período" value={fmtCurrency(overallTotals.spend)} />
+                  <KpiCard label="Resultados" value={overallTotals.results ? String(Math.round(overallTotals.results)) : "—"} />
+                  <KpiCard label="CPA médio" value={fmtCurrency(overallTotals.cpa)} />
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Período: {DATE_PRESETS.find((p) => p.id === preset)?.label ?? preset} · Total de{" "}
+                  {selectedAccounts.length} conta(s) selecionada(s), sem filtro de grupo de foco (esse fica em
+                  Acompanhamento). {loadingInsights ? "Atualizando…" : ""}
+                </p>
               </div>
-            </div>
+            ) : null}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
-                    <th className="px-4 py-2 font-medium">Cliente</th>
-                    <th className="px-4 py-2 font-medium">Conta</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                    <th className="px-4 py-2 text-right font-medium">CPA</th>
-                    <th className="px-4 py-2 text-right font-medium">Meta CPA</th>
-                    <th className="px-4 py-2 text-right font-medium">Valor usado</th>
-                    <th className="px-4 py-2 text-right font-medium">Invest. mensal</th>
-                    <th className="px-4 py-2 text-right font-medium">Invest. diário</th>
-                    <th className="px-4 py-2 font-medium">Grupo WhatsApp</th>
-                    <th className="px-4 py-2 font-medium">Link público</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map(({ acc, binding, insight }) => (
-                    <tr key={acc.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
-                      <td className="px-4 py-2">
-                        <input
-                          defaultValue={binding?.client_name ?? ""}
-                          placeholder={acc.name}
-                          onBlur={(e) => {
-                            const v = e.target.value.trim();
-                            if (v !== (binding?.client_name ?? "")) void patchBinding(acc.account_id, { client_name: v || null });
-                          }}
-                          className="w-36 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm outline-none hover:border-zinc-300 focus:border-zinc-900 dark:hover:border-zinc-700 dark:focus:border-zinc-100"
-                        />
-                      </td>
-                      <td className="px-4 py-2 text-zinc-500 dark:text-zinc-400">{acc.name}</td>
-                      <td className="px-4 py-2">
-                        <select
-                          value={binding?.priority ?? ""}
-                          onChange={(e) => void patchBinding(acc.account_id, { priority: e.target.value || null })}
-                          className="rounded border border-zinc-200 bg-transparent px-1 py-0.5 text-xs dark:border-zinc-700"
-                        >
-                          <option value="">—</option>
-                          {priorityOptions.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.cost_per_result)}</td>
-                      <td className="px-4 py-2 text-right">
-                        <InlineNumber
-                          value={binding?.cpa_target ?? null}
-                          onSave={(v) => patchBinding(acc.account_id, { cpa_target: v })}
-                        />
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
-                      <td className="px-4 py-2 text-right">
-                        <InlineNumber
-                          value={binding?.monthly_investment ?? null}
-                          onSave={(v) => patchBinding(acc.account_id, { monthly_investment: v })}
-                        />
-                      </td>
-                      <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
-                      <td className="px-4 py-2">
-                        <WhatsappGroupCell
-                          groupId={binding?.wa_group_id ?? null}
-                          groupName={binding?.wa_group_name ?? null}
-                          onChange={(g) =>
-                            void patchBinding(acc.account_id, {
-                              wa_group_id: g?.id ?? null,
-                              wa_group_name: g?.name ?? null,
-                            })
-                          }
-                        />
-                      </td>
-                      <td className="px-4 py-2">
-                        <PublicLinkCell
-                          accountId={acc.account_id}
-                          accountName={binding?.client_name || acc.name}
-                          token={publicLinks[acc.account_id] ?? null}
-                          onChange={(token) =>
-                            setPublicLinks((prev) => {
-                              const next = { ...prev };
-                              if (token) next[acc.account_id] = token;
-                              else delete next[acc.account_id];
-                              return next;
-                            })
-                          }
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {tab === "acompanhamento" ? (
+              <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+                  <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+                    Acompanhamento de Resultados {loadingInsights ? "· atualizando…" : ""}
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <FocusGroupsBar
+                      accounts={selectedAccounts}
+                      groups={focusGroups}
+                      activeGroupId={activeFocusGroupId}
+                      onGroupsChange={saveFocusGroups}
+                      onActiveGroupChange={setActiveFocusGroupId}
+                    />
+                    <input
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Buscar cliente ou conta…"
+                      className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
+                    />
+                    <select
+                      value={preset}
+                      onChange={(e) => setPreset(e.target.value as PresetId)}
+                      className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
+                    >
+                      {DATE_PRESETS.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => setBulkStatusOpen(true)}
+                      className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium dark:border-zinc-700"
+                    >
+                      Atualizar status em massa
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
+                        <th className="px-4 py-2 font-medium">Cliente</th>
+                        <th className="px-4 py-2 font-medium">Conta</th>
+                        <th className="px-4 py-2 font-medium">Status</th>
+                        <th className="px-4 py-2 text-right font-medium">CPA</th>
+                        <th className="px-4 py-2 text-right font-medium">Valor usado</th>
+                        <th className="px-4 py-2 text-right font-medium">Invest. diário</th>
+                        <th className="px-4 py-2 font-medium"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map(({ acc, binding, insight }) => (
+                        <tr key={acc.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                          <td className="px-4 py-2">
+                            <input
+                              defaultValue={binding?.client_name ?? ""}
+                              placeholder={acc.name}
+                              onBlur={(e) => {
+                                const v = e.target.value.trim();
+                                if (v !== (binding?.client_name ?? "")) void patchBinding(acc.account_id, { client_name: v || null });
+                              }}
+                              className="w-36 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm outline-none hover:border-zinc-300 focus:border-zinc-900 dark:hover:border-zinc-700 dark:focus:border-zinc-100"
+                            />
+                          </td>
+                          <td className="px-4 py-2 text-zinc-500 dark:text-zinc-400">{acc.name}</td>
+                          <td className="px-4 py-2">
+                            <select
+                              value={binding?.priority ?? ""}
+                              onChange={(e) => void patchBinding(acc.account_id, { priority: e.target.value || null })}
+                              className="rounded border border-zinc-200 bg-transparent px-1 py-0.5 text-xs dark:border-zinc-700"
+                            >
+                              <option value="">—</option>
+                              {priorityOptions.map((p) => (
+                                <option key={p.id} value={p.id}>
+                                  {p.label}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.cost_per_result)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
+                          <td className="px-4 py-2 text-right">
+                            <button
+                              onClick={() => setEditingAccountId(acc.account_id)}
+                              className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium dark:border-zinc-700"
+                            >
+                              Editar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+
+            {tab === "saldo" ? (
+              <ControleSaldo
+                accounts={selectedAccounts}
+                clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
+                pixByAccount={pixAccounts}
+                onPatch={patchPix}
+              />
+            ) : null}
+
+            {tab === "visao-geral" ? <VisaoGeral accounts={selectedAccounts} preset={preset} /> : null}
+
+            {tab === "analise" ? <AnaliseTab accounts={selectedAccounts} /> : null}
           </div>
-
-          <ControleSaldo
-            accounts={selectedAccounts}
-            clientNames={Object.fromEntries(rows.map((r) => [r.acc.account_id, r.clientName]))}
-            pixByAccount={pixAccounts}
-            onPatch={patchPix}
-          />
-
-          <VisaoGeral accounts={selectedAccounts} preset={preset} />
-        </>
+        </div>
       )}
 
       <ContasExibidasDialog
@@ -426,6 +440,15 @@ export default function PainelPage() {
           priority: r.binding?.priority ?? null,
         }))}
         onApply={(accountId, priority) => patchBinding(accountId, { priority })}
+      />
+
+      <EditClientDialog
+        open={editingAccountId !== null}
+        onClose={() => setEditingAccountId(null)}
+        accountId={editingAccountId}
+        clientName={editingRow?.clientName ?? ""}
+        binding={editingRow?.binding}
+        onPatch={patchBinding}
       />
     </div>
   );

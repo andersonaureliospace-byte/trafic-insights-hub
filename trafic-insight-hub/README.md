@@ -5,14 +5,23 @@ projeto original, agora como instância única (um só login) hospedada na
 Vercel, com Supabase, n8n e uazapi (WhatsApp).
 
 Estado atual: **etapas 1 e 2 do plano concluídas** — base do Supabase/login
-único, e o Painel já fecha 100%: seletor de "contas exibidas" (só mostra o
-que você marcar, nunca todas as contas do seu token), KPIs, Acompanhamento
-de Resultados com dados reais da Meta (CPA, valor usado, investimento
-diário, Cliente/Meta de CPA/Investimento mensal editáveis), grupos de foco
-(agrupar contas e focar a tabela num grupo), atualização de status em massa
-(classifica a prioridade pelo CPA dos últimos 3 dias vs. a meta cadastrada),
-Controle de Saldo/PIX e Visão Geral por Campanhas/Conjuntos/Anúncios com
-pausar/ativar nos 3 níveis. Configurações → Meta e Configurações → WhatsApp
+único, e o Painel já fecha 100%, agora organizado em subgrupos na lateral
+esquerda (Geral, Acompanhamento, Controle de Saldo, Visão Geral, Análise) —
+cada um só busca dado do Meta enquanto estiver ativo, pra não gastar
+requisição à toa com abas que você não está olhando. Geral mostra os KPIs
+gerais (Investido/Resultados/CPA médio) de todas as contas selecionadas.
+Acompanhamento tem a tabela de resultados com dados reais da Meta (CPA,
+valor usado, investimento diário), grupos de foco (agrupar contas e focar a
+tabela num grupo), atualização de status em massa (classifica a prioridade
+pelo CPA dos últimos 3 dias vs. a meta cadastrada) e um botão "Editar" por
+cliente que abre a Meta CPA/Meta de Investimento/Grupo WhatsApp num modal —
+esses 3 campos não aparecem mais direto na tabela. Controle de Saldo/PIX e
+Visão Geral por Campanhas/Conjuntos/Anúncios (agora só lista campanha com
+impressão de verdade no período) continuam com pausar/ativar nos 3 níveis.
+Análise é novo: mostra todo criativo com custo por conversa iniciada R$ 4
+ou mais acima da Meta CPA do cliente, agrupado por cliente, com filtro de
+período (padrão "Últimos 3 dias + hoje") e botão de pausar manual por
+anúncio — nada é pausado sozinho aqui. Configurações → Meta e Configurações → WhatsApp
 já funcionam de verdade (conectar a instância uazapi via QR ou código de
 pareamento, ver status, desconectar, e escolher o grupo que recebe os
 avisos de saldo). Mensagens → Envio também já funciona de verdade: escolher
@@ -29,10 +38,12 @@ em intervalos maiores (ex.: a cada 30-60 minutos). CRM também já funciona
 de verdade: instâncias de funil com kanban simples (Novo → Em contato →
 Qualificado → Proposta → Venda/Perdido), detalhe do lead com histórico, e
 ingestão de leads via n8n (hook público `crm-lead-ingest`). Cada instância
-tem um link público (`/c/:token`) pro cliente acompanhar sem login, e cada
-conta do Painel pode gerar um link público de dashboard (`/d/:token`) —
-os dois são somente leitura. Quando um lead entra no estágio "Venda", o
-app notifica um webhook do n8n (se configurado na instância) automaticamente.
+tem um link público (`/c/:token`) pro cliente acompanhar sem login. Quando
+um lead entra no estágio "Venda", o app notifica um webhook do n8n (se
+configurado na instância) automaticamente. (O link público de dashboard
+por conta, `/d/:token`, existiu numa versão anterior e foi removido —
+confundia com o link de relatório pro cliente; o link do CRM acima é o que
+ficou.)
 Mensagens → Relatórios também já funciona de verdade: modelos de relatório
 com variáveis (`{cliente}`, `{investido}`, `{resultados}`, `{cpa}`, etc.),
 agendamento por conta(s) + grupo do WhatsApp + recorrência (diária/semanal/
@@ -105,6 +116,22 @@ parte das `create policy` da migração. O contrato exato do `POST
 assumido por analogia com `/send/text` — não verificado contra a
 documentação oficial, então confirme no primeiro envio de teste.
 
+⚠️ **Sobre a nova aba Análise (custo por conversa iniciada)**: o Graph API
+não tem um campo fixo e universal pra "conversa iniciada" — o nome do
+`action_type` varia um pouco conforme a conta (o mais comum é
+`onsite_conversion.messaging_conversation_started_7d`). O código casa
+qualquer `action_type` que contenha `messaging_conversation_started`, o que
+cobre a maioria dos casos, mas vale conferir os primeiros números contra o
+Gerenciador de Anúncios antes de confiar de olhos fechados. Só entram na
+lista contas com Meta CPA cadastrada (sem meta não dá pra saber o que é
+"acima") — o rodapé da aba avisa quais ficaram de fora por esse motivo.
+
+⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
+link `/d/:token` numa entrega anterior, ele para de funcionar com essa
+atualização (a rota foi removida). A tabela `public_dashboards` continua no
+banco sem uso — rode `supabase/migrations/0007_drop_public_dashboards.sql`
+se quiser apagá-la de vez (opcional, não afeta nada não rodar).
+
 ## 1. Criar o projeto no Supabase
 
 1. Acesse [supabase.com](https://supabase.com) → **New project**.
@@ -133,6 +160,10 @@ documentação oficial, então confirme no primeiro envio de teste.
 7. Cole o conteúdo de `supabase/migrations/0006_whatsapp_media_bucket.sql`
    e rode (cria o bucket `whatsapp-media` no Storage, público pra leitura,
    com upload/remoção restritos ao dono).
+8. (Opcional) Cole o conteúdo de `supabase/migrations/0007_drop_public_dashboards.sql`
+   e rode só se quiser apagar a tabela do antigo link público de dashboard
+   (`/d/:token`, removido nessa entrega) — sem rodar essa, o app funciona
+   normalmente do mesmo jeito.
    (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
    formato que `supabase db push` espera — ele aplica só as migrações que
    ainda não rodaram.)
@@ -207,10 +238,11 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
 ```
 app/
   login/, esqueci-senha/, redefinir-senha/, auth/callback/   → autenticação
-  d/[token]/      → dashboard público de UMA conta, somente leitura, sem login
   c/[token]/      → CRM público de UMA instância (kanban somente leitura), sem login
   (app)/                                                     → área logada
-    painel/         → contas exibidas, KPIs, Acompanhamento de Resultados
+    painel/         → subgrupos na lateral: Geral, Acompanhamento, Controle
+                      de Saldo, Visão Geral, Análise — cada um só busca no
+                      Meta enquanto está ativo
     mensagens/      → abas Envio, Relatórios e Avisos, todas funcionais
     auditoria/      → Localização e Erros de veiculação, funcionais
     crm/            → instâncias, kanban, detalhe do lead — funcional
@@ -218,6 +250,7 @@ app/
   api/
     meta/credentials, meta/accounts, meta/insights, meta/breakdown,
     meta/status, meta/daily-cpa
+    analysis/creatives  → custo por conversa iniciada acima da Meta CPA (Painel > Análise)
     whatsapp/credentials, whatsapp/status, whatsapp/connect,
     whatsapp/disconnect, whatsapp/groups, whatsapp/alerts-group,
     whatsapp/send, whatsapp/media, whatsapp/message-templates,
@@ -228,7 +261,6 @@ app/
     reports/templates, reports/scheduled  → modelos e agendamentos de Relatórios
     alerts/balance  → status de saldo baixo + "Verificar agora" (Mensagens > Avisos)
     priority-labels → rótulos/cores de prioridade personalizados (Configurações > Status)
-    public-dashboards  → gera/remove o link público (/d/:token) de uma conta
     public/hooks/whatsapp-dispatch-tick  → chamado pelo n8n, não pelo navegador
     public/hooks/audit-tick              → idem, roda as duas auditorias
     public/hooks/crm-lead-ingest         → idem, cria lead novo por public_token
@@ -241,9 +273,11 @@ lib/meta/
   insights.ts   → getAdAccounts + getAccountInsight (regra de negócio: ignora
                   campanhas [VAGA], objetivos de reconhecimento/tráfego, soma
                   orçamento diário com CBO e lifetime→diário)
-  breakdown.ts  → detalhamento por Campanha/Conjunto/Anúncio (Visão Geral)
-  status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral e na Auditoria)
+  breakdown.ts  → detalhamento por Campanha/Conjunto/Anúncio (Visão Geral) —
+                  no nível campanha só entra quem teve impressão no período
+  status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral, Auditoria e Análise)
   daily-cpa.ts  → CPA diário por conta, usado na atualização de status em massa
+  creative-analysis.ts → custo por conversa iniciada por anúncio (Painel > Análise)
 lib/audit/
   location.ts   → verificação de localização (Brasil país inteiro / expansão de público)
   errors.ts     → verificação de erros de veiculação (anúncio reprovado/restrito/
@@ -291,6 +325,7 @@ supabase/migrations/0003_crm_public_links.sql → webhook de venda do CRM + cons
 supabase/migrations/0004_scheduled_reports_next_run.sql → próximo disparo + pausar dos relatórios agendados
 supabase/migrations/0005_balance_alerts.sql → limite de alerta + controle de reaviso do saldo
 supabase/migrations/0006_whatsapp_media_bucket.sql → bucket whatsapp-media (Storage) + policies de dono/leitura pública
+supabase/migrations/0007_drop_public_dashboards.sql → (opcional) apaga a tabela do link público de dashboard removido
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
@@ -319,10 +354,18 @@ supabase/migrations/0006_whatsapp_media_bucket.sql → bucket whatsapp-media (St
 6. ~~CRM + links públicos~~ ✅ — instâncias de funil, kanban com 6 estágios
    fixos, detalhe do lead com histórico, ingestão via hook `crm-lead-ingest`
    (n8n), webhook de venda automático quando um lead vira "Venda", link
-   público por instância (`/c/:token`) e link público de dashboard por
-   conta (`/d/:token`, gerado a partir do Painel) — os dois somente leitura
+   público por instância (`/c/:token`), somente leitura. (O link público de
+   dashboard por conta, `/d/:token`, existiu e foi removido na Etapa 11.)
+7. ~~Ajustes do Painel (Etapa 11)~~ ✅ — subgrupos na lateral (Geral,
+   Acompanhamento, Controle de Saldo, Visão Geral, Análise) com busca no
+   Meta isolada por aba; link público de dashboard removido; Meta CPA/Meta
+   de Investimento/Grupo WhatsApp saíram da tabela e foram pro modal
+   "Editar" por cliente; Visão Geral só lista campanha com impressão no
+   período; nova aba Análise com custo por conversa iniciada por criativo
+   (filtro "3 dias + hoje" + demais períodos, agrupado por cliente, pausar
+   manual, sem limite de quantos aparecem)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
-do caminho (CRM, links públicos, Relatórios, Avisos, Status, anexos de
-mídia) estão 100% concluídos. Não há mais nenhum item pendente do escopo
+do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
+Painel) estão 100% concluídos. Não há mais nenhum item pendente do escopo
 combinado — próximos pedidos são novos incrementos, a critério seu.

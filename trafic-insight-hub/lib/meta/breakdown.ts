@@ -261,7 +261,12 @@ export async function getAccountBreakdown(
       if (ind) result_type = ind.includes(":") ? ind.split(":").slice(1).join(":") : ind;
     }
 
-    const hadActivity = spend > 0 || impressions >= 1 || (results ?? 0) >= 1;
+    // No nível campanha, só mostra quem teve impressão de verdade no
+    // período (pedido explícito) — nos outros níveis mantém o critério mais
+    // largo de antes (gasto ou resultado também contam), pra não sumir
+    // conjunto/anúncio com dado relevante mas sem impressão registrada.
+    const hadActivity =
+      level === "campaign" ? impressions >= 1 : spend > 0 || impressions >= 1 || (results ?? 0) >= 1;
     if (!hadActivity) continue;
 
     const cost_per_result = results != null && results > 0 && spend > 0 ? spend / results : null;
