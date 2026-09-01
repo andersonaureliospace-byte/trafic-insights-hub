@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { PAYMENT_TYPES, fmtCurrency } from "@/lib/format";
 import { billingHubUrl } from "@/lib/meta/ads-manager-link";
+import { availableFunds } from "@/lib/meta/funds";
 import { InlineNumber } from "@/components/painel/inline-number";
 
 interface PixRow {
@@ -87,7 +88,7 @@ export function ControleSaldo({
                         <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
                           <th className="px-4 py-1.5 font-medium">Cliente</th>
                           <th className="px-4 py-1.5 font-medium">Conta</th>
-                          <th className="px-4 py-1.5 text-right font-medium">Saldo</th>
+                          <th className="px-4 py-1.5 text-right font-medium">Saldo disponível</th>
                           <th className="px-4 py-1.5 text-right font-medium">Valor base</th>
                           <th className="px-4 py-1.5 text-right font-medium">Alertar quando &lt;</th>
                           <th className="px-4 py-1.5 font-medium">Observação</th>
@@ -97,6 +98,7 @@ export function ControleSaldo({
                       <tbody>
                         {rows.map((acc) => {
                           const pix = pixByAccount[acc.account_id];
+                          const funds = availableFunds(acc);
                           return (
                             <tr key={acc.id} className="border-t border-zinc-100 dark:border-zinc-800/60">
                               <td className="px-4 py-2">{clientNames[acc.account_id] ?? acc.name}</td>
@@ -111,8 +113,15 @@ export function ControleSaldo({
                                   {acc.name}
                                 </a>
                               </td>
-                              <td className="px-4 py-2 text-right tabular-nums">
-                                {fmtCurrency(Number(acc.balance) / 100, acc.currency)}
+                              <td
+                                className="px-4 py-2 text-right tabular-nums"
+                                title={
+                                  funds.fromCap
+                                    ? "Teto de gasto − valor já gasto (fundo disponível)"
+                                    : "Sem teto de gasto definido na Meta — mostrando o valor a pagar"
+                                }
+                              >
+                                {fmtCurrency(funds.amount, acc.currency)}
                               </td>
                               <td className="px-4 py-2 text-right">
                                 <InlineNumber

@@ -87,7 +87,7 @@ export function AvisosTab() {
                 <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
                   <th className="px-4 py-2 font-medium">Cliente</th>
                   <th className="px-4 py-2 font-medium">Status</th>
-                  <th className="px-4 py-2 text-right font-medium">Saldo</th>
+                  <th className="px-4 py-2 text-right font-medium">Saldo disponível</th>
                   <th className="px-4 py-2 text-right font-medium">Limite</th>
                 </tr>
               </thead>

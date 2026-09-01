@@ -7,6 +7,7 @@
 
 import type { createClient } from "@/lib/supabase/server";
 import { getAdAccounts } from "@/lib/meta/insights";
+import { availableFunds } from "@/lib/meta/funds";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { fmtCurrency } from "@/lib/format";
@@ -59,7 +60,7 @@ export async function checkLowBalances(
     const acc = accountById.get(p.ad_account_id);
     if (!acc) continue;
     const threshold = (p.alert_threshold as number | null) ?? Number(p.base_amount) * 0.2;
-    const balance = Number(acc.balance) / 100;
+    const balance = availableFunds(acc).amount;
     const low = balance < threshold;
     const clientName = clientNameById.get(p.ad_account_id) || acc.name;
     const withinCooldown =

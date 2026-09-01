@@ -32,8 +32,14 @@ automaticamente na primeira vez que a conta aparece sem tipo salvo
 (Pré-paga ou Pós-paga, conforme a Meta classificar); Híbrida e Loja própria
 continuam sendo escolha manual, já que a Meta não tem esse conceito. Depois
 de puxado (ou escolhido) uma vez, o campo continua 100% editável e nunca
-mais é sobrescrito sozinho — é só trocar no próprio seletor quando quiser.
-O quadro do Painel agora ocupa a tela inteira (sem limite de
+mais é sobrescrito sozinho — é só trocar no próprio seletor quando quiser. A
+coluna "Saldo disponível" de Controle de Saldo (e o "Saldo" que aparece em
+Mensagens → Avisos) agora mostra o fundo que realmente resta pra gastar
+(teto de gasto da conta menos o que já foi gasto) em vez do campo bruto
+`balance` da Meta, que na prática é "quanto já acumulou pra cobrar" — dava a
+impressão de valor gasto recentemente, não saldo restante; a mesma correção
+vale pro aviso automático de saldo baixo (Mensagens → Avisos), que usava o
+mesmo campo errado. O quadro do Painel agora ocupa a tela inteira (sem limite de
 largura), e em Acompanhamento o Status vem colorido de acordo com a cor
 cadastrada em Configurações → Status pra cada nível — pra mudar a cor da
 "Inauguração" (ou de qualquer outro nível), não precisa mexer em código, é
@@ -164,6 +170,18 @@ voltam vazios e (a) o Tipo daquela conta fica em branco pra você escolher
 manualmente (nunca trava em "Pré-paga" por engano) e (b) o link de Cobranças
 e Pagamentos daquela conta abre sem o parâmetro do Business Manager — ainda
 funciona, só não vem pré-filtrado pelo negócio.
+
+⚠️ **Sobre o "Saldo disponível" (Controle de Saldo e Avisos)**: o cálculo é
+teto de gasto da conta (`spend_cap`) menos o já gasto (`amount_spent`) — é a
+fórmula padrão do mercado pra "saldo disponível" de conta pré-paga da Meta
+(recarregar = subir o teto). Quando a conta não tem teto de gasto definido
+na Meta (`spend_cap` zerado/ausente — típico de conta pós-paga sem limite),
+não existe "fundo" pra calcular, então cai de volta pro `balance` bruto (o
+valor a pagar) — passe o mouse na célula pra ver qual dos dois está sendo
+mostrado. Vale conferir os primeiros números contra a tela de Cobranças e
+Pagamentos de uma conta pré-paga antes de confiar de olhos fechados,
+principalmente se você notar alguma diferença por causa de imposto/desconto
+que a Meta aplica na cobrança e que a API não reflete.
 
 ⚠️ **Pra arrastar e reordenar em Acompanhamento**: essa entrega inclui a
 migração `0009_account_sort_order.sql` (veja o passo 10) — sem rodar ela, a
@@ -329,6 +347,9 @@ lib/meta/
                          de Cobranças e Pagamentos (billing hub, usada só no
                          Controle de Saldo) a partir do ID da conta e do
                          Business Manager dono dela
+  funds.ts      → "fundo disponível" de uma conta (teto de gasto − já gasto,
+                  com fallback pro balance bruto quando não há teto) — usado
+                  no Controle de Saldo e no aviso de saldo baixo
 lib/audit/
   location.ts   → verificação de localização (Brasil país inteiro / expansão de público)
   errors.ts     → verificação de erros de veiculação (anúncio reprovado/restrito/
@@ -439,10 +460,15 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     primeira vez que a conta aparece sem tipo salvo, e continua 100%
     editável depois disso pra Híbrida, Loja própria, ou pra corrigir o que
     a Meta classificou
+11. ~~Saldo disponível de verdade (Etapa 16)~~ ✅ — "Saldo disponível" em
+    Controle de Saldo (e "Saldo" em Mensagens → Avisos) agora é teto de
+    gasto menos já gasto, não mais o campo bruto da Meta que parecia gasto
+    recente; mesma correção aplicada no cálculo do aviso automático de
+    saldo baixo, que usava o mesmo campo errado
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
-Pagamentos/Tipo de conta automático) estão 100% concluídos. Não há mais
-nenhum item pendente do escopo combinado — próximos pedidos são novos
-incrementos, a critério seu.
+Pagamentos/Tipo de conta automático, saldo disponível corrigido) estão 100%
+concluídos. Não há mais nenhum item pendente do escopo combinado — próximos
+pedidos são novos incrementos, a critério seu.
