@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { PAYMENT_TYPES, fmtCurrency } from "@/lib/format";
-import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
+import { billingHubUrl } from "@/lib/meta/ads-manager-link";
 import { InlineNumber } from "@/components/painel/inline-number";
 
 interface PixRow {
@@ -29,9 +29,25 @@ export function ControleSaldo({
     prepaid: true,
     hybrid: true,
     postpaid: true,
+    own_store: true,
   });
 
-  const groups: Record<string, AdAccount[]> = { prepaid: [], hybrid: [], postpaid: [] };
+  // Puxa o tipo de pagamento (pré-paga/pós-paga) direto da Meta uma vez por
+  // conta — só quando ainda não tem nada salvo. Depois disso o campo é 100%
+  // editável (inclusive pra Híbrida/Loja própria, que a Meta não sabe
+  // classificar) e nunca mais é sobrescrito automaticamente.
+  const syncedRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const acc of accounts) {
+      if (syncedRef.current.has(acc.account_id)) continue;
+      syncedRef.current.add(acc.account_id);
+      if (pixByAccount[acc.account_id]?.payment_type) continue;
+      if (acc.is_prepay_account == null) continue;
+      void onPatch(acc.account_id, { payment_type: acc.is_prepay_account ? "prepaid" : "postpaid" });
+    }
+  }, [accounts, pixByAccount, onPatch]);
+
+  const groups: Record<string, AdAccount[]> = { prepaid: [], hybrid: [], postpaid: [], own_store: [] };
   for (const acc of accounts) {
     const type = pixByAccount[acc.account_id]?.payment_type || "prepaid";
     (groups[type] ?? groups.prepaid).push(acc);
@@ -86,10 +102,10 @@ export function ControleSaldo({
                               <td className="px-4 py-2">{clientNames[acc.account_id] ?? acc.name}</td>
                               <td className="px-4 py-2">
                                 <a
-                                  href={adsManagerUrl(acc.account_id)}
+                                  href={billingHubUrl(acc.account_id, acc.business?.id)}
                                   target="_blank"
                                   rel="noopener noreferrer"
-                                  title="Abrir no Gerenciador de Anúncios"
+                                  title="Abrir Cobranças e Pagamentos"
                                   className="text-zinc-500 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
                                 >
                                   {acc.name}

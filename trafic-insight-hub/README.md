@@ -22,9 +22,18 @@ preenchidos à mão — CPA ideal, Investimento mensal, Meta de leads, WhatsApp
 de contato, Grupo WhatsApp (o mesmo vínculo usado nos disparos) e Endereço.
 Controle de Saldo/PIX e Visão Geral por Campanhas/Conjuntos/Anúncios (agora
 só lista campanha com impressão de verdade no período) continuam com
-pausar/ativar nos 3 níveis, e o nome da conta em Acompanhamento, Clientes,
-Controle de Saldo e Visão Geral é link direto pro Gerenciador de Anúncios
-daquela conta. O quadro do Painel agora ocupa a tela inteira (sem limite de
+pausar/ativar nos 3 níveis, e o nome da conta em Acompanhamento, Clientes e
+Visão Geral é link direto pro Gerenciador de Anúncios daquela conta — em
+Controle de Saldo especificamente o link vai direto pra tela de Cobranças e
+Pagamentos (billing hub) da conta, já que é essa a tela que trata de
+saldo/pagamento. O Tipo de conta em Controle de Saldo (Pré-paga/Híbrida/
+Pós-paga/Loja própria — essa última é nova) agora é puxado da Meta
+automaticamente na primeira vez que a conta aparece sem tipo salvo
+(Pré-paga ou Pós-paga, conforme a Meta classificar); Híbrida e Loja própria
+continuam sendo escolha manual, já que a Meta não tem esse conceito. Depois
+de puxado (ou escolhido) uma vez, o campo continua 100% editável e nunca
+mais é sobrescrito sozinho — é só trocar no próprio seletor quando quiser.
+O quadro do Painel agora ocupa a tela inteira (sem limite de
 largura), e em Acompanhamento o Status vem colorido de acordo com a cor
 cadastrada em Configurações → Status pra cada nível — pra mudar a cor da
 "Inauguração" (ou de qualquer outro nível), não precisa mexer em código, é
@@ -146,6 +155,15 @@ link `/d/:token` numa entrega anterior, ele para de funcionar com essa
 atualização (a rota foi removida). A tabela `public_dashboards` continua no
 banco sem uso — rode `supabase/migrations/0007_drop_public_dashboards.sql`
 se quiser apagá-la de vez (opcional, não afeta nada não rodar).
+
+⚠️ **Sobre o Tipo de conta puxado automaticamente (Controle de Saldo)**: a
+Meta só informa `is_prepay_account` (pré-paga/pós-paga) e o Business Manager
+dono da conta pra quem tem acesso de admin naquela conta — se o seu token só
+tiver acesso de anúncios/análise numa conta específica, esses dois campos
+voltam vazios e (a) o Tipo daquela conta fica em branco pra você escolher
+manualmente (nunca trava em "Pré-paga" por engano) e (b) o link de Cobranças
+e Pagamentos daquela conta abre sem o parâmetro do Business Manager — ainda
+funciona, só não vem pré-filtrado pelo negócio.
 
 ⚠️ **Pra arrastar e reordenar em Acompanhamento**: essa entrega inclui a
 migração `0009_account_sort_order.sql` (veja o passo 10) — sem rodar ela, a
@@ -307,7 +325,10 @@ lib/meta/
   status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral, Auditoria e Análise)
   daily-cpa.ts  → CPA diário por conta, usado na atualização de status em massa
   creative-analysis.ts → custo por conversa iniciada por anúncio (Painel > Análise)
-  ads-manager-link.ts → monta a URL do Gerenciador de Anúncios a partir do ID da conta
+  ads-manager-link.ts → monta a URL do Gerenciador de Anúncios (campanhas) e a
+                         de Cobranças e Pagamentos (billing hub, usada só no
+                         Controle de Saldo) a partir do ID da conta e do
+                         Business Manager dono dela
 lib/audit/
   location.ts   → verificação de localização (Brasil país inteiro / expansão de público)
   errors.ts     → verificação de erros de veiculação (anúncio reprovado/restrito/
@@ -410,9 +431,18 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
    arrastar e soltar os clientes em Acompanhamento pra reordenar do jeito
    que quiser, com a ordem salva no Supabase por conta/usuário (nunca no
    navegador) — funciona igual em qualquer computador que você acessar
+10. ~~Cobranças e Pagamentos + Tipo de conta automático (Etapa 15)~~ ✅ — em
+    Controle de Saldo, o nome da conta agora abre direto a tela de Cobranças
+    e Pagamentos (billing hub) da conta, em vez do Gerenciador de Anúncios
+    geral; o Tipo de conta (Pré-paga/Híbrida/Pós-paga/Loja própria — essa
+    última é nova) é puxado automaticamente da Meta (Pré-paga/Pós-paga) na
+    primeira vez que a conta aparece sem tipo salvo, e continua 100%
+    editável depois disso pra Híbrida, Loja própria, ou pra corrigir o que
+    a Meta classificou
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
-Painel, ficha de Clientes, tela cheia/status colorido/reordenar) estão 100%
-concluídos. Não há mais nenhum item pendente do escopo combinado — próximos
-pedidos são novos incrementos, a critério seu.
+Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
+Pagamentos/Tipo de conta automático) estão 100% concluídos. Não há mais
+nenhum item pendente do escopo combinado — próximos pedidos são novos
+incrementos, a critério seu.

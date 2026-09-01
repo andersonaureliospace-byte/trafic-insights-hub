@@ -21,6 +21,7 @@ export const PAYMENT_TYPES = [
   { id: "prepaid", label: "Pré-paga" },
   { id: "hybrid", label: "Híbrida" },
   { id: "postpaid", label: "Pós-paga" },
+  { id: "own_store", label: "Loja própria" },
 ] as const;
 
 export interface PriorityOption {

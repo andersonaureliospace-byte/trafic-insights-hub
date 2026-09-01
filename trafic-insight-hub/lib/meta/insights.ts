@@ -23,6 +23,13 @@ export interface AdAccount {
   amount_spent: string;
   spend_cap?: string;
   disable_reason?: number;
+  // Tipo de pagamento (pré-paga/pós-paga) e Business Manager dono da conta —
+  // pedidos pelo Graph API junto com a listagem de contas (sem chamada
+  // extra). is_prepay_account exige acesso de admin na conta; quando o token
+  // não tem esse nível, o Graph API só omite o campo (undefined aqui), e o
+  // Controle de Saldo deixa o tipo em branco pra escolha manual.
+  is_prepay_account?: boolean;
+  business?: { id: string; name?: string } | null;
 }
 
 export interface AccountInsight {
@@ -38,7 +45,8 @@ export interface AccountInsight {
 
 export async function getAdAccounts(token: string): Promise<AdAccount[]> {
   const data = await metaGet<{ data: AdAccount[] }>(token, "/me/adaccounts", {
-    fields: "id,account_id,name,account_status,disable_reason,balance,currency,amount_spent,spend_cap",
+    fields:
+      "id,account_id,name,account_status,disable_reason,balance,currency,amount_spent,spend_cap,is_prepay_account,business{id,name}",
     limit: "200",
   });
   return data.data ?? [];
