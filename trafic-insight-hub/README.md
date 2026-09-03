@@ -74,9 +74,11 @@ seletor de período do Painel). Acompanhamento também ganhou uma nova
 coluna, CPA ideal (antes da coluna CPA, editável ali mesmo — e continua
 editável em Clientes também, os dois lugares ficam sincronizados). Na
 coluna CPA, a diferença CPA − CPA ideal agora aparece direto embaixo do
-valor (não só numa dica ao passar o mouse), com sinal + ou - e cor: verde
-quando o CPA está abaixo do ideal, laranja quando está até R$ 1,40 acima do
-ideal, vermelho quando passa de R$ 1,40 acima do ideal. A dica ao
+valor (não só numa dica ao passar o mouse), pequena e mais clara pra não
+competir com o CPA — que fica em destaque, maior e em negrito — com sinal
++ ou - e cor: verde quando o CPA está abaixo do ideal, laranja quando está
+até R$ 1,40 acima do ideal, vermelho quando passa de R$ 1,40 acima do
+ideal. A dica ao
 passar o mouse em cima do Ritmo também mudou: em vez do texto explicando a
 fórmula, agora mostra direto a diferença Invest. diário − Ritmo, no mesmo
 formato com sinal. E o menu suspenso dos filtros no modo escuro (o mesmo
@@ -631,6 +633,10 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     passar o mouse), com um pouco mais de destaque; e a coluna CPA ganhou
     cor: verde quando o CPA está abaixo do ideal, laranja até R$ 1,40 acima
     do ideal, vermelho acima de R$ 1,40 do ideal
+21. ~~Ajuste fino da coluna CPA (Etapa 26)~~ ✅ — a diferença embaixo do CPA
+    estava chamando tanta atenção quanto o CPA em si; agora ela é menor e
+    mais clara (opacidade reduzida), e o CPA fica maior e em negrito — quem
+    precisa se destacar de cara é o CPA, a diferença é só um complemento
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -641,6 +647,6 @@ com busca/atualizar/link/filtro de status + Ritmo, filtro Ativos/Todos da
 Análise, cor do Ritmo/remoção da aba Geral/correção do carregamento, botão
 Atualizar em todas as abas, filtro 3 dias + hoje/CPA ideal/dicas com
 sinal/3 filtros novos em Acompanhamento, aba Evolução, correção do cálculo
-e cor da coluna CPA) estão 100% concluídos. Não há mais nenhum item
-pendente do escopo combinado — próximos pedidos são novos incrementos, a
-critério seu.
+e cor da coluna CPA, ajuste fino da coluna CPA) estão 100% concluídos. Não
+há mais nenhum item pendente do escopo combinado — próximos pedidos são
+novos incrementos, a critério seu.

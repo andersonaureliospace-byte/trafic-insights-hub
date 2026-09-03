@@ -671,9 +671,9 @@ export default function PainelPage() {
                                 const colorClass = cpaDiffColorClass(diff);
                                 return (
                                   <>
-                                    <div className={colorClass}>{fmtCurrency(cpaActual)}</div>
+                                    <div className={`text-base font-semibold ${colorClass}`}>{fmtCurrency(cpaActual)}</div>
                                     {diff != null ? (
-                                      <div className={`text-sm font-medium ${colorClass}`}>{fmtCurrencySigned(diff)}</div>
+                                      <div className={`text-xs opacity-70 ${colorClass}`}>{fmtCurrencySigned(diff)}</div>
                                     ) : null}
                                   </>
                                 );
