@@ -106,6 +106,19 @@ function ritmoColorClass(rowRitmo: number | null, dailyBudget: number | undefine
   return "text-emerald-600 dark:text-emerald-400";
 }
 
+// Cor da coluna CPA (Acompanhamento): compara o CPA real com o CPA ideal
+// cadastrado do cliente — diferença = CPA − CPA ideal.
+// - diferença negativa (CPA abaixo do ideal) → verde
+// - diferença de 0 até R$1,40 acima do ideal → laranja
+// - diferença acima de R$1,40 do ideal → vermelho
+const CPA_ORANGE_BAND = 1.4;
+function cpaDiffColorClass(diff: number | null): string {
+  if (diff == null) return "";
+  if (diff < 0) return "text-emerald-600 dark:text-emerald-400";
+  if (diff <= CPA_ORANGE_BAND) return "text-orange-600 dark:text-orange-400";
+  return "text-red-600 dark:text-red-400";
+}
+
 // Subgrupos na lateral — cada um só busca dados do Meta (o que pesa nas
 // requisições) enquanto estiver ativo. Trocar de aba não deixa nada
 // "grudado" buscando em segundo plano.
@@ -650,15 +663,21 @@ export default function PainelPage() {
                                 onSave={(v) => patchBinding(acc.account_id, { cpa_target: v })}
                               />
                             </td>
-                            <td
-                              className="px-4 py-2 text-right tabular-nums"
-                              title={
-                                binding?.cpa_target != null && insight?.cost_per_result != null
-                                  ? fmtCurrencySigned(binding.cpa_target - insight.cost_per_result)
-                                  : undefined
-                              }
-                            >
-                              {fmtCurrency(insight?.cost_per_result)}
+                            <td className="px-4 py-2 text-right tabular-nums">
+                              {(() => {
+                                const cpaActual = insight?.cost_per_result;
+                                const cpaTarget = binding?.cpa_target;
+                                const diff = cpaActual != null && cpaTarget != null ? cpaActual - cpaTarget : null;
+                                const colorClass = cpaDiffColorClass(diff);
+                                return (
+                                  <>
+                                    <div className={colorClass}>{fmtCurrency(cpaActual)}</div>
+                                    {diff != null ? (
+                                      <div className={`text-sm font-medium ${colorClass}`}>{fmtCurrencySigned(diff)}</div>
+                                    ) : null}
+                                  </>
+                                );
+                              })()}
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
