@@ -107,27 +107,27 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
     );
   }
 
-  // Pausa o criativo + o conjunto, e duplica o conjunto (com todos os
-  // anúncios, inclusive o pausado) como rascunho pausado — ver
-  // lib/meta/adset-refresh.ts. Excluir o criativo pausado na cópia, ativar
-  // e publicar continua manual, no Gerenciador de Anúncios.
-  async function refreshAdSet(ad: CreativeRow) {
+  // Pausa o criativo + o conjunto, e acrescenta "AQUI" no final do nome do
+  // conjunto — ver lib/meta/adset-pause-and-tag.ts sobre por que não
+  // duplica mais o conjunto automaticamente. Recriar o conjunto do zero
+  // continua manual, no Gerenciador de Anúncios.
+  async function pauseAdSet(ad: CreativeRow) {
     if (!ad.adset_id) {
       alert("Não encontrei o ID do conjunto desse anúncio.");
       return;
     }
     if (
       !confirm(
-        `Pausar o criativo "${ad.name}", pausar o conjunto "${ad.adset_name ?? ""}" e criar uma cópia pausada (rascunho) com todos os criativos, inclusive esse. Depois você exclui o criativo pausado na cópia, ativa o conjunto e publica manualmente. Confirma?`,
+        `Pausar o criativo "${ad.name}", pausar o conjunto "${ad.adset_name ?? ""}" e acrescentar "AQUI" no final do nome do conjunto. Confirma?`,
       )
     ) {
       return;
     }
     setRefreshingId(ad.id);
-    const res = await fetch("/api/analysis/refresh-adset", {
+    const res = await fetch("/api/analysis/pause-adset", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adId: ad.id, adsetId: ad.adset_id }),
+      body: JSON.stringify({ adId: ad.id, adsetId: ad.adset_id, adsetName: ad.adset_name ?? "" }),
     });
     const d = await res.json();
     setRefreshingId(null);
@@ -135,14 +135,14 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
       alert(d.error);
       return;
     }
-    const adWarn = d.adErrors?.length
-      ? ` (${d.adErrors.length} anúncio(s) não copiado(s) — confira no Gerenciador de Anúncios)`
-      : "";
-    alert(
-      `Conjunto pausado e duplicado em rascunho${adWarn}. Abra o Gerenciador de Anúncios, exclua o criativo pausado na cópia, ative o conjunto e publique.`,
-    );
+    alert(`Criativo e conjunto pausados. Conjunto renomeado pra "${d.newName}".`);
     setGroups((prev) =>
-      prev ? prev.map((g) => ({ ...g, ads: g.ads.map((a) => (a.id === ad.id ? { ...a, status: "PAUSED" } : a)) })) : prev,
+      prev
+        ? prev.map((g) => ({
+            ...g,
+            ads: g.ads.map((a) => (a.id === ad.id ? { ...a, status: "PAUSED", adset_name: d.newName } : a)),
+          }))
+        : prev,
     );
   }
 
@@ -331,12 +331,12 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                                 {togglingId === ad.id ? "…" : active ? "Pausar" : "Ativar"}
                               </button>
                               <button
-                                onClick={() => void refreshAdSet(ad)}
+                                onClick={() => void pauseAdSet(ad)}
                                 disabled={refreshingId === ad.id || togglingId === ad.id}
-                                title="Pausa o criativo, pausa o conjunto e duplica o conjunto como rascunho pausado (com todos os criativos, inclusive este) — excluir o criativo pausado, ativar e publicar fica manual"
+                                title='Pausa o criativo, pausa o conjunto e acrescenta "AQUI" no final do nome do conjunto — recriar o conjunto do zero fica manual, no Gerenciador de Anúncios'
                                 className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
                               >
-                                {refreshingId === ad.id ? "…" : "🔁 Recriar conjunto"}
+                                {refreshingId === ad.id ? "…" : "⏸️ Pausar conjunto"}
                               </button>
                             </div>
                           </td>

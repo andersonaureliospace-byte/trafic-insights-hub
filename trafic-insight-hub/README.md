@@ -157,14 +157,13 @@ Análise e Visão Geral, que até então só excluíam pelo nome da campanha e
 deixavam passar quem tinha objetivo Tráfego com outro nome; agora nenhuma
 dessas campanhas aparece em nenhuma métrica, gráfico, total ou tela do
 Painel, nas 4 abas. Painel > Análise ganhou um segundo botão por criativo,
-"🔁 Recriar conjunto" — além do "Pausar" que já existia (e continua igual),
-esse botão novo pausa o criativo, pausa o conjunto inteiro e cria uma cópia
-pausada (rascunho) do conjunto com a mesma segmentação/otimização/lance e
-todos os criativos originais, inclusive o que acabou de ser pausado; excluir
-esse criativo na cópia, ativar o conjunto novo e publicar continua manual,
-no Gerenciador de Anúncios — veja o ⚠️ abaixo sobre os limites dessa
-duplicação. Com isso, todas as áreas do plano original + os extras pedidos
-ao longo do caminho estão 100% concluídas.
+"⏸️ Pausar conjunto" — além do "Pausar" que já existia (e continua igual),
+esse botão novo pausa o criativo, pausa o conjunto inteiro e acrescenta
+"AQUI" no final do nome do conjunto, pra achar fácil no Gerenciador de
+Anúncios na hora de recriar; recriar o conjunto do zero continua manual —
+veja o ⚠️ abaixo sobre por que não duplica automaticamente. Com isso, todas
+as áreas do plano original + os extras pedidos ao longo do caminho estão
+100% concluídas.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -313,25 +312,26 @@ por usuário/conta (nunca em localStorage/sessionStorage do navegador), então
 funciona igual em qualquer computador ou navegador que você usar pra
 acessar o Painel.
 
-⚠️ **Sobre "🔁 Recriar conjunto" em Análise (Etapa 28)**: esse botão faz na
-raça, via chamadas diretas da Graph API, o mesmo que o "Duplicar" do
-Gerenciador de Anúncios faz — não existe um endpoint oficial que copie o
-conjunto excluindo um anúncio específico, então ele duplica com todos os
-criativos originais (inclusive o pausado) e para por aí; excluir o criativo
-pausado na cópia, ativar o conjunto e publicar é você que faz, manualmente,
-no Gerenciador. Três pontos importantes: (1) o orçamento do conjunto novo
-sempre sai fixo em R$ 15/dia (`daily_spend_cap`, teto por conjunto dentro da
-campanha CBO) — não copia o valor do conjunto de origem, por pedido
-explícito, já que todas as contas usam esse mesmo valor; (2) campos comuns
-(segmentação, meta de otimização, evento de cobrança, estratégia de lance,
-objeto promovido) são copiados como a Meta devolve na leitura, mas
-configurações mais raras (regra de DSA por região, agendamento por horário,
-criativo dinâmico) só entram se a Meta as retornar no conjunto de origem —
-vale testar num conjunto de baixo risco antes de confiar nisso todo dia; (3)
-como o anúncio duplicado entra em revisão de novo (mesmo reaproveitando o
-mesmo criativo), existe uma janela de alguns minutos a até ~24h sem entrega
-nesse conjunto entre pausar o antigo e o novo ser aprovado e você publicar —
-isso é do próprio Meta, não tem como evitar duplicando de verdade.
+⚠️ **Sobre "⏸️ Pausar conjunto" em Análise — histórico (Etapas 28-30)**: as
+duas primeiras versões desse botão (Etapas 28 e 29) tentavam duplicar o
+conjunto automaticamente pela Graph API — mesma ideia do "Duplicar" do
+Gerenciador de Anúncios, feita na raça via chamadas diretas — pra criar uma
+cópia pausada com todos os criativos originais, inclusive o que tinha
+acabado de ser pausado. A Etapa 29 corrigiu um bug real de endpoint
+(criava no nó errado, `/{campanha}/adsets` e `/{conjunto}/ads`, que só
+servem pra listar; o certo é `/act_{conta}/adsets` e `/act_{conta}/ads`),
+mas mesmo corrigido esbarrou num limite da própria Meta que não tem como
+contornar por fora: criar um anúncio NOVO exige que a Página do criativo
+esteja compartilhada (dona ou parceira) com o Portfólio de Negócios dono da
+conta de anúncios — mesmo reaproveitando um criativo que já roda hoje sem
+problema — e nem toda conta do usuário tem esse compartilhamento (às vezes
+o cliente não libera, mesmo pra permissão só de "Anunciar"). Por isso a
+Etapa 30 simplificou: o botão não duplica mais nada, só pausa o criativo,
+pausa o conjunto e acrescenta "AQUI" no final do nome do conjunto — uma
+ação que nunca esbarra nessa permissão, porque não cria nada novo, só edita
+dois objetos que já existem. Recriar o conjunto do zero (mesma segmentação/
+otimização/lance, minus o criativo ruim) continua 100% manual, no
+Gerenciador de Anúncios.
 
 ## 1. Criar o projeto no Supabase
 
@@ -676,13 +676,19 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     com "vaga" no nome; Análise e Visão Geral só excluíam pelo nome — agora
     as duas também excluem pelo objetivo da campanha, então nenhuma dessas
     campanhas aparece mais em nenhuma métrica, tela ou total do Painel
-23. ~~Botão "Recriar conjunto" em Análise (Etapa 28)~~ ✅ — novo botão por
-    criativo, ao lado do "Pausar" que já existia: pausa o criativo, pausa o
-    conjunto inteiro e cria uma cópia pausada (rascunho) do conjunto, mesma
-    segmentação/otimização/lance, com todos os criativos originais
-    (inclusive o pausado) — excluir esse criativo na cópia, ativar o
-    conjunto novo e publicar continua manual, no Gerenciador de Anúncios
-    (veja o ⚠️ acima sobre os limites dessa duplicação)
+23. ~~Botão "Recriar conjunto" em Análise + correção de endpoint (Etapas
+    28-29)~~ ✅ — histórico: tentativa de duplicar o conjunto automaticamente
+    pela Graph API (mesma ideia do "Duplicar" do Gerenciador de Anúncios);
+    corrigido um bug real de endpoint na Etapa 29; substituído na Etapa 30
+    (veja o item abaixo e o ⚠️ acima) por esbarrar num limite da própria
+    Meta sem solução por fora (Página do criativo precisa estar
+    compartilhada com o Portfólio de Negócios dono da conta)
+24. ~~Botão "⏸️ Pausar conjunto" simplificado (Etapa 30)~~ ✅ — troca o botão
+    anterior: agora só pausa o criativo, pausa o conjunto e acrescenta
+    "AQUI" no final do nome dele — sem tentar duplicar nada, então nunca
+    esbarra na exigência de Página compartilhada com o Portfólio. Recriar o
+    conjunto do zero continua manual, no Gerenciador de Anúncios (veja o ⚠️
+    acima)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -694,7 +700,7 @@ Análise, cor do Ritmo/remoção da aba Geral/correção do carregamento, botão
 Atualizar em todas as abas, filtro 3 dias + hoje/CPA ideal/dicas com
 sinal/3 filtros novos em Acompanhamento, aba Evolução, correção do cálculo
 e cor da coluna CPA, ajuste fino da coluna CPA, exclusão consistente de
-campanhas de Tráfego/[VAGA] em Análise e Visão Geral, botão "Recriar
+campanhas de Tráfego/[VAGA] em Análise e Visão Geral, botão "⏸️ Pausar
 conjunto" em Análise) estão 100% concluídos. Não há mais nenhum item
 pendente do escopo combinado — próximos pedidos são novos incrementos, a
 critério seu.
