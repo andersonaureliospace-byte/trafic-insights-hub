@@ -27,10 +27,14 @@ export function ClientesTab({
   accounts,
   bindings,
   onPatch,
+  onRefresh,
+  refreshing,
 }: {
   accounts: AdAccount[];
   bindings: Record<string, ClienteBinding | undefined>;
   onPatch: (accountId: string, patch: ClienteBindingPatch) => Promise<void>;
+  onRefresh: () => void;
+  refreshing: boolean;
 }) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -50,11 +54,20 @@ export function ClientesTab({
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Clientes</h2>
-        <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-          Dados preenchidos manualmente — CPA ideal e Investimento mensal são os mesmos usados no resto do Painel.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <div>
+          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Clientes</h2>
+          <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+            Dados preenchidos manualmente — CPA ideal e Investimento mensal são os mesmos usados no resto do Painel.
+          </p>
+        </div>
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="h-8 shrink-0 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+        >
+          {refreshing ? "Atualizando…" : "↻ Atualizar"}
+        </button>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">

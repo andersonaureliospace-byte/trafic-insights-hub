@@ -137,6 +137,22 @@ export default function PainelPage() {
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [draggedAccountId, setDraggedAccountId] = useState<string | null>(null);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+
+  // Contas do Meta (nome, status, saldo/teto de gasto, tipo de negócio) —
+  // é o que alimenta Controle de Saldo. Função à parte (não só um efeito)
+  // pra dar pra chamar de novo pelo botão "Atualizar" sem precisar dar F5.
+  const loadAccounts = useCallback(async () => {
+    setLoadingAccounts(true);
+    const res = await fetch("/api/meta/accounts");
+    const d = await res.json();
+    setLoadingAccounts(false);
+    if (d.error) setAccountsError(d.error);
+    else {
+      setAccountsError(null);
+      setAllAccounts(d.accounts ?? []);
+    }
+  }, []);
 
   // Carrega seleção, contas do Meta (1 chamada só) e vínculos/PIX (Supabase,
   // barato) de cara — o que é pesado de verdade (insights/breakdown/análise
@@ -147,12 +163,8 @@ export default function PainelPage() {
       .then((r) => r.json())
       .then((d) => setSelectedIds(d.accountIds ?? []));
 
-    fetch("/api/meta/accounts")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.error) setAccountsError(d.error);
-        else setAllAccounts(d.accounts ?? []);
-      });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca as contas do Meta ao montar; o mesmo loadAccounts é reusado pelo botão "Atualizar" de Controle de Saldo/Clientes
+    void loadAccounts();
 
     fetch("/api/account-bindings")
       .then((r) => r.json())
@@ -173,7 +185,7 @@ export default function PainelPage() {
     fetch("/api/focus-groups")
       .then((r) => r.json())
       .then((d) => setFocusGroups(d.groups ?? []));
-  }, []);
+  }, [loadAccounts]);
 
   async function saveFocusGroups(groups: FocusGroup[]) {
     setFocusGroups(groups);
@@ -436,6 +448,16 @@ export default function PainelPage() {
                       ))}
                     </select>
                     <button
+                      onClick={() => {
+                        void loadInsights();
+                        void loadMonthlyInsights();
+                      }}
+                      disabled={loadingInsights}
+                      className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+                    >
+                      {loadingInsights ? "Atualizando…" : "↻ Atualizar"}
+                    </button>
+                    <button
                       onClick={() => setBulkStatusOpen(true)}
                       className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium dark:border-zinc-700"
                     >
@@ -572,7 +594,15 @@ export default function PainelPage() {
               </div>
             ) : null}
 
-            {tab === "clientes" ? <ClientesTab accounts={selectedAccounts} bindings={bindings} onPatch={patchBinding} /> : null}
+            {tab === "clientes" ? (
+              <ClientesTab
+                accounts={selectedAccounts}
+                bindings={bindings}
+                onPatch={patchBinding}
+                onRefresh={loadAccounts}
+                refreshing={loadingAccounts}
+              />
+            ) : null}
 
             {tab === "saldo" ? (
               <ControleSaldo
@@ -580,6 +610,8 @@ export default function PainelPage() {
                 clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
                 pixByAccount={pixAccounts}
                 onPatch={patchPix}
+                onRefresh={loadAccounts}
+                refreshing={loadingAccounts}
               />
             ) : null}
 

@@ -20,11 +20,15 @@ export function ControleSaldo({
   clientNames,
   pixByAccount,
   onPatch,
+  onRefresh,
+  refreshing,
 }: {
   accounts: AdAccount[];
   clientNames: Record<string, string>;
   pixByAccount: Record<string, PixRow>;
   onPatch: (accountId: string, patch: Partial<Omit<PixRow, "ad_account_id">>) => Promise<void>;
+  onRefresh: () => void;
+  refreshing: boolean;
 }) {
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
     prepaid: true,
@@ -75,8 +79,15 @@ export function ControleSaldo({
 
   return (
     <div className="mt-6 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Controle de Saldo / PIX</h2>
+        <button
+          onClick={onRefresh}
+          disabled={refreshing}
+          className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+        >
+          {refreshing ? "Atualizando…" : "↻ Atualizar"}
+        </button>
       </div>
 
       {accounts.length === 0 ? (

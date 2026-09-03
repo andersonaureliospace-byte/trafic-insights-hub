@@ -109,6 +109,13 @@ export function VisaoGeral({ accounts, preset: painelPreset }: { accounts: AdAcc
               Abrir no Facebook ↗
             </a>
           ) : null}
+          <button
+            onClick={() => void load()}
+            disabled={loading}
+            className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+          >
+            {loading ? "Atualizando…" : "↻ Atualizar"}
+          </button>
         </div>
       </div>
 

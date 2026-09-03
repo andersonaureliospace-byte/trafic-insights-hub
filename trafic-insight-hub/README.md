@@ -64,7 +64,10 @@ não fica mais presa em "Carregando…" de forma inconsistente — o indicador
 de carregamento agora espera tanto a lista de contas selecionadas quanto a
 lista de contas do Meta terminarem de carregar antes de mostrar a tabela,
 evitando o "Mostrando 0 conta(s) selecionada(s)" passageiro que aparecia
-quando a busca no Meta demorava um pouco mais. Análise
+quando a busca no Meta demorava um pouco mais. Todas as abas do Painel
+(Acompanhamento, Clientes, Controle de Saldo, Visão Geral e Análise) agora
+têm um botão "↻ Atualizar" pra puxar os dados de novo na hora, sem precisar
+dar F5. Análise
 mostra criativo, com o filtro de Status "Ativos" (padrão) ou "Todos" (ativos +
 pausados), com
 custo por conversa iniciada R$ 4 ou mais acima da Meta CPA do cliente — ou,
@@ -558,6 +561,11 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     ser a que abre por padrão; e o indicador de carregamento do Painel
     agora espera a lista de contas do Meta também terminar de carregar,
     evitando o "Mostrando 0 conta(s) selecionada(s)" passageiro
+17. ~~Botão Atualizar em todas as abas do Painel (Etapa 22)~~ ✅ — o botão
+    "↻ Atualizar" que já existia só em Análise agora está também em
+    Acompanhamento (dados da tabela + Ritmo), Clientes e Controle de Saldo
+    (contas/saldo do Meta) e Visão Geral (Campanhas/Conjuntos/Anúncios da
+    conta escolhida) — dá pra puxar os dados de novo na hora, sem F5
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -565,6 +573,7 @@ Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
 Pagamentos/Tipo de conta automático, saldo disponível corrigido, Tipo de
 conta 1x só + Análise refinada, menu suspenso legível no escuro, Análise
 com busca/atualizar/link/filtro de status + Ritmo, filtro Ativos/Todos da
-Análise, cor do Ritmo/remoção da aba Geral/correção do carregamento) estão
-100% concluídos. Não há mais nenhum item pendente do escopo combinado —
-próximos pedidos são novos incrementos, a critério seu.
+Análise, cor do Ritmo/remoção da aba Geral/correção do carregamento, botão
+Atualizar em todas as abas) estão 100% concluídos. Não há mais nenhum item
+pendente do escopo combinado — próximos pedidos são novos incrementos, a
+critério seu.
