@@ -7,7 +7,18 @@ export function fmtCurrency(value: number | null | undefined, currency = "BRL"):
   }
 }
 
+// Mesmo formato do fmtCurrency, mas sempre com o sinal + ou - na frente —
+// usado nas dicas (title) de diferença, ex.: "Invest. diário − Ritmo" ou
+// "CPA ideal − CPA", pra deixar claro se está acima ou abaixo sem precisar
+// decorar a ordem da subtração.
+export function fmtCurrencySigned(value: number | null | undefined, currency = "BRL"): string {
+  if (value == null || Number.isNaN(value)) return "—";
+  const sign = value < 0 ? "-" : "+";
+  return `${sign}${fmtCurrency(Math.abs(value), currency)}`;
+}
+
 export const DATE_PRESETS = [
+  { id: "last_3d_plus_today", label: "Últimos 3 dias + hoje" },
   { id: "today", label: "Hoje" },
   { id: "yesterday", label: "Ontem" },
   { id: "last_3d", label: "Últimos 3 dias" },

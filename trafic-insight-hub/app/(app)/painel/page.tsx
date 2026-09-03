@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
-import { DATE_PRESETS, fmtCurrency, type PresetId } from "@/lib/format";
+import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, type PresetId } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
@@ -13,6 +13,7 @@ import { ClientesTab } from "@/components/painel/clientes-tab";
 import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
 import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { EditClientDialog } from "@/components/painel/edit-client-dialog";
+import { InlineNumber } from "@/components/painel/inline-number";
 
 interface AccountBinding {
   ad_account_id: string;
@@ -132,6 +133,11 @@ export default function PainelPage() {
   const [preset, setPreset] = useState<PresetId>("last_7d");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState("");
+  // 3 filtros novos de Acompanhamento — todos começam fixos em "Todos" (sem
+  // filtrar nada) até o usuário escolher outra opção.
+  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [cpaFilter, setCpaFilter] = useState<"all" | "high">("all");
+  const [investFilter, setInvestFilter] = useState<"all" | "low" | "high">("all");
   const [focusGroups, setFocusGroups] = useState<FocusGroup[]>([]);
   const [activeFocusGroupId, setActiveFocusGroupId] = useState<string | null>(null);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
@@ -338,13 +344,34 @@ export default function PainelPage() {
         (r) =>
           !q || r.clientName.toLowerCase().includes(q) || r.acc.name.toLowerCase().includes(q),
       )
+      .filter((r) => priorityFilter === "all" || (r.binding?.priority ?? "") === priorityFilter)
+      .filter((r) => {
+        if (cpaFilter !== "high") return true;
+        const cpaTarget = r.binding?.cpa_target;
+        const cpaActual = r.insight?.cost_per_result;
+        return cpaTarget != null && cpaActual != null && cpaActual > cpaTarget;
+      })
+      .filter((r) => {
+        if (investFilter === "all") return true;
+        const rowRitmo = ritmo(r.binding?.monthly_investment, monthlyInsights[r.acc.account_id]?.spend);
+        if (rowRitmo == null) return false;
+        const diff = rowRitmo - (r.insight?.daily_budget ?? 0);
+        if (investFilter === "low") return diff > RITMO_BAND;
+        return diff < -RITMO_BAND;
+      })
       .sort((a, b) => rowSortKey(a) - rowSortKey(b));
-  }, [focusFilteredRows, search]);
+  }, [focusFilteredRows, search, priorityFilter, cpaFilter, investFilter, monthlyInsights]);
 
   // Arrastar só faz sentido reordenando a lista completa e visível — com
-  // busca ou grupo de foco ativos, a posição de um item na tela não bate com
-  // sua posição "de verdade" entre todas as contas, então desabilita.
-  const reorderEnabled = search.trim() === "" && activeFocusGroupId === null;
+  // busca, grupo de foco ou qualquer um dos 3 filtros (Status/CPA/
+  // Investimento) ativos, a posição de um item na tela não bate com sua
+  // posição "de verdade" entre todas as contas, então desabilita.
+  const reorderEnabled =
+    search.trim() === "" &&
+    activeFocusGroupId === null &&
+    priorityFilter === "all" &&
+    cpaFilter === "all" &&
+    investFilter === "all";
 
   function handleRowDrop(targetAccountId: string) {
     if (!draggedAccountId || draggedAccountId === targetAccountId) return;
@@ -466,10 +493,51 @@ export default function PainelPage() {
                   </div>
                 </div>
 
+                <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Status</span>
+                    <select
+                      value={priorityFilter}
+                      onChange={(e) => setPriorityFilter(e.target.value)}
+                      className="h-7 rounded-md border border-zinc-300 bg-transparent px-2 text-xs dark:border-zinc-700"
+                    >
+                      <option value="all">Todos</option>
+                      {priorityOptions.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">CPA</span>
+                    <select
+                      value={cpaFilter}
+                      onChange={(e) => setCpaFilter(e.target.value as "all" | "high")}
+                      className="h-7 rounded-md border border-zinc-300 bg-transparent px-2 text-xs dark:border-zinc-700"
+                    >
+                      <option value="all">Todos</option>
+                      <option value="high">CPA alto</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Investimento</span>
+                    <select
+                      value={investFilter}
+                      onChange={(e) => setInvestFilter(e.target.value as "all" | "low" | "high")}
+                      className="h-7 rounded-md border border-zinc-300 bg-transparent px-2 text-xs dark:border-zinc-700"
+                    >
+                      <option value="all">Todos</option>
+                      <option value="low">Baixo</option>
+                      <option value="high">Alto</option>
+                    </select>
+                  </div>
+                </div>
+
                 {!reorderEnabled ? (
                   <p className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-                    Para arrastar e reordenar os clientes, limpe a busca e o grupo de foco — a reordenação vale para a
-                    lista completa.
+                    Para arrastar e reordenar os clientes, limpe a busca, o grupo de foco e os filtros de Status/CPA/
+                    Investimento — a reordenação vale para a lista completa.
                   </p>
                 ) : null}
 
@@ -482,6 +550,12 @@ export default function PainelPage() {
                         <th className="px-4 py-2 font-medium">Conta</th>
                         <th className="px-4 py-2 font-medium">Status</th>
                         <th className="px-4 py-2 text-right font-medium">CPA</th>
+                        <th
+                          className="px-4 py-2 text-right font-medium"
+                          title="Editável aqui ou em Clientes — os dois ficam sincronizados"
+                        >
+                          CPA ideal
+                        </th>
                         <th className="px-4 py-2 text-right font-medium">Valor usado</th>
                         <th className="px-4 py-2 text-right font-medium">Invest. diário</th>
                         <th
@@ -569,11 +643,28 @@ export default function PainelPage() {
                               </select>
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.cost_per_result)}</td>
+                            <td
+                              className="px-4 py-2 text-right tabular-nums"
+                              title={
+                                binding?.cpa_target != null && insight?.cost_per_result != null
+                                  ? fmtCurrencySigned(binding.cpa_target - insight.cost_per_result)
+                                  : undefined
+                              }
+                            >
+                              <InlineNumber
+                                value={binding?.cpa_target ?? null}
+                                onSave={(v) => patchBinding(acc.account_id, { cpa_target: v })}
+                              />
+                            </td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
                             <td
                               className={`px-4 py-2 text-right tabular-nums ${ritmoColorClass(rowRitmo, insight?.daily_budget)}`}
-                              title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês. Cor compara com o Invest. diário atual: verde = dentro de R$10, laranja = precisa investir mais, vermelho = orçamento atual está acima do necessário."
+                              title={
+                                rowRitmo != null
+                                  ? fmtCurrencySigned((insight?.daily_budget ?? 0) - rowRitmo)
+                                  : undefined
+                              }
                             >
                               {fmtCurrency(rowRitmo)}
                             </td>

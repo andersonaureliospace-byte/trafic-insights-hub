@@ -67,7 +67,20 @@ evitando o "Mostrando 0 conta(s) selecionada(s)" passageiro que aparecia
 quando a busca no Meta demorava um pouco mais. Todas as abas do Painel
 (Acompanhamento, Clientes, Controle de Saldo, Visão Geral e Análise) agora
 têm um botão "↻ Atualizar" pra puxar os dados de novo na hora, sem precisar
-dar F5. Análise
+dar F5. O período de Acompanhamento ganhou a opção "Últimos 3 dias + hoje"
+(mesma opção que já existia em Análise, agora disponível em qualquer
+seletor de período do Painel). Acompanhamento também ganhou uma nova
+coluna, CPA ideal — editável ali mesmo (e continua editável em Clientes
+também, os dois lugares ficam sincronizados); passar o mouse em cima mostra
+a diferença CPA ideal − CPA, sempre com o sinal + ou - na frente. A dica ao
+passar o mouse em cima do Ritmo também mudou: em vez do texto explicando a
+fórmula, agora mostra direto a diferença Invest. diário − Ritmo, no mesmo
+formato com sinal. E o menu suspenso dos filtros no modo escuro (o mesmo
+problema da Etapa 18) recebeu um ajuste mais robusto — veja o ⚠️ abaixo.
+Além disso, Acompanhamento ganhou 3 filtros novos, todos começando fixos em
+"Todos": Status (filtra pelo nível de prioridade), CPA (mostra só CPA alto,
+ou seja, CPA acima do CPA ideal) e Investimento (Baixo = laranja no Ritmo,
+Alto = vermelho no Ritmo). Análise
 mostra criativo, com o filtro de Status "Ativos" (padrão) ou "Todos" (ativos +
 pausados), com
 custo por conversa iniciada R$ 4 ou mais acima da Meta CPA do cliente — ou,
@@ -122,10 +135,12 @@ aparece na tela. Mensagens → Envio agora também suporta anexo de mídia
 Storage e vai como legenda pelo uazapi; disparos agendados continuam só
 texto. Os filtros de seletor (período, tipo, prioridade etc.) no modo
 escuro do navegador não ficam mais com letra clara em fundo claro dentro do
-menu suspenso — o app avisa o navegador que suporta os dois temas
-(`color-scheme`), então ele desenha esse menu no tema certo em vez de
-sempre no claro por padrão. Com isso, todas as áreas do plano original + os
-extras pedidos ao longo do caminho estão 100% concluídas.
+menu suspenso — o app avisa o navegador, via `color-scheme`, exatamente
+quando é claro e quando é escuro (preso ao mesmo gatilho que já troca as
+cores do resto da página), em vez de deixar o navegador "escolher" entre os
+dois e às vezes desenhar esse menu no claro por padrão mesmo com a página
+no escuro. Com isso, todas as áreas do plano original + os extras pedidos
+ao longo do caminho estão 100% concluídas.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -246,6 +261,18 @@ está configurado), vermelho = Ritmo mais de R$ 10 ABAIXO do orçamento
 diário atual (o orçamento atual está investindo mais rápido do que
 precisa). Se a ideia era outra (por exemplo, comparar o Ritmo com zero, ou
 com algum outro valor), me fala que ajusto rapidinho.
+
+⚠️ **Sobre o menu suspenso ilegível no modo escuro, de novo (Etapa 23)**:
+a correção da Etapa 18 usava `color-scheme: light dark`, que só avisa o
+navegador que a página aceita os dois temas e deixa ele "escolher" — na
+prática, alguns navegadores continuavam desenhando o menu do `<select>` no
+claro mesmo com a página no escuro (o print que você mandou). Troquei para
+`color-scheme: light` fora do modo escuro e `color-scheme: dark` dentro do
+mesmo bloco `@media (prefers-color-scheme: dark)` que já troca as cores do
+resto da página — agora é uma troca explícita, presa ao mesmo gatilho, em
+vez de uma escolha do navegador. Se ainda aparecer claro em algum
+navegador/computador específico, me avisa com o nome do navegador que uso
+pra investigar esse caso.
 
 ⚠️ **Pra arrastar e reordenar em Acompanhamento**: essa entrega inclui a
 migração `0009_account_sort_order.sql` (veja o passo 10) — sem rodar ela, a
@@ -566,6 +593,15 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     Acompanhamento (dados da tabela + Ritmo), Clientes e Controle de Saldo
     (contas/saldo do Meta) e Visão Geral (Campanhas/Conjuntos/Anúncios da
     conta escolhida) — dá pra puxar os dados de novo na hora, sem F5
+18. ~~Filtro 3 dias + hoje, CPA ideal editável, dica com sinal e 3 filtros
+    novos em Acompanhamento + menu suspenso escuro de novo (Etapa 23)~~ ✅ —
+    período "Últimos 3 dias + hoje" também em Acompanhamento; nova coluna
+    CPA ideal (editável ali e em Clientes, sincronizado); as dicas ao passar
+    o mouse em Ritmo e CPA ideal agora mostram só a diferença
+    (Invest. diário − Ritmo e CPA ideal − CPA), sempre com sinal + ou -; 3
+    filtros novos em Acompanhamento — Status, CPA (CPA alto) e Investimento
+    (Baixo/Alto) —, todos começando em "Todos"; e ajuste mais robusto no
+    `color-scheme` do menu suspenso no escuro (veja o ⚠️ acima)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -574,6 +610,7 @@ Pagamentos/Tipo de conta automático, saldo disponível corrigido, Tipo de
 conta 1x só + Análise refinada, menu suspenso legível no escuro, Análise
 com busca/atualizar/link/filtro de status + Ritmo, filtro Ativos/Todos da
 Análise, cor do Ritmo/remoção da aba Geral/correção do carregamento, botão
-Atualizar em todas as abas) estão 100% concluídos. Não há mais nenhum item
-pendente do escopo combinado — próximos pedidos são novos incrementos, a
-critério seu.
+Atualizar em todas as abas, filtro 3 dias + hoje/CPA ideal/dicas com
+sinal/3 filtros novos em Acompanhamento) estão 100% concluídos. Não há mais
+nenhum item pendente do escopo combinado — próximos pedidos são novos
+incrementos, a critério seu.

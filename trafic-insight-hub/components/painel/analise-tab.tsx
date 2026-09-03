@@ -5,10 +5,10 @@ import type { AdAccount } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 
-// "Últimos 3 dias + hoje" entra como padrão recomendado (pega problema
-// recente rápido); os demais períodos já usados no resto do Painel ficam
-// disponíveis no mesmo seletor.
-const ANALYSIS_PRESETS = [{ id: "last_3d_plus_today", label: "Últimos 3 dias + hoje" }, ...DATE_PRESETS];
+// "Últimos 3 dias + hoje" (padrão recomendado — pega problema recente
+// rápido) já vem primeiro em DATE_PRESETS, junto com os demais períodos
+// usados no resto do Painel.
+const ANALYSIS_PRESETS = DATE_PRESETS;
 
 interface CreativeRow {
   id: string;

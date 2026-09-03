@@ -6,10 +6,12 @@
   /* Sem isso, o navegador sempre desenha os controles nativos (o popup
      de opções do <select>, scrollbar, etc.) no tema claro, não importa a
      cor que a gente escolha no Tailwind — daí a letra clara em fundo claro
-     nos filtros no modo escuro. "light dark" avisa que a página suporta os
-     dois, e o navegador escolhe automaticamente conforme o mesmo
-     prefers-color-scheme que já troca --background/--foreground abaixo. */
-  color-scheme: light dark;
+     nos filtros no modo escuro. Antes isso era "light dark" (deixa o
+     navegador escolher), mas alguns navegadores continuavam desenhando o
+     popup no claro mesmo com o resto da página no escuro — por isso agora é
+     explícito por branch, preso ao mesmo prefers-color-scheme que já troca
+     --background/--foreground logo abaixo. */
+  color-scheme: light;
 }
 
 @theme inline {
@@ -23,6 +25,7 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    color-scheme: dark;
   }
 }
 
