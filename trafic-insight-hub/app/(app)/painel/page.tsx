@@ -81,11 +81,35 @@ function ritmo(monthlyInvestment: number | null | undefined, spentThisMonth: num
   return (monthlyInvestment - (spentThisMonth ?? 0)) / remainingDays;
 }
 
+// Cor do Ritmo: compara o quanto precisa investir por dia daqui pra frente
+// (Ritmo) com o orçamento diário JÁ configurado na conta (coluna "Invest.
+// diário" — orçamento atual dos conjuntos/campanhas ativos, não muda com o
+// período escolhido no filtro). ⚠️ Suposição: "10 reais para cima/para
+// baixo" do pedido foi interpretado como a diferença entre Ritmo e esse
+// orçamento diário atual (não Ritmo comparado a zero) — é a leitura que faz
+// sentido pra sinalizar se o orçamento diário já configurado está
+// acima/abaixo do necessário pra bater a meta do mês. Ajustável se não for
+// essa a leitura certa.
+// - diferença dentro de ±10: orçamento diário já está no ritmo certo → verde
+// - Ritmo mais de 10 reais ACIMA do orçamento diário atual ("pra cima"):
+//   precisaria investir mais do que está configurado → laranja
+// - Ritmo mais de 10 reais ABAIXO do orçamento diário atual ("pra baixo"):
+//   o orçamento atual está investindo mais rápido do que precisa → vermelho
+const RITMO_BAND = 10;
+function ritmoColorClass(rowRitmo: number | null, dailyBudget: number | undefined): string {
+  if (rowRitmo == null) return "";
+  const diff = rowRitmo - (dailyBudget ?? 0);
+  if (diff > RITMO_BAND) return "text-orange-600 dark:text-orange-400";
+  if (diff < -RITMO_BAND) return "text-red-600 dark:text-red-400";
+  return "text-emerald-600 dark:text-emerald-400";
+}
+
 // Subgrupos na lateral — cada um só busca dados do Meta (o que pesa nas
 // requisições) enquanto estiver ativo. Trocar de aba não deixa nada
 // "grudado" buscando em segundo plano.
+// A aba "Geral" (KPIs soltos, redundante com "Visão Geral") foi removida a
+// pedido — por isso a aba inicial agora é "Visão Geral".
 const TABS = [
-  { id: "geral", label: "Geral" },
   { id: "acompanhamento", label: "Acompanhamento" },
   { id: "clientes", label: "Clientes" },
   { id: "saldo", label: "Controle de Saldo" },
@@ -96,7 +120,7 @@ type TabId = (typeof TABS)[number]["id"];
 
 export default function PainelPage() {
   const { options: priorityOptions } = usePriorityOptions();
-  const [tab, setTab] = useState<TabId>("geral");
+  const [tab, setTab] = useState<TabId>("visao-geral");
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [allAccounts, setAllAccounts] = useState<AdAccount[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -184,9 +208,9 @@ export default function PainelPage() {
 
   useEffect(() => {
     // Só busca no Meta (o que consome requisição de verdade) quando a aba
-    // que precisa desse dado está ativa — Geral (KPIs) e Acompanhamento
-    // (tabela). Nas outras abas, essa chamada não roda.
-    if (tab !== "geral" && tab !== "acompanhamento") return;
+    // que precisa desse dado está ativa — Acompanhamento (tabela). Nas
+    // outras abas, essa chamada não roda.
+    if (tab !== "acompanhamento") return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca os insights ao entrar na aba, ou quando seleção/período mudam com a aba já ativa
     void loadInsights();
   }, [loadInsights, tab]);
@@ -322,21 +346,9 @@ export default function PainelPage() {
     void persistOrder(next);
   }
 
-  // KPIs da aba Geral são a visão geral de tudo que está selecionado — sem
-  // filtro de grupo de foco/busca, que só se aplica à tabela de Acompanhamento.
-  const overallTotals = useMemo(() => {
-    let spend = 0;
-    let results = 0;
-    for (const r of allRows) {
-      spend += r.insight?.spend ?? 0;
-      results += r.insight?.results ?? 0;
-    }
-    return { spend, results, cpa: results > 0 ? spend / results : null };
-  }, [allRows]);
-
   const editingRow = editingAccountId ? allRows.find((r) => r.acc.account_id === editingAccountId) : undefined;
 
-  if (selectedIds === null) {
+  if (selectedIds === null || allAccounts === null) {
     return <div className="p-8 text-sm text-zinc-500">Carregando…</div>;
   }
 
@@ -392,21 +404,6 @@ export default function PainelPage() {
           </aside>
 
           <div className="min-w-0">
-            {tab === "geral" ? (
-              <div className="flex flex-col gap-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <KpiCard label="Investido no período" value={fmtCurrency(overallTotals.spend)} />
-                  <KpiCard label="Resultados" value={overallTotals.results ? String(Math.round(overallTotals.results)) : "—"} />
-                  <KpiCard label="CPA médio" value={fmtCurrency(overallTotals.cpa)} />
-                </div>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Período: {DATE_PRESETS.find((p) => p.id === preset)?.label ?? preset} · Total de{" "}
-                  {selectedAccounts.length} conta(s) selecionada(s), sem filtro de grupo de foco (esse fica em
-                  Acompanhamento). {loadingInsights ? "Atualizando…" : ""}
-                </p>
-              </div>
-            ) : null}
-
             {tab === "acompanhamento" ? (
               <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
@@ -553,10 +550,8 @@ export default function PainelPage() {
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
                             <td
-                              className={`px-4 py-2 text-right tabular-nums ${
-                                rowRitmo != null && rowRitmo < 0 ? "text-red-600 dark:text-red-400" : ""
-                              }`}
-                              title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês"
+                              className={`px-4 py-2 text-right tabular-nums ${ritmoColorClass(rowRitmo, insight?.daily_budget)}`}
+                              title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês. Cor compara com o Invest. diário atual: verde = dentro de R$10, laranja = precisa investir mais, vermelho = orçamento atual está acima do necessário."
                             >
                               {fmtCurrency(rowRitmo)}
                             </td>
@@ -622,15 +617,6 @@ export default function PainelPage() {
         binding={editingRow?.binding}
         onPatch={patchBinding}
       />
-    </div>
-  );
-}
-
-function KpiCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-      <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold tabular-nums text-zinc-900 dark:text-zinc-50">{value}</p>
     </div>
   );
 }

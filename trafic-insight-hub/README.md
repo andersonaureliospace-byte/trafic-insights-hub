@@ -6,11 +6,12 @@ Vercel, com Supabase, n8n e uazapi (WhatsApp).
 
 Estado atual: **etapas 1 e 2 do plano concluídas** — base do Supabase/login
 único, e o Painel já fecha 100%, agora organizado em subgrupos na lateral
-esquerda (Geral, Acompanhamento, Clientes, Controle de Saldo, Visão Geral,
-Análise) — cada um só busca dado do Meta enquanto estiver ativo, pra não
-gastar requisição à toa com abas que você não está olhando. Geral mostra os
-KPIs gerais (Investido/Resultados/CPA médio) de todas as contas
-selecionadas. Acompanhamento tem a tabela de resultados com dados reais da
+esquerda (Acompanhamento, Clientes, Controle de Saldo, Visão Geral, Análise
+— a aba "Geral", que só mostrava 3 KPIs soltos e duplicava a "Visão Geral",
+foi removida; a aba que abre por padrão agora é Visão Geral) — cada um só
+busca dado do Meta enquanto estiver ativo, pra não gastar requisição à toa
+com abas que você não está olhando. Acompanhamento tem a tabela de
+resultados com dados reais da
 Meta (CPA, valor usado, investimento diário), grupos de foco (agrupar
 contas e focar a tabela num grupo), atualização de status em massa
 (classifica a prioridade pelo CPA dos últimos 3 dias vs. a meta cadastrada)
@@ -52,8 +53,18 @@ a posição na tela não bate com a posição real entre todas as contas). Em
 Acompanhamento também tem a coluna Ritmo: quanto falta investir por dia
 (dos dias que restam no mês, contando hoje, mês sempre considerado com 30
 dias) pra bater o Investimento mensal cadastrado — (Investimento mensal −
-Valor usado no mês corrente) ÷ dias restantes; fica vermelho quando negativo
-(já passou do investimento mensal pro ritmo dos dias que restam). Análise
+Valor usado no mês corrente) ÷ dias restantes; a cor compara o Ritmo com o
+Invest. diário já configurado na conta: verde quando a diferença é de até
+R$ 10 pra mais ou pra menos (orçamento diário já está no ritmo certo),
+laranja quando o Ritmo está mais de R$ 10 acima do orçamento diário atual
+(precisaria investir mais do que está configurado) e vermelho quando o
+Ritmo está mais de R$ 10 abaixo do orçamento diário atual (o orçamento
+atual está investindo mais rápido do que precisa). A tela do Painel também
+não fica mais presa em "Carregando…" de forma inconsistente — o indicador
+de carregamento agora espera tanto a lista de contas selecionadas quanto a
+lista de contas do Meta terminarem de carregar antes de mostrar a tabela,
+evitando o "Mostrando 0 conta(s) selecionada(s)" passageiro que aparecia
+quando a busca no Meta demorava um pouco mais. Análise
 mostra criativo, com o filtro de Status "Ativos" (padrão) ou "Todos" (ativos +
 pausados), com
 custo por conversa iniciada R$ 4 ou mais acima da Meta CPA do cliente — ou,
@@ -221,6 +232,18 @@ dias/etc. são pra CPA e Valor usado, não pro Ritmo). Sem Investimento
 mensal cadastrado (Painel > Clientes ou no modal Editar), a coluna fica em
 branco — não dá pra calcular ritmo sem meta.
 
+⚠️ **Sobre a cor da coluna Ritmo (Etapa 21)**: o pedido foi "se tiver R$ 10
+pra cima ou pra baixo, verde; pra baixo, vermelho; pra cima, laranja" — o
+que faltava dizer era R$ 10 pra cima/baixo *de quê*. Implementei comparando
+o Ritmo com o Invest. diário que já está configurado na conta (não com
+zero), porque é a leitura que dá um sinal útil: verde = diferença de até R$
+10 (orçamento diário já no ritmo certo), laranja = Ritmo mais de R$ 10
+ACIMA do orçamento diário atual (precisaria investir mais por dia do que
+está configurado), vermelho = Ritmo mais de R$ 10 ABAIXO do orçamento
+diário atual (o orçamento atual está investindo mais rápido do que
+precisa). Se a ideia era outra (por exemplo, comparar o Ritmo com zero, ou
+com algum outro valor), me fala que ajusto rapidinho.
+
 ⚠️ **Pra arrastar e reordenar em Acompanhamento**: essa entrega inclui a
 migração `0009_account_sort_order.sql` (veja o passo 10) — sem rodar ela, a
 reordenação dá erro ao salvar. A ordem fica gravada em `account_bindings`
@@ -342,7 +365,7 @@ app/
   login/, esqueci-senha/, redefinir-senha/, auth/callback/   → autenticação
   c/[token]/      → CRM público de UMA instância (kanban somente leitura), sem login
   (app)/                                                     → área logada
-    painel/         → subgrupos na lateral: Geral, Acompanhamento, Clientes,
+    painel/         → subgrupos na lateral: Acompanhamento, Clientes,
                       Controle de Saldo, Visão Geral, Análise — cada um só
                       busca no Meta enquanto está ativo
     mensagens/      → abas Envio, Relatórios e Avisos, todas funcionais
@@ -524,12 +547,24 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     um filtro de status Ativos (padrão) / Todos. Acompanhamento
     ganhou a coluna Ritmo: quanto investir por dia até o fim do mês (sempre
     considerado com 30 dias) pra bater o Investimento mensal cadastrado
+15. ~~Filtro de status da Análise: Ativos/Todos (Etapa 20)~~ ✅ — o filtro de
+    status da Análise trocou de "Ativos + checkbox Incluir pausados" para
+    duas opções fixas, Ativos (padrão) e Todos (ativos + pausados)
+16. ~~Cor da coluna Ritmo, remoção da aba Geral e correção do
+    "Carregando…" (Etapa 21)~~ ✅ — a coluna Ritmo (Acompanhamento) agora
+    fica verde/laranja/vermelho conforme a diferença com o Invest. diário
+    já configurado na conta (veja o ⚠️ acima); a aba "Geral" (3 KPIs soltos,
+    duplicava a Visão Geral) foi removida, e a aba Visão Geral passou a
+    ser a que abre por padrão; e o indicador de carregamento do Painel
+    agora espera a lista de contas do Meta também terminar de carregar,
+    evitando o "Mostrando 0 conta(s) selecionada(s)" passageiro
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
 Pagamentos/Tipo de conta automático, saldo disponível corrigido, Tipo de
 conta 1x só + Análise refinada, menu suspenso legível no escuro, Análise
-com busca/atualizar/link/filtro de status + Ritmo) estão 100% concluídos.
-Não há mais nenhum item pendente do escopo combinado — próximos pedidos
-são novos incrementos, a critério seu.
+com busca/atualizar/link/filtro de status + Ritmo, filtro Ativos/Todos da
+Análise, cor do Ritmo/remoção da aba Geral/correção do carregamento) estão
+100% concluídos. Não há mais nenhum item pendente do escopo combinado —
+próximos pedidos são novos incrementos, a critério seu.
