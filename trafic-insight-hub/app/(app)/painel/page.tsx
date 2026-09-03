@@ -10,6 +10,7 @@ import { ControleSaldo } from "@/components/painel/controle-saldo";
 import { VisaoGeral } from "@/components/painel/visao-geral";
 import { AnaliseTab } from "@/components/painel/analise-tab";
 import { ClientesTab } from "@/components/painel/clientes-tab";
+import { EvolucaoTab } from "@/components/painel/evolucao-tab";
 import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
 import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { EditClientDialog } from "@/components/painel/edit-client-dialog";
@@ -112,6 +113,7 @@ function ritmoColorClass(rowRitmo: number | null, dailyBudget: number | undefine
 // pedido — por isso a aba inicial agora é "Visão Geral".
 const TABS = [
   { id: "acompanhamento", label: "Acompanhamento" },
+  { id: "evolucao", label: "Evolução" },
   { id: "clientes", label: "Clientes" },
   { id: "saldo", label: "Controle de Saldo" },
   { id: "visao-geral", label: "Visão Geral" },
@@ -549,13 +551,13 @@ export default function PainelPage() {
                         <th className="px-4 py-2 font-medium">Cliente</th>
                         <th className="px-4 py-2 font-medium">Conta</th>
                         <th className="px-4 py-2 font-medium">Status</th>
-                        <th className="px-4 py-2 text-right font-medium">CPA</th>
                         <th
                           className="px-4 py-2 text-right font-medium"
                           title="Editável aqui ou em Clientes — os dois ficam sincronizados"
                         >
                           CPA ideal
                         </th>
+                        <th className="px-4 py-2 text-right font-medium">CPA</th>
                         <th className="px-4 py-2 text-right font-medium">Valor usado</th>
                         <th className="px-4 py-2 text-right font-medium">Invest. diário</th>
                         <th
@@ -642,7 +644,12 @@ export default function PainelPage() {
                                 ))}
                               </select>
                             </td>
-                            <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.cost_per_result)}</td>
+                            <td className="px-4 py-2 text-right tabular-nums">
+                              <InlineNumber
+                                value={binding?.cpa_target ?? null}
+                                onSave={(v) => patchBinding(acc.account_id, { cpa_target: v })}
+                              />
+                            </td>
                             <td
                               className="px-4 py-2 text-right tabular-nums"
                               title={
@@ -651,10 +658,7 @@ export default function PainelPage() {
                                   : undefined
                               }
                             >
-                              <InlineNumber
-                                value={binding?.cpa_target ?? null}
-                                onSave={(v) => patchBinding(acc.account_id, { cpa_target: v })}
-                              />
+                              {fmtCurrency(insight?.cost_per_result)}
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
@@ -683,6 +687,13 @@ export default function PainelPage() {
                   </table>
                 </div>
               </div>
+            ) : null}
+
+            {tab === "evolucao" ? (
+              <EvolucaoTab
+                accounts={selectedAccounts}
+                clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
+              />
             ) : null}
 
             {tab === "clientes" ? (

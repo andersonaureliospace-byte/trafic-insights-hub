@@ -6,9 +6,10 @@ Vercel, com Supabase, n8n e uazapi (WhatsApp).
 
 Estado atual: **etapas 1 e 2 do plano concluídas** — base do Supabase/login
 único, e o Painel já fecha 100%, agora organizado em subgrupos na lateral
-esquerda (Acompanhamento, Clientes, Controle de Saldo, Visão Geral, Análise
-— a aba "Geral", que só mostrava 3 KPIs soltos e duplicava a "Visão Geral",
-foi removida; a aba que abre por padrão agora é Visão Geral) — cada um só
+esquerda (Acompanhamento, Evolução, Clientes, Controle de Saldo, Visão
+Geral, Análise — a aba "Geral", que só mostrava 3 KPIs soltos e duplicava a
+"Visão Geral", foi removida; a aba que abre por padrão agora é Visão Geral)
+— cada um só
 busca dado do Meta enquanto estiver ativo, pra não gastar requisição à toa
 com abas que você não está olhando. Acompanhamento tem a tabela de
 resultados com dados reais da
@@ -70,9 +71,10 @@ têm um botão "↻ Atualizar" pra puxar os dados de novo na hora, sem precisar
 dar F5. O período de Acompanhamento ganhou a opção "Últimos 3 dias + hoje"
 (mesma opção que já existia em Análise, agora disponível em qualquer
 seletor de período do Painel). Acompanhamento também ganhou uma nova
-coluna, CPA ideal — editável ali mesmo (e continua editável em Clientes
-também, os dois lugares ficam sincronizados); passar o mouse em cima mostra
-a diferença CPA ideal − CPA, sempre com o sinal + ou - na frente. A dica ao
+coluna, CPA ideal (antes da coluna CPA, editável ali mesmo — e continua
+editável em Clientes também, os dois lugares ficam sincronizados); passar o
+mouse em cima da coluna CPA mostra a diferença CPA ideal − CPA, sempre com
+o sinal + ou - na frente. A dica ao
 passar o mouse em cima do Ritmo também mudou: em vez do texto explicando a
 fórmula, agora mostra direto a diferença Invest. diário − Ritmo, no mesmo
 formato com sinal. E o menu suspenso dos filtros no modo escuro (o mesmo
@@ -80,7 +82,12 @@ problema da Etapa 18) recebeu um ajuste mais robusto — veja o ⚠️ abaixo.
 Além disso, Acompanhamento ganhou 3 filtros novos, todos começando fixos em
 "Todos": Status (filtra pelo nível de prioridade), CPA (mostra só CPA alto,
 ou seja, CPA acima do CPA ideal) e Investimento (Baixo = laranja no Ritmo,
-Alto = vermelho no Ritmo). Análise
+Alto = vermelho no Ritmo). Evolução é a aba nova: um quadro simples com o
+CPA de cada cliente dia a dia, período fixo em "últimos 7 dias + hoje" (sem
+seletor, não muda), colunas mais recentes primeiro com a data (dd/mm) e o
+advérbio de tempo embaixo (Hoje, Ontem, Anteontem, e dia da semana abreviado
+a partir do 3º dia atrás) — verde quando o CPA do dia é até R$ 2, vermelho
+quando passa de R$ 2 (veja o ⚠️ sobre esse valor fixo). Análise
 mostra criativo, com o filtro de Status "Ativos" (padrão) ou "Todos" (ativos +
 pausados), com
 custo por conversa iniciada R$ 4 ou mais acima da Meta CPA do cliente — ou,
@@ -274,6 +281,14 @@ vez de uma escolha do navegador. Se ainda aparecer claro em algum
 navegador/computador específico, me avisa com o nome do navegador que uso
 pra investigar esse caso.
 
+⚠️ **Sobre o valor fixo de R$ 2 em Evolução (Etapa 24)**: o pedido foi "se
+tiver até dois reais, verde; acima de dois reais, vermelho" — implementei
+literal, R$ 2 fixo pro CPA do dia de qualquer cliente, sem comparar com o
+CPA ideal de cada um (diferente do resto do Painel, onde tudo é relativo à
+meta de cada cliente — ex.: o filtro "CPA alto" em Acompanhamento, ou o R$4
+de Análise). Se a ideia era, por exemplo, "até R$ 2 acima do CPA ideal" (aí
+sim comparando com a meta de cada cliente), me fala que ajusto — é rápido.
+
 ⚠️ **Pra arrastar e reordenar em Acompanhamento**: essa entrega inclui a
 migração `0009_account_sort_order.sql` (veja o passo 10) — sem rodar ela, a
 reordenação dá erro ao salvar. A ordem fica gravada em `account_bindings`
@@ -395,9 +410,9 @@ app/
   login/, esqueci-senha/, redefinir-senha/, auth/callback/   → autenticação
   c/[token]/      → CRM público de UMA instância (kanban somente leitura), sem login
   (app)/                                                     → área logada
-    painel/         → subgrupos na lateral: Acompanhamento, Clientes,
-                      Controle de Saldo, Visão Geral, Análise — cada um só
-                      busca no Meta enquanto está ativo
+    painel/         → subgrupos na lateral: Acompanhamento, Evolução,
+                      Clientes, Controle de Saldo, Visão Geral, Análise —
+                      cada um só busca no Meta enquanto está ativo
     mensagens/      → abas Envio, Relatórios e Avisos, todas funcionais
     auditoria/      → Localização e Erros de veiculação, funcionais
     crm/            → instâncias, kanban, detalhe do lead — funcional
@@ -596,12 +611,18 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
 18. ~~Filtro 3 dias + hoje, CPA ideal editável, dica com sinal e 3 filtros
     novos em Acompanhamento + menu suspenso escuro de novo (Etapa 23)~~ ✅ —
     período "Últimos 3 dias + hoje" também em Acompanhamento; nova coluna
-    CPA ideal (editável ali e em Clientes, sincronizado); as dicas ao passar
-    o mouse em Ritmo e CPA ideal agora mostram só a diferença
+    CPA ideal, antes da coluna CPA (editável ali e em Clientes, sincronizado);
+    as dicas ao passar o mouse em Ritmo e CPA agora mostram só a diferença
     (Invest. diário − Ritmo e CPA ideal − CPA), sempre com sinal + ou -; 3
     filtros novos em Acompanhamento — Status, CPA (CPA alto) e Investimento
     (Baixo/Alto) —, todos começando em "Todos"; e ajuste mais robusto no
     `color-scheme` do menu suspenso no escuro (veja o ⚠️ acima)
+19. ~~Nova aba Evolução (Etapa 24)~~ ✅ — quadro simples com o CPA de cada
+    cliente dia a dia, período fixo em "últimos 7 dias + hoje" (sem
+    seletor), colunas mais recentes primeiro com data + advérbio de tempo
+    (Hoje/Ontem/Anteontem/dia da semana), verde até R$ 2 e vermelho acima de
+    R$ 2 — valor fixo, não relativo ao CPA ideal de cada cliente (veja o ⚠️
+    acima)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -611,6 +632,6 @@ conta 1x só + Análise refinada, menu suspenso legível no escuro, Análise
 com busca/atualizar/link/filtro de status + Ritmo, filtro Ativos/Todos da
 Análise, cor do Ritmo/remoção da aba Geral/correção do carregamento, botão
 Atualizar em todas as abas, filtro 3 dias + hoje/CPA ideal/dicas com
-sinal/3 filtros novos em Acompanhamento) estão 100% concluídos. Não há mais
-nenhum item pendente do escopo combinado — próximos pedidos são novos
-incrementos, a critério seu.
+sinal/3 filtros novos em Acompanhamento, aba Evolução) estão 100%
+concluídos. Não há mais nenhum item pendente do escopo combinado —
+próximos pedidos são novos incrementos, a critério seu.
