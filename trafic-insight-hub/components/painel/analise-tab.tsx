@@ -13,6 +13,7 @@ const ANALYSIS_PRESETS = DATE_PRESETS;
 interface CreativeRow {
   id: string;
   name: string;
+  adset_id: string | null;
   adset_name: string | null;
   campaign_name: string | null;
   spend: number;
@@ -49,6 +50,7 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [refreshingId, setRefreshingId] = useState<string | null>(null);
 
   const accountNameById = useMemo(() => new Map(accounts.map((a) => [a.account_id, a.name])), [accounts]);
 
@@ -102,6 +104,45 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
       prev
         ? prev.map((g) => ({ ...g, ads: g.ads.map((a) => (a.id === ad.id ? { ...a, status: next } : a)) }))
         : prev,
+    );
+  }
+
+  // Pausa o criativo + o conjunto, e duplica o conjunto (com todos os
+  // anúncios, inclusive o pausado) como rascunho pausado — ver
+  // lib/meta/adset-refresh.ts. Excluir o criativo pausado na cópia, ativar
+  // e publicar continua manual, no Gerenciador de Anúncios.
+  async function refreshAdSet(ad: CreativeRow) {
+    if (!ad.adset_id) {
+      alert("Não encontrei o ID do conjunto desse anúncio.");
+      return;
+    }
+    if (
+      !confirm(
+        `Pausar o criativo "${ad.name}", pausar o conjunto "${ad.adset_name ?? ""}" e criar uma cópia pausada (rascunho) com todos os criativos, inclusive esse. Depois você exclui o criativo pausado na cópia, ativa o conjunto e publica manualmente. Confirma?`,
+      )
+    ) {
+      return;
+    }
+    setRefreshingId(ad.id);
+    const res = await fetch("/api/analysis/refresh-adset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adId: ad.id, adsetId: ad.adset_id }),
+    });
+    const d = await res.json();
+    setRefreshingId(null);
+    if (d.error) {
+      alert(d.error);
+      return;
+    }
+    const adWarn = d.adErrors?.length
+      ? ` (${d.adErrors.length} anúncio(s) não copiado(s) — confira no Gerenciador de Anúncios)`
+      : "";
+    alert(
+      `Conjunto pausado e duplicado em rascunho${adWarn}. Abra o Gerenciador de Anúncios, exclua o criativo pausado na cópia, ative o conjunto e publique.`,
+    );
+    setGroups((prev) =>
+      prev ? prev.map((g) => ({ ...g, ads: g.ads.map((a) => (a.id === ad.id ? { ...a, status: "PAUSED" } : a)) })) : prev,
     );
   }
 
@@ -281,13 +322,23 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                             </span>
                           </td>
                           <td className="px-4 py-2 text-right">
-                            <button
-                              onClick={() => void toggleStatus(ad)}
-                              disabled={togglingId === ad.id}
-                              className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
-                            >
-                              {togglingId === ad.id ? "…" : active ? "Pausar" : "Ativar"}
-                            </button>
+                            <div className="flex justify-end gap-1.5">
+                              <button
+                                onClick={() => void toggleStatus(ad)}
+                                disabled={togglingId === ad.id || refreshingId === ad.id}
+                                className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
+                              >
+                                {togglingId === ad.id ? "…" : active ? "Pausar" : "Ativar"}
+                              </button>
+                              <button
+                                onClick={() => void refreshAdSet(ad)}
+                                disabled={refreshingId === ad.id || togglingId === ad.id}
+                                title="Pausa o criativo, pausa o conjunto e duplica o conjunto como rascunho pausado (com todos os criativos, inclusive este) — excluir o criativo pausado, ativar e publicar fica manual"
+                                className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
+                              >
+                                {refreshingId === ad.id ? "…" : "🔁 Recriar conjunto"}
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );

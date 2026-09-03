@@ -14,6 +14,7 @@ import { isVaga, EXCLUDED_OBJECTIVES } from "./shared";
 export interface CreativeCostRow {
   id: string;
   name: string;
+  adset_id: string | null;
   adset_name: string | null;
   campaign_name: string | null;
   spend: number;
@@ -27,6 +28,7 @@ type ActionRow = { action_type?: string; value?: string };
 interface AdInsightRow {
   ad_id?: string;
   ad_name?: string;
+  adset_id?: string;
   adset_name?: string;
   campaign_id?: string;
   campaign_name?: string;
@@ -59,7 +61,7 @@ export async function getCreativeCostAnalysis(
 
   const [insightRows, adStatusRows, campaignRows] = await Promise.all([
     metaGetAll<AdInsightRow>(token, `/${id}/insights`, {
-      fields: "ad_id,ad_name,adset_name,campaign_id,campaign_name,spend,actions,cost_per_action_type",
+      fields: "ad_id,ad_name,adset_id,adset_name,campaign_id,campaign_name,spend,actions,cost_per_action_type",
       ...presetParams(datePreset),
       level: "ad",
       limit: "500",
@@ -124,6 +126,7 @@ export async function getCreativeCostAnalysis(
     rows.push({
       id: row.ad_id,
       name: row.ad_name || row.ad_id,
+      adset_id: row.adset_id ?? null,
       adset_name: row.adset_name ?? null,
       campaign_name: row.campaign_name ?? null,
       spend,
