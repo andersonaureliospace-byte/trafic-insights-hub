@@ -9,7 +9,7 @@
 // anúncio real se os números baterem com o Gerenciador de Anúncios.
 
 import { metaGetAll, presetParams, type DateRangeInput } from "./client";
-import { isVaga } from "./shared";
+import { isVaga, EXCLUDED_OBJECTIVES } from "./shared";
 
 export interface CreativeCostRow {
   id: string;
@@ -28,6 +28,7 @@ interface AdInsightRow {
   ad_id?: string;
   ad_name?: string;
   adset_name?: string;
+  campaign_id?: string;
   campaign_name?: string;
   spend?: string;
   actions?: ActionRow[];
@@ -38,6 +39,11 @@ interface AdStatusRow {
   id?: string;
   effective_status?: string;
   status?: string;
+}
+
+interface CampaignRow {
+  id?: string;
+  objective?: string;
 }
 
 function isMessagingConversationAction(type?: string): boolean {
@@ -51,9 +57,9 @@ export async function getCreativeCostAnalysis(
 ): Promise<CreativeCostRow[]> {
   const id = accountId.startsWith("act_") ? accountId : `act_${accountId}`;
 
-  const [insightRows, adStatusRows] = await Promise.all([
+  const [insightRows, adStatusRows, campaignRows] = await Promise.all([
     metaGetAll<AdInsightRow>(token, `/${id}/insights`, {
-      fields: "ad_id,ad_name,adset_name,campaign_name,spend,actions,cost_per_action_type",
+      fields: "ad_id,ad_name,adset_name,campaign_id,campaign_name,spend,actions,cost_per_action_type",
       ...presetParams(datePreset),
       level: "ad",
       limit: "500",
@@ -66,6 +72,13 @@ export async function getCreativeCostAnalysis(
       console.error("creative analysis status err (non-fatal)", id, e);
       return [] as AdStatusRow[];
     }),
+    metaGetAll<CampaignRow>(token, `/${id}/campaigns`, {
+      fields: "id,objective",
+      limit: "500",
+    }).catch((e) => {
+      console.error("creative analysis campaigns err (non-fatal)", id, e);
+      return [] as CampaignRow[];
+    }),
   ]);
 
   const statusMap = new Map<string, string>();
@@ -73,10 +86,19 @@ export async function getCreativeCostAnalysis(
     if (a.id) statusMap.set(a.id, a.effective_status || a.status || "");
   }
 
+  // Campanhas de objetivo Tráfego/Reconhecimento/Engajamento etc. (não é o
+  // tipo de resultado que o gestor acompanha aqui) — mesma regra usada em
+  // Acompanhamento e Evolução, agora também em Análise.
+  const excludedObjectiveIds = new Set<string>();
+  for (const c of campaignRows) {
+    if (c.id && c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) excludedObjectiveIds.add(c.id);
+  }
+
   const rows: CreativeCostRow[] = [];
   for (const row of insightRows) {
     if (!row.ad_id) continue;
     if (isVaga(row.campaign_name)) continue;
+    if (row.campaign_id && excludedObjectiveIds.has(row.campaign_id)) continue;
 
     // Devolve o status de todo criativo (ativo ou pausado) — quem decide
     // quais status entram na lista final é a rota (app/api/analysis/creatives),

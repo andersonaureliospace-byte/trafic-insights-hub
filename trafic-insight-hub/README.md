@@ -150,8 +150,14 @@ menu suspenso — o app avisa o navegador, via `color-scheme`, exatamente
 quando é claro e quando é escuro (preso ao mesmo gatilho que já troca as
 cores do resto da página), em vez de deixar o navegador "escolher" entre os
 dois e às vezes desenhar esse menu no claro por padrão mesmo com a página
-no escuro. Com isso, todas as áreas do plano original + os extras pedidos
-ao longo do caminho estão 100% concluídas.
+no escuro. Campanha com objetivo Tráfego (o que a Meta chama de "Visitas ao
+perfil" também cai nesse objetivo) ou com "vaga" no nome já era excluída de
+Acompanhamento e Evolução — agora essa mesma exclusão foi completada em
+Análise e Visão Geral, que até então só excluíam pelo nome da campanha e
+deixavam passar quem tinha objetivo Tráfego com outro nome; agora nenhuma
+dessas campanhas aparece em nenhuma métrica, gráfico, total ou tela do
+Painel, nas 4 abas. Com isso, todas as áreas do plano original + os extras
+pedidos ao longo do caminho estão 100% concluídas.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -637,6 +643,12 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     estava chamando tanta atenção quanto o CPA em si; agora ela é menor e
     mais clara (opacidade reduzida), e o CPA fica maior e em negrito — quem
     precisa se destacar de cara é o CPA, a diferença é só um complemento
+22. ~~Exclusão de campanhas de Tráfego/[VAGA] em Análise e Visão Geral
+    (Etapa 27)~~ ✅ — Acompanhamento e Evolução já excluíam corretamente
+    campanha com objetivo Tráfego (inclui "Visitas ao perfil") e campanha
+    com "vaga" no nome; Análise e Visão Geral só excluíam pelo nome — agora
+    as duas também excluem pelo objetivo da campanha, então nenhuma dessas
+    campanhas aparece mais em nenhuma métrica, tela ou total do Painel
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -647,6 +659,7 @@ com busca/atualizar/link/filtro de status + Ritmo, filtro Ativos/Todos da
 Análise, cor do Ritmo/remoção da aba Geral/correção do carregamento, botão
 Atualizar em todas as abas, filtro 3 dias + hoje/CPA ideal/dicas com
 sinal/3 filtros novos em Acompanhamento, aba Evolução, correção do cálculo
-e cor da coluna CPA, ajuste fino da coluna CPA) estão 100% concluídos. Não
-há mais nenhum item pendente do escopo combinado — próximos pedidos são
-novos incrementos, a critério seu.
+e cor da coluna CPA, ajuste fino da coluna CPA, exclusão consistente de
+campanhas de Tráfego/[VAGA] em Análise e Visão Geral) estão 100%
+concluídos. Não há mais nenhum item pendente do escopo combinado —
+próximos pedidos são novos incrementos, a critério seu.

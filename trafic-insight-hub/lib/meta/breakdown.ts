@@ -7,7 +7,14 @@
 // acessível (permissão pode cair sem avisar).
 
 import { metaGet, metaGetAll, presetParams, type DateRangeInput } from "./client";
-import { isVaga, pickFirstNumeric, lifetimeToDailyEquivalent, checkPageAdsAccess, extractAdPageId } from "./shared";
+import {
+  isVaga,
+  EXCLUDED_OBJECTIVES,
+  pickFirstNumeric,
+  lifetimeToDailyEquivalent,
+  checkPageAdsAccess,
+  extractAdPageId,
+} from "./shared";
 
 export type BreakdownLevel = "campaign" | "adset" | "ad";
 
@@ -149,11 +156,16 @@ export async function getAccountBreakdown(
 
   const activeCampaignsWithCbo = new Map<string, number>();
   const activeCampaignsNoCbo = new Set<string>();
+  // Campanhas de objetivo Tráfego/Reconhecimento/Engajamento etc. (não é o
+  // tipo de resultado que o gestor acompanha aqui) — mesma regra usada em
+  // Acompanhamento e Evolução, agora também em Visão Geral.
+  const excludedObjectiveIds = new Set<string>();
 
   for (const c of camps) {
     if (!c.id) continue;
     if (c.name) campaignNames.set(c.id, c.name);
     if (c.objective) campaignObjective.set(c.id, c.objective);
+    if (c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) excludedObjectiveIds.add(c.id);
     let cDaily: number | null = null;
     if (c.daily_budget) {
       cDaily = Number(c.daily_budget) / 100;
@@ -165,7 +177,7 @@ export async function getAccountBreakdown(
     const eff = c.effective_status || c.status || "";
     if (eff) campaignStatus.set(c.id, eff);
     if (level === "campaign") statusMap.set(c.id, eff);
-    if (isActive(c.effective_status) && !isVaga(c.name)) {
+    if (isActive(c.effective_status) && !isVaga(c.name) && !excludedObjectiveIds.has(c.id)) {
       if (cDaily != null) activeCampaignsWithCbo.set(c.id, cDaily);
       else activeCampaignsNoCbo.add(c.id);
     }
@@ -251,6 +263,7 @@ export async function getAccountBreakdown(
     }
     if (!rowId) continue;
     if (isVaga(row.campaign_name)) continue;
+    if (row.campaign_id && excludedObjectiveIds.has(row.campaign_id)) continue;
 
     const spend = row.spend ? Number(row.spend) : 0;
     const impressions = row.impressions ? Number(row.impressions) : 0;
@@ -327,6 +340,7 @@ export async function getAccountBreakdown(
       const campaignIdForRow = adsetIdForRow ? adsetCampaign.get(adsetIdForRow) ?? null : null;
       const campName = campaignIdForRow ? campaignNames.get(campaignIdForRow) ?? null : null;
       if (campName && isVaga(campName)) continue;
+      if (campaignIdForRow && excludedObjectiveIds.has(campaignIdForRow)) continue;
       const pid = adPageId.get(a.id) ?? null;
       rows.push({
         id: a.id,
