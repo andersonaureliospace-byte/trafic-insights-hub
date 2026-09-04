@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -10,23 +10,30 @@ import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 // usados no resto do Painel.
 const ANALYSIS_PRESETS = DATE_PRESETS;
 
-interface CreativeRow {
+interface AdRow {
   id: string;
   name: string;
-  adset_id: string | null;
-  adset_name: string | null;
-  campaign_name: string | null;
   spend: number;
   conversations: number | null;
   cost_per_conversation: number | null;
   status: string | null;
 }
 
+interface AdSetRow {
+  id: string;
+  name: string;
+  campaign_name: string | null;
+  spend: number;
+  conversations: number | null;
+  cost_per_conversation: number | null;
+  ads: AdRow[];
+}
+
 interface Group {
   accountId: string;
   clientName: string;
   cpaTarget: number;
-  ads: CreativeRow[];
+  adsets: AdSetRow[];
 }
 
 interface Skipped {
@@ -41,16 +48,23 @@ function statusLabel(status: string | null): string {
   return status || "—";
 }
 
+// Mesmo cálculo de "Diferença" usado nas duas linhas (conjunto e criativo):
+// sem conversa, o sinal vira o próprio gasto acima da Meta CPA; com
+// conversa, é custo por conversa menos a Meta CPA.
+function diffFor(spend: number, conversations: number | null, costPerConversation: number | null, cpaTarget: number) {
+  const noConversion = !conversations || conversations <= 0;
+  return noConversion ? spend - cpaTarget : (costPerConversation ?? 0) - cpaTarget;
+}
+
 export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
   const [preset, setPreset] = useState("last_3d_plus_today");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"active" | "all">("active");
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
-  const [refreshingId, setRefreshingId] = useState<string | null>(null);
+  const [pausingId, setPausingId] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const accountNameById = useMemo(() => new Map(accounts.map((a) => [a.account_id, a.name])), [accounts]);
 
@@ -61,13 +75,12 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
     }
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/analysis/creatives", {
+    const res = await fetch("/api/analysis/adsets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         accountIds: accounts.map((a) => a.account_id),
         datePreset: preset,
-        statuses: statusFilter === "all" ? ["ACTIVE", "PAUSED"] : ["ACTIVE"],
       }),
     });
     const d = await res.json();
@@ -78,92 +91,95 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
     }
     setGroups(d.groups ?? []);
     setSkipped(d.skipped ?? []);
-  }, [accounts, preset, statusFilter]);
+  }, [accounts, preset]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas exibidas/período/filtro de status
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas exibidas/período
     void load();
   }, [load]);
 
-  async function toggleStatus(ad: CreativeRow) {
-    const next = ad.status?.toUpperCase() === "ACTIVE" ? "PAUSED" : "ACTIVE";
-    setTogglingId(ad.id);
+  function toggleExpand(adsetId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(adsetId)) next.delete(adsetId);
+      else next.add(adsetId);
+      return next;
+    });
+  }
+
+  // Isolado de propósito (pedido explícito): só pausa o criativo, mesma
+  // chamada simples de /api/meta/status já usada em Visão Geral — sem
+  // mexer no conjunto.
+  async function pauseCreative(ad: AdRow, adsetId: string) {
+    if (!confirm(`Pausar o criativo "${ad.name}"? Confirma?`)) return;
+    setPausingId(ad.id);
     const res = await fetch("/api/meta/status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ items: [{ id: ad.id, type: "ad" }], status: next }),
+      body: JSON.stringify({ items: [{ id: ad.id, type: "ad" }], status: "PAUSED" }),
     });
     const d = await res.json();
-    setTogglingId(null);
+    setPausingId(null);
     const result = d.results?.[0];
     if (!result?.ok) {
-      alert(result?.error ?? "Não foi possível atualizar o status.");
+      alert(result?.error ?? "Não foi possível pausar o criativo.");
       return;
     }
-    setGroups((prev) =>
-      prev
-        ? prev.map((g) => ({ ...g, ads: g.ads.map((a) => (a.id === ad.id ? { ...a, status: next } : a)) }))
-        : prev,
-    );
-  }
-
-  // Pausa o criativo + o conjunto, e acrescenta "AQUI" no final do nome do
-  // conjunto — ver lib/meta/adset-pause-and-tag.ts sobre por que não
-  // duplica mais o conjunto automaticamente. Recriar o conjunto do zero
-  // continua manual, no Gerenciador de Anúncios.
-  async function pauseAdSet(ad: CreativeRow) {
-    if (!ad.adset_id) {
-      alert("Não encontrei o ID do conjunto desse anúncio.");
-      return;
-    }
-    if (
-      !confirm(
-        `Pausar o criativo "${ad.name}", pausar o conjunto "${ad.adset_name ?? ""}" e acrescentar "AQUI" no final do nome do conjunto. Confirma?`,
-      )
-    ) {
-      return;
-    }
-    setRefreshingId(ad.id);
-    const res = await fetch("/api/analysis/pause-adset", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ adId: ad.id, adsetId: ad.adset_id, adsetName: ad.adset_name ?? "" }),
-    });
-    const d = await res.json();
-    setRefreshingId(null);
-    if (d.error) {
-      alert(d.error);
-      return;
-    }
-    alert(`Criativo e conjunto pausados. Conjunto renomeado pra "${d.newName}".`);
     setGroups((prev) =>
       prev
         ? prev.map((g) => ({
             ...g,
-            ads: g.ads.map((a) => (a.id === ad.id ? { ...a, status: "PAUSED", adset_name: d.newName } : a)),
+            adsets: g.adsets.map((as) =>
+              as.id === adsetId
+                ? { ...as, ads: as.ads.map((a) => (a.id === ad.id ? { ...a, status: "PAUSED" } : a)) }
+                : as,
+            ),
           }))
         : prev,
     );
   }
 
-  // Busca por nome — de propósito global: filtra o criativo em qualquer
-  // conta/cliente ao mesmo tempo, não só dentro de um grupo por vez.
+  // Isolado de propósito (pedido explícito): só pausa o conjunto inteiro,
+  // mesma chamada simples de /api/meta/status já usada em Visão Geral — sem
+  // renomear nem duplicar nada. Some da lista ao pausar, já que deixa de
+  // ser um conjunto ativo pra sinalizar aqui.
+  async function pauseAdSet(adset: AdSetRow) {
+    if (!confirm(`Pausar o conjunto "${adset.name}" inteiro? Confirma?`)) return;
+    setPausingId(adset.id);
+    const res = await fetch("/api/meta/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: [{ id: adset.id, type: "adset" }], status: "PAUSED" }),
+    });
+    const d = await res.json();
+    setPausingId(null);
+    const result = d.results?.[0];
+    if (!result?.ok) {
+      alert(result?.error ?? "Não foi possível pausar o conjunto.");
+      return;
+    }
+    setGroups((prev) =>
+      prev
+        ? prev.map((g) => ({ ...g, adsets: g.adsets.filter((as) => as.id !== adset.id) })).filter((g) => g.adsets.length > 0)
+        : prev,
+    );
+  }
+
+  // Busca por nome — de propósito global: filtra o conjunto (ou a campanha)
+  // em qualquer conta/cliente ao mesmo tempo, não só dentro de um grupo.
   const q = search.trim().toLowerCase();
   const filteredGroups = (groups ?? [])
     .map((g) => ({
       ...g,
-      ads: q
-        ? g.ads.filter(
-            (ad) =>
-              ad.name.toLowerCase().includes(q) ||
-              (ad.adset_name ?? "").toLowerCase().includes(q) ||
-              (ad.campaign_name ?? "").toLowerCase().includes(q),
+      adsets: q
+        ? g.adsets.filter(
+            (as) => as.name.toLowerCase().includes(q) || (as.campaign_name ?? "").toLowerCase().includes(q),
           )
-        : g.ads,
+        : g.adsets,
     }))
-    .filter((g) => g.ads.length > 0);
+    .filter((g) => g.adsets.length > 0);
 
-  const totalAds = filteredGroups.reduce((s, g) => s + g.ads.length, 0);
+  const totalAdsets = filteredGroups.reduce((s, g) => s + g.adsets.length, 0);
 
   if (accounts.length === 0) {
     return <p className="text-sm text-zinc-500">Nenhuma conta selecionada.</p>;
@@ -174,18 +190,19 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <div>
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            Custo por conversa iniciada {loading ? "· atualizando…" : ""}
+            Custo por conversa iniciada, por conjunto {loading ? "· atualizando…" : ""}
           </h2>
           <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-            Com custo por conversa iniciada R$ 4 ou mais acima da Meta CPA — ou, sem nenhuma conversa iniciada, com o
-            próprio gasto R$ 4 ou mais acima da Meta CPA. Nada é pausado sozinho, o botão é manual.
+            Só conjunto ativo, com custo por conversa iniciada R$ 4 ou mais acima da Meta CPA — ou, sem nenhuma
+            conversa iniciada, com o próprio gasto R$ 4 ou mais acima da Meta CPA. Duplo clique no conjunto mostra os
+            criativos dele. Nada é pausado sozinho, os botões são manuais.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar criativo por nome…"
+            placeholder="Buscar conjunto/campanha…"
             className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
           />
           <select
@@ -209,40 +226,13 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
-        <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Status</span>
-        <button
-          type="button"
-          onClick={() => setStatusFilter("active")}
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            statusFilter === "active"
-              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-              : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
-          }`}
-        >
-          Ativos
-        </button>
-        <button
-          type="button"
-          onClick={() => setStatusFilter("all")}
-          title="Ativos e pausados"
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-            statusFilter === "all"
-              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-              : "bg-zinc-100 text-zinc-500 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-400 dark:hover:bg-zinc-700"
-          }`}
-        >
-          Todos
-        </button>
-      </div>
-
       {error ? (
         <p className="px-4 py-6 text-sm text-red-600">{error}</p>
       ) : !groups ? (
         <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p>
-      ) : totalAds === 0 ? (
+      ) : totalAdsets === 0 ? (
         <p className="px-4 py-6 text-sm text-zinc-500">
-          {q ? "Nenhum criativo encontrado com esse nome." : "Nenhum criativo acima do limite nesse período."}
+          {q ? "Nenhum conjunto encontrado com esse nome." : "Nenhum conjunto ativo acima do limite nesse período."}
         </p>
       ) : (
         <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -261,86 +251,129 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                 </a>
                 <span className="text-xs text-zinc-500 dark:text-zinc-400">Meta CPA: {fmtCurrency(g.cpaTarget)}</span>
                 <span className="ml-auto rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
-                  {g.ads.length} criativo(s)
+                  {g.adsets.length} conjunto(s)
                 </span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
-                      <th className="px-4 py-1.5 font-medium">Anúncio</th>
                       <th className="px-4 py-1.5 font-medium">Conjunto</th>
+                      <th className="px-4 py-1.5 font-medium">Campanha</th>
                       <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
                       <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
                       <th className="px-4 py-1.5 text-right font-medium">Conversas</th>
                       <th className="px-4 py-1.5 text-right font-medium">Gasto</th>
-                      <th className="px-4 py-1.5 font-medium">Status</th>
                       <th className="px-4 py-1.5 font-medium"></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {g.ads.map((ad) => {
-                      const active = ad.status?.toUpperCase() === "ACTIVE";
-                      const noConversion = !ad.conversations || ad.conversations <= 0;
-                      // Sem conversa iniciada, não existe "custo por conversa" pra comparar — o sinal
-                      // vira o próprio gasto (ex.: CPA ideal R$6, gastou R$10, zero conversa).
-                      const diff = noConversion ? ad.spend - g.cpaTarget : (ad.cost_per_conversation ?? 0) - g.cpaTarget;
+                    {g.adsets.map((adset) => {
+                      const noConversion = !adset.conversations || adset.conversations <= 0;
+                      const diff = diffFor(adset.spend, adset.conversations, adset.cost_per_conversation, g.cpaTarget);
+                      const isOpen = expanded.has(adset.id);
                       return (
-                        <tr key={ad.id} className="border-t border-zinc-100 dark:border-zinc-800/60">
-                          <td className="max-w-[240px] truncate px-4 py-2" title={ad.name}>
-                            {ad.name}
-                          </td>
-                          <td
-                            className="max-w-[180px] truncate px-4 py-2 text-zinc-500 dark:text-zinc-400"
-                            title={ad.adset_name ?? undefined}
+                        <Fragment key={adset.id}>
+                          <tr
+                            onDoubleClick={() => toggleExpand(adset.id)}
+                            className="cursor-pointer select-none border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-800/40"
+                            title="Duplo clique pra ver os criativos desse conjunto"
                           >
-                            {ad.adset_name ?? "—"}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums font-medium text-amber-700 dark:text-amber-400">
-                            {noConversion ? (
-                              <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
-                                —
-                              </span>
-                            ) : (
-                              fmtCurrency(ad.cost_per_conversation)
-                            )}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums text-red-600 dark:text-red-400">
-                            +{fmtCurrency(diff)}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums">{ad.conversations ?? "—"}</td>
-                          <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(ad.spend)}</td>
-                          <td className="px-4 py-2">
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                active
-                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                                  : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-                              }`}
+                            <td className="max-w-[220px] truncate px-4 py-2" title={adset.name}>
+                              <span className="mr-1 inline-block w-3 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
+                              {adset.name}
+                            </td>
+                            <td
+                              className="max-w-[180px] truncate px-4 py-2 text-zinc-500 dark:text-zinc-400"
+                              title={adset.campaign_name ?? undefined}
                             >
-                              {statusLabel(ad.status)}
-                            </span>
-                          </td>
-                          <td className="px-4 py-2 text-right">
-                            <div className="flex justify-end gap-1.5">
+                              {adset.campaign_name ?? "—"}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums font-medium text-amber-700 dark:text-amber-400">
+                              {noConversion ? (
+                                <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
+                                  —
+                                </span>
+                              ) : (
+                                fmtCurrency(adset.cost_per_conversation)
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums text-red-600 dark:text-red-400">
+                              +{fmtCurrency(diff)}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums">{adset.conversations ?? "—"}</td>
+                            <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(adset.spend)}</td>
+                            <td className="px-4 py-2 text-right">
                               <button
-                                onClick={() => void toggleStatus(ad)}
-                                disabled={togglingId === ad.id || refreshingId === ad.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void pauseAdSet(adset);
+                                }}
+                                disabled={pausingId === adset.id}
+                                title="Pausa só o conjunto inteiro — não mexe em nenhum criativo"
                                 className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
                               >
-                                {togglingId === ad.id ? "…" : active ? "Pausar" : "Ativar"}
+                                {pausingId === adset.id ? "…" : "Pausar conjunto"}
                               </button>
-                              <button
-                                onClick={() => void pauseAdSet(ad)}
-                                disabled={refreshingId === ad.id || togglingId === ad.id}
-                                title='Pausa o criativo, pausa o conjunto e acrescenta "AQUI" no final do nome do conjunto — recriar o conjunto do zero fica manual, no Gerenciador de Anúncios'
-                                className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
-                              >
-                                {refreshingId === ad.id ? "…" : "⏸️ Pausar conjunto"}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
+                            </td>
+                          </tr>
+                          {isOpen ? (
+                            <tr className="border-t border-zinc-100 dark:border-zinc-800/60">
+                              <td colSpan={7} className="bg-zinc-50/60 px-4 py-2 dark:bg-zinc-800/20">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                                      <th className="px-3 py-1 font-medium">Criativo</th>
+                                      <th className="px-3 py-1 text-right font-medium">Custo/conversa</th>
+                                      <th className="px-3 py-1 text-right font-medium">Conversas</th>
+                                      <th className="px-3 py-1 text-right font-medium">Gasto</th>
+                                      <th className="px-3 py-1 font-medium">Status</th>
+                                      <th className="px-3 py-1 font-medium"></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {adset.ads.map((ad) => {
+                                      const adNoConversion = !ad.conversations || ad.conversations <= 0;
+                                      return (
+                                        <tr key={ad.id} className="border-t border-zinc-100 dark:border-zinc-800/60">
+                                          <td className="max-w-[240px] truncate px-3 py-1.5" title={ad.name}>
+                                            {ad.name}
+                                          </td>
+                                          <td className="px-3 py-1.5 text-right tabular-nums">
+                                            {adNoConversion ? "—" : fmtCurrency(ad.cost_per_conversation)}
+                                          </td>
+                                          <td className="px-3 py-1.5 text-right tabular-nums">{ad.conversations ?? "—"}</td>
+                                          <td className="px-3 py-1.5 text-right tabular-nums">{fmtCurrency(ad.spend)}</td>
+                                          <td className="px-3 py-1.5">
+                                            <span
+                                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                                ad.status?.toUpperCase() === "ACTIVE"
+                                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                                  : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                                              }`}
+                                            >
+                                              {statusLabel(ad.status)}
+                                            </span>
+                                          </td>
+                                          <td className="px-3 py-1.5 text-right">
+                                            <button
+                                              onClick={() => void pauseCreative(ad, adset.id)}
+                                              disabled={pausingId === ad.id}
+                                              title="Pausa só esse criativo — não mexe no conjunto"
+                                              className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
+                                            >
+                                              {pausingId === ad.id ? "…" : "Pausar criativo"}
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
                       );
                     })}
                   </tbody>

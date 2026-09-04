@@ -156,14 +156,17 @@ Acompanhamento e Evolução — agora essa mesma exclusão foi completada em
 Análise e Visão Geral, que até então só excluíam pelo nome da campanha e
 deixavam passar quem tinha objetivo Tráfego com outro nome; agora nenhuma
 dessas campanhas aparece em nenhuma métrica, gráfico, total ou tela do
-Painel, nas 4 abas. Painel > Análise ganhou um segundo botão por criativo,
-"⏸️ Pausar conjunto" — além do "Pausar" que já existia (e continua igual),
-esse botão novo pausa o criativo, pausa o conjunto inteiro e acrescenta
-"AQUI" no final do nome do conjunto, pra achar fácil no Gerenciador de
-Anúncios na hora de recriar; recriar o conjunto do zero continua manual —
-veja o ⚠️ abaixo sobre por que não duplica automaticamente. Com isso, todas
-as áreas do plano original + os extras pedidos ao longo do caminho estão
-100% concluídas.
+Painel, nas 4 abas. Painel > Análise foi reorganizada por conjunto em vez
+de por criativo: mostra só conjunto ATIVO com custo por conversa iniciada
+R$ 4 ou mais acima da Meta CPA (ou, sem nenhuma conversa iniciada, com o
+próprio gasto R$ 4 ou mais acima da Meta CPA) — dando duplo clique no
+conjunto, expande a lista dos criativos daquele conjunto com gasto,
+conversas e custo por conversa de cada um. Os dois botões de pausar ficam
+isolados: "Pausar conjunto" na linha do conjunto (só mexe no conjunto),
+"Pausar criativo" na linha de cada criativo expandido (só mexe naquele
+anúncio) — nenhum dos dois duplica ou renomeia mais nada, veja o ⚠️ abaixo
+sobre o histórico dessa mudança. Com isso, todas as áreas do plano original
++ os extras pedidos ao longo do caminho estão 100% concluídas.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -312,8 +315,8 @@ por usuário/conta (nunca em localStorage/sessionStorage do navegador), então
 funciona igual em qualquer computador ou navegador que você usar pra
 acessar o Painel.
 
-⚠️ **Sobre "⏸️ Pausar conjunto" em Análise — histórico (Etapas 28-30)**: as
-duas primeiras versões desse botão (Etapas 28 e 29) tentavam duplicar o
+⚠️ **Sobre a Análise por conjunto e os botões de pausar — histórico (Etapas
+28-31)**: as duas primeiras versões (Etapas 28 e 29) tentavam duplicar o
 conjunto automaticamente pela Graph API — mesma ideia do "Duplicar" do
 Gerenciador de Anúncios, feita na raça via chamadas diretas — pra criar uma
 cópia pausada com todos os criativos originais, inclusive o que tinha
@@ -323,15 +326,18 @@ servem pra listar; o certo é `/act_{conta}/adsets` e `/act_{conta}/ads`),
 mas mesmo corrigido esbarrou num limite da própria Meta que não tem como
 contornar por fora: criar um anúncio NOVO exige que a Página do criativo
 esteja compartilhada (dona ou parceira) com o Portfólio de Negócios dono da
-conta de anúncios — mesmo reaproveitando um criativo que já roda hoje sem
-problema — e nem toda conta do usuário tem esse compartilhamento (às vezes
-o cliente não libera, mesmo pra permissão só de "Anunciar"). Por isso a
-Etapa 30 simplificou: o botão não duplica mais nada, só pausa o criativo,
-pausa o conjunto e acrescenta "AQUI" no final do nome do conjunto — uma
-ação que nunca esbarra nessa permissão, porque não cria nada novo, só edita
-dois objetos que já existem. Recriar o conjunto do zero (mesma segmentação/
-otimização/lance, minus o criativo ruim) continua 100% manual, no
-Gerenciador de Anúncios.
+conta de anúncios, e nem toda conta do usuário tem esse compartilhamento. A
+Etapa 30 simplificou pra um botão só de pausar + renomear (sem duplicar
+nada), mas mesmo essa versão mais simples não funcionou como esperado ao
+testar de verdade. Por isso a Etapa 31 simplificou de novo, isolando as
+variáveis: os dois botões atuais ("Pausar conjunto" e "Pausar criativo")
+não renomeiam nem duplicam mais nada — cada um faz só uma chamada de
+pausar, exatamente a mesma chamada simples (`/api/meta/status`) que já
+funciona hoje em Visão Geral/Controle de Saldo/Clientes. Se mesmo assim
+"Pausar conjunto" continuar falhando, o próximo passo é comparar lado a
+lado com o pausar de conjunto que já funciona em Visão Geral, pra achar a
+diferença. Recriar o conjunto do zero (mesma segmentação/otimização/lance,
+minus o criativo ruim) continua 100% manual, no Gerenciador de Anúncios.
 
 ## 1. Criar o projeto no Supabase
 
@@ -683,12 +689,20 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     (veja o item abaixo e o ⚠️ acima) por esbarrar num limite da própria
     Meta sem solução por fora (Página do criativo precisa estar
     compartilhada com o Portfólio de Negócios dono da conta)
-24. ~~Botão "⏸️ Pausar conjunto" simplificado (Etapa 30)~~ ✅ — troca o botão
-    anterior: agora só pausa o criativo, pausa o conjunto e acrescenta
-    "AQUI" no final do nome dele — sem tentar duplicar nada, então nunca
-    esbarra na exigência de Página compartilhada com o Portfólio. Recriar o
-    conjunto do zero continua manual, no Gerenciador de Anúncios (veja o ⚠️
-    acima)
+24. ~~Botão "⏸️ Pausar conjunto" simplificado (Etapa 30)~~ ✅ — histórico:
+    trocou o botão anterior por só pausar o criativo, pausar o conjunto e
+    acrescentar "AQUI" no final do nome dele — sem tentar duplicar nada;
+    substituído de novo na Etapa 31 (veja o item abaixo e o ⚠️ acima) porque
+    não funcionou como esperado ao testar de verdade
+25. ~~Análise reorganizada por conjunto, com criativos expansíveis (Etapa
+    31)~~ ✅ — a tela de Análise passou a listar CONJUNTO em vez de
+    criativo: só conjunto ativo com custo por conversa iniciada R$ 4 ou mais
+    acima da Meta CPA (ou, sem conversa nenhuma, com o próprio gasto R$ 4 ou
+    mais acima) — duplo clique no conjunto expande a lista dos criativos
+    dele (gasto, conversas, custo por conversa de cada). "Pausar conjunto" e
+    "Pausar criativo" viraram dois botões isolados, cada um só faz a chamada
+    simples de pausar (mesma usada em Visão Geral) — sem renomear, sem
+    duplicar, pra isolar de vez qualquer causa de falha (veja o ⚠️ acima)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -700,7 +714,7 @@ Análise, cor do Ritmo/remoção da aba Geral/correção do carregamento, botão
 Atualizar em todas as abas, filtro 3 dias + hoje/CPA ideal/dicas com
 sinal/3 filtros novos em Acompanhamento, aba Evolução, correção do cálculo
 e cor da coluna CPA, ajuste fino da coluna CPA, exclusão consistente de
-campanhas de Tráfego/[VAGA] em Análise e Visão Geral, botão "⏸️ Pausar
-conjunto" em Análise) estão 100% concluídos. Não há mais nenhum item
-pendente do escopo combinado — próximos pedidos são novos incrementos, a
-critério seu.
+campanhas de Tráfego/[VAGA] em Análise e Visão Geral, Análise reorganizada
+por conjunto com criativos expansíveis e botões de pausar isolados) estão
+100% concluídos. Não há mais nenhum item pendente do escopo combinado —
+próximos pedidos são novos incrementos, a critério seu.
