@@ -3,16 +3,31 @@ import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { getAdSetCostAnalysis, type AdSetCostRow } from "@/lib/meta/adset-cost-analysis";
 import type { DateRangeInput } from "@/lib/meta/client";
 
-// Painel > Análise, a nível de conjunto: só conjunto ATIVO com custo por
-// conversa iniciada R$ 4 ou mais acima da Meta CPA — ou, sem nenhuma
-// conversa iniciada, com o próprio gasto R$ 4 ou mais acima da Meta CPA.
-// Mesma regra de sempre, agora somada por conjunto em vez de por anúncio.
+// Painel > Análise, a nível de conjunto — duas análises, escolhidas por `mode`:
+//
+// "above" (padrão, conjuntos problemáticos): só conjunto ATIVO com custo por
+// conversa iniciada R$ 4 ou mais acima da Meta CPA — ou, sem nenhuma conversa
+// iniciada, com o próprio gasto R$ 4 ou mais acima da Meta CPA.
+//
+// "below" (conjuntos candidatos a escalar): só conjunto ATIVO, com pelo menos
+// uma conversa iniciada no período, e custo por conversa abaixo da Meta CPA.
+export type AnalysisMode = "above" | "below";
+
 const THRESHOLD_ABOVE_TARGET = 4;
 
-function isFlagged(row: AdSetCostRow, cpaTarget: number): boolean {
+function isFlaggedAbove(row: AdSetCostRow, cpaTarget: number): boolean {
   const noConversion = !row.conversations || row.conversations <= 0;
   if (noConversion) return row.spend - cpaTarget >= THRESHOLD_ABOVE_TARGET;
   return row.cost_per_conversation != null && row.cost_per_conversation - cpaTarget >= THRESHOLD_ABOVE_TARGET;
+}
+
+function isFlaggedBelow(row: AdSetCostRow, cpaTarget: number): boolean {
+  return (
+    !!row.conversations &&
+    row.conversations > 0 &&
+    row.cost_per_conversation != null &&
+    row.cost_per_conversation < cpaTarget
+  );
 }
 
 function sortKey(row: AdSetCostRow): number {
@@ -33,6 +48,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const accountIds: string[] = Array.isArray(body.accountIds) ? body.accountIds : [];
     const datePreset = (body.datePreset ?? "last_3d_plus_today") as DateRangeInput;
+    const mode: AnalysisMode = body.mode === "below" ? "below" : "above";
     if (accountIds.length === 0) return NextResponse.json({ groups: [], skipped: [] });
 
     const { data: bindings } = await supabase
@@ -56,8 +72,11 @@ export async function POST(request: Request) {
         }
         try {
           const rows = await getAdSetCostAnalysis(token, accountId, datePreset);
-          const above = rows.filter((r) => isFlagged(r, cpaTarget)).sort((a, b) => sortKey(b) - sortKey(a));
-          if (above.length > 0) groups.push({ accountId, clientName, cpaTarget, adsets: above });
+          const filtered = rows.filter((r) => (mode === "below" ? isFlaggedBelow(r, cpaTarget) : isFlaggedAbove(r, cpaTarget)));
+          // "above": pior primeiro (mais caro acima da meta). "below": melhor
+          // primeiro (mais barato abaixo da meta) — candidato nº 1 a escalar.
+          const sorted = filtered.sort((a, b) => (mode === "below" ? sortKey(a) - sortKey(b) : sortKey(b) - sortKey(a)));
+          if (sorted.length > 0) groups.push({ accountId, clientName, cpaTarget, adsets: sorted });
         } catch (e) {
           console.error("adset analysis err (non-fatal)", accountId, e);
         }

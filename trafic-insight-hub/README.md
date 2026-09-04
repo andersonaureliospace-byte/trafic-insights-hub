@@ -157,16 +157,23 @@ Análise e Visão Geral, que até então só excluíam pelo nome da campanha e
 deixavam passar quem tinha objetivo Tráfego com outro nome; agora nenhuma
 dessas campanhas aparece em nenhuma métrica, gráfico, total ou tela do
 Painel, nas 4 abas. Painel > Análise foi reorganizada por conjunto em vez
-de por criativo: mostra só conjunto ATIVO com custo por conversa iniciada
-R$ 4 ou mais acima da Meta CPA (ou, sem nenhuma conversa iniciada, com o
-próprio gasto R$ 4 ou mais acima da Meta CPA) — dando duplo clique no
-conjunto, expande a lista dos criativos daquele conjunto com gasto,
-conversas e custo por conversa de cada um. Os dois botões de pausar ficam
-isolados: "Pausar conjunto" na linha do conjunto (só mexe no conjunto),
-"Pausar criativo" na linha de cada criativo expandido (só mexe naquele
-anúncio) — nenhum dos dois duplica ou renomeia mais nada, veja o ⚠️ abaixo
-sobre o histórico dessa mudança. Com isso, todas as áreas do plano original
-+ os extras pedidos ao longo do caminho estão 100% concluídas.
+de por criativo: mostra só conjunto ATIVO — dando duplo clique no conjunto,
+expande a lista dos criativos daquele conjunto com gasto, conversas e custo
+por conversa de cada um. Agora são duas análises separadas por uma aba no
+topo da tela: "CPA acima da meta" (custo por conversa iniciada R$ 4 ou mais
+acima da Meta CPA, ou sem nenhuma conversa iniciada com o próprio gasto R$
+4 ou mais acima) com o botão "Pausar conjunto" (mexe só no conjunto) e
+"Pausar criativo" em cada criativo expandido (mexe só naquele anúncio); e
+"CPA abaixo da meta" (pelo menos uma conversa iniciada e custo por conversa
+abaixo da Meta CPA — candidato a receber mais verba) com o botão "Aumentar
++R$2,50", que soma R$2,50 fixo ao orçamento diário daquele conjunto. A
+coluna Campanha saiu da tabela (menos poluição visual — o nome ainda entra
+na busca por texto). Nenhum dos botões duplica ou renomeia mais nada, e
+nenhum deles mostra mais o popup de confirmação do navegador antes de agir
+— o clique já dispara a ação direto; veja o ⚠️ abaixo sobre o histórico
+dessa mudança de Análise e sobre a limitação do botão de aumentar
+orçamento. Com isso, todas as áreas do plano original + os extras pedidos
+ao longo do caminho estão 100% concluídas.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -234,6 +241,25 @@ Um criativo também entra quando gastou R$ 4+ acima da Meta CPA mas não teve
 NENHUMA conversa iniciada no período — nesse caso a coluna "Custo/conversa"
 mostra "—" (não dá pra calcular sem conversa) e a "Diferença" usa o próprio
 gasto menos a Meta CPA.
+
+⚠️ **Sobre o botão "Aumentar +R$2,50" (aba "CPA abaixo da meta")**: ele
+aumenta o orçamento DIÁRIO do próprio conjunto (`daily_budget`), sempre um
+valor fixo de R$2,50, sem lógica de porcentagem nem de escala progressiva —
+cada clique soma mais R$2,50 em cima do que já está. Se o conjunto usa
+orçamento vitalício (lifetime) em vez de diário, ou se o orçamento dele
+está de fato na campanha (CBO puro, sem orçamento próprio no conjunto), o
+botão avisa isso na tela e não muda nada — não há fallback automático pra
+mexer na campanha. Depois de aumentar uma vez, o botão fica marcado "✓
+Aumentado" e travado até você clicar em "Atualizar" ou trocar de aba/
+período, só pra evitar clique duplicado sem querer; ele não reflete o
+orçamento novo de verdade, é só uma trava visual da sessão.
+
+⚠️ **Sobre a aba "CPA abaixo da meta"**: não tem um piso de distância da
+meta (diferente da aba "acima", que exige R$ 4+ de diferença) — qualquer
+conjunto ativo com pelo menos 1 conversa iniciada e custo por conversa
+menor que a Meta CPA já aparece, mesmo que seja só alguns centavos abaixo.
+Se isso trouxer conjunto demais pra lista, é só avisar que dá pra somar um
+piso igual ao da outra aba.
 
 ⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
 link `/d/:token` numa entrega anterior, ele para de funcionar com essa
@@ -703,6 +729,16 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     "Pausar criativo" viraram dois botões isolados, cada um só faz a chamada
     simples de pausar (mesma usada em Visão Geral) — sem renomear, sem
     duplicar, pra isolar de vez qualquer causa de falha (veja o ⚠️ acima)
+26. ~~Análise com duas abas (acima/abaixo da meta), coluna Campanha
+    removida, aumento de orçamento e popups de confirmação removidos (Etapa
+    32)~~ ✅ — Análise por conjunto agora tem duas abas: "CPA acima da
+    meta" (comportamento de sempre, "Pausar conjunto"/"Pausar criativo") e a
+    nova "CPA abaixo da meta" (conjunto ativo com conversa e custo por
+    conversa menor que a Meta CPA), onde o botão vira "Aumentar +R$2,50" —
+    soma um valor fixo ao orçamento diário do conjunto (veja os ⚠️ acima
+    sobre os limites dele). A coluna Campanha saiu da tabela (nome ainda
+    entra na busca). Os popups de confirmação do navegador antes de pausar
+    também saíram — os botões agem direto no clique
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -715,6 +751,7 @@ Atualizar em todas as abas, filtro 3 dias + hoje/CPA ideal/dicas com
 sinal/3 filtros novos em Acompanhamento, aba Evolução, correção do cálculo
 e cor da coluna CPA, ajuste fino da coluna CPA, exclusão consistente de
 campanhas de Tráfego/[VAGA] em Análise e Visão Geral, Análise reorganizada
-por conjunto com criativos expansíveis e botões de pausar isolados) estão
-100% concluídos. Não há mais nenhum item pendente do escopo combinado —
-próximos pedidos são novos incrementos, a critério seu.
+por conjunto com criativos expansíveis e botões de pausar isolados, Análise
+com abas acima/abaixo da meta e aumento de orçamento fixo) estão 100%
+concluídos. Não há mais nenhum item pendente do escopo combinado — próximos
+pedidos são novos incrementos, a critério seu.

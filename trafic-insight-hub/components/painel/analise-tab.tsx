@@ -10,6 +10,8 @@ import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 // usados no resto do Painel.
 const ANALYSIS_PRESETS = DATE_PRESETS;
 
+type AnalysisMode = "above" | "below";
+
 interface AdRow {
   id: string;
   name: string;
@@ -41,6 +43,25 @@ interface Skipped {
   clientName: string;
 }
 
+const MODE_COPY: Record<AnalysisMode, { title: string; description: string; empty: string }> = {
+  above: {
+    title: "Custo por conversa iniciada, por conjunto — acima da meta",
+    description:
+      "Só conjunto ativo, com custo por conversa iniciada R$ 4 ou mais acima da Meta CPA — ou, sem nenhuma " +
+      "conversa iniciada, com o próprio gasto R$ 4 ou mais acima da Meta CPA. Duplo clique no conjunto mostra os " +
+      "criativos dele. Nada é pausado ou alterado sozinho, os botões são manuais.",
+    empty: "Nenhum conjunto ativo acima do limite nesse período.",
+  },
+  below: {
+    title: "Custo por conversa iniciada, por conjunto — abaixo da meta",
+    description:
+      "Só conjunto ativo, com pelo menos uma conversa iniciada no período e custo por conversa abaixo da Meta " +
+      "CPA — candidato a receber mais investimento. Duplo clique no conjunto mostra os criativos dele. Nada é " +
+      "alterado sozinho, os botões são manuais.",
+    empty: "Nenhum conjunto ativo abaixo da meta nesse período.",
+  },
+};
+
 function statusLabel(status: string | null): string {
   const s = status?.toUpperCase();
   if (s === "ACTIVE") return "Ativo";
@@ -50,20 +71,26 @@ function statusLabel(status: string | null): string {
 
 // Mesmo cálculo de "Diferença" usado nas duas linhas (conjunto e criativo):
 // sem conversa, o sinal vira o próprio gasto acima da Meta CPA; com
-// conversa, é custo por conversa menos a Meta CPA.
+// conversa, é custo por conversa menos a Meta CPA. Negativo = abaixo da meta.
 function diffFor(spend: number, conversations: number | null, costPerConversation: number | null, cpaTarget: number) {
   const noConversion = !conversations || conversations <= 0;
   return noConversion ? spend - cpaTarget : (costPerConversation ?? 0) - cpaTarget;
 }
 
+function fmtDiffSigned(diff: number): string {
+  return `${diff >= 0 ? "+" : "-"}${fmtCurrency(Math.abs(diff))}`;
+}
+
 export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
+  const [mode, setMode] = useState<AnalysisMode>("above");
   const [preset, setPreset] = useState("last_3d_plus_today");
   const [search, setSearch] = useState("");
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pausingId, setPausingId] = useState<string | null>(null);
+  const [actingId, setActingId] = useState<string | null>(null);
+  const [increasedIds, setIncreasedIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const accountNameById = useMemo(() => new Map(accounts.map((a) => [a.account_id, a.name])), [accounts]);
@@ -81,6 +108,7 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
       body: JSON.stringify({
         accountIds: accounts.map((a) => a.account_id),
         datePreset: preset,
+        mode,
       }),
     });
     const d = await res.json();
@@ -91,10 +119,11 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
     }
     setGroups(d.groups ?? []);
     setSkipped(d.skipped ?? []);
-  }, [accounts, preset]);
+    setIncreasedIds(new Set());
+  }, [accounts, preset, mode]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas exibidas/período
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas/período/aba exibidos
     void load();
   }, [load]);
 
@@ -108,18 +137,17 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
   }
 
   // Isolado de propósito (pedido explícito): só pausa o criativo, mesma
-  // chamada simples de /api/meta/status já usada em Visão Geral — sem
-  // mexer no conjunto.
+  // chamada simples de /api/meta/status já usada em Visão Geral — sem mexer
+  // no conjunto. Sem popup de confirmação (pedido explícito também).
   async function pauseCreative(ad: AdRow, adsetId: string) {
-    if (!confirm(`Pausar o criativo "${ad.name}"? Confirma?`)) return;
-    setPausingId(ad.id);
+    setActingId(ad.id);
     const res = await fetch("/api/meta/status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: [{ id: ad.id, type: "ad" }], status: "PAUSED" }),
     });
     const d = await res.json();
-    setPausingId(null);
+    setActingId(null);
     const result = d.results?.[0];
     if (!result?.ok) {
       alert(result?.error ?? "Não foi possível pausar o criativo.");
@@ -141,18 +169,17 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
 
   // Isolado de propósito (pedido explícito): só pausa o conjunto inteiro,
   // mesma chamada simples de /api/meta/status já usada em Visão Geral — sem
-  // renomear nem duplicar nada. Some da lista ao pausar, já que deixa de
-  // ser um conjunto ativo pra sinalizar aqui.
+  // renomear nem duplicar nada. Some da lista ao pausar, já que deixa de ser
+  // um conjunto ativo pra sinalizar aqui. Sem popup de confirmação.
   async function pauseAdSet(adset: AdSetRow) {
-    if (!confirm(`Pausar o conjunto "${adset.name}" inteiro? Confirma?`)) return;
-    setPausingId(adset.id);
+    setActingId(adset.id);
     const res = await fetch("/api/meta/status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ items: [{ id: adset.id, type: "adset" }], status: "PAUSED" }),
     });
     const d = await res.json();
-    setPausingId(null);
+    setActingId(null);
     const result = d.results?.[0];
     if (!result?.ok) {
       alert(result?.error ?? "Não foi possível pausar o conjunto.");
@@ -163,6 +190,25 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
         ? prev.map((g) => ({ ...g, adsets: g.adsets.filter((as) => as.id !== adset.id) })).filter((g) => g.adsets.length > 0)
         : prev,
     );
+  }
+
+  // Só na aba "abaixo da meta": aumenta o orçamento diário do conjunto em
+  // R$2,50 fixo. Fica marcado como "Aumentado" (e o botão trava) até a
+  // próxima atualização, pra não dar dois cliques sem querer.
+  async function increaseBudget(adset: AdSetRow) {
+    setActingId(adset.id);
+    const res = await fetch("/api/analysis/increase-budget", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ adsetId: adset.id }),
+    });
+    const d = await res.json();
+    setActingId(null);
+    if (!d.ok) {
+      alert(d.error ?? "Não foi possível aumentar o orçamento desse conjunto.");
+      return;
+    }
+    setIncreasedIds((prev) => new Set(prev).add(adset.id));
   }
 
   // Busca por nome — de propósito global: filtra o conjunto (ou a campanha)
@@ -180,6 +226,7 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
     .filter((g) => g.adsets.length > 0);
 
   const totalAdsets = filteredGroups.reduce((s, g) => s + g.adsets.length, 0);
+  const copy = MODE_COPY[mode];
 
   if (accounts.length === 0) {
     return <p className="text-sm text-zinc-500">Nenhuma conta selecionada.</p>;
@@ -189,14 +236,32 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <div>
+          <div className="mb-2 inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
+            <button
+              onClick={() => setMode("above")}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                mode === "above"
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              }`}
+            >
+              CPA acima da meta
+            </button>
+            <button
+              onClick={() => setMode("below")}
+              className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+                mode === "below"
+                  ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                  : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+              }`}
+            >
+              CPA abaixo da meta
+            </button>
+          </div>
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            Custo por conversa iniciada, por conjunto {loading ? "· atualizando…" : ""}
+            {copy.title} {loading ? "· atualizando…" : ""}
           </h2>
-          <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
-            Só conjunto ativo, com custo por conversa iniciada R$ 4 ou mais acima da Meta CPA — ou, sem nenhuma
-            conversa iniciada, com o próprio gasto R$ 4 ou mais acima da Meta CPA. Duplo clique no conjunto mostra os
-            criativos dele. Nada é pausado sozinho, os botões são manuais.
-          </p>
+          <p className="mt-0.5 max-w-2xl text-xs text-zinc-500 dark:text-zinc-400">{copy.description}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -232,7 +297,7 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
         <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p>
       ) : totalAdsets === 0 ? (
         <p className="px-4 py-6 text-sm text-zinc-500">
-          {q ? "Nenhum conjunto encontrado com esse nome." : "Nenhum conjunto ativo acima do limite nesse período."}
+          {q ? "Nenhum conjunto encontrado com esse nome." : copy.empty}
         </p>
       ) : (
         <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -259,7 +324,6 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                   <thead>
                     <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
                       <th className="px-4 py-1.5 font-medium">Conjunto</th>
-                      <th className="px-4 py-1.5 font-medium">Campanha</th>
                       <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
                       <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
                       <th className="px-4 py-1.5 text-right font-medium">Conversas</th>
@@ -272,6 +336,7 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                       const noConversion = !adset.conversations || adset.conversations <= 0;
                       const diff = diffFor(adset.spend, adset.conversations, adset.cost_per_conversation, g.cpaTarget);
                       const isOpen = expanded.has(adset.id);
+                      const wasIncreased = increasedIds.has(adset.id);
                       return (
                         <Fragment key={adset.id}>
                           <tr
@@ -279,17 +344,15 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                             className="cursor-pointer select-none border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-800/40"
                             title="Duplo clique pra ver os criativos desse conjunto"
                           >
-                            <td className="max-w-[220px] truncate px-4 py-2" title={adset.name}>
+                            <td className="max-w-[260px] truncate px-4 py-2" title={adset.name}>
                               <span className="mr-1 inline-block w-3 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
                               {adset.name}
                             </td>
                             <td
-                              className="max-w-[180px] truncate px-4 py-2 text-zinc-500 dark:text-zinc-400"
-                              title={adset.campaign_name ?? undefined}
+                              className={`px-4 py-2 text-right tabular-nums font-medium ${
+                                mode === "above" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"
+                              }`}
                             >
-                              {adset.campaign_name ?? "—"}
-                            </td>
-                            <td className="px-4 py-2 text-right tabular-nums font-medium text-amber-700 dark:text-amber-400">
                               {noConversion ? (
                                 <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
                                   —
@@ -298,28 +361,46 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                                 fmtCurrency(adset.cost_per_conversation)
                               )}
                             </td>
-                            <td className="px-4 py-2 text-right tabular-nums text-red-600 dark:text-red-400">
-                              +{fmtCurrency(diff)}
+                            <td
+                              className={`px-4 py-2 text-right tabular-nums ${
+                                diff >= 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
+                              }`}
+                            >
+                              {fmtDiffSigned(diff)}
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums">{adset.conversations ?? "—"}</td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(adset.spend)}</td>
                             <td className="px-4 py-2 text-right">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void pauseAdSet(adset);
-                                }}
-                                disabled={pausingId === adset.id}
-                                title="Pausa só o conjunto inteiro — não mexe em nenhum criativo"
-                                className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
-                              >
-                                {pausingId === adset.id ? "…" : "Pausar conjunto"}
-                              </button>
+                              {mode === "above" ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void pauseAdSet(adset);
+                                  }}
+                                  disabled={actingId === adset.id}
+                                  title="Pausa só o conjunto inteiro — não mexe em nenhum criativo"
+                                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
+                                >
+                                  {actingId === adset.id ? "…" : "Pausar conjunto"}
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void increaseBudget(adset);
+                                  }}
+                                  disabled={actingId === adset.id || wasIncreased}
+                                  title="Aumenta o orçamento diário desse conjunto em R$2,50 fixo"
+                                  className="rounded-md border border-emerald-300 px-2 py-1 text-xs font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400"
+                                >
+                                  {actingId === adset.id ? "…" : wasIncreased ? "✓ Aumentado" : "Aumentar +R$2,50"}
+                                </button>
+                              )}
                             </td>
                           </tr>
                           {isOpen ? (
                             <tr className="border-t border-zinc-100 dark:border-zinc-800/60">
-                              <td colSpan={7} className="bg-zinc-50/60 px-4 py-2 dark:bg-zinc-800/20">
+                              <td colSpan={6} className="bg-zinc-50/60 px-4 py-2 dark:bg-zinc-800/20">
                                 <table className="w-full text-sm">
                                   <thead>
                                     <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
@@ -358,11 +439,11 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
                                           <td className="px-3 py-1.5 text-right">
                                             <button
                                               onClick={() => void pauseCreative(ad, adset.id)}
-                                              disabled={pausingId === ad.id}
+                                              disabled={actingId === ad.id}
                                               title="Pausa só esse criativo — não mexe no conjunto"
                                               className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
                                             >
-                                              {pausingId === ad.id ? "…" : "Pausar criativo"}
+                                              {actingId === ad.id ? "…" : "Pausar criativo"}
                                             </button>
                                           </td>
                                         </tr>
