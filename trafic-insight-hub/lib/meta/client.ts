@@ -105,27 +105,57 @@ export async function metaGetAll<T>(
   return out;
 }
 
+// Códigos clássicos de rate limit da Graph API (nível de app/conta/usuário) —
+// "There have been too many calls..." e primos. Tratado à parte do
+// transient/5xx comum porque pede um backoff bem mais longo pra ter chance
+// de resolver (usado pelas ações em massa da Análise, Etapa 33).
+function classifyPostError(status: number, text: string): { transient: boolean; rateLimited: boolean; msg: string } {
+  let msg = text;
+  let transient = status >= 500 || status === 429;
+  let rateLimited = false;
+  try {
+    const j = JSON.parse(text);
+    msg = j?.error?.error_user_msg || j?.error?.message || text;
+    const code = j?.error?.code;
+    if (j?.error?.is_transient) transient = true;
+    if (code === 4 || code === 17 || code === 32 || code === 613 || code === 80004) {
+      rateLimited = true;
+      transient = true;
+    }
+  } catch {
+    // não é JSON, segue com o texto cru
+  }
+  return { transient, rateLimited, msg };
+}
+
 export async function metaPost<T>(
   token: string,
   path: string,
   params: Record<string, string>,
 ): Promise<T> {
   const body = new URLSearchParams({ ...params, access_token: token });
-  const res = await fetch(`${GRAPH}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: body.toString(),
-  });
-  if (!res.ok) {
+  const maxAttempts = 4;
+  let lastMsg = "Meta API: falha desconhecida ao tentar de novo";
+  let lastStatus = 0;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(`${GRAPH}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: body.toString(),
+    });
+    if (res.ok) return res.json() as Promise<T>;
     const text = await res.text();
-    let msg = text;
-    try {
-      const j = JSON.parse(text);
-      msg = j?.error?.error_user_msg || j?.error?.message || text;
-    } catch {
-      // ignore
+    const { transient, rateLimited, msg } = classifyPostError(res.status, text);
+    lastMsg = msg;
+    lastStatus = res.status;
+    if (transient && attempt < maxAttempts) {
+      // Rate limit real da Meta pede mais tempo pra esvaziar o balde do que
+      // um 5xx comum — por isso o backoff é bem maior nesse caso.
+      const delay = rateLimited ? 3000 * attempt : 500 * attempt;
+      await new Promise((r) => setTimeout(r, delay));
+      continue;
     }
     throw new Error(`Meta API ${res.status}: ${msg}`);
   }
-  return res.json() as Promise<T>;
+  throw new Error(`Meta API ${lastStatus}: ${lastMsg}`);
 }

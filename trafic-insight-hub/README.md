@@ -172,8 +172,18 @@ na busca por texto). Nenhum dos botões duplica ou renomeia mais nada, e
 nenhum deles mostra mais o popup de confirmação do navegador antes de agir
 — o clique já dispara a ação direto; veja o ⚠️ abaixo sobre o histórico
 dessa mudança de Análise e sobre a limitação do botão de aumentar
-orçamento. Com isso, todas as áreas do plano original + os extras pedidos
-ao longo do caminho estão 100% concluídas.
+orçamento. Cada aba ganhou também um botão de ação em massa — "Pausar todos
+os conjuntos listados" (aba "acima da meta") e "Aumentar todos os
+orçamentos listados" (aba "abaixo da meta") — que aplica a ação em todo
+mundo que está na tela naquele momento (respeitando a busca), um conjunto
+de cada vez, com uma pequena pausa entre cada chamada de propósito, pra não
+estourar o limite de chamadas da Meta numa conta com muitos conjuntos —
+prefere demorar mais e terminar certo a arriscar bloqueio (veja o ⚠️
+abaixo). Pra evitar clique sem querer numa ação que mexe em vários
+conjuntos de uma vez, o botão pede um segundo clique de confirmação (sem
+usar o popup do navegador) antes de rodar. Com isso, todas as áreas do
+plano original + os extras pedidos ao longo do caminho estão 100%
+concluídas.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -241,6 +251,25 @@ Um criativo também entra quando gastou R$ 4+ acima da Meta CPA mas não teve
 NENHUMA conversa iniciada no período — nesse caso a coluna "Custo/conversa"
 mostra "—" (não dá pra calcular sem conversa) e a "Diferença" usa o próprio
 gasto menos a Meta CPA.
+
+⚠️ **Sobre os botões de ação em massa (Pausar todos / Aumentar todos)**: pra
+reduzir o risco de bloqueio por limite de chamadas da Meta (rate limit) ao
+mexer em muitos conjuntos de uma vez, as chamadas são feitas uma de cada
+vez — nunca em paralelo — com uma pausa de 3s entre elas (aumentada a
+pedido na Etapa 34, era ~0,8s); num lote de 20 conjuntos isso leva uns
+60 segundos, de propósito (mais devagar, mais seguro). Além disso, toda chamada de escrita na Graph API (`metaPost`,
+usada por pausar, ativar e aumentar orçamento — em massa ou individual)
+agora tenta de novo sozinha até 3 vezes quando o erro é claramente
+temporário (erro 5xx/429) ou um erro clássico de "muitas chamadas" da
+própria Meta (códigos 4, 17, 32, 613, 80004), com uma espera bem maior
+nesse segundo caso antes de tentar de novo. Erro de um conjunto específico
+não trava o lote inteiro — o restante continua, e no final aparece um
+resumo (nome + motivo) de quem não deu certo, pra você resolver manualmente
+o que sobrou. Ainda assim, numa conta com dezenas de conjuntos flagrados ao
+mesmo tempo, ainda existe a chance de a Meta aplicar um bloqueio temporário
+de qualquer forma (o limite dela é por conta de anúncios/app, fora do
+controle do código) — se isso acontecer, o jeito é esperar alguns minutos e
+rodar de novo só o que ficou faltando.
 
 ⚠️ **Sobre o botão "Aumentar +R$2,50" (aba "CPA abaixo da meta")**: ele
 aumenta o orçamento DIÁRIO do próprio conjunto (`daily_budget`), sempre um
@@ -739,6 +768,20 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     sobre os limites dele). A coluna Campanha saiu da tabela (nome ainda
     entra na busca). Os popups de confirmação do navegador antes de pausar
     também saíram — os botões agem direto no clique
+27. ~~Ações em massa na Análise, com backoff de rate limit (Etapa 33)~~ ✅ —
+    cada aba ganhou um botão pra aplicar a ação em todos os conjuntos
+    listados de uma vez ("Pausar todos os conjuntos listados" /
+    "Aumentar todos os orçamentos listados"), pedindo um segundo clique de
+    confirmação (sem popup do navegador) antes de rodar. As chamadas saem
+    uma de cada vez com pausa entre elas (nunca em paralelo), e toda escrita
+    na Graph API ganhou retry automático com backoff mais longo pra erro de
+    "muitas chamadas" da própria Meta — prioriza terminar certo a arriscar
+    bloqueio por volume (veja o ⚠️ acima)
+28. ~~Pausa entre chamadas em massa aumentada pra 3s (Etapa 34)~~ ✅ — o
+    intervalo entre cada chamada das ações em massa (Etapa 33) subiu de
+    ~0,8s pra 3s, a pedido, pra ficar ainda mais folgado em relação ao
+    limite de chamadas da Meta — um lote de 20 conjuntos passa a levar uns
+    60 segundos em vez de 15-20
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -752,6 +795,8 @@ sinal/3 filtros novos em Acompanhamento, aba Evolução, correção do cálculo
 e cor da coluna CPA, ajuste fino da coluna CPA, exclusão consistente de
 campanhas de Tráfego/[VAGA] em Análise e Visão Geral, Análise reorganizada
 por conjunto com criativos expansíveis e botões de pausar isolados, Análise
-com abas acima/abaixo da meta e aumento de orçamento fixo) estão 100%
-concluídos. Não há mais nenhum item pendente do escopo combinado — próximos
+com abas acima/abaixo da meta e aumento de orçamento fixo, ações em massa
+com backoff de rate limit e pausa de 3s entre chamadas) estão 100%
+concluídos. Não há mais nenhum item pendente do escopo combinado —
+próximos
 pedidos são novos incrementos, a critério seu.
