@@ -351,9 +351,27 @@ claro mesmo com a página no escuro (o print que você mandou). Troquei para
 `color-scheme: light` fora do modo escuro e `color-scheme: dark` dentro do
 mesmo bloco `@media (prefers-color-scheme: dark)` que já troca as cores do
 resto da página — agora é uma troca explícita, presa ao mesmo gatilho, em
-vez de uma escolha do navegador. Se ainda aparecer claro em algum
-navegador/computador específico, me avisa com o nome do navegador que uso
-pra investigar esse caso.
+vez de uma escolha do navegador.
+
+⚠️ **Sobre o menu suspenso ilegível no modo escuro, de novo de novo (Etapa
+35)**: mesmo com o `color-scheme: dark` explícito da Etapa 23, o print que
+você mandou (filtro "Investimento" em Acompanhamento) mostrou o popup do
+`<select>` ainda desenhado claro, com a letra clara do tema escuro herdada
+por cima — exatamente "letra branca em fundo branco". O motivo mais
+provável: o `color-scheme` do popup do `<select>` tem suporte inconsistente
+entre navegador/versão (mesmo declarando "dark" explícito, alguns não
+repintam o popup de verdade), enquanto a cor do texto (herdada do resto da
+página) muda de qualquer forma — daí o descompasso. Pra não depender mais
+desse suporte instável, a solução mudou de estratégia: agora o popup do
+`<select>` é sempre forçado pro esquema claro (`color-scheme: light` fixo
+nele) com a cor do texto das opções travada em escuro
+(`select option { color: #171717; background-color: #ffffff }`), não
+importa o tema da página. Ou seja, o popup deixa de "seguir" o tema escuro
+visualmente, mas fica sempre legível (fundo branco, letra escura) em
+qualquer navegador — a caixa fechada do filtro continua no visual escuro
+normal, só o menu aberto que agora é sempre claro, de propósito. Se mesmo
+assim aparecer algo ilegível, me manda o navegador (nome + versão) porque
+nesse ponto já seria um caso bem fora do padrão.
 
 ⚠️ **Sobre o valor fixo de R$ 2 em Evolução (Etapa 24)**: o pedido foi "se
 tiver até dois reais, verde; acima de dois reais, vermelho" — implementei
@@ -782,6 +800,16 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     ~0,8s pra 3s, a pedido, pra ficar ainda mais folgado em relação ao
     limite de chamadas da Meta — um lote de 20 conjuntos passa a levar uns
     60 segundos em vez de 15-20
+29. ~~Popup do &lt;select&gt; sempre legível no modo escuro, de vez (Etapa
+    35)~~ ✅ — o `color-scheme: dark` explícito da Etapa 23 continuava
+    inconsistente entre navegadores (popup do filtro ainda aparecia claro
+    com letra clara por cima, como no print do filtro Investimento em
+    Acompanhamento); trocado por uma abordagem que não depende mais do
+    navegador honrar o tema escuro no popup: o menu do `<select>` agora é
+    sempre forçado pro esquema claro com cor de texto escura fixa nas
+    opções, garantindo contraste em qualquer navegador — só o menu aberto
+    muda, a caixa fechada do filtro continua acompanhando o tema escuro
+    normalmente (veja o ⚠️ acima)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -796,7 +824,7 @@ e cor da coluna CPA, ajuste fino da coluna CPA, exclusão consistente de
 campanhas de Tráfego/[VAGA] em Análise e Visão Geral, Análise reorganizada
 por conjunto com criativos expansíveis e botões de pausar isolados, Análise
 com abas acima/abaixo da meta e aumento de orçamento fixo, ações em massa
-com backoff de rate limit e pausa de 3s entre chamadas) estão 100%
-concluídos. Não há mais nenhum item pendente do escopo combinado —
-próximos
+com backoff de rate limit e pausa de 3s entre chamadas, popup do select
+sempre legível no escuro) estão 100% concluídos. Não há mais nenhum item
+pendente do escopo combinado — próximos
 pedidos são novos incrementos, a critério seu.

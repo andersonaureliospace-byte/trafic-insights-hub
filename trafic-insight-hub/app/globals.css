@@ -34,3 +34,22 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* O "color-scheme" do :root acima resolve bem a maioria dos controles
+   nativos (scrollbar etc.), mas o popup de opções do <select> continua
+   inconsistente entre navegador/versão: em alguns o popup nem sempre vira
+   escuro de verdade, e aí sobra só o "color" claro herdado do body (pensado
+   pro tema escuro) desenhado em cima do popup ainda branco — letra clara
+   em fundo claro, ilegível. Pra não depender dessa suporte inconsistente,
+   força-se aqui um popup sempre no esquema claro (fundo branco) com cor de
+   texto escura fixa nas opções — sempre legível, em qualquer navegador,
+   independente do tema geral da página. A caixa fechada do <select>
+   continua acompanhando o tema escuro normalmente (isso já funcionava). */
+select {
+  color-scheme: light;
+}
+
+select option {
+  background-color: #ffffff;
+  color: #171717;
+}
