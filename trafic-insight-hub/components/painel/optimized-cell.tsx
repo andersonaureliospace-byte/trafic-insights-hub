@@ -2,108 +2,42 @@
 
 import { useState } from "react";
 
-// Célula da coluna "Otimizado" (Acompanhamento, Etapa 36). Marcar pede o
-// motivo antes de confirmar (sem popup do navegador — mesmo padrão já
-// usado em Análise: tudo inline, na própria célula). Desmarcar é direto,
-// sem pedir nada de novo, já que não mexe em nada no Meta, só num rótulo
-// interno do Painel.
+// Seletor da coluna "Otimizado" (Acompanhamento, Etapa 37 — simplificado a
+// pedido: sem motivo, sem caixa de texto, só o clique). Um clique alterna
+// direto entre "Não otimizado" (cinza) e "Otimizado" (verde) — sem popup,
+// sem confirmação, sem nada mais pra preencher.
 export function OptimizedCell({
   optimized,
-  reason,
   onToggle,
 }: {
   optimized: boolean;
-  reason: string | null;
-  onToggle: (next: boolean, reason?: string) => Promise<void> | void;
+  onToggle: (next: boolean) => Promise<void> | void;
 }) {
-  const [asking, setAsking] = useState(false);
-  const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
 
-  async function confirm() {
-    const value = draft.trim();
-    if (!value) return;
+  async function toggle() {
     setSaving(true);
-    await onToggle(true, value);
+    await onToggle(!optimized);
     setSaving(false);
-    setAsking(false);
-    setDraft("");
-  }
-
-  function cancel() {
-    setAsking(false);
-    setDraft("");
-  }
-
-  async function unmark() {
-    setSaving(true);
-    await onToggle(false);
-    setSaving(false);
-  }
-
-  if (asking) {
-    return (
-      <div className="flex items-center gap-1">
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") void confirm();
-            if (e.key === "Escape") cancel();
-          }}
-          placeholder="Por quê?"
-          disabled={saving}
-          className="h-7 w-32 rounded-md border border-zinc-300 bg-transparent px-1.5 text-xs outline-none focus:border-zinc-900 disabled:opacity-50 dark:border-zinc-700 dark:focus:border-zinc-100"
-        />
-        <button
-          onClick={() => void confirm()}
-          disabled={saving || !draft.trim()}
-          title="Confirmar"
-          className="rounded-md border border-emerald-300 px-1.5 py-1 text-xs font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400"
-        >
-          ✓
-        </button>
-        <button
-          onClick={cancel}
-          disabled={saving}
-          title="Cancelar"
-          className="rounded-md border border-zinc-300 px-1.5 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
-        >
-          ✕
-        </button>
-      </div>
-    );
-  }
-
-  if (optimized) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <span
-          title={reason ?? undefined}
-          className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-        >
-          ✓ Otimizado
-        </span>
-        <button
-          onClick={() => void unmark()}
-          disabled={saving}
-          title="Desmarcar"
-          className="text-xs text-zinc-400 hover:text-zinc-700 disabled:opacity-50 dark:hover:text-zinc-200"
-        >
-          {saving ? "…" : "✕"}
-        </button>
-      </div>
-    );
   }
 
   return (
     <button
-      onClick={() => setAsking(true)}
-      title="Marcar como otimizado hoje"
-      className="rounded-full border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-500 hover:border-zinc-400 hover:text-zinc-700 dark:border-zinc-700 dark:text-zinc-400 dark:hover:border-zinc-600 dark:hover:text-zinc-200"
+      onClick={() => void toggle()}
+      disabled={saving}
+      title={optimized ? "Otimizado — clique pra desmarcar" : "Clique pra marcar como otimizado"}
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+        optimized
+          ? "border-emerald-400 bg-emerald-100 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+          : "border-zinc-300 bg-transparent text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
+      }`}
     >
-      Pendente
+      <span
+        className={`inline-block h-2.5 w-2.5 rounded-full transition-colors ${
+          optimized ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-600"
+        }`}
+      />
+      {saving ? "…" : optimized ? "Otimizado" : "Não otimizado"}
     </button>
   );
 }

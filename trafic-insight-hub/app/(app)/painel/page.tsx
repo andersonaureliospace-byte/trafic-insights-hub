@@ -31,7 +31,6 @@ interface AccountBinding {
   address: string | null;
   sort_order: number | null;
   optimized: boolean | null;
-  optimized_reason: string | null;
 }
 
 // Base usada tanto no patch otimista de um campo quanto na reordenação em
@@ -51,7 +50,6 @@ function defaultBinding(accountId: string): AccountBinding {
     address: null,
     sort_order: null,
     optimized: false,
-    optimized_reason: null,
   };
 }
 
@@ -692,15 +690,7 @@ export default function PainelPage() {
                             <td className="px-4 py-2">
                               <OptimizedCell
                                 optimized={!!binding?.optimized}
-                                reason={binding?.optimized_reason ?? null}
-                                onToggle={(next, reason) =>
-                                  patchBinding(
-                                    acc.account_id,
-                                    next
-                                      ? { optimized: true, optimized_reason: reason ?? "" }
-                                      : { optimized: false, optimized_reason: null },
-                                  )
-                                }
+                                onToggle={(next) => patchBinding(acc.account_id, { optimized: next })}
                               />
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums">

@@ -182,30 +182,35 @@ prefere demorar mais e terminar certo a arriscar bloqueio (veja o ⚠️
 abaixo). Pra evitar clique sem querer numa ação que mexe em vários
 conjuntos de uma vez, o botão pede um segundo clique de confirmação (sem
 usar o popup do navegador) antes de rodar. Acompanhamento ganhou uma coluna
-"Otimizado": um selo "Pendente" que, ao clicar, pede o motivo (inline, sem
-popup) antes de virar "✓ Otimizado" (o motivo fica na dica ao passar o
-mouse); desmarcar é direto, sem pedir nada de novo. Um filtro
-Otimizado/Pendente/Todos foi junto (fixo em "Todos" por padrão, mesmo
-padrão dos outros 3 filtros da tela). Essa marcação é por dia — reseta
-sozinha à meia-noite (horário de Brasília) sem precisar de nenhum job
-rodando por fora, veja o ⚠️ abaixo sobre como isso funciona e sobre a nova
+"Otimizado": um seletor simples — um clique alterna entre "Não otimizado"
+(cinza) e "Otimizado" (verde), sem pedir motivo nem nada pra escrever (a
+primeira versão pedia motivo antes de marcar; simplificado a pedido pra só
+o clique mesmo). Um filtro Otimizado/Pendente/Todos foi junto (fixo em
+"Todos" por padrão, mesmo padrão dos outros 3 filtros da tela). Essa
+marcação é por dia — reseta sozinha à meia-noite (horário de Brasília) sem
+precisar de nenhum job rodando por fora, veja o ⚠️ abaixo sobre como isso
+funciona e sobre a nova
 migração necessária. Com isso, todas as áreas do plano original + os
 extras pedidos ao longo do caminho estão 100% concluídas.
 
 ⚠️ **Antes de testar a coluna "Otimizado" (Acompanhamento)**: essa entrega
-inclui a migração `0010_client_optimized.sql` — rode ela no SQL Editor do
-Supabase antes de usar essa coluna/filtro, senão vai dar erro de coluna
-inexistente. Sobre o reset à meia-noite (BRT): não existe nenhum job/cron
-rodando por fora apagando a marcação — a data de quando você marcou fica
-salva, e toda vez que a tela de Acompanhamento busca os dados de novo (ao
-abrir a aba, dar F5, ou trocar de aba e voltar) o servidor confere se essa
-data ainda é "hoje" em horário de Brasília; se não for, devolve "Pendente"
-de novo pra tela, mesmo sem apagar nada no banco. Ou seja, o reset é na
-LEITURA, não num horário fixo cravado — se você deixar a aba de
-Acompanhamento aberta sem recarregar atravessando a meia-noite, o selo só
-vai virar "Pendente" na próxima vez que a tela buscar os dados de novo, não
-sozinho às 00h00 em tempo real. Marcar como otimizado é por conta, não por
-cliente/campanha — pensado pra revisão diária "essa conta eu já mexi hoje".
+inclui as migrações `0010_client_optimized.sql` e `0011_drop_optimized_reason.sql`
+— rode as duas (nessa ordem) no SQL Editor do Supabase antes de usar essa
+coluna/filtro, senão vai dar erro de coluna inexistente. Sobre o reset à
+meia-noite (BRT): não existe nenhum job/cron rodando por fora apagando a
+marcação — a data de quando você marcou fica salva, e toda vez que a tela
+de Acompanhamento busca os dados de novo (ao abrir a aba, dar F5, ou trocar
+de aba e voltar) o servidor confere se essa data ainda é "hoje" em horário
+de Brasília; se não for, devolve "Não otimizado" de novo pra tela, mesmo
+sem apagar nada no banco. Ou seja, o reset é na LEITURA, não num horário
+fixo cravado — se você deixar a aba de Acompanhamento aberta sem recarregar
+atravessando a meia-noite, o selo só volta pra "Não otimizado" na próxima
+vez que a tela buscar os dados de novo, não sozinho às 00h00 em tempo real.
+Marcar como otimizado é por conta, não por cliente/campanha — pensado pra
+revisão diária "essa conta eu já mexi hoje". Se você já rodou a
+`0010_client_optimized.sql` numa entrega anterior, só falta rodar a nova
+`0011` — ela apenas remove a coluna de motivo, que não existe mais na tela
+(a marcação virou um clique só, sem pedir texto nenhum).
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -838,7 +843,12 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     Otimizado/Pendente/Todos (fixo em "Todos"). Reseta sozinho à meia-noite
     (horário de Brasília) sem job/cron por fora — a leitura recalcula se a
     marcação ainda vale hoje (veja o ⚠️ acima sobre a migração nova e sobre
-    como o reset funciona na prática)
+    como o reset funciona na prática); substituído no item abaixo (Etapa 37)
+31. ~~Coluna "Otimizado" simplificada pra seletor sem motivo (Etapa 37)~~ ✅
+    — a pedido, tirou o "pede motivo" da Etapa 36: agora é só um seletor —
+    um clique alterna entre "Não otimizado" (cinza) e "Otimizado" (verde),
+    sem caixa de texto nenhuma. A coluna de motivo saiu do banco também
+    (migração `0011_drop_optimized_reason.sql`, veja o ⚠️ acima)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -855,5 +865,6 @@ por conjunto com criativos expansíveis e botões de pausar isolados, Análise
 com abas acima/abaixo da meta e aumento de orçamento fixo, ações em massa
 com backoff de rate limit e pausa de 3s entre chamadas, popup do select
 sempre legível no escuro, coluna Otimizado com reset diário em
-Acompanhamento) estão 100% concluídos. Não há mais nenhum item pendente do
-escopo combinado — próximos pedidos são novos incrementos, a critério seu.
+Acompanhamento simplificada pra seletor sem motivo) estão 100% concluídos.
+Não há mais nenhum item pendente do escopo combinado — próximos pedidos são
+novos incrementos, a critério seu.
