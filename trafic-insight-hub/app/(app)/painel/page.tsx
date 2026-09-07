@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, type PresetId } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -16,6 +16,7 @@ import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { EditClientDialog } from "@/components/painel/edit-client-dialog";
 import { InlineNumber } from "@/components/painel/inline-number";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
+import { usePainelUiState } from "@/lib/hooks/use-painel-ui-state";
 
 interface AccountBinding {
   ad_account_id: string;
@@ -126,14 +127,15 @@ function cpaDiffColorClass(diff: number | null): string {
 // requisições) enquanto estiver ativo. Trocar de aba não deixa nada
 // "grudado" buscando em segundo plano.
 // A aba "Geral" (KPIs soltos, redundante com "Visão Geral") foi removida a
-// pedido — por isso a aba inicial agora é "Visão Geral".
+// pedido — por isso a aba inicial (num acesso novo, sem estado salvo ainda)
+// é "Visão Geral". Ordem da lateral a pedido (Etapa 39).
 const TABS = [
   { id: "acompanhamento", label: "Acompanhamento" },
-  { id: "evolucao", label: "Evolução" },
-  { id: "clientes", label: "Clientes" },
-  { id: "saldo", label: "Controle de Saldo" },
-  { id: "visao-geral", label: "Visão Geral" },
   { id: "analise", label: "Análise" },
+  { id: "evolucao", label: "Evolução" },
+  { id: "visao-geral", label: "Visão Geral" },
+  { id: "saldo", label: "Controle de Saldo" },
+  { id: "clientes", label: "Clientes" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -165,6 +167,19 @@ export default function PainelPage() {
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [draggedAccountId, setDraggedAccountId] = useState<string | null>(null);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
+  // Contas com saldo baixo / erro no pagamento (Etapa 39) — só pra colorir o
+  // nome da conta em Acompanhamento; quem decide "baixo"/"erro" de verdade é
+  // a mesma lógica de Mensagens > Avisos (lib/alerts/balance.ts e
+  // lib/alerts/payment.ts), aqui só em modo leitura (nunca manda WhatsApp).
+  const [lowBalanceIds, setLowBalanceIds] = useState<Set<string>>(new Set());
+  const [paymentErrorIds, setPaymentErrorIds] = useState<Set<string>>(new Set());
+
+  // Etapa 39: lembrar a aba ativa + os filtros de cada aba entre uma sessão
+  // e outra (F5 não joga mais pra Visão Geral do zero) — salvo no Supabase
+  // (nunca localStorage/sessionStorage), mesmo critério já usado na
+  // reordenação por arrastar-e-soltar de Acompanhamento.
+  const { state: uiState, patch: patchUiState } = usePainelUiState();
+  const uiHydrated = useRef(false);
 
   // Contas do Meta (nome, status, saldo/teto de gasto, tipo de negócio) —
   // é o que alimenta Controle de Saldo. Função à parte (não só um efeito)
@@ -213,6 +228,82 @@ export default function PainelPage() {
       .then((r) => r.json())
       .then((d) => setFocusGroups(d.groups ?? []));
   }, [loadAccounts]);
+
+  // Etapa 39: assim que a aba/filtros salvos chegam do Supabase, aplica uma
+  // única vez (uiHydrated evita reaplicar e "prender" o usuário se ele
+  // trocar de aba/filtro logo em seguida, antes da 1ª leitura terminar).
+  useEffect(() => {
+    if (uiState === null || uiHydrated.current) return;
+    uiHydrated.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restaura a aba/filtros salvos assim que o estado do Supabase chega, uma única vez (uiHydrated evita repetir)
+    if (typeof uiState.tab === "string") setTab(uiState.tab as TabId);
+    const a = (uiState.acompanhamento ?? {}) as Record<string, unknown>;
+    if (typeof a.search === "string") setSearch(a.search);
+    if (typeof a.priorityFilter === "string") setPriorityFilter(a.priorityFilter);
+    if (a.cpaFilter === "all" || a.cpaFilter === "high") setCpaFilter(a.cpaFilter);
+    if (a.investFilter === "all" || a.investFilter === "low" || a.investFilter === "high") setInvestFilter(a.investFilter);
+    if (a.optimizedFilter === "all" || a.optimizedFilter === "optimized" || a.optimizedFilter === "pending")
+      setOptimizedFilter(a.optimizedFilter);
+    if (typeof a.preset === "string") setPreset(a.preset as PresetId);
+    if (typeof a.activeFocusGroupId === "string" || a.activeFocusGroupId === null)
+      setActiveFocusGroupId((a.activeFocusGroupId as string | null) ?? null);
+  }, [uiState]);
+
+  // Salva a aba ativa + os filtros de Acompanhamento sempre que mudam (com
+  // debounce, dentro do hook) — só depois de já ter restaurado o que tinha
+  // salvo, senão os valores iniciais (antes da leitura chegar) sobrescreveriam.
+  useEffect(() => {
+    if (!uiHydrated.current) return;
+    patchUiState({
+      tab,
+      acompanhamento: { search, priorityFilter, cpaFilter, investFilter, optimizedFilter, preset, activeFocusGroupId },
+    });
+  }, [tab, search, priorityFilter, cpaFilter, investFilter, optimizedFilter, preset, activeFocusGroupId, patchUiState]);
+
+  const handleAnaliseFiltersChange = useCallback(
+    (filters: { mode: string; preset: string; search: string }) => {
+      patchUiState({ analise: filters });
+    },
+    [patchUiState],
+  );
+
+  const handleVisaoGeralFiltersChange = useCallback(
+    (filters: { accountId: string; level: string; preset: string }) => {
+      patchUiState({ visaoGeral: filters });
+    },
+    [patchUiState],
+  );
+
+  // Status de saldo baixo / erro no pagamento — só pra colorir o nome da
+  // conta em Acompanhamento (mesma checagem de Mensagens > Avisos, em modo
+  // leitura). Só busca com a aba ativa, mesmo critério das outras chamadas
+  // "pesadas" do Meta.
+  const loadAlertStatuses = useCallback(async () => {
+    const [balanceRes, paymentRes] = await Promise.all([
+      fetch("/api/alerts/balance").then((r) => r.json()),
+      fetch("/api/alerts/payment").then((r) => r.json()),
+    ]);
+    setLowBalanceIds(
+      new Set(
+        ((balanceRes.statuses ?? []) as Array<{ ad_account_id: string; low: boolean }>)
+          .filter((s) => s.low)
+          .map((s) => s.ad_account_id),
+      ),
+    );
+    setPaymentErrorIds(
+      new Set(
+        ((paymentRes.statuses ?? []) as Array<{ ad_account_id: string; hasError: boolean }>)
+          .filter((s) => s.hasError)
+          .map((s) => s.ad_account_id),
+      ),
+    );
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "acompanhamento") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca o status de saldo/pagamento ao entrar na aba, só pra colorir o nome da conta
+    void loadAlertStatuses();
+  }, [loadAlertStatuses, tab]);
 
   async function saveFocusGroups(groups: FocusGroup[]) {
     setFocusGroups(groups);
@@ -505,6 +596,7 @@ export default function PainelPage() {
                       onClick={() => {
                         void loadInsights();
                         void loadMonthlyInsights();
+                        void loadAlertStatuses();
                       }}
                       disabled={loadingInsights}
                       className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
@@ -658,8 +750,20 @@ export default function PainelPage() {
                                 href={adsManagerUrl(acc.account_id)}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                title="Abrir no Gerenciador de Anúncios"
-                                className="text-zinc-500 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                                title={
+                                  paymentErrorIds.has(acc.account_id)
+                                    ? "Conta com erro no pagamento"
+                                    : lowBalanceIds.has(acc.account_id)
+                                      ? "Saldo baixo"
+                                      : "Abrir no Gerenciador de Anúncios"
+                                }
+                                className={`underline decoration-dotted underline-offset-2 ${
+                                  paymentErrorIds.has(acc.account_id)
+                                    ? "text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+                                    : lowBalanceIds.has(acc.account_id)
+                                      ? "text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300"
+                                      : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                                }`}
                               >
                                 {acc.name}
                               </a>
@@ -772,9 +876,22 @@ export default function PainelPage() {
               />
             ) : null}
 
-            {tab === "visao-geral" ? <VisaoGeral accounts={selectedAccounts} preset={preset} /> : null}
+            {tab === "visao-geral" ? (
+              <VisaoGeral
+                accounts={selectedAccounts}
+                preset={preset}
+                initialFilters={uiState?.visaoGeral}
+                onFiltersChange={handleVisaoGeralFiltersChange}
+              />
+            ) : null}
 
-            {tab === "analise" ? <AnaliseTab accounts={selectedAccounts} /> : null}
+            {tab === "analise" ? (
+              <AnaliseTab
+                accounts={selectedAccounts}
+                initialFilters={uiState?.analise}
+                onFiltersChange={handleAnaliseFiltersChange}
+              />
+            ) : null}
           </div>
         </div>
       )}

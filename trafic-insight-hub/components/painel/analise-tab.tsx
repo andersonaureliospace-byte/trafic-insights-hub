@@ -99,10 +99,33 @@ function fmtDiffSigned(diff: number): string {
   return `${diff >= 0 ? "+" : "-"}${fmtCurrency(Math.abs(diff))}`;
 }
 
-export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
-  const [mode, setMode] = useState<AnalysisMode>("above");
-  const [preset, setPreset] = useState("last_3d_plus_today");
-  const [search, setSearch] = useState("");
+interface AnaliseFilters {
+  mode: AnalysisMode;
+  preset: string;
+  search: string;
+}
+
+export function AnaliseTab({
+  accounts,
+  initialFilters,
+  onFiltersChange,
+}: {
+  accounts: AdAccount[];
+  // Etapa 39: filtros salvos da última vez (Supabase, via painel-ui-state)
+  // — pra voltar do jeito que estava depois de um F5, em vez de sempre
+  // reabrir em "acima da meta"/"últimos 3 dias"/busca vazia. Vem como
+  // objeto solto (Record) do estado salvo — validado campo a campo abaixo
+  // em vez de confiar no formato de propósito.
+  initialFilters?: Record<string, unknown>;
+  onFiltersChange?: (filters: AnaliseFilters) => void;
+}) {
+  const [mode, setMode] = useState<AnalysisMode>(
+    initialFilters?.mode === "above" || initialFilters?.mode === "below" ? initialFilters.mode : "above",
+  );
+  const [preset, setPreset] = useState(
+    typeof initialFilters?.preset === "string" ? initialFilters.preset : "last_3d_plus_today",
+  );
+  const [search, setSearch] = useState(typeof initialFilters?.search === "string" ? initialFilters.search : "");
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
   const [loading, setLoading] = useState(false);
@@ -120,6 +143,10 @@ export function AnaliseTab({ accounts }: { accounts: AdAccount[] }) {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [bulkErrors, setBulkErrors] = useState<BulkError[]>([]);
+
+  useEffect(() => {
+    onFiltersChange?.({ mode, preset, search });
+  }, [mode, preset, search, onFiltersChange]);
   const bulkArmTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const accountNameById = useMemo(() => new Map(accounts.map((a) => [a.account_id, a.name])), [accounts]);

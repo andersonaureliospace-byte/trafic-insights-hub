@@ -12,14 +12,47 @@ const LEVELS: { id: BreakdownLevel; label: string }[] = [
   { id: "ad", label: "Anúncios" },
 ];
 
-export function VisaoGeral({ accounts, preset: painelPreset }: { accounts: AdAccount[]; preset: PresetId }) {
-  const [accountId, setAccountId] = useState(accounts[0]?.account_id ?? "");
-  const [level, setLevel] = useState<BreakdownLevel>("campaign");
-  const [preset, setPreset] = useState<PresetId>(painelPreset);
+interface VisaoGeralFilters {
+  accountId: string;
+  level: BreakdownLevel;
+  preset: PresetId;
+}
+
+const LEVEL_IDS = new Set(LEVELS.map((l) => l.id));
+
+export function VisaoGeral({
+  accounts,
+  preset: painelPreset,
+  initialFilters,
+  onFiltersChange,
+}: {
+  accounts: AdAccount[];
+  preset: PresetId;
+  // Etapa 39: filtros salvos da última vez (Supabase, via painel-ui-state)
+  // — pra voltar do jeito que estava depois de um F5. Vem como objeto solto
+  // (Record) do estado salvo — validado campo a campo abaixo.
+  initialFilters?: Record<string, unknown>;
+  onFiltersChange?: (filters: VisaoGeralFilters) => void;
+}) {
+  const [accountId, setAccountId] = useState(
+    (typeof initialFilters?.accountId === "string" && initialFilters.accountId) || accounts[0]?.account_id || "",
+  );
+  const [level, setLevel] = useState<BreakdownLevel>(
+    typeof initialFilters?.level === "string" && LEVEL_IDS.has(initialFilters.level as BreakdownLevel)
+      ? (initialFilters.level as BreakdownLevel)
+      : "campaign",
+  );
+  const [preset, setPreset] = useState<PresetId>(
+    typeof initialFilters?.preset === "string" ? (initialFilters.preset as PresetId) : painelPreset,
+  );
   const [rows, setRows] = useState<BreakdownRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    onFiltersChange?.({ accountId, level, preset });
+  }, [accountId, level, preset, onFiltersChange]);
 
   useEffect(() => {
     if (!accountId && accounts[0]) {

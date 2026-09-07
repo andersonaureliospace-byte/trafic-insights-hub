@@ -200,8 +200,17 @@ que olha o status de pagamento que a Meta devolve por conta (desabilitada,
 pagamento pendente, aguardando liquidação, em período de carência) e avisa
 o mesmo grupo do WhatsApp, com o mesmo cooldown de 24h — reaproveitando o
 mesmo hook público que já existia (`balance-alert-tick`), sem precisar de
-workflow novo no n8n (veja os ⚠️ abaixo). Com isso, todas as áreas do plano
-original + os extras pedidos ao longo do caminho estão 100% concluídas.
+workflow novo no n8n (veja os ⚠️ abaixo). Em Acompanhamento, o nome da conta
+agora também fica colorido: vermelho quando a conta está com erro no
+pagamento, laranja quando está com saldo baixo (mesma checagem de Mensagens
+→ Avisos, só que aqui em modo leitura, sem mandar aviso nenhum) — veja o ⚠️
+abaixo sobre qual cor "ganha" quando os dois casos acontecem ao mesmo tempo.
+A ordem da lateral do Painel mudou a pedido: Acompanhamento, Análise,
+Evolução, Visão Geral, Controle de Saldo, Clientes. E o Painel agora lembra
+em qual aba (e com quais filtros) você estava — dar F5 não joga mais de
+volta pra Visão Geral do zero, volta pra onde você tinha deixado, com os
+mesmos filtros. Com isso, todas as áreas do plano original + os extras
+pedidos ao longo do caminho estão 100% concluídas.
 
 ⚠️ **Antes de testar a coluna "Otimizado" (Acompanhamento)**: essa entrega
 inclui as migrações `0010_client_optimized.sql` e `0011_drop_optimized_reason.sql`
@@ -392,6 +401,29 @@ mostrado. Vale conferir os primeiros números contra a tela de Cobranças e
 Pagamentos de uma conta pré-paga antes de confiar de olhos fechados,
 principalmente se você notar alguma diferença por causa de imposto/desconto
 que a Meta aplica na cobrança e que a API não reflete.
+
+⚠️ **Sobre a cor do nome da conta em Acompanhamento (Etapa 39)**: usa a
+mesma checagem de Mensagens → Avisos (saldo baixo e erro no pagamento — veja
+os ⚠️ acima sobre os dois), só que em modo leitura, sem mandar nenhum aviso
+pro WhatsApp — só busca esse status quando a aba Acompanhamento está ativa
+(mesmo critério das outras chamadas do Meta no Painel) e atualiza junto com
+o botão "↻ Atualizar" da aba. Se uma conta estiver com erro no pagamento E
+com saldo baixo ao mesmo tempo, o vermelho (erro no pagamento) tem
+prioridade sobre o laranja (saldo baixo) — passe o mouse no nome da conta
+pra ver qual dos dois está sendo sinalizado. Herda as mesmas condições do
+saldo baixo (só entra quem é Pré-paga/Híbrida com limite definido) e do erro
+no pagamento (entra qualquer conta vinculada) já explicadas acima.
+
+⚠️ **Sobre o Painel lembrar a aba/filtros entre sessões (Etapa 39)**: a aba
+ativa e os filtros de Acompanhamento, Análise e Visão Geral ficam salvos no
+Supabase (reaproveitando a tabela `user_ui_prefs` que já existia, sem
+migração nova) — nunca em localStorage/sessionStorage, mesmo critério já
+usado na reordenação por arrastar-e-soltar de Acompanhamento, pra valer
+igual em qualquer navegador/computador que você use pra acessar o Painel.
+Evolução, Controle de Saldo e Clientes não têm filtro nenhum pra lembrar
+(Evolução tem período fixo; os outros dois não têm filtro de tela). Num
+acesso totalmente novo (sem nada salvo ainda), o Painel continua abrindo em
+Visão Geral, sem filtro nenhum ativo, do jeito que já era.
 
 ⚠️ **Sobre a coluna Ritmo (Acompanhamento)**: o cálculo é (Investimento
 mensal − Valor usado no mês corrente) ÷ dias restantes do mês, sempre
@@ -633,6 +665,8 @@ app/
     public/hooks/balance-alert-tick      → idem, checa e avisa saldo baixo E erro no pagamento
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
+    painel-ui-state  → lembra a aba ativa + filtros de Acompanhamento/Análise/
+                       Visão Geral entre sessões (reaproveita user_ui_prefs)
 lib/meta/
   client.ts     → chamadas cruas à Graph API (get/getAll/post, presets de data)
   shared.ts     → helpers compartilhados (isVaga, objetivos excluídos, acesso à Página)
@@ -685,6 +719,8 @@ lib/scheduling.ts → regra de recorrência genérica (soma o intervalo à últi
 lib/priority-context.tsx → Context/Provider dos rótulos de prioridade
                             personalizados (busca uma vez, compartilha entre
                             Painel, diálogo de status em massa e Configurações)
+lib/hooks/use-painel-ui-state.ts → hook que carrega/salva (com debounce) a
+                            aba ativa + filtros do Painel via /api/painel-ui-state
 lib/whatsapp/
   client.ts     → chamadas cruas à API do uazapi (status/connect/disconnect/
                   grupos/envio de texto e mídia)
@@ -920,6 +956,15 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     período de carência, com cooldown de 24h — reaproveita o mesmo hook
     público `balance-alert-tick` (sem workflow novo no n8n). Veja os ⚠️
     acima sobre o critério usado e a nova migração `0012_payment_alerts.sql`
+33. ~~Nome da conta colorido, ordem da lateral e Painel lembra aba/filtros
+    (Etapa 39)~~ ✅ — em Acompanhamento, o nome da conta fica vermelho com
+    erro no pagamento e laranja com saldo baixo (mesma checagem de Mensagens
+    → Avisos, em modo leitura); a lateral do Painel mudou de ordem
+    (Acompanhamento, Análise, Evolução, Visão Geral, Controle de Saldo,
+    Clientes); e o Painel agora lembra a aba ativa + os filtros de
+    Acompanhamento/Análise/Visão Geral entre sessões — dar F5 volta pra onde
+    você tinha deixado, em vez de sempre abrir em Visão Geral do zero. Veja
+    os ⚠️ acima sobre a prioridade de cor e o que fica salvo
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -937,6 +982,8 @@ com abas acima/abaixo da meta e aumento de orçamento fixo, ações em massa
 com backoff de rate limit e pausa de 3s entre chamadas, popup do select
 sempre legível no escuro, coluna Otimizado com reset diário em
 Acompanhamento simplificada pra seletor sem motivo, conserto do aviso de
-saldo baixo silencioso e nova checagem de erro no pagamento) estão 100%
-concluídos. Não há mais nenhum item pendente do escopo combinado — próximos
-pedidos são novos incrementos, a critério seu.
+saldo baixo silencioso e nova checagem de erro no pagamento, nome da conta
+colorido por saldo/pagamento + nova ordem da lateral + Painel lembrando
+aba/filtros entre sessões) estão 100% concluídos. Não há mais nenhum item
+pendente do escopo combinado — próximos pedidos são novos incrementos, a
+critério seu.
