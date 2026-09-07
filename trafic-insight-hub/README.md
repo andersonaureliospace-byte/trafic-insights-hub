@@ -190,8 +190,18 @@ o clique mesmo). Um filtro Otimizado/Pendente/Todos foi junto (fixo em
 marcação é por dia — reseta sozinha à meia-noite (horário de Brasília) sem
 precisar de nenhum job rodando por fora, veja o ⚠️ abaixo sobre como isso
 funciona e sobre a nova
-migração necessária. Com isso, todas as áreas do plano original + os
-extras pedidos ao longo do caminho estão 100% concluídas.
+migração necessária. O aviso automático de saldo baixo (Mensagens → Avisos)
+tinha um bug: quando o envio pro WhatsApp falhava (grupo de avisos não
+configurado, instância desconectada, erro do uazapi), o erro era engolido
+em silêncio — agora aparece na tela, num aviso vermelho, tanto no
+carregamento normal quanto no "Verificar agora" (veja o ⚠️ abaixo). Mensagens
+→ Avisos também ganhou uma segunda checagem: "Contas com erro no pagamento",
+que olha o status de pagamento que a Meta devolve por conta (desabilitada,
+pagamento pendente, aguardando liquidação, em período de carência) e avisa
+o mesmo grupo do WhatsApp, com o mesmo cooldown de 24h — reaproveitando o
+mesmo hook público que já existia (`balance-alert-tick`), sem precisar de
+workflow novo no n8n (veja os ⚠️ abaixo). Com isso, todas as áreas do plano
+original + os extras pedidos ao longo do caminho estão 100% concluídas.
 
 ⚠️ **Antes de testar a coluna "Otimizado" (Acompanhamento)**: essa entrega
 inclui as migrações `0010_client_optimized.sql` e `0011_drop_optimized_reason.sql`
@@ -211,6 +221,41 @@ revisão diária "essa conta eu já mexi hoje". Se você já rodou a
 `0010_client_optimized.sql` numa entrega anterior, só falta rodar a nova
 `0011` — ela apenas remove a coluna de motivo, que não existe mais na tela
 (a marcação virou um clique só, sem pedir texto nenhum).
+
+⚠️ **Sobre o conserto do aviso de saldo baixo, e a nova checagem de erro de
+pagamento (Etapa 38)**: o aviso de saldo baixo não estava saindo porque o
+código que manda a mensagem pro WhatsApp engolia qualquer erro em silêncio
+— se o grupo de avisos não estava configurado em Configurações → WhatsApp,
+ou se o envio pelo uazapi falhava por qualquer motivo, a tela de Avisos
+simplesmente não mostrava nada de errado (podia até dizer "Nenhuma conta com
+saldo baixo agora" mesmo tendo conta com saldo baixo de verdade). Agora
+qualquer erro nesse envio aparece direto na tela, num aviso vermelho, tanto
+ao abrir a aba quanto ao clicar em "Verificar agora" — se ainda não sair o
+WhatsApp, o motivo agora fica visível ali (grupo não configurado, instância
+desconectada, erro do uazapi, etc.). Além disso, Mensagens → Avisos ganhou
+uma segunda checagem, nova: "Contas com erro no pagamento" — olha o status
+de pagamento que a própria Meta devolve pra cada conta vinculada (conta
+desabilitada, pagamento pendente, aguardando liquidação, em período de
+carência) e avisa o mesmo grupo do WhatsApp quando encontra alguma, com o
+mesmo cooldown de 24h por conta do aviso de saldo. Essa checagem entrou no
+MESMO hook público que já existia (`balance-alert-tick`) — não precisa criar
+nenhum workflow novo no n8n, o que você já tem configurado (passo 8, item
+"Deploy na Vercel") passa a rodar as duas checagens automaticamente. Essa
+entrega inclui uma nova migração, `0012_payment_alerts.sql` — rode ela no
+SQL Editor do Supabase (veja o passo 11) antes de usar essa nova seção,
+senão dá erro de coluna inexistente.
+
+⚠️ **Sobre o critério de "erro no pagamento" (Etapa 38)**: a Meta não tem um
+campo único e óbvio pra "está com problema de pagamento" — o código combina
+dois campos do Graph API: `account_status` (considerando erro quando vem
+`DISABLED`, `UNSETTLED`, `PENDING_SETTLEMENT` ou `IN_GRACE_PERIOD` — os 4
+status ligados a cobrança/liquidação, ignorando outros tipos de status como
+revisão de risco) e `disable_reason` (só quando é especificamente
+`RISK_PAYMENT`, ou seja, desabilitada por risco de pagamento). É uma leitura
+por analogia com a documentação da Meta, não confirmada contra uma conta
+real desabilitada — vale conferir o primeiro aviso de verdade contra a tela
+de Cobranças e Pagamentos da conta antes de confiar de olhos fechados; se
+sobrar ou faltar algum status nessa lista, me fala que ajusto.
 
 ⚠️ **Antes de testar o WhatsApp**: essa entrega inclui uma nova migração
 (`0002_whatsapp_instance_unique.sql`) — rode ela no SQL Editor do Supabase
@@ -477,6 +522,11 @@ minus o criativo ruim) continua 100% manual, no Gerenciador de Anúncios.
 10. Cole o conteúdo de `supabase/migrations/0009_account_sort_order.sql` e
     rode (adiciona a coluna que guarda a ordem manual dos clientes em
     Acompanhamento).
+11. Cole o conteúdo de `supabase/migrations/0010_client_optimized.sql`,
+    depois `0011_drop_optimized_reason.sql` e depois
+    `0012_payment_alerts.sql`, nessa ordem (a coluna "Otimizado" de
+    Acompanhamento e o controle de reaviso da nova checagem de erro no
+    pagamento).
     (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
     formato que `supabase db push` espera — ele aplica só as migrações que
     ainda não rodaram.)
@@ -574,12 +624,13 @@ app/
     crm/leads/[id]/events  → CRUD do CRM (instâncias, leads, histórico)
     reports/templates, reports/scheduled  → modelos e agendamentos de Relatórios
     alerts/balance  → status de saldo baixo + "Verificar agora" (Mensagens > Avisos)
+    alerts/payment  → status de erro no pagamento + "Verificar agora" (Mensagens > Avisos)
     priority-labels → rótulos/cores de prioridade personalizados (Configurações > Status)
     public/hooks/whatsapp-dispatch-tick  → chamado pelo n8n, não pelo navegador
     public/hooks/audit-tick              → idem, roda as duas auditorias
     public/hooks/crm-lead-ingest         → idem, cria lead novo por public_token
     public/hooks/report-tick             → idem, dispara os relatórios agendados
-    public/hooks/balance-alert-tick      → idem, checa e avisa saldo baixo
+    public/hooks/balance-alert-tick      → idem, checa e avisa saldo baixo E erro no pagamento
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
 lib/meta/
@@ -621,7 +672,13 @@ lib/alerts/
   balance.ts    → checa saldo baixo (pré-paga/híbrida com limite definido) e
                   manda o aviso pro grupo — compartilhado entre "Verificar
                   agora" (sessão) e o hook público balance-alert-tick (service
-                  role); tem cooldown de 24h por conta pra não reavisar toda hora
+                  role); tem cooldown de 24h por conta pra não reavisar toda
+                  hora; erro no envio (WhatsApp) volta explícito em vez de
+                  ser engolido em silêncio (Etapa 38)
+  payment.ts    → checa erro no pagamento (account_status/disable_reason da
+                  Meta) em TODAS as contas vinculadas e manda o aviso pro
+                  mesmo grupo — mesmo padrão de balance.ts (cooldown de 24h,
+                  compartilhado entre "Verificar agora" e o hook público)
 lib/scheduling.ts → regra de recorrência genérica (soma o intervalo à última
                     ocorrência, preservando dia da semana/mês) — usada pelos
                     disparos de WhatsApp e pelos relatórios agendados
@@ -650,6 +707,9 @@ supabase/migrations/0006_whatsapp_media_bucket.sql → bucket whatsapp-media (St
 supabase/migrations/0007_drop_public_dashboards.sql → (opcional) apaga a tabela do link público de dashboard removido
 supabase/migrations/0008_client_profile_fields.sql → Meta de leads, WhatsApp de contato e Endereço na ficha de cliente
 supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop) dos clientes em Acompanhamento
+supabase/migrations/0010_client_optimized.sql → coluna "Otimizado" (+ data de referência) em Acompanhamento
+supabase/migrations/0011_drop_optimized_reason.sql → remove a coluna de motivo do "Otimizado" (não usada mais)
+supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da checagem de erro no pagamento
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
@@ -849,6 +909,17 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
     um clique alterna entre "Não otimizado" (cinza) e "Otimizado" (verde),
     sem caixa de texto nenhuma. A coluna de motivo saiu do banco também
     (migração `0011_drop_optimized_reason.sql`, veja o ⚠️ acima)
+32. ~~Conserto do aviso de saldo baixo + nova checagem de erro no pagamento
+    (Etapa 38)~~ ✅ — o envio do aviso de saldo baixo falhava em silêncio
+    (grupo não configurado, instância desconectada, erro do uazapi) sem
+    mostrar nada de errado na tela; agora qualquer falha no envio aparece
+    num aviso vermelho em Mensagens → Avisos. Nova seção "Contas com erro no
+    pagamento" na mesma aba: verifica `account_status`/`disable_reason` de
+    cada conta vinculada na Meta e avisa o mesmo grupo do WhatsApp quando
+    encontra conta desabilitada/pagamento pendente/aguardando liquidação/em
+    período de carência, com cooldown de 24h — reaproveita o mesmo hook
+    público `balance-alert-tick` (sem workflow novo no n8n). Veja os ⚠️
+    acima sobre o critério usado e a nova migração `0012_payment_alerts.sql`
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -865,6 +936,7 @@ por conjunto com criativos expansíveis e botões de pausar isolados, Análise
 com abas acima/abaixo da meta e aumento de orçamento fixo, ações em massa
 com backoff de rate limit e pausa de 3s entre chamadas, popup do select
 sempre legível no escuro, coluna Otimizado com reset diário em
-Acompanhamento simplificada pra seletor sem motivo) estão 100% concluídos.
-Não há mais nenhum item pendente do escopo combinado — próximos pedidos são
-novos incrementos, a critério seu.
+Acompanhamento simplificada pra seletor sem motivo, conserto do aviso de
+saldo baixo silencioso e nova checagem de erro no pagamento) estão 100%
+concluídos. Não há mais nenhum item pendente do escopo combinado — próximos
+pedidos são novos incrementos, a critério seu.

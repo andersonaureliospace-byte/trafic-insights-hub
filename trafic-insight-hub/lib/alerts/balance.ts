@@ -26,12 +26,22 @@ export interface BalanceStatus {
   alerted: boolean;
 }
 
+export interface CheckLowBalancesResult {
+  statuses: BalanceStatus[];
+  // Etapa 38: antes esse erro era engolido em silêncio (instância do
+  // WhatsApp não configurada, grupo de avisos não definido, ou falha de
+  // envio no uazapi) — o "Verificar agora" voltava como se tivesse dado
+  // tudo certo mesmo sem mandar nada. Agora fica aqui pra tela mostrar de
+  // verdade o que impediu o envio, sem esconder a tabela de status.
+  sendError: string | null;
+}
+
 export async function checkLowBalances(
   db: Db,
   userId: string,
   token: string,
   opts: { send: boolean; bypassCooldown?: boolean } = { send: false },
-): Promise<BalanceStatus[]> {
+): Promise<CheckLowBalancesResult> {
   const { data: pixRows, error: pixErr } = await db
     .from("pix_accounts")
     .select("ad_account_id, payment_type, base_amount, alert_threshold, last_alert_sent_at")
@@ -41,7 +51,7 @@ export async function checkLowBalances(
   const withThreshold = (pixRows ?? []).filter(
     (p) => p.alert_threshold != null || p.base_amount != null,
   );
-  if (withThreshold.length === 0) return [];
+  if (withThreshold.length === 0) return { statuses: [], sendError: null };
 
   const { data: bindings } = await db
     .from("account_bindings")
@@ -86,24 +96,27 @@ export async function checkLowBalances(
     }
   }
 
+  let sendError: string | null = null;
   if (opts.send && toAlert.length > 0) {
     try {
       const instance = await requireWhatsappInstance(db, userId);
-      if (instance.alerts_group_id) {
-        const lines = toAlert.map(
-          (s) => `⚠️ ${s.client_name}: saldo ${fmtCurrency(s.balance, s.currency)} (limite ${fmtCurrency(s.threshold, s.currency)})`,
-        );
-        const message = `Aviso de saldo baixo\n\n${lines.join("\n")}`;
-        await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, message);
-        const now = new Date().toISOString();
-        for (const s of toAlert) {
-          s.alerted = true;
-          await db.from("pix_accounts").update({ last_alert_sent_at: now }).eq("user_id", userId).eq("ad_account_id", s.ad_account_id);
-        }
+      if (!instance.alerts_group_id) {
+        throw new Error("Cadastre o grupo de avisos em Configurações → WhatsApp antes de verificar.");
       }
-    } catch {
-      // instância do WhatsApp não configurada, ou falha no envio — os
-      // status calculados acima ainda voltam pra tela mesmo assim.
+      const lines = toAlert.map(
+        (s) => `⚠️ ${s.client_name}: saldo ${fmtCurrency(s.balance, s.currency)} (limite ${fmtCurrency(s.threshold, s.currency)})`,
+      );
+      const message = `Aviso de saldo baixo\n\n${lines.join("\n")}`;
+      await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, message);
+      const now = new Date().toISOString();
+      for (const s of toAlert) {
+        s.alerted = true;
+        await db.from("pix_accounts").update({ last_alert_sent_at: now }).eq("user_id", userId).eq("ad_account_id", s.ad_account_id);
+      }
+    } catch (e) {
+      // Antes isso era descartado sem deixar rastro — agora sobe pra quem
+      // chamou decidir o que mostrar (tela ou log do hook do n8n).
+      sendError = (e as Error).message;
     }
   }
 
@@ -115,5 +128,5 @@ export async function checkLowBalances(
       .in("ad_account_id", toReset);
   }
 
-  return statuses;
+  return { statuses, sendError };
 }
