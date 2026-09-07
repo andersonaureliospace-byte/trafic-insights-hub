@@ -23,6 +23,13 @@ const BULK_ARM_MS = 5000;
 
 type AnalysisMode = "above" | "below";
 
+// Etapa 41: Conjuntos e Criativos (só existem os dois na aba "acima da
+// meta") viram duas telas separadas, alternadas por um botão igual ao de
+// "CPA acima da meta"/"CPA abaixo da meta" — em vez das duas ficarem
+// empilhadas na mesma tela. Na aba "abaixo da meta" só existe Conjuntos,
+// então o botão nem aparece lá.
+type SubPanel = "conjuntos" | "criativos";
+
 interface AdRow {
   id: string;
   name: string;
@@ -264,6 +271,7 @@ function BulkErrorsBanner({ bulk, verb }: { bulk: BulkUiState; verb: string }) {
 
 interface AnaliseFilters {
   mode: AnalysisMode;
+  subPanel: SubPanel;
   preset: string;
   search: string;
 }
@@ -285,6 +293,9 @@ export function AnaliseTab({
   const [mode, setMode] = useState<AnalysisMode>(
     initialFilters?.mode === "above" || initialFilters?.mode === "below" ? initialFilters.mode : "above",
   );
+  const [subPanel, setSubPanel] = useState<SubPanel>(
+    initialFilters?.subPanel === "criativos" ? "criativos" : "conjuntos",
+  );
   const [preset, setPreset] = useState(
     typeof initialFilters?.preset === "string" ? initialFilters.preset : "last_3d_plus_today",
   );
@@ -305,16 +316,26 @@ export function AnaliseTab({
   const [increasedIds, setIncreasedIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Três ações em massa independentes (Etapa 40): conjuntos "abaixo da
-  // meta" (aumentar orçamento), conjuntos "acima da meta" (pausar) e
-  // criativos "acima da meta" (pausar).
+  // Etapa 42: caixa de seleção pra pausar só quem foi marcado, em vez de
+  // sempre todos os listados — só existe nas duas telas de pausar (Conjuntos
+  // e Criativos da aba "acima da meta"); "Pausar todos os listados" continua
+  // existindo do lado, sem checkbox nenhum marcado.
+  const [selectedAdsetIds, setSelectedAdsetIds] = useState<Set<string>>(new Set());
+  const [selectedCreativeIds, setSelectedCreativeIds] = useState<Set<string>>(new Set());
+
+  // Cinco ações em massa independentes: conjuntos "abaixo da meta" (aumentar
+  // orçamento); conjuntos "acima da meta" — todos listados e só selecionados
+  // (pausar); criativos "acima da meta" — todos listados e só selecionados
+  // (pausar).
   const belowBulk = useBulkRunner<AdSetRow>();
   const aboveAdsetBulk = useBulkRunner<AdSetRow>();
+  const aboveAdsetSelectedBulk = useBulkRunner<AdSetRow>();
   const aboveCreativeBulk = useBulkRunner<CreativeRow>();
+  const aboveCreativeSelectedBulk = useBulkRunner<CreativeRow>();
 
   useEffect(() => {
-    onFiltersChange?.({ mode, preset, search });
-  }, [mode, preset, search, onFiltersChange]);
+    onFiltersChange?.({ mode, subPanel, preset, search });
+  }, [mode, subPanel, preset, search, onFiltersChange]);
 
   const accountNameById = useMemo(() => new Map(accounts.map((a) => [a.account_id, a.name])), [accounts]);
 
@@ -343,6 +364,7 @@ export function AnaliseTab({
     setGroups(d.groups ?? []);
     setSkipped(d.skipped ?? []);
     setIncreasedIds(new Set());
+    setSelectedAdsetIds(new Set());
   }, [accounts, preset, mode]);
 
   // Criativos só existem na aba "acima da meta" — não busca nada na
@@ -369,21 +391,49 @@ export function AnaliseTab({
       return;
     }
     setCreativeGroups(d.groups ?? []);
+    // Mesma checagem de "conta sem Meta CPA cadastrada" do lado de Conjuntos
+    // — atualiza o aviso mesmo quando quem buscou por último foi a tela de
+    // Criativos.
+    setSkipped(d.skipped ?? []);
+    setSelectedCreativeIds(new Set());
   }, [accounts, preset, mode]);
 
+  // Etapa 41: só busca a tela que está sendo exibida (economiza chamada à
+  // Meta Graph API) — Conjuntos e Criativos viraram telas alternadas, não
+  // duas listas na mesma tela. Em "abaixo da meta" só existe Conjuntos.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas/período/aba exibidos
-    void loadAdsets();
-    void loadCreatives();
-  }, [loadAdsets, loadCreatives]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas/período/aba/tela exibida
+    if (mode === "below" || subPanel === "conjuntos") void loadAdsets();
+    if (mode === "above" && subPanel === "criativos") void loadCreatives();
+  }, [loadAdsets, loadCreatives, mode, subPanel]);
 
-  // Desarma os botões em massa sozinho ao trocar de aba/período — evita
+  // Desarma os botões em massa sozinho ao trocar de aba/tela/período — evita
   // confirmar sem querer uma ação pensada pra outra lista.
   useEffect(() => {
     belowBulk.disarm();
     aboveAdsetBulk.disarm();
+    aboveAdsetSelectedBulk.disarm();
     aboveCreativeBulk.disarm();
-  }, [mode, preset, belowBulk, aboveAdsetBulk, aboveCreativeBulk]);
+    aboveCreativeSelectedBulk.disarm();
+  }, [mode, subPanel, preset, belowBulk, aboveAdsetBulk, aboveAdsetSelectedBulk, aboveCreativeBulk, aboveCreativeSelectedBulk]);
+
+  function toggleAdsetSelected(id: string) {
+    setSelectedAdsetIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleCreativeSelected(id: string) {
+    setSelectedCreativeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   function toggleExpand(adsetId: string) {
     setExpanded((prev) => {
@@ -533,7 +583,36 @@ export function AnaliseTab({
   const aboveAdsetBulkTargets = filteredGroups.flatMap((g) => g.adsets);
   const aboveCreativeBulkTargets = filteredCreativeGroups.flatMap((g) => g.ads);
 
-  const controlsDisabled = loading || creativeLoading || belowBulk.running || aboveAdsetBulk.running || aboveCreativeBulk.running;
+  // Etapa 42: dentro dos mesmos listados acima, só quem tem a caixinha
+  // marcada — usado pelo botão "Pausar selecionados", ao lado do "Pausar
+  // todos os listados" (que continua igual, ignorando a seleção).
+  const aboveAdsetSelectedTargets = aboveAdsetBulkTargets.filter((a) => selectedAdsetIds.has(a.id));
+  const aboveCreativeSelectedTargets = aboveCreativeBulkTargets.filter((a) => selectedCreativeIds.has(a.id));
+  const allAdsetsSelected = aboveAdsetBulkTargets.length > 0 && aboveAdsetBulkTargets.every((a) => selectedAdsetIds.has(a.id));
+  const allCreativesSelected =
+    aboveCreativeBulkTargets.length > 0 && aboveCreativeBulkTargets.every((a) => selectedCreativeIds.has(a.id));
+
+  function toggleAllAdsetsSelected() {
+    setSelectedAdsetIds(allAdsetsSelected ? new Set() : new Set(aboveAdsetBulkTargets.map((a) => a.id)));
+  }
+  function toggleAllCreativesSelected() {
+    setSelectedCreativeIds(allCreativesSelected ? new Set() : new Set(aboveCreativeBulkTargets.map((a) => a.id)));
+  }
+
+  // "Ocupado" por lista — trava o botão "todos" enquanto "selecionados"
+  // roda (e vice-versa), pra não disparar as duas ações em massa da mesma
+  // lista ao mesmo tempo.
+  const aboveAdsetBusy = aboveAdsetBulk.running || aboveAdsetSelectedBulk.running;
+  const aboveCreativeBusy = aboveCreativeBulk.running || aboveCreativeSelectedBulk.running;
+
+  const controlsDisabled =
+    loading ||
+    creativeLoading ||
+    belowBulk.running ||
+    aboveAdsetBulk.running ||
+    aboveAdsetSelectedBulk.running ||
+    aboveCreativeBulk.running ||
+    aboveCreativeSelectedBulk.running;
 
   if (accounts.length === 0) {
     return <p className="text-sm text-zinc-500">Nenhuma conta selecionada.</p>;
@@ -567,16 +646,49 @@ export function AnaliseTab({
               CPA abaixo da meta
             </button>
           </div>
+          {mode === "above" ? (
+            <div className="mb-2 inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700 sm:ml-2">
+              <button
+                onClick={() => setSubPanel("conjuntos")}
+                disabled={controlsDisabled}
+                className={`rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+                  subPanel === "conjuntos"
+                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                }`}
+              >
+                Conjuntos
+              </button>
+              <button
+                onClick={() => setSubPanel("criativos")}
+                disabled={controlsDisabled}
+                className={`rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50 ${
+                  subPanel === "criativos"
+                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                    : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                }`}
+              >
+                Criativos
+              </button>
+            </div>
+          ) : null}
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            {mode === "above" ? "Custo por conversa iniciada — acima da meta" : "Custo por conversa iniciada, por conjunto — abaixo da meta"}
+            {mode === "above"
+              ? subPanel === "criativos"
+                ? "Custo por conversa iniciada, por criativo — acima da meta"
+                : "Custo por conversa iniciada, por conjunto — acima da meta"
+              : "Custo por conversa iniciada, por conjunto — abaixo da meta"}
             {(loading || creativeLoading) ? " · atualizando…" : ""}
           </h2>
           <p className="mt-0.5 max-w-2xl text-xs text-zinc-500 dark:text-zinc-400">
             {mode === "above"
-              ? "Isolado em dois sub-painéis: Conjuntos (custo por conversa no dobro ou mais da Meta CPA, ou sem conversa " +
-                "com o próprio gasto R$2+ acima) e Criativos (custo por conversa R$2+ acima da Meta CPA, ou sem conversa " +
-                "com o próprio gasto R$2+ acima — limite mais sensível, de propósito, pra pegar o problema cedo). Linha " +
-                "verde = média fixa dos últimos 7 dias já abaixo da Meta CPA. Nada é pausado sozinho."
+              ? subPanel === "criativos"
+                ? "Custo por conversa R$2+ acima da Meta CPA, ou sem conversa com o próprio gasto R$2+ acima — limite mais " +
+                  "sensível que o de Conjuntos, de propósito, pra pegar o problema no criativo cedo. Linha verde = média " +
+                  "fixa dos últimos 7 dias já abaixo da Meta CPA. Nada é pausado sozinho."
+                : "Custo por conversa no dobro ou mais da Meta CPA, ou sem conversa com o próprio gasto R$2+ acima. Duplo " +
+                  "clique no conjunto mostra os criativos dele. Linha verde = média fixa dos últimos 7 dias já abaixo da " +
+                  "Meta CPA. Nada é pausado sozinho."
               : "Só conjunto ativo, com pelo menos uma conversa iniciada no período e custo por conversa abaixo da Meta " +
                 "CPA — candidato a receber mais investimento. Duplo clique no conjunto mostra os criativos dele. Nada é " +
                 "alterado sozinho, os botões (individual ou em massa) são manuais."}
@@ -604,8 +716,8 @@ export function AnaliseTab({
           </select>
           <button
             onClick={() => {
-              void loadAdsets();
-              void loadCreatives();
+              if (mode === "below" || subPanel === "conjuntos") void loadAdsets();
+              if (mode === "above" && subPanel === "criativos") void loadCreatives();
             }}
             disabled={controlsDisabled}
             className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
@@ -615,18 +727,16 @@ export function AnaliseTab({
         </div>
       </div>
 
-      {/* ─── Sub-painel Conjuntos (as duas abas usam esse mesmo bloco) ─── */}
-      <div className={mode === "above" ? "border-b border-zinc-200 dark:border-zinc-800" : ""}>
-        {mode === "above" ? (
-          <h3 className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Conjuntos</h3>
-        ) : null}
-
+      {/* ─── Tela Conjuntos (as duas abas usam esse mesmo bloco; Etapa 41: */}
+      {/* virou tela exclusiva, alternada com Criativos, em vez de empilhada) ─── */}
+      {mode === "below" || subPanel === "conjuntos" ? (
+      <div>
         <BulkBar
           label={mode === "above" ? "Pausar todos os conjuntos listados" : "Aumentar todos os orçamentos listados"}
           count={mode === "above" ? aboveAdsetBulkTargets.length : belowBulkTargets.length}
           verb={mode === "above" ? "Pausando" : "Aumentando"}
           bulk={mode === "above" ? aboveAdsetBulk : belowBulk}
-          disabled={loading}
+          disabled={mode === "above" ? aboveAdsetBusy : loading}
           onConfirm={() =>
             mode === "above"
               ? void aboveAdsetBulk.run(aboveAdsetBulkTargets, (a) => a.name, pauseOneAdSet)
@@ -637,6 +747,37 @@ export function AnaliseTab({
           bulk={mode === "above" ? aboveAdsetBulk : belowBulk}
           verb={mode === "above" ? "conjunto(s) não pausado(s)" : "conjunto(s) não aumentado(s)"}
         />
+
+        {/* Etapa 42: pausar só quem foi marcado na caixinha — só existe no */}
+        {/* modo "acima da meta" (pausar); "abaixo da meta" não tem seleção. */}
+        {mode === "above" ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-1.5 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+              <label className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={allAdsetsSelected}
+                  onChange={toggleAllAdsetsSelected}
+                  disabled={aboveAdsetBusy}
+                />
+                Selecionar todos os listados
+              </label>
+            </div>
+            <BulkBar
+              label="Pausar selecionados"
+              count={aboveAdsetSelectedTargets.length}
+              verb="Pausando"
+              bulk={aboveAdsetSelectedBulk}
+              disabled={aboveAdsetBusy}
+              onConfirm={() =>
+                void aboveAdsetSelectedBulk
+                  .run(aboveAdsetSelectedTargets, (a) => a.name, pauseOneAdSet)
+                  .then(() => setSelectedAdsetIds(new Set()))
+              }
+            />
+            <BulkErrorsBanner bulk={aboveAdsetSelectedBulk} verb="conjunto(s) selecionado(s) não pausado(s)" />
+          </>
+        ) : null}
 
         {error ? (
           <p className="px-4 py-6 text-sm text-red-600">{error}</p>
@@ -674,6 +815,7 @@ export function AnaliseTab({
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                        {mode === "above" ? <th className="w-8 px-4 py-1.5"></th> : null}
                         <th className="px-4 py-1.5 font-medium">Conjunto</th>
                         <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
                         <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
@@ -698,6 +840,20 @@ export function AnaliseTab({
                                 isGood ? GOOD_TREND_CLASS : ""
                               }`}
                             >
+                              {mode === "above" ? (
+                                <td
+                                  className="px-4 py-2"
+                                  onClick={(e) => e.stopPropagation()}
+                                  onDoubleClick={(e) => e.stopPropagation()}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedAdsetIds.has(adset.id)}
+                                    onChange={() => toggleAdsetSelected(adset.id)}
+                                    disabled={aboveAdsetBusy}
+                                  />
+                                </td>
+                              ) : null}
                               <td className="max-w-[260px] truncate px-4 py-2" title={adset.name}>
                                 <span className="mr-1 inline-block w-3 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
                                 {adset.name}
@@ -731,7 +887,7 @@ export function AnaliseTab({
                                       e.stopPropagation();
                                       void pauseAdSet(adset);
                                     }}
-                                    disabled={actingId === adset.id || aboveAdsetBulk.running}
+                                    disabled={actingId === adset.id || aboveAdsetBusy}
                                     title="Pausa só o conjunto inteiro — não mexe em nenhum criativo"
                                     className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
                                   >
@@ -754,7 +910,7 @@ export function AnaliseTab({
                             </tr>
                             {isOpen ? (
                               <tr className="border-t border-zinc-100 dark:border-zinc-800/60">
-                                <td colSpan={6} className="bg-zinc-50/60 px-4 py-2 dark:bg-zinc-800/20">
+                                <td colSpan={mode === "above" ? 7 : 6} className="bg-zinc-50/60 px-4 py-2 dark:bg-zinc-800/20">
                                   <table className="w-full text-sm">
                                     <thead>
                                       <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
@@ -798,7 +954,7 @@ export function AnaliseTab({
                                             <td className="px-3 py-1.5 text-right">
                                               <button
                                                 onClick={() => void pauseCreative(ad, adset.id)}
-                                                disabled={actingId === ad.id || aboveAdsetBulk.running}
+                                                disabled={actingId === ad.id || aboveAdsetBusy}
                                                 title="Pausa só esse criativo — não mexe no conjunto"
                                                 className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
                                               >
@@ -824,9 +980,10 @@ export function AnaliseTab({
           </div>
         )}
       </div>
+      ) : null}
 
-      {/* ─── Sub-painel Criativos (Etapa 40 — só na aba "acima da meta") ─── */}
-      {mode === "above" ? (
+      {/* ─── Tela Criativos (Etapa 40/41 — só na aba "acima da meta") ─── */}
+      {mode === "above" && subPanel === "criativos" ? (
         <div>
           <h3 className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Criativos</h3>
 
@@ -835,10 +992,36 @@ export function AnaliseTab({
             count={aboveCreativeBulkTargets.length}
             verb="Pausando"
             bulk={aboveCreativeBulk}
-            disabled={creativeLoading}
+            disabled={aboveCreativeBusy}
             onConfirm={() => void aboveCreativeBulk.run(aboveCreativeBulkTargets, (a) => a.name, pauseOneCreativeStandalone)}
           />
           <BulkErrorsBanner bulk={aboveCreativeBulk} verb="criativo(s) não pausado(s)" />
+
+          {/* Etapa 42: pausar só quem foi marcado na caixinha */}
+          <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-1.5 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+            <label className="flex items-center gap-1.5">
+              <input
+                type="checkbox"
+                checked={allCreativesSelected}
+                onChange={toggleAllCreativesSelected}
+                disabled={aboveCreativeBusy}
+              />
+              Selecionar todos os listados
+            </label>
+          </div>
+          <BulkBar
+            label="Pausar selecionados"
+            count={aboveCreativeSelectedTargets.length}
+            verb="Pausando"
+            bulk={aboveCreativeSelectedBulk}
+            disabled={aboveCreativeBusy}
+            onConfirm={() =>
+              void aboveCreativeSelectedBulk
+                .run(aboveCreativeSelectedTargets, (a) => a.name, pauseOneCreativeStandalone)
+                .then(() => setSelectedCreativeIds(new Set()))
+            }
+          />
+          <BulkErrorsBanner bulk={aboveCreativeSelectedBulk} verb="criativo(s) selecionado(s) não pausado(s)" />
 
           {creativeError ? (
             <p className="px-4 py-6 text-sm text-red-600">{creativeError}</p>
@@ -872,6 +1055,7 @@ export function AnaliseTab({
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                          <th className="w-8 px-4 py-1.5"></th>
                           <th className="px-4 py-1.5 font-medium">Criativo</th>
                           <th className="px-4 py-1.5 font-medium">Conjunto</th>
                           <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
@@ -892,6 +1076,14 @@ export function AnaliseTab({
                               title={isGood ? GOOD_TREND_TITLE : undefined}
                               className={`border-t border-zinc-100 dark:border-zinc-800/60 ${isGood ? GOOD_TREND_CLASS : ""}`}
                             >
+                              <td className="px-4 py-2">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedCreativeIds.has(ad.id)}
+                                  onChange={() => toggleCreativeSelected(ad.id)}
+                                  disabled={aboveCreativeBusy}
+                                />
+                              </td>
                               <td className="max-w-[220px] truncate px-4 py-2" title={ad.name}>
                                 {ad.name}
                               </td>
@@ -919,7 +1111,7 @@ export function AnaliseTab({
                               <td className="px-4 py-2 text-right">
                                 <button
                                   onClick={() => void pauseCreativeStandalone(ad)}
-                                  disabled={actingId === ad.id || aboveCreativeBulk.running}
+                                  disabled={actingId === ad.id || aboveCreativeBusy}
                                   title="Pausa só esse criativo"
                                   className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
                                 >

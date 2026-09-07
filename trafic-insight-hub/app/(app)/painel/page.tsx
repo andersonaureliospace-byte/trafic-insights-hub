@@ -261,7 +261,7 @@ export default function PainelPage() {
   }, [tab, search, priorityFilter, cpaFilter, investFilter, optimizedFilter, preset, activeFocusGroupId, patchUiState]);
 
   const handleAnaliseFiltersChange = useCallback(
-    (filters: { mode: string; preset: string; search: string }) => {
+    (filters: { mode: string; subPanel: string; preset: string; search: string }) => {
       patchUiState({ analise: filters });
     },
     [patchUiState],

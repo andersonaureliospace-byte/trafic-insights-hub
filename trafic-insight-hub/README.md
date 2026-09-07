@@ -209,23 +209,32 @@ A ordem da lateral do Painel mudou a pedido: Acompanhamento, Análise,
 Evolução, Visão Geral, Controle de Saldo, Clientes. E o Painel agora lembra
 em qual aba (e com quais filtros) você estava — dar F5 não joga mais de
 volta pra Visão Geral do zero, volta pra onde você tinha deixado, com os
-mesmos filtros. A aba "CPA acima da meta" de Análise foi isolada em dois
-sub-painéis (Etapa 40): Conjuntos (agora com um limite mais rígido — custo
-por conversa no DOBRO ou mais da Meta CPA, ou sem conversa com gasto R$2+
-acima) e Criativos (limite mais sensível — R$2+ acima da Meta CPA, com ou
-sem conversa — de propósito, pra pegar o problema no criativo antes de
-precisar sinalizar o conjunto inteiro). O sub-painel Conjuntos mantém a
-expansão pra ver os criativos daquele conjunto por duplo clique; o
-sub-painel Criativos é uma lista à parte, com seu próprio botão de pausar
-individual e em massa. As duas listas dessa aba (Conjuntos e Criativos)
-agora também destacam em verde (bem sutil) qualquer conjunto ou criativo
-cuja média de custo por conversa nos ÚLTIMOS 7 DIAS — sempre fixo,
-independente do período escolhido na tela — já esteja abaixo da Meta CPA,
-como um aviso de "isso pode já estar melhorando" (a aba "CPA abaixo da
-meta" não mudou e não tem esse destaque, já que ali tudo já está abaixo da
-meta por definição). Veja o ⚠️ abaixo sobre os novos limites e essa
-checagem de 7 dias. Com isso, todas as áreas do plano original + os extras
-pedidos ao longo do caminho estão 100% concluídas.
+mesmos filtros. A aba "CPA acima da meta" de Análise ganhou dois critérios
+diferentes (Etapa 40): Conjuntos (limite mais rígido — custo por conversa
+no DOBRO ou mais da Meta CPA, ou sem conversa com gasto R$2+ acima) e
+Criativos (limite mais sensível — R$2+ acima da Meta CPA, com ou sem
+conversa — de propósito, pra pegar o problema no criativo antes de
+precisar sinalizar o conjunto inteiro). A pedido (Etapa 41), Conjuntos e
+Criativos viraram duas TELAS separadas dentro da aba "CPA acima da meta"
+— um botão igual ao de "CPA acima da meta"/"CPA abaixo da meta" alterna
+entre as duas, em vez de ficarem empilhadas na mesma tela; a aba "CPA
+abaixo da meta" continua só com Conjuntos, sem esse botão (não existe
+Criativos ali). Conjuntos mantém a expansão pra ver os criativos daquele
+conjunto por duplo clique; Criativos é uma lista à parte — cada uma com
+seu próprio botão de pausar individual e em massa. Além do botão "Pausar
+todos os listados" de cada tela, agora também dá pra marcar uma caixinha
+por linha (Etapa 42) e usar "Pausar selecionados" pra pausar só quem foi
+marcado, em vez de sempre todo mundo da lista. Cada tela só busca dado da
+Meta enquanto você está olhando ela especificamente, economizando chamada
+à API (veja o ⚠️ abaixo). As duas telas (Conjuntos e Criativos) destacam em
+verde (bem sutil) qualquer conjunto ou criativo cuja média de custo por
+conversa nos ÚLTIMOS 7 DIAS — sempre fixo, independente do período
+escolhido na tela — já esteja abaixo da Meta CPA, como um aviso de "isso
+pode já estar melhorando" (a aba "CPA abaixo da meta" não mudou e não tem
+esse destaque, já que ali tudo já está abaixo da meta por definição). Veja
+o ⚠️ abaixo sobre os limites e a checagem de 7 dias. Com isso, todas as
+áreas do plano original + os extras pedidos ao longo do caminho estão
+100% concluídas.
 
 ⚠️ **Antes de testar a coluna "Otimizado" (Acompanhamento)**: essa entrega
 inclui as migrações `0010_client_optimized.sql` e `0011_drop_optimized_reason.sql`
@@ -386,27 +395,52 @@ custo por conversa menor que a Meta CPA já aparece, mesmo que seja só
 alguns centavos abaixo. Se isso trouxer conjunto demais pra lista, é só
 avisar que dá pra somar um piso.
 
-⚠️ **Sobre os novos limites da aba "CPA acima da meta" e o destaque de 7
-dias (Etapa 40)**: essa aba foi isolada em dois sub-painéis com limites
-DIFERENTES um do outro, de propósito — Conjuntos exige uma diferença bem
-maior (custo por conversa no DOBRO ou mais da Meta CPA, ou sem conversa com
-gasto R$2+ acima) antes de sugerir pausar o conjunto inteiro, enquanto
-Criativos usa um limite mais sensível (R$2+ acima da Meta CPA, com ou sem
-conversa) pra pegar o criativo problemático cedo, antes que o conjunto
-precise ser sinalizado (o limite antigo, R$4 pros dois casos, saiu de uso).
-Além disso, cada linha (conjunto ou criativo) busca também um recorte FIXO
-de "últimos 7 dias" — sempre o mesmo, independente do período escolhido no
+⚠️ **Sobre os limites das telas Conjuntos/Criativos e o destaque de 7 dias
+(Etapa 40)**: a aba "CPA acima da meta" tem dois critérios DIFERENTES um do
+outro, de propósito — Conjuntos exige uma diferença bem maior (custo por
+conversa no DOBRO ou mais da Meta CPA, ou sem conversa com gasto R$2+
+acima) antes de sugerir pausar o conjunto inteiro, enquanto Criativos usa
+um limite mais sensível (R$2+ acima da Meta CPA, com ou sem conversa) pra
+pegar o criativo problemático cedo, antes que o conjunto precise ser
+sinalizado (o limite antigo, R$4 pros dois casos, saiu de uso). Além
+disso, cada linha (conjunto ou criativo) busca também um recorte FIXO de
+"últimos 7 dias" — sempre o mesmo, independente do período escolhido no
 seletor da tela — só pra saber se a média de custo por conversa nesse
 recorte fixo já está abaixo da Meta CPA; quando está, a linha fica com um
 fundo verde bem sutil (só um aviso visual de "isso pode já estar
-melhorando", não muda o que entra ou sai da lista nem interfere no botão de
-pausar). Isso dobra as chamadas ao Graph API só nessa aba (período escolhido
-+ o fixo de 7 dias), então ela pode demorar um pouco mais que antes pra
-carregar — a aba "CPA abaixo da meta" não foi mexida e não tem esse custo
-extra. O sub-painel Criativos é nova só na tela: a mesma análise por
-criativo (com custo por conversa iniciada) já existia no código desde as
-Etapas 11-17, só não estava mais ligada na tela desde que a Etapa 31
-reorganizou Análise por conjunto — agora as duas convivem lado a lado.
+melhorando", não muda o que entra ou sai da lista nem interfere nos
+botões de pausar). A tela Criativos é nova só na interface: a mesma
+análise por criativo (com custo por conversa iniciada) já existia no
+código desde as Etapas 11-17, só não estava mais ligada na tela desde que
+a Etapa 31 reorganizou Análise por conjunto.
+
+⚠️ **Sobre Conjuntos e Criativos virarem telas separadas (Etapa 41)**: até
+a Etapa 40 as duas listas ficavam empilhadas na mesma tela, uma embaixo da
+outra; a pedido, agora só uma aparece por vez, alternada por um botão
+("Conjuntos" / "Criativos") igual ao de "CPA acima da meta"/"CPA abaixo da
+meta", que só aparece quando a aba "CPA acima da meta" está selecionada (a
+aba "CPA abaixo da meta" só tem Conjuntos, então não tem esse botão). Isso
+trouxe um efeito colateral bom: antes as duas chamadas à Meta (Conjuntos e
+Criativos) saíam juntas sempre que a aba "CPA acima da meta" abria ou
+atualizava, mesmo se você estivesse olhando só uma das duas; agora só sai
+a chamada da tela que está na frente, evitando gastar chamada à toa com a
+tela que você não está olhando no momento.
+
+⚠️ **Sobre a caixa de seleção pra pausar em massa (Etapa 42)**: Conjuntos e
+Criativos (aba "CPA acima da meta") ganharam uma caixinha por linha, mais
+um checkbox "Selecionar todos os listados" que marca/desmarca tudo que
+está na tela naquele momento (respeitando a busca). O botão "Pausar todos
+os conjuntos/criativos listados" continua exatamente igual, ignorando a
+seleção — pausa todo mundo que está listado, marcado ou não. Do lado, um
+novo botão "Pausar selecionados" só aparece com contagem quando pelo menos
+uma caixinha está marcada, e some (volta a mostrar "(0)") quando nenhuma
+está — segue o mesmo esquema de segundo clique pra confirmar dos outros
+botões em massa, mesma pausa de 3s entre cada chamada, mesmo resumo de
+erro no final. A seleção é só uma trava de tela: some sozinha ao trocar de
+conta/período/tela ou ao dar "↻ Atualizar", já que a lista é buscada de
+novo do zero. A tela "CPA abaixo da meta" (aumentar orçamento) não ganhou
+caixinha — só as duas que pausam.
+
 
 ⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
 link `/d/:token` numa entrega anterior, ele para de funcionar com essa
@@ -1003,16 +1037,25 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     você tinha deixado, em vez de sempre abrir em Visão Geral do zero. Veja
     os ⚠️ acima sobre a prioridade de cor e o que fica salvo
 34. ~~Análise "acima da meta" isolada em Conjuntos/Criativos + destaque de 7
-    dias (Etapa 40)~~ ✅ — a aba "CPA acima da meta" virou dois sub-painéis
+    dias (Etapa 40)~~ ✅ — a aba "CPA acima da meta" ganhou dois critérios
     independentes: Conjuntos (limite subiu pro dobro da Meta CPA) e
-    Criativos (limite mais sensível, R$2 acima da Meta CPA — sub-painel novo
-    na tela, reaproveitando uma análise por criativo que já existia desde as
-    Etapas 11-17). Cada um com seu próprio botão de pausar individual e em
-    massa; Conjuntos mantém a expansão pra ver os criativos por duplo
-    clique. As duas listas destacam em verde (sutil) qualquer linha cuja
-    média de custo por conversa nos últimos 7 dias (sempre fixo) já esteja
-    abaixo da Meta CPA. A aba "CPA abaixo da meta" não mudou. Veja os ⚠️
-    acima sobre os limites e o custo extra de chamadas ao Graph API
+    Criativos (limite mais sensível, R$2 acima da Meta CPA — reaproveitando
+    uma análise por criativo que já existia desde as Etapas 11-17).
+    Conjuntos mantém a expansão pra ver os criativos por duplo clique. As
+    duas listas destacam em verde (sutil) qualquer linha cuja média de
+    custo por conversa nos últimos 7 dias (sempre fixo) já esteja abaixo da
+    Meta CPA. A aba "CPA abaixo da meta" não mudou. Veja os ⚠️ acima sobre
+    os limites e o custo extra de chamadas ao Graph API
+35. ~~Conjuntos e Criativos viram telas separadas (Etapa 41)~~ ✅ — Conjuntos
+    e Criativos (aba "CPA acima da meta") deixaram de ficar empilhados na
+    mesma tela e viraram duas telas alternadas por um botão, igual ao de
+    "CPA acima da meta"/"CPA abaixo da meta"; cada uma só busca dado da
+    Meta enquanto está sendo exibida. Veja o ⚠️ acima
+36. ~~Caixa de seleção pra pausar em massa (Etapa 42)~~ ✅ — Conjuntos e
+    Criativos ganharam uma caixinha por linha (mais "Selecionar todos os
+    listados") e um novo botão "Pausar selecionados", que pausa só quem foi
+    marcado; o botão "Pausar todos os listados" continua igual do lado,
+    ignorando a seleção. Veja o ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1032,7 +1075,9 @@ sempre legível no escuro, coluna Otimizado com reset diário em
 Acompanhamento simplificada pra seletor sem motivo, conserto do aviso de
 saldo baixo silencioso e nova checagem de erro no pagamento, nome da conta
 colorido por saldo/pagamento + nova ordem da lateral + Painel lembrando
-aba/filtros entre sessões, Análise "acima da meta" isolada em sub-painéis
-Conjuntos/Criativos com limites próprios e destaque de tendência de 7 dias)
-estão 100% concluídos. Não há mais nenhum item pendente do escopo combinado
-— próximos pedidos são novos incrementos, a critério seu.
+aba/filtros entre sessões, Análise "acima da meta" com critérios próprios
+por Conjuntos/Criativos e destaque de tendência de 7 dias, Conjuntos e
+Criativos virando telas separadas alternadas por botão, e caixa de
+seleção pra pausar em massa só quem foi marcado) estão 100% concluídos.
+Não há mais nenhum item pendente do escopo combinado — próximos pedidos
+são novos incrementos, a critério seu.
