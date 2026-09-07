@@ -3,15 +3,17 @@ import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";
 import type { DateRangeInput } from "@/lib/meta/client";
 
-// Painel > Análise: com custo por conversa iniciada R$ 4 ou mais acima da
-// Meta CPA — ou, quando não teve NENHUMA conversa iniciada (não dá pra
-// calcular custo por conversa), com o próprio gasto R$ 4 ou mais acima da
-// Meta CPA (ex.: CPA ideal R$6, gastou R$10, zero conversa). Só avalia
-// contas com Meta CPA cadastrada (sem meta não dá pra saber o que é
-// "acima"); as demais voltam em "skipped". `statuses` filtra por status do
-// anúncio (default: só ACTIVE — Pausado é opt-in, ligado pela própria tela).
-const THRESHOLD_ABOVE_TARGET = 4;
-const DEFAULT_STATUSES = ["ACTIVE"];
+// Painel > Análise, sub-painel "Criativos" (Etapa 40 — antes vivia junto do
+// sub-painel de Conjuntos, na aba "CPA acima da meta"): limite mais sensível
+// que o de Conjuntos, de propósito — pega o criativo problemático cedo,
+// antes que o conjunto inteiro precise ser sinalizado. Com custo por
+// conversa iniciada R$ 2 ou mais acima da Meta CPA — ou, quando não teve
+// NENHUMA conversa iniciada (não dá pra calcular custo por conversa), com o
+// próprio gasto R$ 2 ou mais acima da Meta CPA. Só avalia contas com Meta
+// CPA cadastrada (sem meta não dá pra saber o que é "acima"); as demais
+// voltam em "skipped". Só considera anúncio ATIVO.
+const THRESHOLD_ABOVE_TARGET = 2;
+const STATUSES = ["ACTIVE"];
 
 function isFlagged(row: CreativeCostRow, cpaTarget: number): boolean {
   const noConversion = !row.conversations || row.conversations <= 0;
@@ -23,11 +25,29 @@ function sortKey(row: CreativeCostRow): number {
   return row.cost_per_conversation ?? row.spend;
 }
 
+type CreativeRowWithTrend = CreativeCostRow & { avg_cost_7d: number | null };
+
 interface Group {
   accountId: string;
   clientName: string;
   cpaTarget: number;
-  ads: CreativeCostRow[];
+  ads: CreativeRowWithTrend[];
+}
+
+// Etapa 40: recorte FIXO de "últimos 7 dias" (sempre o mesmo, independente
+// do período escolhido na tela) só pra saber se a média desse criativo nos
+// últimos 7 dias já está abaixo da Meta CPA — usado pra destacar a linha em
+// verde, sem mudar o que entra ou não na lista. Dobra as chamadas ao Graph
+// API por conta (período escolhido + o fixo de 7 dias).
+async function attachSevenDayTrend(rows: CreativeCostRow[], token: string, accountId: string): Promise<CreativeRowWithTrend[]> {
+  let trend: CreativeCostRow[] = [];
+  try {
+    trend = await getCreativeCostAnalysis(token, accountId, "last_7d");
+  } catch (e) {
+    console.error("creative 7d trend err (non-fatal)", accountId, e);
+  }
+  const trendMap = new Map(trend.map((t) => [t.id, t.cost_per_conversation]));
+  return rows.map((r) => ({ ...r, avg_cost_7d: trendMap.get(r.id) ?? null }));
 }
 
 export async function POST(request: Request) {
@@ -37,8 +57,6 @@ export async function POST(request: Request) {
     const body = await request.json();
     const accountIds: string[] = Array.isArray(body.accountIds) ? body.accountIds : [];
     const datePreset = (body.datePreset ?? "last_3d_plus_today") as DateRangeInput;
-    const statuses: string[] =
-      Array.isArray(body.statuses) && body.statuses.length > 0 ? body.statuses : DEFAULT_STATUSES;
     if (accountIds.length === 0) return NextResponse.json({ groups: [], skipped: [] });
 
     const { data: bindings } = await supabase
@@ -63,10 +81,12 @@ export async function POST(request: Request) {
         try {
           const rows = await getCreativeCostAnalysis(token, accountId, datePreset);
           const above = rows
-            .filter((r) => statuses.includes((r.status ?? "").toUpperCase()))
+            .filter((r) => STATUSES.includes((r.status ?? "").toUpperCase()))
             .filter((r) => isFlagged(r, cpaTarget))
             .sort((a, b) => sortKey(b) - sortKey(a));
-          if (above.length > 0) groups.push({ accountId, clientName, cpaTarget, ads: above });
+          if (above.length === 0) return;
+          const withTrend = await attachSevenDayTrend(above, token, accountId);
+          groups.push({ accountId, clientName, cpaTarget, ads: withTrend });
         } catch (e) {
           console.error("creative analysis err (non-fatal)", accountId, e);
         }

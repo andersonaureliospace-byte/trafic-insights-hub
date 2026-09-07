@@ -30,6 +30,10 @@ interface AdRow {
   conversations: number | null;
   cost_per_conversation: number | null;
   status: string | null;
+  // Etapa 40: média fixa dos últimos 7 dias (independente do período
+  // escolhido na tela) — só preenchida na aba "acima da meta", usada pra
+  // destacar a linha em verde quando já está abaixo da Meta CPA.
+  avg_cost_7d?: number | null;
 }
 
 interface AdSetRow {
@@ -40,6 +44,7 @@ interface AdSetRow {
   conversations: number | null;
   cost_per_conversation: number | null;
   ads: AdRow[];
+  avg_cost_7d?: number | null;
 }
 
 interface Group {
@@ -47,6 +52,25 @@ interface Group {
   clientName: string;
   cpaTarget: number;
   adsets: AdSetRow[];
+}
+
+interface CreativeRow {
+  id: string;
+  name: string;
+  adset_name: string | null;
+  campaign_name: string | null;
+  spend: number;
+  conversations: number | null;
+  cost_per_conversation: number | null;
+  status: string | null;
+  avg_cost_7d?: number | null;
+}
+
+interface CreativeGroup {
+  accountId: string;
+  clientName: string;
+  cpaTarget: number;
+  ads: CreativeRow[];
 }
 
 interface Skipped {
@@ -59,27 +83,6 @@ interface BulkError {
   error: string;
 }
 
-const MODE_COPY: Record<AnalysisMode, { title: string; description: string; empty: string; bulkLabel: string }> = {
-  above: {
-    title: "Custo por conversa iniciada, por conjunto — acima da meta",
-    description:
-      "Só conjunto ativo, com custo por conversa iniciada R$ 4 ou mais acima da Meta CPA — ou, sem nenhuma " +
-      "conversa iniciada, com o próprio gasto R$ 4 ou mais acima da Meta CPA. Duplo clique no conjunto mostra os " +
-      "criativos dele. Nada é pausado ou alterado sozinho, os botões (individual ou em massa) são manuais.",
-    empty: "Nenhum conjunto ativo acima do limite nesse período.",
-    bulkLabel: "Pausar todos os conjuntos listados",
-  },
-  below: {
-    title: "Custo por conversa iniciada, por conjunto — abaixo da meta",
-    description:
-      "Só conjunto ativo, com pelo menos uma conversa iniciada no período e custo por conversa abaixo da Meta " +
-      "CPA — candidato a receber mais investimento. Duplo clique no conjunto mostra os criativos dele. Nada é " +
-      "alterado sozinho, os botões (individual ou em massa) são manuais.",
-    empty: "Nenhum conjunto ativo abaixo da meta nesse período.",
-    bulkLabel: "Aumentar todos os orçamentos listados",
-  },
-};
-
 function statusLabel(status: string | null): string {
   const s = status?.toUpperCase();
   if (s === "ACTIVE") return "Ativo";
@@ -87,9 +90,9 @@ function statusLabel(status: string | null): string {
   return status || "—";
 }
 
-// Mesmo cálculo de "Diferença" usado nas duas linhas (conjunto e criativo):
-// sem conversa, o sinal vira o próprio gasto acima da Meta CPA; com
-// conversa, é custo por conversa menos a Meta CPA. Negativo = abaixo da meta.
+// Mesmo cálculo de "Diferença" usado em conjunto e criativo: sem conversa, o
+// sinal vira o próprio gasto acima da Meta CPA; com conversa, é custo por
+// conversa menos a Meta CPA. Negativo = abaixo da meta.
 function diffFor(spend: number, conversations: number | null, costPerConversation: number | null, cpaTarget: number) {
   const noConversion = !conversations || conversations <= 0;
   return noConversion ? spend - cpaTarget : (costPerConversation ?? 0) - cpaTarget;
@@ -97,6 +100,166 @@ function diffFor(spend: number, conversations: number | null, costPerConversatio
 
 function fmtDiffSigned(diff: number): string {
   return `${diff >= 0 ? "+" : "-"}${fmtCurrency(Math.abs(diff))}`;
+}
+
+// Etapa 40: linha com média fixa dos últimos 7 dias já abaixo da Meta CPA —
+// destaque verde sutil (só o fundo, sem exagerar), sinalizando "esse já pode
+// estar melhorando" mesmo que o período escolhido na tela ainda mostre acima.
+function goodTrend(avgCost7d: number | null | undefined, cpaTarget: number): boolean {
+  return avgCost7d != null && avgCost7d < cpaTarget;
+}
+const GOOD_TREND_CLASS = "bg-emerald-50/70 dark:bg-emerald-950/20";
+const GOOD_TREND_TITLE = "Média dos últimos 7 dias já está abaixo da Meta CPA";
+
+// Extraído (Etapa 40) pra não repetir a mesma lógica de "arma → confirma →
+// roda um de cada vez com pausa → junta erros" três vezes (conjuntos da aba
+// abaixo da meta, conjuntos e criativos da aba acima da meta agora são três
+// listas independentes, cada uma com seu próprio botão de ação em massa).
+function useBulkRunner<T>() {
+  const [armed, setArmed] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [errors, setErrors] = useState<BulkError[]>([]);
+  const armTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const arm = useCallback(() => {
+    setArmed(true);
+    if (armTimeout.current) clearTimeout(armTimeout.current);
+    armTimeout.current = setTimeout(() => setArmed(false), BULK_ARM_MS);
+  }, []);
+
+  const disarm = useCallback(() => {
+    setArmed(false);
+    if (armTimeout.current) clearTimeout(armTimeout.current);
+  }, []);
+
+  const run = useCallback(
+    async (
+      targets: T[],
+      getName: (t: T) => string,
+      action: (t: T) => Promise<{ ok: true } | { ok: false; error: string }>,
+    ) => {
+      if (armTimeout.current) clearTimeout(armTimeout.current);
+      setArmed(false);
+      if (targets.length === 0) return;
+      setRunning(true);
+      setErrors([]);
+      setProgress({ done: 0, total: targets.length });
+      const errs: BulkError[] = [];
+      for (let i = 0; i < targets.length; i++) {
+        const t = targets[i];
+        try {
+          const result = await action(t);
+          if (!result.ok) errs.push({ name: getName(t), error: result.error });
+        } catch (e) {
+          errs.push({ name: getName(t), error: (e as Error).message });
+        }
+        setProgress({ done: i + 1, total: targets.length });
+        if (i < targets.length - 1) await new Promise((r) => setTimeout(r, BULK_DELAY_MS));
+      }
+      setRunning(false);
+      setProgress(null);
+      setErrors(errs);
+    },
+    [],
+  );
+
+  return { armed, running, progress, errors, arm, disarm, run, setErrors };
+}
+
+// Só os campos que os componentes de UI abaixo (BulkBar/BulkErrorsBanner)
+// realmente leem — evita depender do genérico <T> de useBulkRunner (que
+// varia por lista) na assinatura dos props.
+interface BulkUiState {
+  armed: boolean;
+  running: boolean;
+  progress: { done: number; total: number } | null;
+  errors: BulkError[];
+  arm: () => void;
+  disarm: () => void;
+  setErrors: (errors: BulkError[]) => void;
+}
+
+// Cabeçalho de ação em massa reutilizado pelas 3 listas (conjuntos "abaixo
+// da meta", conjuntos e criativos "acima da meta") — só muda o texto, a cor
+// quando armado e o handler. Fora do componente de propósito (componente
+// declarado dentro de outro perde o estado a cada render).
+function BulkBar({
+  label,
+  count,
+  verb,
+  bulk,
+  disabled,
+  onConfirm,
+}: {
+  label: string;
+  count: number;
+  verb: string;
+  bulk: BulkUiState;
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  if (count === 0 && !bulk.running) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-zinc-50/60 px-4 py-2 dark:border-zinc-800 dark:bg-zinc-800/20">
+      {bulk.running && bulk.progress ? (
+        <span className="text-xs text-zinc-600 dark:text-zinc-300">
+          {verb} {bulk.progress.done} de {bulk.progress.total}
+          {bulk.progress.done < bulk.progress.total ? "… (uma chamada por vez, de propósito)" : "…"}
+        </span>
+      ) : (
+        <>
+          <button
+            onClick={() => (bulk.armed ? onConfirm() : bulk.arm())}
+            disabled={count === 0 || disabled}
+            className={`rounded-md border px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${
+              bulk.armed
+                ? "border-red-400 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
+                : "border-zinc-300 dark:border-zinc-700"
+            }`}
+          >
+            {bulk.armed ? `Confirma ${label.toLowerCase()} (${count})?` : `${label} (${count})`}
+          </button>
+          {bulk.armed ? (
+            <button
+              onClick={bulk.disarm}
+              className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium dark:border-zinc-700"
+            >
+              Cancelar
+            </button>
+          ) : null}
+          {bulk.armed ? (
+            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+              Clique de novo pra confirmar — some sozinho em {BULK_ARM_MS / 1000}s.
+            </span>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function BulkErrorsBanner({ bulk, verb }: { bulk: BulkUiState; verb: string }) {
+  if (bulk.errors.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+      <div className="flex items-center justify-between">
+        <span className="font-medium">
+          {bulk.errors.length} {verb} nessa leva:
+        </span>
+        <button onClick={() => bulk.setErrors([])} className="text-amber-700 hover:underline dark:text-amber-300">
+          dispensar
+        </button>
+      </div>
+      <ul className="list-disc space-y-0.5 pl-4">
+        {bulk.errors.map((be, i) => (
+          <li key={i}>
+            <span className="font-medium">{be.name}:</span> {be.error}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 interface AnaliseFilters {
@@ -126,32 +289,36 @@ export function AnaliseTab({
     typeof initialFilters?.preset === "string" ? initialFilters.preset : "last_3d_plus_today",
   );
   const [search, setSearch] = useState(typeof initialFilters?.search === "string" ? initialFilters.search : "");
+
+  // Conjuntos — usado nas duas abas ("acima" e "abaixo" da meta).
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [skipped, setSkipped] = useState<Skipped[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Criativos (Etapa 40) — sub-painel novo, só existe na aba "acima da meta".
+  const [creativeGroups, setCreativeGroups] = useState<CreativeGroup[] | null>(null);
+  const [creativeLoading, setCreativeLoading] = useState(false);
+  const [creativeError, setCreativeError] = useState<string | null>(null);
+
   const [actingId, setActingId] = useState<string | null>(null);
   const [increasedIds, setIncreasedIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Ação em massa (Etapa 33): 1º clique "arma" o botão (pede confirmação
-  // sem usar popup do navegador — pedido explícito anterior), 2º clique
-  // dentro de alguns segundos de fato executa. Roda uma chamada de cada vez
-  // (nunca em paralelo), com pausa entre elas — mais seguro pro limite de
-  // chamadas da Meta, mesmo que demore mais.
-  const [bulkArmed, setBulkArmed] = useState(false);
-  const [bulkRunning, setBulkRunning] = useState(false);
-  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
-  const [bulkErrors, setBulkErrors] = useState<BulkError[]>([]);
+  // Três ações em massa independentes (Etapa 40): conjuntos "abaixo da
+  // meta" (aumentar orçamento), conjuntos "acima da meta" (pausar) e
+  // criativos "acima da meta" (pausar).
+  const belowBulk = useBulkRunner<AdSetRow>();
+  const aboveAdsetBulk = useBulkRunner<AdSetRow>();
+  const aboveCreativeBulk = useBulkRunner<CreativeRow>();
 
   useEffect(() => {
     onFiltersChange?.({ mode, preset, search });
   }, [mode, preset, search, onFiltersChange]);
-  const bulkArmTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const accountNameById = useMemo(() => new Map(accounts.map((a) => [a.account_id, a.name])), [accounts]);
 
-  const load = useCallback(async () => {
+  const loadAdsets = useCallback(async () => {
     if (accounts.length === 0) {
       setGroups([]);
       return;
@@ -176,21 +343,47 @@ export function AnaliseTab({
     setGroups(d.groups ?? []);
     setSkipped(d.skipped ?? []);
     setIncreasedIds(new Set());
-    setBulkErrors([]);
+  }, [accounts, preset, mode]);
+
+  // Criativos só existem na aba "acima da meta" — não busca nada na
+  // "abaixo da meta", pra não gastar chamada à toa com o que não aparece.
+  const loadCreatives = useCallback(async () => {
+    if (mode !== "above" || accounts.length === 0) {
+      setCreativeGroups(mode !== "above" ? null : []);
+      return;
+    }
+    setCreativeLoading(true);
+    setCreativeError(null);
+    const res = await fetch("/api/analysis/creatives", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        accountIds: accounts.map((a) => a.account_id),
+        datePreset: preset,
+      }),
+    });
+    const d = await res.json();
+    setCreativeLoading(false);
+    if (d.error) {
+      setCreativeError(d.error);
+      return;
+    }
+    setCreativeGroups(d.groups ?? []);
   }, [accounts, preset, mode]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas/período/aba exibidos
-    void load();
-  }, [load]);
+    void loadAdsets();
+    void loadCreatives();
+  }, [loadAdsets, loadCreatives]);
 
-  // Desarma o botão em massa sozinho ao trocar de aba/período — evita
+  // Desarma os botões em massa sozinho ao trocar de aba/período — evita
   // confirmar sem querer uma ação pensada pra outra lista.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- desarma a confirmação em massa ao trocar de aba/período, de propósito
-    setBulkArmed(false);
-    if (bulkArmTimeout.current) clearTimeout(bulkArmTimeout.current);
-  }, [mode, preset]);
+    belowBulk.disarm();
+    aboveAdsetBulk.disarm();
+    aboveCreativeBulk.disarm();
+  }, [mode, preset, belowBulk, aboveAdsetBulk, aboveCreativeBulk]);
 
   function toggleExpand(adsetId: string) {
     setExpanded((prev) => {
@@ -203,7 +396,8 @@ export function AnaliseTab({
 
   // Isolado de propósito (pedido explícito): só pausa o criativo, mesma
   // chamada simples de /api/meta/status já usada em Visão Geral — sem mexer
-  // no conjunto. Sem popup de confirmação (pedido explícito também).
+  // no conjunto. Sem popup de confirmação (pedido explícito também). Usado
+  // pelos criativos expandidos DENTRO de um conjunto (sub-painel Conjuntos).
   async function pauseCreative(ad: AdRow, adsetId: string) {
     setActingId(ad.id);
     const res = await fetch("/api/meta/status", {
@@ -232,10 +426,10 @@ export function AnaliseTab({
     );
   }
 
-  // Isolado de propósito (pedido explícito): só pausa o conjunto inteiro,
-  // mesma chamada simples de /api/meta/status já usada em Visão Geral — sem
-  // renomear nem duplicar nada. Some da lista ao pausar, já que deixa de ser
-  // um conjunto ativo pra sinalizar aqui. Sem popup de confirmação.
+  // Isolado de propósito: só pausa o conjunto inteiro, mesma chamada simples
+  // de /api/meta/status já usada em Visão Geral — sem renomear nem duplicar
+  // nada. Some da lista ao pausar, já que deixa de ser um conjunto ativo pra
+  // sinalizar aqui.
   async function pauseOneAdSet(adset: AdSetRow): Promise<{ ok: true } | { ok: false; error: string }> {
     const res = await fetch("/api/meta/status", {
       method: "POST",
@@ -256,6 +450,31 @@ export function AnaliseTab({
   async function pauseAdSet(adset: AdSetRow) {
     setActingId(adset.id);
     const result = await pauseOneAdSet(adset);
+    setActingId(null);
+    if (!result.ok) alert(result.error);
+  }
+
+  // Novo (Etapa 40): pausa um criativo do sub-painel Criativos — mesma
+  // chamada simples, mas opera na lista plana (creativeGroups), não na
+  // nested de dentro de um conjunto.
+  async function pauseOneCreativeStandalone(ad: CreativeRow): Promise<{ ok: true } | { ok: false; error: string }> {
+    const res = await fetch("/api/meta/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: [{ id: ad.id, type: "ad" }], status: "PAUSED" }),
+    });
+    const d = await res.json();
+    const result = d.results?.[0];
+    if (!result?.ok) return { ok: false, error: result?.error ?? "Erro desconhecido" };
+    setCreativeGroups((prev) =>
+      prev ? prev.map((g) => ({ ...g, ads: g.ads.filter((a) => a.id !== ad.id) })).filter((g) => g.ads.length > 0) : prev,
+    );
+    return { ok: true };
+  }
+
+  async function pauseCreativeStandalone(ad: CreativeRow) {
+    setActingId(ad.id);
+    const result = await pauseOneCreativeStandalone(ad);
     setActingId(null);
     if (!result.ok) alert(result.error);
   }
@@ -282,46 +501,6 @@ export function AnaliseTab({
     if (!result.ok) alert(result.error);
   }
 
-  function armBulk() {
-    setBulkArmed(true);
-    if (bulkArmTimeout.current) clearTimeout(bulkArmTimeout.current);
-    bulkArmTimeout.current = setTimeout(() => setBulkArmed(false), BULK_ARM_MS);
-  }
-
-  function cancelBulkArm() {
-    setBulkArmed(false);
-    if (bulkArmTimeout.current) clearTimeout(bulkArmTimeout.current);
-  }
-
-  // Roda a ação (pausar ou aumentar) em cada conjunto atualmente listado,
-  // um de cada vez, com pausa entre chamadas — de propósito lento, pra não
-  // estourar o limite de chamadas da Meta numa conta com muitos conjuntos.
-  // Erros individuais não interrompem o restante do lote; ficam guardados
-  // pra mostrar um resumo no final.
-  async function runBulk(targets: AdSetRow[], action: (adset: AdSetRow) => Promise<{ ok: true } | { ok: false; error: string }>) {
-    if (bulkArmTimeout.current) clearTimeout(bulkArmTimeout.current);
-    setBulkArmed(false);
-    if (targets.length === 0) return;
-    setBulkRunning(true);
-    setBulkErrors([]);
-    setBulkProgress({ done: 0, total: targets.length });
-    const errors: BulkError[] = [];
-    for (let i = 0; i < targets.length; i++) {
-      const adset = targets[i];
-      try {
-        const result = await action(adset);
-        if (!result.ok) errors.push({ name: adset.name, error: result.error });
-      } catch (e) {
-        errors.push({ name: adset.name, error: (e as Error).message });
-      }
-      setBulkProgress({ done: i + 1, total: targets.length });
-      if (i < targets.length - 1) await new Promise((r) => setTimeout(r, BULK_DELAY_MS));
-    }
-    setBulkRunning(false);
-    setBulkProgress(null);
-    setBulkErrors(errors);
-  }
-
   // Busca por nome — de propósito global: filtra o conjunto (ou a campanha)
   // em qualquer conta/cliente ao mesmo tempo, não só dentro de um grupo.
   const q = search.trim().toLowerCase();
@@ -336,24 +515,25 @@ export function AnaliseTab({
     }))
     .filter((g) => g.adsets.length > 0);
 
+  const filteredCreativeGroups = (creativeGroups ?? [])
+    .map((g) => ({
+      ...g,
+      ads: q
+        ? g.ads.filter((a) => a.name.toLowerCase().includes(q) || (a.campaign_name ?? "").toLowerCase().includes(q))
+        : g.ads,
+    }))
+    .filter((g) => g.ads.length > 0);
+
   const totalAdsets = filteredGroups.reduce((s, g) => s + g.adsets.length, 0);
+  const totalCreatives = filteredCreativeGroups.reduce((s, g) => s + g.ads.length, 0);
+
   // Na aba "abaixo da meta" a ação em massa pula quem já foi aumentado
   // individualmente (ou por um lote anterior) nessa mesma tela.
-  const bulkTargets =
-    mode === "below"
-      ? filteredGroups.flatMap((g) => g.adsets.filter((as) => !increasedIds.has(as.id)))
-      : filteredGroups.flatMap((g) => g.adsets);
-  const copy = MODE_COPY[mode];
+  const belowBulkTargets = filteredGroups.flatMap((g) => g.adsets.filter((as) => !increasedIds.has(as.id)));
+  const aboveAdsetBulkTargets = filteredGroups.flatMap((g) => g.adsets);
+  const aboveCreativeBulkTargets = filteredCreativeGroups.flatMap((g) => g.ads);
 
-  function handleBulkClick() {
-    if (bulkArmed) {
-      void runBulk(bulkTargets, mode === "above" ? pauseOneAdSet : increaseOneBudget);
-    } else {
-      armBulk();
-    }
-  }
-
-  const controlsDisabled = loading || bulkRunning;
+  const controlsDisabled = loading || creativeLoading || belowBulk.running || aboveAdsetBulk.running || aboveCreativeBulk.running;
 
   if (accounts.length === 0) {
     return <p className="text-sm text-zinc-500">Nenhuma conta selecionada.</p>;
@@ -388,16 +568,26 @@ export function AnaliseTab({
             </button>
           </div>
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            {copy.title} {loading ? "· atualizando…" : ""}
+            {mode === "above" ? "Custo por conversa iniciada — acima da meta" : "Custo por conversa iniciada, por conjunto — abaixo da meta"}
+            {(loading || creativeLoading) ? " · atualizando…" : ""}
           </h2>
-          <p className="mt-0.5 max-w-2xl text-xs text-zinc-500 dark:text-zinc-400">{copy.description}</p>
+          <p className="mt-0.5 max-w-2xl text-xs text-zinc-500 dark:text-zinc-400">
+            {mode === "above"
+              ? "Isolado em dois sub-painéis: Conjuntos (custo por conversa no dobro ou mais da Meta CPA, ou sem conversa " +
+                "com o próprio gasto R$2+ acima) e Criativos (custo por conversa R$2+ acima da Meta CPA, ou sem conversa " +
+                "com o próprio gasto R$2+ acima — limite mais sensível, de propósito, pra pegar o problema cedo). Linha " +
+                "verde = média fixa dos últimos 7 dias já abaixo da Meta CPA. Nada é pausado sozinho."
+              : "Só conjunto ativo, com pelo menos uma conversa iniciada no período e custo por conversa abaixo da Meta " +
+                "CPA — candidato a receber mais investimento. Duplo clique no conjunto mostra os criativos dele. Nada é " +
+                "alterado sozinho, os botões (individual ou em massa) são manuais."}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             disabled={controlsDisabled}
-            placeholder="Buscar conjunto/campanha…"
+            placeholder="Buscar conjunto/criativo/campanha…"
             className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 disabled:opacity-50 dark:border-zinc-700 dark:focus:border-zinc-100"
           />
           <select
@@ -413,253 +603,341 @@ export function AnaliseTab({
             ))}
           </select>
           <button
-            onClick={() => void load()}
+            onClick={() => {
+              void loadAdsets();
+              void loadCreatives();
+            }}
             disabled={controlsDisabled}
             className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
           >
-            {loading ? "Atualizando…" : "↻ Atualizar"}
+            {loading || creativeLoading ? "Atualizando…" : "↻ Atualizar"}
           </button>
         </div>
       </div>
 
-      {totalAdsets > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-zinc-50/60 px-4 py-2 dark:border-zinc-800 dark:bg-zinc-800/20">
-          {bulkRunning && bulkProgress ? (
-            <span className="text-xs text-zinc-600 dark:text-zinc-300">
-              {mode === "above" ? "Pausando" : "Aumentando"} {bulkProgress.done} de {bulkProgress.total}
-              {bulkProgress.done < bulkProgress.total ? "… (uma chamada por vez, de propósito)" : "…"}
-            </span>
+      {/* ─── Sub-painel Conjuntos (as duas abas usam esse mesmo bloco) ─── */}
+      <div className={mode === "above" ? "border-b border-zinc-200 dark:border-zinc-800" : ""}>
+        {mode === "above" ? (
+          <h3 className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Conjuntos</h3>
+        ) : null}
+
+        <BulkBar
+          label={mode === "above" ? "Pausar todos os conjuntos listados" : "Aumentar todos os orçamentos listados"}
+          count={mode === "above" ? aboveAdsetBulkTargets.length : belowBulkTargets.length}
+          verb={mode === "above" ? "Pausando" : "Aumentando"}
+          bulk={mode === "above" ? aboveAdsetBulk : belowBulk}
+          disabled={loading}
+          onConfirm={() =>
+            mode === "above"
+              ? void aboveAdsetBulk.run(aboveAdsetBulkTargets, (a) => a.name, pauseOneAdSet)
+              : void belowBulk.run(belowBulkTargets, (a) => a.name, increaseOneBudget)
+          }
+        />
+        <BulkErrorsBanner
+          bulk={mode === "above" ? aboveAdsetBulk : belowBulk}
+          verb={mode === "above" ? "conjunto(s) não pausado(s)" : "conjunto(s) não aumentado(s)"}
+        />
+
+        {error ? (
+          <p className="px-4 py-6 text-sm text-red-600">{error}</p>
+        ) : !groups ? (
+          <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p>
+        ) : totalAdsets === 0 ? (
+          <p className="px-4 py-6 text-sm text-zinc-500">
+            {q
+              ? "Nenhum conjunto encontrado com esse nome."
+              : mode === "above"
+                ? "Nenhum conjunto ativo no dobro (ou mais) da meta nesse período."
+                : "Nenhum conjunto ativo abaixo da meta nesse período."}
+          </p>
+        ) : (
+          <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+            {filteredGroups.map((g) => (
+              <div key={g.accountId}>
+                <div className="flex flex-wrap items-center gap-2 bg-zinc-50 px-4 py-2 dark:bg-zinc-800/40">
+                  <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{g.clientName}</span>
+                  <a
+                    href={adsManagerUrl(g.accountId)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Abrir no Gerenciador de Anúncios"
+                    className="text-xs text-zinc-500 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                  >
+                    {accountNameById.get(g.accountId) ?? g.accountId}
+                  </a>
+                  <span className="text-xs text-zinc-500 dark:text-zinc-400">Meta CPA: {fmtCurrency(g.cpaTarget)}</span>
+                  <span className="ml-auto rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                    {g.adsets.length} conjunto(s)
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                        <th className="px-4 py-1.5 font-medium">Conjunto</th>
+                        <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
+                        <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
+                        <th className="px-4 py-1.5 text-right font-medium">Conversas</th>
+                        <th className="px-4 py-1.5 text-right font-medium">Gasto</th>
+                        <th className="px-4 py-1.5 font-medium"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.adsets.map((adset) => {
+                        const noConversion = !adset.conversations || adset.conversations <= 0;
+                        const diff = diffFor(adset.spend, adset.conversations, adset.cost_per_conversation, g.cpaTarget);
+                        const isOpen = expanded.has(adset.id);
+                        const wasIncreased = increasedIds.has(adset.id);
+                        const isGood = goodTrend(adset.avg_cost_7d, g.cpaTarget);
+                        return (
+                          <Fragment key={adset.id}>
+                            <tr
+                              onDoubleClick={() => toggleExpand(adset.id)}
+                              title={isGood ? GOOD_TREND_TITLE : "Duplo clique pra ver os criativos desse conjunto"}
+                              className={`cursor-pointer select-none border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-800/40 ${
+                                isGood ? GOOD_TREND_CLASS : ""
+                              }`}
+                            >
+                              <td className="max-w-[260px] truncate px-4 py-2" title={adset.name}>
+                                <span className="mr-1 inline-block w-3 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
+                                {adset.name}
+                              </td>
+                              <td
+                                className={`px-4 py-2 text-right tabular-nums font-medium ${
+                                  mode === "above" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"
+                                }`}
+                              >
+                                {noConversion ? (
+                                  <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
+                                    —
+                                  </span>
+                                ) : (
+                                  fmtCurrency(adset.cost_per_conversation)
+                                )}
+                              </td>
+                              <td
+                                className={`px-4 py-2 text-right tabular-nums ${
+                                  diff >= 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
+                                }`}
+                              >
+                                {fmtDiffSigned(diff)}
+                              </td>
+                              <td className="px-4 py-2 text-right tabular-nums">{adset.conversations ?? "—"}</td>
+                              <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(adset.spend)}</td>
+                              <td className="px-4 py-2 text-right">
+                                {mode === "above" ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void pauseAdSet(adset);
+                                    }}
+                                    disabled={actingId === adset.id || aboveAdsetBulk.running}
+                                    title="Pausa só o conjunto inteiro — não mexe em nenhum criativo"
+                                    className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
+                                  >
+                                    {actingId === adset.id ? "…" : "Pausar conjunto"}
+                                  </button>
+                                ) : (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void increaseBudget(adset);
+                                    }}
+                                    disabled={actingId === adset.id || wasIncreased || belowBulk.running}
+                                    title="Aumenta o orçamento diário desse conjunto em R$2,50 fixo"
+                                    className="rounded-md border border-emerald-300 px-2 py-1 text-xs font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400"
+                                  >
+                                    {actingId === adset.id ? "…" : wasIncreased ? "✓ Aumentado" : "Aumentar +R$2,50"}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                            {isOpen ? (
+                              <tr className="border-t border-zinc-100 dark:border-zinc-800/60">
+                                <td colSpan={6} className="bg-zinc-50/60 px-4 py-2 dark:bg-zinc-800/20">
+                                  <table className="w-full text-sm">
+                                    <thead>
+                                      <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                                        <th className="px-3 py-1 font-medium">Criativo</th>
+                                        <th className="px-3 py-1 text-right font-medium">Custo/conversa</th>
+                                        <th className="px-3 py-1 text-right font-medium">Conversas</th>
+                                        <th className="px-3 py-1 text-right font-medium">Gasto</th>
+                                        <th className="px-3 py-1 font-medium">Status</th>
+                                        <th className="px-3 py-1 font-medium"></th>
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {adset.ads.map((ad) => {
+                                        const adNoConversion = !ad.conversations || ad.conversations <= 0;
+                                        const adIsGood = goodTrend(ad.avg_cost_7d, g.cpaTarget);
+                                        return (
+                                          <tr
+                                            key={ad.id}
+                                            title={adIsGood ? GOOD_TREND_TITLE : undefined}
+                                            className={`border-t border-zinc-100 dark:border-zinc-800/60 ${adIsGood ? GOOD_TREND_CLASS : ""}`}
+                                          >
+                                            <td className="max-w-[240px] truncate px-3 py-1.5" title={ad.name}>
+                                              {ad.name}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right tabular-nums">
+                                              {adNoConversion ? "—" : fmtCurrency(ad.cost_per_conversation)}
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right tabular-nums">{ad.conversations ?? "—"}</td>
+                                            <td className="px-3 py-1.5 text-right tabular-nums">{fmtCurrency(ad.spend)}</td>
+                                            <td className="px-3 py-1.5">
+                                              <span
+                                                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                                                  ad.status?.toUpperCase() === "ACTIVE"
+                                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                                                    : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
+                                                }`}
+                                              >
+                                                {statusLabel(ad.status)}
+                                              </span>
+                                            </td>
+                                            <td className="px-3 py-1.5 text-right">
+                                              <button
+                                                onClick={() => void pauseCreative(ad, adset.id)}
+                                                disabled={actingId === ad.id || aboveAdsetBulk.running}
+                                                title="Pausa só esse criativo — não mexe no conjunto"
+                                                className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
+                                              >
+                                                {actingId === ad.id ? "…" : "Pausar criativo"}
+                                              </button>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })}
+                                    </tbody>
+                                  </table>
+                                </td>
+                              </tr>
+                            ) : null}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ─── Sub-painel Criativos (Etapa 40 — só na aba "acima da meta") ─── */}
+      {mode === "above" ? (
+        <div>
+          <h3 className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Criativos</h3>
+
+          <BulkBar
+            label="Pausar todos os criativos listados"
+            count={aboveCreativeBulkTargets.length}
+            verb="Pausando"
+            bulk={aboveCreativeBulk}
+            disabled={creativeLoading}
+            onConfirm={() => void aboveCreativeBulk.run(aboveCreativeBulkTargets, (a) => a.name, pauseOneCreativeStandalone)}
+          />
+          <BulkErrorsBanner bulk={aboveCreativeBulk} verb="criativo(s) não pausado(s)" />
+
+          {creativeError ? (
+            <p className="px-4 py-6 text-sm text-red-600">{creativeError}</p>
+          ) : !creativeGroups ? (
+            <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p>
+          ) : totalCreatives === 0 ? (
+            <p className="px-4 py-6 text-sm text-zinc-500">
+              {q ? "Nenhum criativo encontrado com esse nome." : "Nenhum criativo ativo acima do limite nesse período."}
+            </p>
           ) : (
-            <>
-              <button
-                onClick={handleBulkClick}
-                disabled={bulkTargets.length === 0 || loading}
-                title={
-                  mode === "above"
-                    ? "Pausa, um conjunto de cada vez com pausa entre chamadas, todos os conjuntos listados nessa aba/busca"
-                    : "Aumenta em R$2,50, um conjunto de cada vez com pausa entre chamadas, todos os conjuntos listados nessa aba/busca"
-                }
-                className={`rounded-md border px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${
-                  bulkArmed
-                    ? mode === "above"
-                      ? "border-red-400 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300"
-                      : "border-emerald-400 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                    : "border-zinc-300 dark:border-zinc-700"
-                }`}
-              >
-                {bulkArmed ? `Confirma ${copy.bulkLabel.toLowerCase()} (${bulkTargets.length})?` : `${copy.bulkLabel} (${bulkTargets.length})`}
-              </button>
-              {bulkArmed ? (
-                <button
-                  onClick={cancelBulkArm}
-                  className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium dark:border-zinc-700"
-                >
-                  Cancelar
-                </button>
-              ) : null}
-              {bulkArmed ? (
-                <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Clique de novo pra confirmar — some sozinho em {BULK_ARM_MS / 1000}s.
-                </span>
-              ) : null}
-            </>
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {filteredCreativeGroups.map((g) => (
+                <div key={g.accountId}>
+                  <div className="flex flex-wrap items-center gap-2 bg-zinc-50 px-4 py-2 dark:bg-zinc-800/40">
+                    <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{g.clientName}</span>
+                    <a
+                      href={adsManagerUrl(g.accountId)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Abrir no Gerenciador de Anúncios"
+                      className="text-xs text-zinc-500 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                    >
+                      {accountNameById.get(g.accountId) ?? g.accountId}
+                    </a>
+                    <span className="text-xs text-zinc-500 dark:text-zinc-400">Meta CPA: {fmtCurrency(g.cpaTarget)}</span>
+                    <span className="ml-auto rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
+                      {g.ads.length} criativo(s)
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
+                          <th className="px-4 py-1.5 font-medium">Criativo</th>
+                          <th className="px-4 py-1.5 font-medium">Conjunto</th>
+                          <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
+                          <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
+                          <th className="px-4 py-1.5 text-right font-medium">Conversas</th>
+                          <th className="px-4 py-1.5 text-right font-medium">Gasto</th>
+                          <th className="px-4 py-1.5 font-medium"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.ads.map((ad) => {
+                          const noConversion = !ad.conversations || ad.conversations <= 0;
+                          const diff = diffFor(ad.spend, ad.conversations, ad.cost_per_conversation, g.cpaTarget);
+                          const isGood = goodTrend(ad.avg_cost_7d, g.cpaTarget);
+                          return (
+                            <tr
+                              key={ad.id}
+                              title={isGood ? GOOD_TREND_TITLE : undefined}
+                              className={`border-t border-zinc-100 dark:border-zinc-800/60 ${isGood ? GOOD_TREND_CLASS : ""}`}
+                            >
+                              <td className="max-w-[220px] truncate px-4 py-2" title={ad.name}>
+                                {ad.name}
+                              </td>
+                              <td className="max-w-[180px] truncate px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400" title={ad.adset_name ?? undefined}>
+                                {ad.adset_name ?? "—"}
+                              </td>
+                              <td className="px-4 py-2 text-right tabular-nums font-medium text-amber-700 dark:text-amber-400">
+                                {noConversion ? (
+                                  <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
+                                    —
+                                  </span>
+                                ) : (
+                                  fmtCurrency(ad.cost_per_conversation)
+                                )}
+                              </td>
+                              <td
+                                className={`px-4 py-2 text-right tabular-nums ${
+                                  diff >= 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
+                                }`}
+                              >
+                                {fmtDiffSigned(diff)}
+                              </td>
+                              <td className="px-4 py-2 text-right tabular-nums">{ad.conversations ?? "—"}</td>
+                              <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(ad.spend)}</td>
+                              <td className="px-4 py-2 text-right">
+                                <button
+                                  onClick={() => void pauseCreativeStandalone(ad)}
+                                  disabled={actingId === ad.id || aboveCreativeBulk.running}
+                                  title="Pausa só esse criativo"
+                                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
+                                >
+                                  {actingId === ad.id ? "…" : "Pausar criativo"}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       ) : null}
-
-      {bulkErrors.length > 0 ? (
-        <div className="flex flex-col gap-1 border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
-          <div className="flex items-center justify-between">
-            <span className="font-medium">
-              {bulkErrors.length} conjunto(s) não {mode === "above" ? "pausados" : "aumentados"} nessa leva:
-            </span>
-            <button onClick={() => setBulkErrors([])} className="text-amber-700 hover:underline dark:text-amber-300">
-              dispensar
-            </button>
-          </div>
-          <ul className="list-disc space-y-0.5 pl-4">
-            {bulkErrors.map((be, i) => (
-              <li key={i}>
-                <span className="font-medium">{be.name}:</span> {be.error}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {error ? (
-        <p className="px-4 py-6 text-sm text-red-600">{error}</p>
-      ) : !groups ? (
-        <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p>
-      ) : totalAdsets === 0 ? (
-        <p className="px-4 py-6 text-sm text-zinc-500">
-          {q ? "Nenhum conjunto encontrado com esse nome." : copy.empty}
-        </p>
-      ) : (
-        <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
-          {filteredGroups.map((g) => (
-            <div key={g.accountId}>
-              <div className="flex flex-wrap items-center gap-2 bg-zinc-50 px-4 py-2 dark:bg-zinc-800/40">
-                <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{g.clientName}</span>
-                <a
-                  href={adsManagerUrl(g.accountId)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Abrir no Gerenciador de Anúncios"
-                  className="text-xs text-zinc-500 underline decoration-dotted underline-offset-2 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-                >
-                  {accountNameById.get(g.accountId) ?? g.accountId}
-                </a>
-                <span className="text-xs text-zinc-500 dark:text-zinc-400">Meta CPA: {fmtCurrency(g.cpaTarget)}</span>
-                <span className="ml-auto rounded-full bg-zinc-200 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300">
-                  {g.adsets.length} conjunto(s)
-                </span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
-                      <th className="px-4 py-1.5 font-medium">Conjunto</th>
-                      <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
-                      <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
-                      <th className="px-4 py-1.5 text-right font-medium">Conversas</th>
-                      <th className="px-4 py-1.5 text-right font-medium">Gasto</th>
-                      <th className="px-4 py-1.5 font-medium"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {g.adsets.map((adset) => {
-                      const noConversion = !adset.conversations || adset.conversations <= 0;
-                      const diff = diffFor(adset.spend, adset.conversations, adset.cost_per_conversation, g.cpaTarget);
-                      const isOpen = expanded.has(adset.id);
-                      const wasIncreased = increasedIds.has(adset.id);
-                      return (
-                        <Fragment key={adset.id}>
-                          <tr
-                            onDoubleClick={() => toggleExpand(adset.id)}
-                            className="cursor-pointer select-none border-t border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800/60 dark:hover:bg-zinc-800/40"
-                            title="Duplo clique pra ver os criativos desse conjunto"
-                          >
-                            <td className="max-w-[260px] truncate px-4 py-2" title={adset.name}>
-                              <span className="mr-1 inline-block w-3 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
-                              {adset.name}
-                            </td>
-                            <td
-                              className={`px-4 py-2 text-right tabular-nums font-medium ${
-                                mode === "above" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"
-                              }`}
-                            >
-                              {noConversion ? (
-                                <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
-                                  —
-                                </span>
-                              ) : (
-                                fmtCurrency(adset.cost_per_conversation)
-                              )}
-                            </td>
-                            <td
-                              className={`px-4 py-2 text-right tabular-nums ${
-                                diff >= 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
-                              }`}
-                            >
-                              {fmtDiffSigned(diff)}
-                            </td>
-                            <td className="px-4 py-2 text-right tabular-nums">{adset.conversations ?? "—"}</td>
-                            <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(adset.spend)}</td>
-                            <td className="px-4 py-2 text-right">
-                              {mode === "above" ? (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void pauseAdSet(adset);
-                                  }}
-                                  disabled={actingId === adset.id || bulkRunning}
-                                  title="Pausa só o conjunto inteiro — não mexe em nenhum criativo"
-                                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
-                                >
-                                  {actingId === adset.id ? "…" : "Pausar conjunto"}
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void increaseBudget(adset);
-                                  }}
-                                  disabled={actingId === adset.id || wasIncreased || bulkRunning}
-                                  title="Aumenta o orçamento diário desse conjunto em R$2,50 fixo"
-                                  className="rounded-md border border-emerald-300 px-2 py-1 text-xs font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400"
-                                >
-                                  {actingId === adset.id ? "…" : wasIncreased ? "✓ Aumentado" : "Aumentar +R$2,50"}
-                                </button>
-                              )}
-                            </td>
-                          </tr>
-                          {isOpen ? (
-                            <tr className="border-t border-zinc-100 dark:border-zinc-800/60">
-                              <td colSpan={6} className="bg-zinc-50/60 px-4 py-2 dark:bg-zinc-800/20">
-                                <table className="w-full text-sm">
-                                  <thead>
-                                    <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
-                                      <th className="px-3 py-1 font-medium">Criativo</th>
-                                      <th className="px-3 py-1 text-right font-medium">Custo/conversa</th>
-                                      <th className="px-3 py-1 text-right font-medium">Conversas</th>
-                                      <th className="px-3 py-1 text-right font-medium">Gasto</th>
-                                      <th className="px-3 py-1 font-medium">Status</th>
-                                      <th className="px-3 py-1 font-medium"></th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {adset.ads.map((ad) => {
-                                      const adNoConversion = !ad.conversations || ad.conversations <= 0;
-                                      return (
-                                        <tr key={ad.id} className="border-t border-zinc-100 dark:border-zinc-800/60">
-                                          <td className="max-w-[240px] truncate px-3 py-1.5" title={ad.name}>
-                                            {ad.name}
-                                          </td>
-                                          <td className="px-3 py-1.5 text-right tabular-nums">
-                                            {adNoConversion ? "—" : fmtCurrency(ad.cost_per_conversation)}
-                                          </td>
-                                          <td className="px-3 py-1.5 text-right tabular-nums">{ad.conversations ?? "—"}</td>
-                                          <td className="px-3 py-1.5 text-right tabular-nums">{fmtCurrency(ad.spend)}</td>
-                                          <td className="px-3 py-1.5">
-                                            <span
-                                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                                                ad.status?.toUpperCase() === "ACTIVE"
-                                                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                                                  : "bg-zinc-100 text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
-                                              }`}
-                                            >
-                                              {statusLabel(ad.status)}
-                                            </span>
-                                          </td>
-                                          <td className="px-3 py-1.5 text-right">
-                                            <button
-                                              onClick={() => void pauseCreative(ad, adset.id)}
-                                              disabled={actingId === ad.id || bulkRunning}
-                                              title="Pausa só esse criativo — não mexe no conjunto"
-                                              className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
-                                            >
-                                              {actingId === ad.id ? "…" : "Pausar criativo"}
-                                            </button>
-                                          </td>
-                                        </tr>
-                                      );
-                                    })}
-                                  </tbody>
-                                </table>
-                              </td>
-                            </tr>
-                          ) : null}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       {skipped.length > 0 ? (
         <p className="border-t border-zinc-200 px-4 py-2 text-xs text-zinc-400 dark:border-zinc-800">

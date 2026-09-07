@@ -1,24 +1,28 @@
 import { NextResponse } from "next/server";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
-import { getAdSetCostAnalysis, type AdSetCostRow } from "@/lib/meta/adset-cost-analysis";
+import { getAdSetCostAnalysis, type AdSetCostRow, type AdSetCreativeRow } from "@/lib/meta/adset-cost-analysis";
 import type { DateRangeInput } from "@/lib/meta/client";
 
-// Painel > Análise, a nível de conjunto — duas análises, escolhidas por `mode`:
+// Painel > Análise, sub-painel "Conjuntos" — duas análises, escolhidas por
+// `mode`:
 //
-// "above" (padrão, conjuntos problemáticos): só conjunto ATIVO com custo por
-// conversa iniciada R$ 4 ou mais acima da Meta CPA — ou, sem nenhuma conversa
-// iniciada, com o próprio gasto R$ 4 ou mais acima da Meta CPA.
+// "above" (Etapa 40: limite mais rígido, agora que Criativos ficou num
+// sub-painel à parte com um limite mais sensível): só conjunto ATIVO com
+// custo por conversa iniciada no DOBRO (ou mais) da Meta CPA — ou, sem
+// nenhuma conversa iniciada, com o próprio gasto R$ 2 ou mais acima da Meta
+// CPA.
 //
-// "below" (conjuntos candidatos a escalar): só conjunto ATIVO, com pelo menos
-// uma conversa iniciada no período, e custo por conversa abaixo da Meta CPA.
+// "below" (conjuntos candidatos a escalar, sem mudança na Etapa 40): só
+// conjunto ATIVO, com pelo menos uma conversa iniciada no período, e custo
+// por conversa abaixo da Meta CPA.
 export type AnalysisMode = "above" | "below";
 
-const THRESHOLD_ABOVE_TARGET = 4;
+const NO_CONVERSION_THRESHOLD = 2;
 
 function isFlaggedAbove(row: AdSetCostRow, cpaTarget: number): boolean {
   const noConversion = !row.conversations || row.conversations <= 0;
-  if (noConversion) return row.spend - cpaTarget >= THRESHOLD_ABOVE_TARGET;
-  return row.cost_per_conversation != null && row.cost_per_conversation - cpaTarget >= THRESHOLD_ABOVE_TARGET;
+  if (noConversion) return row.spend - cpaTarget >= NO_CONVERSION_THRESHOLD;
+  return row.cost_per_conversation != null && row.cost_per_conversation >= cpaTarget * 2;
 }
 
 function isFlaggedBelow(row: AdSetCostRow, cpaTarget: number): boolean {
@@ -34,11 +38,41 @@ function sortKey(row: AdSetCostRow): number {
   return row.cost_per_conversation ?? row.spend;
 }
 
+type AdRowWithTrend = AdSetCreativeRow & { avg_cost_7d: number | null };
+type AdSetRowWithTrend = Omit<AdSetCostRow, "ads"> & { avg_cost_7d: number | null; ads: AdRowWithTrend[] };
+
 interface Group {
   accountId: string;
   clientName: string;
   cpaTarget: number;
-  adsets: AdSetCostRow[];
+  adsets: AdSetRowWithTrend[];
+}
+
+// Etapa 40: só na aba "acima da meta" — além do período escolhido na tela,
+// busca também um recorte FIXO de "últimos 7 dias" (sempre o mesmo,
+// independente do filtro de período) só pra saber se a média desse conjunto/
+// criativo nos últimos 7 dias já está abaixo da Meta CPA — usado pra
+// destacar a linha em verde na tela (um "esse já pode estar melhorando"),
+// sem mudar o que entra ou não na lista. Dobra a quantidade de chamadas ao
+// Graph API nessa aba especificamente (busca o período escolhido + o fixo de
+// 7 dias); a aba "abaixo da meta" não faz essa busca extra.
+async function attachSevenDayTrend(rows: AdSetCostRow[], token: string, accountId: string): Promise<AdSetRowWithTrend[]> {
+  let trend: AdSetCostRow[] = [];
+  try {
+    trend = await getAdSetCostAnalysis(token, accountId, "last_7d");
+  } catch (e) {
+    console.error("adset 7d trend err (non-fatal)", accountId, e);
+  }
+  const adsetTrendMap = new Map(trend.map((t) => [t.id, t.cost_per_conversation]));
+  const adTrendMap = new Map<string, number | null>();
+  for (const t of trend) {
+    for (const ad of t.ads) adTrendMap.set(ad.id, ad.cost_per_conversation);
+  }
+  return rows.map((r) => ({
+    ...r,
+    avg_cost_7d: adsetTrendMap.get(r.id) ?? null,
+    ads: r.ads.map((ad) => ({ ...ad, avg_cost_7d: adTrendMap.get(ad.id) ?? null })),
+  }));
 }
 
 export async function POST(request: Request) {
@@ -76,7 +110,9 @@ export async function POST(request: Request) {
           // "above": pior primeiro (mais caro acima da meta). "below": melhor
           // primeiro (mais barato abaixo da meta) — candidato nº 1 a escalar.
           const sorted = filtered.sort((a, b) => (mode === "below" ? sortKey(a) - sortKey(b) : sortKey(b) - sortKey(a)));
-          if (sorted.length > 0) groups.push({ accountId, clientName, cpaTarget, adsets: sorted });
+          if (sorted.length === 0) return;
+          const withTrend = mode === "above" ? await attachSevenDayTrend(sorted, token, accountId) : sorted.map((r) => ({ ...r, avg_cost_7d: null, ads: r.ads.map((a) => ({ ...a, avg_cost_7d: null })) }));
+          groups.push({ accountId, clientName, cpaTarget, adsets: withTrend });
         } catch (e) {
           console.error("adset analysis err (non-fatal)", accountId, e);
         }

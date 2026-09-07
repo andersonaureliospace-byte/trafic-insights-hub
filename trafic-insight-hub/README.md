@@ -209,7 +209,22 @@ A ordem da lateral do Painel mudou a pedido: Acompanhamento, Análise,
 Evolução, Visão Geral, Controle de Saldo, Clientes. E o Painel agora lembra
 em qual aba (e com quais filtros) você estava — dar F5 não joga mais de
 volta pra Visão Geral do zero, volta pra onde você tinha deixado, com os
-mesmos filtros. Com isso, todas as áreas do plano original + os extras
+mesmos filtros. A aba "CPA acima da meta" de Análise foi isolada em dois
+sub-painéis (Etapa 40): Conjuntos (agora com um limite mais rígido — custo
+por conversa no DOBRO ou mais da Meta CPA, ou sem conversa com gasto R$2+
+acima) e Criativos (limite mais sensível — R$2+ acima da Meta CPA, com ou
+sem conversa — de propósito, pra pegar o problema no criativo antes de
+precisar sinalizar o conjunto inteiro). O sub-painel Conjuntos mantém a
+expansão pra ver os criativos daquele conjunto por duplo clique; o
+sub-painel Criativos é uma lista à parte, com seu próprio botão de pausar
+individual e em massa. As duas listas dessa aba (Conjuntos e Criativos)
+agora também destacam em verde (bem sutil) qualquer conjunto ou criativo
+cuja média de custo por conversa nos ÚLTIMOS 7 DIAS — sempre fixo,
+independente do período escolhido na tela — já esteja abaixo da Meta CPA,
+como um aviso de "isso pode já estar melhorando" (a aba "CPA abaixo da
+meta" não mudou e não tem esse destaque, já que ali tudo já está abaixo da
+meta por definição). Veja o ⚠️ abaixo sobre os novos limites e essa
+checagem de 7 dias. Com isso, todas as áreas do plano original + os extras
 pedidos ao longo do caminho estão 100% concluídas.
 
 ⚠️ **Antes de testar a coluna "Otimizado" (Acompanhamento)**: essa entrega
@@ -365,11 +380,33 @@ período, só pra evitar clique duplicado sem querer; ele não reflete o
 orçamento novo de verdade, é só uma trava visual da sessão.
 
 ⚠️ **Sobre a aba "CPA abaixo da meta"**: não tem um piso de distância da
-meta (diferente da aba "acima", que exige R$ 4+ de diferença) — qualquer
-conjunto ativo com pelo menos 1 conversa iniciada e custo por conversa
-menor que a Meta CPA já aparece, mesmo que seja só alguns centavos abaixo.
-Se isso trouxer conjunto demais pra lista, é só avisar que dá pra somar um
-piso igual ao da outra aba.
+meta (diferente da aba "acima" — veja os novos limites dela logo abaixo,
+Etapa 40) — qualquer conjunto ativo com pelo menos 1 conversa iniciada e
+custo por conversa menor que a Meta CPA já aparece, mesmo que seja só
+alguns centavos abaixo. Se isso trouxer conjunto demais pra lista, é só
+avisar que dá pra somar um piso.
+
+⚠️ **Sobre os novos limites da aba "CPA acima da meta" e o destaque de 7
+dias (Etapa 40)**: essa aba foi isolada em dois sub-painéis com limites
+DIFERENTES um do outro, de propósito — Conjuntos exige uma diferença bem
+maior (custo por conversa no DOBRO ou mais da Meta CPA, ou sem conversa com
+gasto R$2+ acima) antes de sugerir pausar o conjunto inteiro, enquanto
+Criativos usa um limite mais sensível (R$2+ acima da Meta CPA, com ou sem
+conversa) pra pegar o criativo problemático cedo, antes que o conjunto
+precise ser sinalizado (o limite antigo, R$4 pros dois casos, saiu de uso).
+Além disso, cada linha (conjunto ou criativo) busca também um recorte FIXO
+de "últimos 7 dias" — sempre o mesmo, independente do período escolhido no
+seletor da tela — só pra saber se a média de custo por conversa nesse
+recorte fixo já está abaixo da Meta CPA; quando está, a linha fica com um
+fundo verde bem sutil (só um aviso visual de "isso pode já estar
+melhorando", não muda o que entra ou sai da lista nem interfere no botão de
+pausar). Isso dobra as chamadas ao Graph API só nessa aba (período escolhido
++ o fixo de 7 dias), então ela pode demorar um pouco mais que antes pra
+carregar — a aba "CPA abaixo da meta" não foi mexida e não tem esse custo
+extra. O sub-painel Criativos é nova só na tela: a mesma análise por
+criativo (com custo por conversa iniciada) já existia no código desde as
+Etapas 11-17, só não estava mais ligada na tela desde que a Etapa 31
+reorganizou Análise por conjunto — agora as duas convivem lado a lado.
 
 ⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
 link `/d/:token` numa entrega anterior, ele para de funcionar com essa
@@ -965,6 +1002,17 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     Acompanhamento/Análise/Visão Geral entre sessões — dar F5 volta pra onde
     você tinha deixado, em vez de sempre abrir em Visão Geral do zero. Veja
     os ⚠️ acima sobre a prioridade de cor e o que fica salvo
+34. ~~Análise "acima da meta" isolada em Conjuntos/Criativos + destaque de 7
+    dias (Etapa 40)~~ ✅ — a aba "CPA acima da meta" virou dois sub-painéis
+    independentes: Conjuntos (limite subiu pro dobro da Meta CPA) e
+    Criativos (limite mais sensível, R$2 acima da Meta CPA — sub-painel novo
+    na tela, reaproveitando uma análise por criativo que já existia desde as
+    Etapas 11-17). Cada um com seu próprio botão de pausar individual e em
+    massa; Conjuntos mantém a expansão pra ver os criativos por duplo
+    clique. As duas listas destacam em verde (sutil) qualquer linha cuja
+    média de custo por conversa nos últimos 7 dias (sempre fixo) já esteja
+    abaixo da Meta CPA. A aba "CPA abaixo da meta" não mudou. Veja os ⚠️
+    acima sobre os limites e o custo extra de chamadas ao Graph API
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -984,6 +1032,7 @@ sempre legível no escuro, coluna Otimizado com reset diário em
 Acompanhamento simplificada pra seletor sem motivo, conserto do aviso de
 saldo baixo silencioso e nova checagem de erro no pagamento, nome da conta
 colorido por saldo/pagamento + nova ordem da lateral + Painel lembrando
-aba/filtros entre sessões) estão 100% concluídos. Não há mais nenhum item
-pendente do escopo combinado — próximos pedidos são novos incrementos, a
-critério seu.
+aba/filtros entre sessões, Análise "acima da meta" isolada em sub-painéis
+Conjuntos/Criativos com limites próprios e destaque de tendência de 7 dias)
+estão 100% concluídos. Não há mais nenhum item pendente do escopo combinado
+— próximos pedidos são novos incrementos, a critério seu.
