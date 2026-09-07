@@ -441,6 +441,22 @@ conta/período/tela ou ao dar "↻ Atualizar", já que a lista é buscada de
 novo do zero. A tela "CPA abaixo da meta" (aumentar orçamento) não ganhou
 caixinha — só as duas que pausam.
 
+⚠️ **Sobre o bug do botão de ação em massa desarmando sozinho (Etapa 43)**:
+reportado assim: clicar em "Pausar selecionados" mostrava o aviso vermelho
+"Confirma...?" e voltava pro normal quase na hora, sem dar tempo nem pro
+segundo clique de confirmação. Causa raiz: o código guarda o estado de
+cada botão de ação em massa (armado, rodando, progresso, erros) num hook
+próprio (`useBulkRunner`), e o efeito que desarma os botões sozinho ao
+trocar de aba/tela/período estava, por engano, com esses objetos inteiros
+na lista de dependências do `useEffect`, em vez de só a função de desarmar
+de cada um. Como esses objetos são recriados a cada vez que a tela
+renderiza de novo — inclusive no exato instante em que o clique em
+"arm" acontece —, o efeito rodava de novo imediatamente e desarmava o
+botão sozinho, no mesmo instante em que ele tentava armar. Na prática isso
+podia afetar qualquer botão de ação em massa da tela (inclusive "Pausar
+todos os listados"), não só o novo "Pausar selecionados" — só não tinha
+sido notado antes. Corrigido trocando a dependência pelas funções de
+desarmar isoladas (essas sim estáveis entre renders).
 
 ⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
 link `/d/:token` numa entrega anterior, ele para de funcionar com essa
@@ -1056,6 +1072,12 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     listados") e um novo botão "Pausar selecionados", que pausa só quem foi
     marcado; o botão "Pausar todos os listados" continua igual do lado,
     ignorando a seleção. Veja o ⚠️ acima
+37. ~~Conserto do botão de ação em massa que desarmava sozinho (Etapa
+    43)~~ ✅ — bug real reportado: clicar em "Pausar selecionados" (e,
+    embora não relatado, provavelmente também "Pausar todos") mostrava o
+    aviso vermelho de confirmação por uma fração de segundo e voltava
+    sozinho ao normal, sem nem dar tempo do segundo clique. Corrigido —
+    veja o ⚠️ abaixo pra causa raiz
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1077,7 +1099,8 @@ saldo baixo silencioso e nova checagem de erro no pagamento, nome da conta
 colorido por saldo/pagamento + nova ordem da lateral + Painel lembrando
 aba/filtros entre sessões, Análise "acima da meta" com critérios próprios
 por Conjuntos/Criativos e destaque de tendência de 7 dias, Conjuntos e
-Criativos virando telas separadas alternadas por botão, e caixa de
-seleção pra pausar em massa só quem foi marcado) estão 100% concluídos.
-Não há mais nenhum item pendente do escopo combinado — próximos pedidos
-são novos incrementos, a critério seu.
+Criativos virando telas separadas alternadas por botão, caixa de seleção
+pra pausar em massa só quem foi marcado, e conserto do bug que desarmava
+sozinho o botão de ação em massa) estão 100% concluídos. Não há mais
+nenhum item pendente do escopo combinado — próximos pedidos são novos
+incrementos, a critério seu.

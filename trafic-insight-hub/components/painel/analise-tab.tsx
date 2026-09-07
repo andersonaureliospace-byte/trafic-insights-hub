@@ -409,13 +409,40 @@ export function AnaliseTab({
 
   // Desarma os botões em massa sozinho ao trocar de aba/tela/período — evita
   // confirmar sem querer uma ação pensada pra outra lista.
+  //
+  // Importante: essas variáveis "disarmX" guardam só a FUNÇÃO disarm de
+  // cada um (estável entre renders, via useCallback dentro de
+  // useBulkRunner) — nunca o objeto "belowBulk"/"aboveAdsetBulk"/etc.
+  // inteiro. Esse objeto é recriado a cada render do componente (é um
+  // literal `{ armed, running, ... }` novo toda vez), então usar ele
+  // direto (ou colocá-lo nas dependências do efeito abaixo) fazia esse
+  // efeito rodar de novo a cada render, inclusive o render disparado pelo
+  // próprio clique em "arm" — ou seja, o botão "armava" (ficava vermelho)
+  // e no mesmo instante esse efeito rodava de novo e desarmava sozinho,
+  // sem nem dar tempo do segundo clique de confirmação (bug real
+  // corrigido depois de relato).
+  const disarmBelow = belowBulk.disarm;
+  const disarmAboveAdset = aboveAdsetBulk.disarm;
+  const disarmAboveAdsetSelected = aboveAdsetSelectedBulk.disarm;
+  const disarmAboveCreative = aboveCreativeBulk.disarm;
+  const disarmAboveCreativeSelected = aboveCreativeSelectedBulk.disarm;
+
   useEffect(() => {
-    belowBulk.disarm();
-    aboveAdsetBulk.disarm();
-    aboveAdsetSelectedBulk.disarm();
-    aboveCreativeBulk.disarm();
-    aboveCreativeSelectedBulk.disarm();
-  }, [mode, subPanel, preset, belowBulk, aboveAdsetBulk, aboveAdsetSelectedBulk, aboveCreativeBulk, aboveCreativeSelectedBulk]);
+    disarmBelow();
+    disarmAboveAdset();
+    disarmAboveAdsetSelected();
+    disarmAboveCreative();
+    disarmAboveCreativeSelected();
+  }, [
+    mode,
+    subPanel,
+    preset,
+    disarmBelow,
+    disarmAboveAdset,
+    disarmAboveAdsetSelected,
+    disarmAboveCreative,
+    disarmAboveCreativeSelected,
+  ]);
 
   function toggleAdsetSelected(id: string) {
     setSelectedAdsetIds((prev) => {
