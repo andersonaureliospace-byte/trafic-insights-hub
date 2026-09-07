@@ -15,6 +15,7 @@ import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-group
 import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { EditClientDialog } from "@/components/painel/edit-client-dialog";
 import { InlineNumber } from "@/components/painel/inline-number";
+import { OptimizedCell } from "@/components/painel/optimized-cell";
 
 interface AccountBinding {
   ad_account_id: string;
@@ -29,6 +30,8 @@ interface AccountBinding {
   whatsapp_contact: string | null;
   address: string | null;
   sort_order: number | null;
+  optimized: boolean | null;
+  optimized_reason: string | null;
 }
 
 // Base usada tanto no patch otimista de um campo quanto na reordenação em
@@ -47,6 +50,8 @@ function defaultBinding(accountId: string): AccountBinding {
     whatsapp_contact: null,
     address: null,
     sort_order: null,
+    optimized: false,
+    optimized_reason: null,
   };
 }
 
@@ -153,6 +158,9 @@ export default function PainelPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [cpaFilter, setCpaFilter] = useState<"all" | "high">("all");
   const [investFilter, setInvestFilter] = useState<"all" | "low" | "high">("all");
+  // Filtro da coluna "Otimizado" (Etapa 36) — mesmo padrão dos outros 3:
+  // começa fixo em "Todos".
+  const [optimizedFilter, setOptimizedFilter] = useState<"all" | "optimized" | "pending">("all");
   const [focusGroups, setFocusGroups] = useState<FocusGroup[]>([]);
   const [activeFocusGroupId, setActiveFocusGroupId] = useState<string | null>(null);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
@@ -374,19 +382,25 @@ export default function PainelPage() {
         if (investFilter === "low") return diff > RITMO_BAND;
         return diff < -RITMO_BAND;
       })
+      .filter((r) => {
+        if (optimizedFilter === "all") return true;
+        const isOptimized = !!r.binding?.optimized;
+        return optimizedFilter === "optimized" ? isOptimized : !isOptimized;
+      })
       .sort((a, b) => rowSortKey(a) - rowSortKey(b));
-  }, [focusFilteredRows, search, priorityFilter, cpaFilter, investFilter, monthlyInsights]);
+  }, [focusFilteredRows, search, priorityFilter, cpaFilter, investFilter, optimizedFilter, monthlyInsights]);
 
   // Arrastar só faz sentido reordenando a lista completa e visível — com
-  // busca, grupo de foco ou qualquer um dos 3 filtros (Status/CPA/
-  // Investimento) ativos, a posição de um item na tela não bate com sua
+  // busca, grupo de foco ou qualquer um dos 4 filtros (Status/CPA/
+  // Investimento/Otimizado) ativos, a posição de um item na tela não bate com sua
   // posição "de verdade" entre todas as contas, então desabilita.
   const reorderEnabled =
     search.trim() === "" &&
     activeFocusGroupId === null &&
     priorityFilter === "all" &&
     cpaFilter === "all" &&
-    investFilter === "all";
+    investFilter === "all" &&
+    optimizedFilter === "all";
 
   function handleRowDrop(targetAccountId: string) {
     if (!draggedAccountId || draggedAccountId === targetAccountId) return;
@@ -547,12 +561,24 @@ export default function PainelPage() {
                       <option value="high">Alto</option>
                     </select>
                   </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Otimizado</span>
+                    <select
+                      value={optimizedFilter}
+                      onChange={(e) => setOptimizedFilter(e.target.value as "all" | "optimized" | "pending")}
+                      className="h-7 rounded-md border border-zinc-300 bg-transparent px-2 text-xs dark:border-zinc-700"
+                    >
+                      <option value="all">Todos</option>
+                      <option value="optimized">Otimizado</option>
+                      <option value="pending">Pendente</option>
+                    </select>
+                  </div>
                 </div>
 
                 {!reorderEnabled ? (
                   <p className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
                     Para arrastar e reordenar os clientes, limpe a busca, o grupo de foco e os filtros de Status/CPA/
-                    Investimento — a reordenação vale para a lista completa.
+                    Investimento/Otimizado — a reordenação vale para a lista completa.
                   </p>
                 ) : null}
 
@@ -564,6 +590,12 @@ export default function PainelPage() {
                         <th className="px-4 py-2 font-medium">Cliente</th>
                         <th className="px-4 py-2 font-medium">Conta</th>
                         <th className="px-4 py-2 font-medium">Status</th>
+                        <th
+                          className="px-4 py-2 font-medium"
+                          title="Marcação manual do dia — reseta sozinha à meia-noite (horário de Brasília)"
+                        >
+                          Otimizado
+                        </th>
                         <th
                           className="px-4 py-2 text-right font-medium"
                           title="Editável aqui ou em Clientes — os dois ficam sincronizados"
@@ -656,6 +688,20 @@ export default function PainelPage() {
                                   </option>
                                 ))}
                               </select>
+                            </td>
+                            <td className="px-4 py-2">
+                              <OptimizedCell
+                                optimized={!!binding?.optimized}
+                                reason={binding?.optimized_reason ?? null}
+                                onToggle={(next, reason) =>
+                                  patchBinding(
+                                    acc.account_id,
+                                    next
+                                      ? { optimized: true, optimized_reason: reason ?? "" }
+                                      : { optimized: false, optimized_reason: null },
+                                  )
+                                }
+                              />
                             </td>
                             <td className="px-4 py-2 text-right tabular-nums">
                               <InlineNumber
