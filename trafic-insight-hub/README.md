@@ -242,7 +242,17 @@ bata o limite de CPA, já que sem anúncio ativo às vezes nem tem gasto no
 período pra calcular nada; veja o ⚠️ abaixo sobre como essa checagem
 funciona e por que só está nessa tela/aba. O filtro de período de
 Acompanhamento ganhou uma nova opção, "Ontem e hoje" (Etapa 47) — veja o
-⚠️ abaixo. Com isso, todas as
+⚠️ abaixo. A tela Evolução (Etapa 48) ganhou uma coluna fixa "Mensal" (CPA
+do mês atual, antes da coluna "Hoje"), corrigiu o dia de hoje que não
+aparecia, e agora colore cada célula (diária ou mensal) comparando com o
+CPA ideal do cliente — verde abaixo do ideal, laranja até R$2 acima,
+vermelho passando de R$2 acima — em vez do corte fixo de R$2 igual pra
+todo mundo que tinha antes; Mensagens → Avisos ganhou uma terceira
+checagem, "CPA acima da meta ontem", que manda uma única mensagem pro
+grupo de WhatsApp com todo cliente que passou R$2 do CPA ideal no dia
+anterior, da conta mais crítica pra menos crítica, pensada pra rodar
+automaticamente 1x por dia de manhã (07h sugerido) via um novo hook
+público. Veja os ⚠️ abaixo sobre as duas coisas. Com isso, todas as
 áreas do plano original + os extras pedidos ao longo do caminho estão
 100% concluídas.
 
@@ -503,6 +513,48 @@ em si (ontem 00h00 até agora, fuso de Brasília) já existia pronto no
 código desde a reconstrução original — só nunca tinha entrado em nenhum
 filtro visível na tela.
 
+⚠️ **Sobre os consertos da tela Evolução (Etapa 48)**: o dia de "Hoje"
+ficava sempre "—" porque a busca por dia (que traz um dia por vez, do mais
+antigo ao mais recente) parece simplesmente não trazer nenhuma linha pro
+dia ainda em andamento — provavelmente uma particularidade da própria API
+da Meta com esse tipo de busca quebrada por dia. Corrigido buscando hoje
+SEPARADO, com `date_preset: "today"` (uma busca agregada, sem quebra por
+dia) — a mesma técnica que Acompanhamento já usa com sucesso — e
+substituindo o ponto de hoje no gráfico por esse valor. Mesmo com o
+conserto, "Hoje" ainda pode aparecer como "—" por um tempo se ainda não
+tiver nenhuma conversa iniciada registrada no dia (a Meta pode levar
+algumas horas pra atribuir conversas do dia corrente) — isso é esperado,
+não é bug, e é o mesmo comportamento de "sem conversa" que já existe no
+resto do Painel. A cor de cada célula (diária ou da nova coluna Mensal)
+agora usa a mesma régua da coluna CPA de Acompanhamento — verde abaixo do
+CPA ideal do cliente, laranja até R$2 acima, vermelho passando de R$2
+acima —, com banda de R$2 em vez dos R$1,40 de Acompanhamento, a pedido.
+Cliente sem CPA ideal cadastrado fica sem cor (não dá pra comparar com
+nada). A coluna "Mensal" reaproveita a mesma agregação de mês atual já
+usada no Ritmo de Acompanhamento (`date_preset: "this_month"`), então o
+número bate com o que você já vê lá.
+
+⚠️ **Sobre o aviso "CPA acima da meta ontem" (Etapa 48)**: roda pra toda
+conta com CPA ideal cadastrado (Clientes/Acompanhamento) — quem não tem
+CPA ideal não entra nem na tela nem no aviso, não tem como julgar "acima
+da meta" sem uma meta. Entra na mensagem quem teve o CPA de ONTEM (usando
+a mesma fonte oficial que Acompanhamento usa pro CPA, `cost_per_result`
+da Meta, já com a mesma regra de excluir campanha [VAGA]/objetivo de
+reconhecimento-tráfego e considerar só anúncio ativo) mais de R$2 acima do
+CPA ideal — ficou na média ou abaixo não aparece na mensagem, só entra
+quem está "vermelho". Vai numa única mensagem de texto pro grupo de
+WhatsApp configurado em Configurações → WhatsApp (mesmo grupo dos outros
+avisos), com nome do cliente, CPA ideal e CPA de ontem por linha, da conta
+mais crítica (maior diferença acima da meta) pra menos crítica. Ao
+contrário do aviso de saldo baixo e de erro no pagamento, ESSE aviso não
+tem cooldown de 24h — a ideia é rodar uma vez por dia via o novo hook
+`cpa-alert-tick` (passo 9 da seção de deploy), então não tem por que
+segurar reenvio; se você clicar "Verificar agora" mais de uma vez no
+mesmo dia com contas críticas, ele reenvia a mesma mensagem de novo — é
+esperado, não um bug. Se nenhuma conta ficar acima do limite, nenhuma
+mensagem é enviada (mesmo comportamento dos outros dois avisos — nunca
+manda um "está tudo bem").
+
 ⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
 link `/d/:token` numa entrega anterior, ele para de funcionar com essa
 atualização (a rota foi removida). A tabela `public_dashboards` continua no
@@ -756,9 +808,17 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
    `https://SEU_DOMINIO/api/public/hooks/balance-alert-tick` com o mesmo
    header `x-webhook-secret`. Isso faz o aviso de saldo baixo em Mensagens
    → Avisos rodar sozinho.
-9. Anexos de mídia (Mensagens → Envio) não precisam de nenhum workflow novo
-   no n8n — é um upload síncrono direto pro Supabase Storage, disparado na
-   hora do envio.
+9. (Opcional, mas recomendado) Crie um quinto workflow no n8n com **Schedule
+   Trigger** configurado pra rodar 1x por dia, às 07h (horário de Brasília)
+   → **HTTP Request** `POST` para
+   `https://SEU_DOMINIO/api/public/hooks/cpa-alert-tick` com o mesmo header
+   `x-webhook-secret`. Isso manda a mensagem de "CPA acima da meta ontem"
+   (Mensagens → Avisos, Etapa 48) sozinha toda manhã. Veja o ⚠️ mais abaixo
+   sobre esse aviso não ter cooldown — configure o Schedule Trigger pra
+   rodar só uma vez por dia mesmo, sem repetir.
+10. Anexos de mídia (Mensagens → Envio) não precisam de nenhum workflow novo
+    no n8n — é um upload síncrono direto pro Supabase Storage, disparado na
+    hora do envio.
 
 ## Estrutura
 
@@ -789,12 +849,14 @@ app/
     reports/templates, reports/scheduled  → modelos e agendamentos de Relatórios
     alerts/balance  → status de saldo baixo + "Verificar agora" (Mensagens > Avisos)
     alerts/payment  → status de erro no pagamento + "Verificar agora" (Mensagens > Avisos)
+    alerts/cpa      → status de CPA acima da meta ontem + "Verificar agora" (Mensagens > Avisos, Etapa 48)
     priority-labels → rótulos/cores de prioridade personalizados (Configurações > Status)
     public/hooks/whatsapp-dispatch-tick  → chamado pelo n8n, não pelo navegador
     public/hooks/audit-tick              → idem, roda as duas auditorias
     public/hooks/crm-lead-ingest         → idem, cria lead novo por public_token
     public/hooks/report-tick             → idem, dispara os relatórios agendados
     public/hooks/balance-alert-tick      → idem, checa e avisa saldo baixo E erro no pagamento
+    public/hooks/cpa-alert-tick          → idem, avisa CPA acima da meta ontem (Etapa 48, sugerido 1x/dia às 07h)
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
     painel-ui-state  → lembra a aba ativa + filtros de Acompanhamento/Análise/
@@ -809,6 +871,10 @@ lib/meta/
                   no nível campanha só entra quem teve impressão no período
   status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral, Auditoria e Análise)
   daily-cpa.ts  → CPA diário por conta, usado na atualização de status em massa
+                  e na tela Evolução (Etapa 48: hoje buscado à parte com
+                  date_preset "today" pra não sumir quando a quebra por dia
+                  não traz o dia em andamento; getAccountsMonthCpa para o
+                  CPA fixo do mês atual, mesma agregação do Ritmo)
   creative-analysis.ts → custo por conversa iniciada por anúncio, com status (Painel > Análise)
   ads-manager-link.ts → monta a URL do Gerenciador de Anúncios (campanhas) e a
                          de Cobranças e Pagamentos (billing hub, usada só no
@@ -845,6 +911,12 @@ lib/alerts/
                   Meta) em TODAS as contas vinculadas e manda o aviso pro
                   mesmo grupo — mesmo padrão de balance.ts (cooldown de 24h,
                   compartilhado entre "Verificar agora" e o hook público)
+  cpa.ts        → Etapa 48: checa o CPA de ONTEM (getAccountsInsights, mesma
+                  fonte oficial usada em Acompanhamento) de toda conta com
+                  CPA ideal cadastrado, e manda UMA mensagem só, com quem
+                  ficou mais de R$2 acima da meta, da mais crítica pra menos
+                  crítica — compartilhado entre "Verificar agora" e o hook
+                  público cpa-alert-tick; SEM cooldown de 24h (ver ⚠️)
 lib/scheduling.ts → regra de recorrência genérica (soma o intervalo à última
                     ocorrência, preservando dia da semana/mês) — usada pelos
                     disparos de WhatsApp e pelos relatórios agendados
@@ -898,7 +970,9 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
    modelos com variáveis ({cliente}/{investido}/{cpa}/etc.), agendamento
    por conta(s) + grupo + recorrência via hook `report-tick`. Avisos: aviso
    automático de saldo baixo (limite por conta ou 20% do Valor base) via
-   hook `balance-alert-tick`
+   hook `balance-alert-tick`, e aviso automático de CPA acima da meta
+   ontem (mais de R$2 do CPA ideal, mensagem única e ordenada por
+   criticidade) via hook `cpa-alert-tick` (Etapa 48)
 5. ~~Auditoria~~ ✅ — Localização (Brasil país inteiro / expansão de público)
    e Erros de veiculação (anúncio reprovado/restrito/em análise, conjunto
    ativo sem anúncio ativo), com pausa automática do que encontrar. Hook
@@ -1141,6 +1215,14 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     no seletor de período de Acompanhamento (e, por ser uma lista
     compartilhada, também em Análise/Visão Geral/Relatórios). Veja o ⚠️
     acima
+42. ~~Evolução com coluna Mensal, cor por CPA ideal e conserto do dia de
+    hoje + aviso automático de CPA acima da meta ontem (Etapa 48)~~ ✅ —
+    Evolução ganhou coluna fixa "Mensal", conserto do dia de hoje que não
+    aparecia, e cor por cliente (verde/laranja/vermelho contra o CPA
+    ideal, banda de R$2) em vez do corte fixo de antes; novo aviso em
+    Mensagens → Avisos manda uma mensagem só por dia (via hook
+    `cpa-alert-tick`, sugerido às 07h no n8n) com quem passou R$2 do CPA
+    ideal ontem, do mais crítico pro menos crítico. Veja os ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1166,7 +1248,8 @@ Criativos virando telas separadas alternadas por botão, caixa de seleção
 pra pausar em massa só quem foi marcado, conserto do bug que desarmava
 sozinho o botão de ação em massa, limite de Conjuntos subindo pro triplo
 da Meta CPA, limite de Criativos subindo de R$2 pra R$4, selo "Sem
-anúncio ativo" em Análise → Conjuntos, e novo filtro de período "Ontem e
-hoje") estão 100%
+anúncio ativo" em Análise → Conjuntos, novo filtro de período "Ontem e
+hoje", e Evolução com coluna Mensal/cor por CPA ideal/conserto do dia de
+hoje + aviso automático de CPA acima da meta ontem) estão 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
 próximos pedidos são novos incrementos, a critério seu.

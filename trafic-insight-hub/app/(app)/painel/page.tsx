@@ -852,6 +852,7 @@ export default function PainelPage() {
               <EvolucaoTab
                 accounts={selectedAccounts}
                 clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
+                cpaTargets={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.binding?.cpa_target ?? null]))}
               />
             ) : null}
 
