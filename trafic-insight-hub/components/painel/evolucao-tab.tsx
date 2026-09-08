@@ -93,6 +93,19 @@ export function EvolucaoTab({
     return Array.from({ length: DAYS_BACK + 1 }, (_, i) => shiftDate(today, -i));
   }, []);
 
+  // Etapa 49: ordena do CPA mensal maior pro menor (quem está pior primeiro)
+  // — conta sem dado de mês ainda vai pro final, não pro topo.
+  const sortedAccounts = useMemo(() => {
+    return [...accounts].sort((a, b) => {
+      const ca = month[a.account_id]?.cpa;
+      const cb = month[b.account_id]?.cpa;
+      if (ca == null && cb == null) return 0;
+      if (ca == null) return 1;
+      if (cb == null) return -1;
+      return cb - ca;
+    });
+  }, [accounts, month]);
+
   const load = useCallback(async () => {
     if (accounts.length === 0) {
       setDaily({});
@@ -140,6 +153,7 @@ export function EvolucaoTab({
           <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
             CPA de cada dia (últimos 7 dias + hoje) e do mês atual, comparado com o CPA ideal de cada
             cliente — verde abaixo do ideal, laranja até R$2 acima, vermelho passando de R$2 acima.
+            Ordenado pelo CPA do mês, do maior pro menor.
           </p>
         </div>
         <button
@@ -159,6 +173,7 @@ export function EvolucaoTab({
             <thead>
               <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
                 <th className="px-4 py-2 font-medium">Cliente</th>
+                <th className="px-3 py-2 text-right font-medium">CPA ideal</th>
                 <th className="px-3 py-2 text-right font-medium">
                   <div>Mensal</div>
                   <div className="text-[10px] font-normal normal-case text-zinc-400">Mês atual</div>
@@ -172,7 +187,7 @@ export function EvolucaoTab({
               </tr>
             </thead>
             <tbody>
-              {accounts.map((acc) => {
+              {sortedAccounts.map((acc) => {
                 const points = daily[acc.account_id] ?? [];
                 const pointByDate = new Map(points.map((p) => [p.date, p]));
                 const cpaTarget = cpaTargets[acc.account_id];
@@ -180,6 +195,9 @@ export function EvolucaoTab({
                 return (
                   <tr key={acc.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
                     <td className="px-4 py-2 font-medium">{clientNames[acc.account_id] ?? acc.name}</td>
+                    <td className="px-3 py-2 text-right tabular-nums text-zinc-500 dark:text-zinc-400">
+                      {cpaTarget == null ? "—" : fmtCurrency(cpaTarget)}
+                    </td>
                     <td
                       className={`px-3 py-2 text-right font-medium tabular-nums ${evoColorClass(monthCpa, cpaTarget)}`}
                       title={cpaTarget == null ? "Sem CPA ideal cadastrado" : undefined}

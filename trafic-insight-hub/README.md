@@ -252,7 +252,11 @@ checagem, "CPA acima da meta ontem", que manda uma única mensagem pro
 grupo de WhatsApp com todo cliente que passou R$2 do CPA ideal no dia
 anterior, da conta mais crítica pra menos crítica, pensada pra rodar
 automaticamente 1x por dia de manhã (07h sugerido) via um novo hook
-público. Veja os ⚠️ abaixo sobre as duas coisas. Com isso, todas as
+público. Veja os ⚠️ abaixo sobre as duas coisas. A tela Evolução (Etapa
+49) ganhou mais um ajuste: uma coluna "CPA ideal" antes da coluna
+"Mensal", e as linhas agora vêm ordenadas pelo CPA do mês (coluna
+"Mensal"), do maior pro menor — quem está pior aparece primeiro. Com
+isso, todas as
 áreas do plano original + os extras pedidos ao longo do caminho estão
 100% concluídas.
 
@@ -533,6 +537,17 @@ Cliente sem CPA ideal cadastrado fica sem cor (não dá pra comparar com
 nada). A coluna "Mensal" reaproveita a mesma agregação de mês atual já
 usada no Ritmo de Acompanhamento (`date_preset: "this_month"`), então o
 número bate com o que você já vê lá.
+
+⚠️ **Sobre a coluna CPA ideal e a ordenação de Evolução (Etapa 49)**: a
+nova coluna "CPA ideal" só mostra o valor cadastrado (Clientes/
+Acompanhamento) — sem cor, é só referência ao lado da coluna Mensal, que
+já é colorida comparando com esse mesmo valor. A ordenação usa sempre o
+CPA do MÊS (coluna Mensal), do maior pro menor, independente do CPA ideal
+de cada um — não é ordenado pela diferença/pior-em-relação-à-meta, é o
+valor absoluto do CPA mensal mesmo (dois clientes com CPA parecido ficam
+próximos na lista mesmo que um deles tenha uma meta bem mais alta que o
+outro); cliente sem dado de mês ainda (conta nova, por exemplo) vai pro
+final da lista, não pro topo.
 
 ⚠️ **Sobre o aviso "CPA acima da meta ontem" (Etapa 48)**: roda pra toda
 conta com CPA ideal cadastrado (Clientes/Acompanhamento) — quem não tem
@@ -1223,6 +1238,9 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     Mensagens → Avisos manda uma mensagem só por dia (via hook
     `cpa-alert-tick`, sugerido às 07h no n8n) com quem passou R$2 do CPA
     ideal ontem, do mais crítico pro menos crítico. Veja os ⚠️ acima
+43. ~~Coluna CPA ideal e ordenação por CPA mensal em Evolução (Etapa
+    49)~~ ✅ — nova coluna "CPA ideal" antes de "Mensal", e a lista agora
+    vem ordenada pelo CPA do mês, do maior pro menor. Veja o ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1249,7 +1267,8 @@ pra pausar em massa só quem foi marcado, conserto do bug que desarmava
 sozinho o botão de ação em massa, limite de Conjuntos subindo pro triplo
 da Meta CPA, limite de Criativos subindo de R$2 pra R$4, selo "Sem
 anúncio ativo" em Análise → Conjuntos, novo filtro de período "Ontem e
-hoje", e Evolução com coluna Mensal/cor por CPA ideal/conserto do dia de
-hoje + aviso automático de CPA acima da meta ontem) estão 100%
+hoje", Evolução com coluna Mensal/cor por CPA ideal/conserto do dia de
+hoje + aviso automático de CPA acima da meta ontem, e coluna CPA ideal +
+ordenação por CPA mensal em Evolução) estão 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
 próximos pedidos são novos incrementos, a critério seu.
