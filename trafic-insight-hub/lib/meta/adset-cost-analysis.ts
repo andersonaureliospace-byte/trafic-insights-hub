@@ -23,12 +23,22 @@ export interface AdSetCostRow {
   conversations: number | null;
   cost_per_conversation: number | null;
   ads: AdSetCreativeRow[];
+  // Etapa 46: conjunto ATIVO mas sem nenhum anúncio ATIVO dentro dele (mesma
+  // checagem que a Auditoria já fazia em lib/audit/errors.ts, agora também
+  // disponível pra Análise > Conjuntos sinalizar).
+  has_active_ad: boolean;
 }
 
 interface AdSetStatusRow {
   id?: string;
+  name?: string;
   effective_status?: string;
   status?: string;
+  campaign?: { name?: string };
+  // Filtro de edge do Graph API: só traz até 1 anúncio ATIVO — usado só pra
+  // saber se existe pelo menos um (ads.data.length > 0), sem precisar buscar
+  // todos os anúncios do conjunto de novo.
+  ads?: { data?: { id?: string }[] };
 }
 
 export async function getAdSetCostAnalysis(
@@ -41,7 +51,7 @@ export async function getAdSetCostAnalysis(
   const [adRows, adsetStatusRows] = await Promise.all([
     getCreativeCostAnalysis(token, accountId, datePreset),
     metaGetAll<AdSetStatusRow>(token, `/${id}/adsets`, {
-      fields: "id,effective_status,status",
+      fields: "id,name,effective_status,status,campaign{name},ads.effective_status(['ACTIVE']).limit(1){id}",
       limit: "500",
     }).catch((e) => {
       console.error("adset analysis status err (non-fatal)", id, e);
@@ -49,9 +59,18 @@ export async function getAdSetCostAnalysis(
     }),
   ]);
 
-  const adsetStatusMap = new Map<string, string>();
+  const adsetInfoMap = new Map<
+    string,
+    { name: string; campaignName: string | null; effectiveStatus: string; hasActiveAd: boolean }
+  >();
   for (const a of adsetStatusRows) {
-    if (a.id) adsetStatusMap.set(a.id, (a.effective_status || a.status || "").toUpperCase());
+    if (!a.id) continue;
+    adsetInfoMap.set(a.id, {
+      name: a.name || a.id,
+      campaignName: a.campaign?.name ?? null,
+      effectiveStatus: (a.effective_status || a.status || "").toUpperCase(),
+      hasActiveAd: (a.ads?.data?.length ?? 0) > 0,
+    });
   }
 
   const groups = new Map<string, AdSetCostRow>();
@@ -67,6 +86,7 @@ export async function getAdSetCostAnalysis(
         conversations: null,
         cost_per_conversation: null,
         ads: [],
+        has_active_ad: true,
       };
       groups.set(ad.adset_id, g);
     }
@@ -85,10 +105,35 @@ export async function getAdSetCostAnalysis(
   }
 
   const result: AdSetCostRow[] = [];
+  const includedIds = new Set<string>();
   for (const g of groups.values()) {
-    if (adsetStatusMap.get(g.id) !== "ACTIVE") continue; // só conjunto ativo, pedido explícito
+    const info = adsetInfoMap.get(g.id);
+    if (info?.effectiveStatus !== "ACTIVE") continue; // só conjunto ativo, pedido explícito
     g.cost_per_conversation = g.conversations && g.conversations > 0 ? g.spend / g.conversations : null;
+    g.has_active_ad = info.hasActiveAd;
     result.push(g);
+    includedIds.add(g.id);
   }
+
+  // Etapa 46: conjunto ATIVO sem nenhum anúncio ativo E sem gasto no período
+  // (por isso nem apareceu nos ads acima, que só contam anúncio com gasto>0)
+  // — cria uma entrada "vazia" só pra avisar, já que sem isso esse conjunto
+  // nunca chegaria na tela de jeito nenhum.
+  for (const [adsetId, info] of adsetInfoMap) {
+    if (includedIds.has(adsetId)) continue;
+    if (info.effectiveStatus !== "ACTIVE") continue;
+    if (info.hasActiveAd) continue;
+    result.push({
+      id: adsetId,
+      name: info.name,
+      campaign_name: info.campaignName,
+      spend: 0,
+      conversations: null,
+      cost_per_conversation: null,
+      ads: [],
+      has_active_ad: false,
+    });
+  }
+
   return result;
 }

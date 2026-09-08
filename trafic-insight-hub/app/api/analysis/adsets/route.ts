@@ -11,7 +11,10 @@ import type { DateRangeInput } from "@/lib/meta/client";
 // custo por conversa iniciada no TRIPLO (ou mais) da Meta CPA — ou, sem
 // nenhuma conversa iniciada, com o próprio gasto já no triplo (ou mais) da
 // Meta CPA (ex.: Meta CPA R$6 → só entra com R$18 ou mais, com ou sem
-// conversa).
+// conversa). Etapa 46: ENTRA TAMBÉM, direto, qualquer conjunto ATIVO sem
+// nenhum anúncio ativo dentro dele — independe do CPA (às vezes nem tem
+// gasto no período pra calcular) — só nesse sub-painel (não faz sentido
+// avisar isso em "candidato a escalar").
 //
 // "below" (conjuntos candidatos a escalar, sem mudança): só conjunto
 // ATIVO, com pelo menos uma conversa iniciada no período, e custo por
@@ -21,6 +24,7 @@ export type AnalysisMode = "above" | "below";
 const ABOVE_TARGET_MULTIPLIER = 3;
 
 function isFlaggedAbove(row: AdSetCostRow, cpaTarget: number): boolean {
+  if (!row.has_active_ad) return true; // Etapa 46: avisa mesmo sem bater o limite de CPA
   const threshold = cpaTarget * ABOVE_TARGET_MULTIPLIER;
   const noConversion = !row.conversations || row.conversations <= 0;
   if (noConversion) return row.spend >= threshold;

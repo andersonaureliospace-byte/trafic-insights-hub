@@ -52,6 +52,10 @@ interface AdSetRow {
   cost_per_conversation: number | null;
   ads: AdRow[];
   avg_cost_7d?: number | null;
+  // Etapa 46: conjunto ativo sem nenhum anúncio ativo dentro dele — quando
+  // false, o conjunto pode ter entrado na lista só por isso (sem bater o
+  // limite de CPA).
+  has_active_ad?: boolean;
 }
 
 interface Group {
@@ -714,8 +718,9 @@ export function AnaliseTab({
                   "sensível que o de Conjuntos, de propósito, pra pegar o problema no criativo cedo. Linha verde = média " +
                   "fixa dos últimos 7 dias já abaixo da Meta CPA. Nada é pausado sozinho."
                 : "Custo por conversa no TRIPLO ou mais da Meta CPA, ou sem conversa com o próprio gasto já no triplo ou " +
-                  "mais. Duplo clique no conjunto mostra os criativos dele. Linha verde = média fixa dos últimos 7 dias " +
-                  "já abaixo da Meta CPA. Nada é pausado sozinho."
+                  "mais — ou conjunto ativo sem nenhum anúncio ativo dentro dele (badge \"Sem anúncio ativo\"), " +
+                  "independente do CPA. Duplo clique no conjunto mostra os criativos dele. Linha verde = média fixa " +
+                  "dos últimos 7 dias já abaixo da Meta CPA. Nada é pausado sozinho."
               : "Só conjunto ativo, com pelo menos uma conversa iniciada no período e custo por conversa abaixo da Meta " +
                 "CPA — candidato a receber mais investimento. Duplo clique no conjunto mostra os criativos dele. Nada é " +
                 "alterado sozinho, os botões (individual ou em massa) são manuais."}
@@ -815,7 +820,7 @@ export function AnaliseTab({
             {q
               ? "Nenhum conjunto encontrado com esse nome."
               : mode === "above"
-                ? "Nenhum conjunto ativo no triplo (ou mais) da meta nesse período."
+                ? "Nenhum conjunto ativo no triplo (ou mais) da meta, ou sem anúncio ativo, nesse período."
                 : "Nenhum conjunto ativo abaixo da meta nesse período."}
           </p>
         ) : (
@@ -854,6 +859,7 @@ export function AnaliseTab({
                     <tbody>
                       {g.adsets.map((adset) => {
                         const noConversion = !adset.conversations || adset.conversations <= 0;
+                        const noActiveAd = adset.has_active_ad === false;
                         const diff = diffFor(adset.spend, adset.conversations, adset.cost_per_conversation, g.cpaTarget);
                         const isOpen = expanded.has(adset.id);
                         const wasIncreased = increasedIds.has(adset.id);
@@ -884,13 +890,23 @@ export function AnaliseTab({
                               <td className="max-w-[260px] truncate px-4 py-2" title={adset.name}>
                                 <span className="mr-1 inline-block w-3 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
                                 {adset.name}
+                                {noActiveAd ? (
+                                  <span
+                                    title="Esse conjunto está ativo, mas nenhum anúncio dentro dele está ativo"
+                                    className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950 dark:text-red-300"
+                                  >
+                                    Sem anúncio ativo
+                                  </span>
+                                ) : null}
                               </td>
                               <td
                                 className={`px-4 py-2 text-right tabular-nums font-medium ${
                                   mode === "above" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"
                                 }`}
                               >
-                                {noConversion ? (
+                                {noActiveAd ? (
+                                  <span title="Sem anúncio ativo no conjunto — sem gasto pra calcular custo/conversa">—</span>
+                                ) : noConversion ? (
                                   <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
                                     —
                                   </span>
@@ -900,10 +916,14 @@ export function AnaliseTab({
                               </td>
                               <td
                                 className={`px-4 py-2 text-right tabular-nums ${
-                                  diff >= 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
+                                  noActiveAd
+                                    ? "text-zinc-400 dark:text-zinc-500"
+                                    : diff >= 0
+                                      ? "text-red-600 dark:text-red-400"
+                                      : "text-emerald-600 dark:text-emerald-400"
                                 }`}
                               >
-                                {fmtDiffSigned(diff)}
+                                {noActiveAd ? "—" : fmtDiffSigned(diff)}
                               </td>
                               <td className="px-4 py-2 text-right tabular-nums">{adset.conversations ?? "—"}</td>
                               <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(adset.spend)}</td>
@@ -938,6 +958,11 @@ export function AnaliseTab({
                             {isOpen ? (
                               <tr className="border-t border-zinc-100 dark:border-zinc-800/60">
                                 <td colSpan={mode === "above" ? 7 : 6} className="bg-zinc-50/60 px-4 py-2 dark:bg-zinc-800/20">
+                                  {adset.ads.length === 0 ? (
+                                    <p className="px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                      Nenhum anúncio com gasto nesse conjunto no período selecionado.
+                                    </p>
+                                  ) : (
                                   <table className="w-full text-sm">
                                     <thead>
                                       <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
@@ -993,6 +1018,7 @@ export function AnaliseTab({
                                       })}
                                     </tbody>
                                   </table>
+                                  )}
                                 </td>
                               </tr>
                             ) : null}

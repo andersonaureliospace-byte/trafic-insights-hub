@@ -234,7 +234,13 @@ conversa nos ÚLTIMOS 7 DIAS — sempre fixo, independente do período
 escolhido na tela — já esteja abaixo da Meta CPA, como um aviso de "isso
 pode já estar melhorando" (a aba "CPA abaixo da meta" não mudou e não tem
 esse destaque, já que ali tudo já está abaixo da meta por definição). Veja
-o ⚠️ abaixo sobre os limites e a checagem de 7 dias. Com isso, todas as
+o ⚠️ abaixo sobre os limites e a checagem de 7 dias. A tela Conjuntos (aba
+"CPA acima da meta") agora também mostra, com um selo vermelho "Sem
+anúncio ativo" ao lado do nome, qualquer conjunto ativo que não tenha
+nenhum anúncio ativo dentro dele (Etapa 46) — entra na lista mesmo que não
+bata o limite de CPA, já que sem anúncio ativo às vezes nem tem gasto no
+período pra calcular nada; veja o ⚠️ abaixo sobre como essa checagem
+funciona e por que só está nessa tela/aba. Com isso, todas as
 áreas do plano original + os extras pedidos ao longo do caminho estão
 100% concluídas.
 
@@ -461,6 +467,29 @@ podia afetar qualquer botão de ação em massa da tela (inclusive "Pausar
 todos os listados"), não só o novo "Pausar selecionados" — só não tinha
 sido notado antes. Corrigido trocando a dependência pelas funções de
 desarmar isoladas (essas sim estáveis entre renders).
+
+⚠️ **Sobre o selo "Sem anúncio ativo" em Conjuntos (Etapa 46)**: a
+Auditoria já tinha, desde antes, uma checagem parecida ("Conjunto ativo
+sem anúncio ativo") — a Etapa 46 trouxe essa mesma ideia pra dentro da
+tela Análise → Conjuntos, na aba "CPA acima da meta". Um conjunto entra na
+lista, com o selo vermelho, sempre que ele está ATIVO mas nenhum anúncio
+dentro dele está ATIVO — não importa o CPA, entra mesmo com custo/conversa
+baixo ou até sem nenhum gasto no período (o que costuma acontecer, já que
+sem anúncio rodando não há mais gasto novo entrando). Nessas linhas as
+colunas "Custo/conversa" e "Diferença" ficam com um traço — não fazem
+sentido sem anúncio ativo gerando dado — e, se o conjunto expandido não
+tiver nenhum anúncio com gasto no período, aparece um aviso no lugar da
+lista de criativos em vez de uma tabela vazia. Assumi que esse aviso só
+faz sentido na aba "CPA acima da meta" (é uma tela de "o que precisa de
+atenção") — não entrou na aba "CPA abaixo da meta" (candidatos a escalar,
+não faz sentido escalar um conjunto sem anúncio rodando) nem na tela
+Criativos (o pedido foi especificamente "na tela de conjuntos"); se
+quiser esse aviso em outro lugar também, é só pedir. Tecnicamente, a
+checagem usa o mesmo truque de filtro de edge do Graph API que a
+Auditoria já usava (`ads.effective_status(['ACTIVE']).limit(1)`) — traz,
+pra cada conjunto ativo da conta, se existe pelo menos 1 anúncio ativo
+dentro dele, numa única chamada extra por conta, sem precisar buscar a
+lista inteira de anúncios de novo.
 
 ⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
 link `/d/:token` numa entrega anterior, ele para de funcionar com essa
@@ -1092,6 +1121,10 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     Criativos passou a exigir R$4 ou mais acima da Meta CPA (com ou sem
     conversa iniciada) pra entrar na lista, em vez de R$2. A tela Conjuntos
     não mudou
+40. ~~Selo "Sem anúncio ativo" em Análise → Conjuntos (Etapa 46)~~ ✅ —
+    conjunto ativo sem nenhum anúncio ativo dentro dele agora aparece na
+    lista da aba "CPA acima da meta", com um selo vermelho ao lado do
+    nome, mesmo que não bata o limite de CPA. Veja o ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1116,6 +1149,7 @@ por Conjuntos/Criativos e destaque de tendência de 7 dias, Conjuntos e
 Criativos virando telas separadas alternadas por botão, caixa de seleção
 pra pausar em massa só quem foi marcado, conserto do bug que desarmava
 sozinho o botão de ação em massa, limite de Conjuntos subindo pro triplo
-da Meta CPA, e limite de Criativos subindo de R$2 pra R$4) estão 100%
+da Meta CPA, limite de Criativos subindo de R$2 pra R$4, e selo "Sem
+anúncio ativo" em Análise → Conjuntos) estão 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
 próximos pedidos são novos incrementos, a critério seu.
