@@ -240,7 +240,9 @@ anúncio ativo" ao lado do nome, qualquer conjunto ativo que não tenha
 nenhum anúncio ativo dentro dele (Etapa 46) — entra na lista mesmo que não
 bata o limite de CPA, já que sem anúncio ativo às vezes nem tem gasto no
 período pra calcular nada; veja o ⚠️ abaixo sobre como essa checagem
-funciona e por que só está nessa tela/aba. Com isso, todas as
+funciona e por que só está nessa tela/aba. O filtro de período de
+Acompanhamento ganhou uma nova opção, "Ontem e hoje" (Etapa 47) — veja o
+⚠️ abaixo. Com isso, todas as
 áreas do plano original + os extras pedidos ao longo do caminho estão
 100% concluídas.
 
@@ -490,6 +492,16 @@ Auditoria já usava (`ads.effective_status(['ACTIVE']).limit(1)`) — traz,
 pra cada conjunto ativo da conta, se existe pelo menos 1 anúncio ativo
 dentro dele, numa única chamada extra por conta, sem precisar buscar a
 lista inteira de anúncios de novo.
+
+⚠️ **Sobre o novo filtro "Ontem e hoje" (Etapa 47)**: pedido pra
+Acompanhamento, mas foi adicionado na lista compartilhada de períodos
+(`DATE_PRESETS`) que várias telas usam — Acompanhamento, Análise, Visão
+Geral e o agendamento de Relatórios (Mensagens) — então a nova opção
+aparece em todos esses seletores, não só em Acompanhamento; se preferir
+que fique só em Acompanhamento, é só pedir pra tirar dos outros. O cálculo
+em si (ontem 00h00 até agora, fuso de Brasília) já existia pronto no
+código desde a reconstrução original — só nunca tinha entrado em nenhum
+filtro visível na tela.
 
 ⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
 link `/d/:token` numa entrega anterior, ele para de funcionar com essa
@@ -1125,6 +1137,10 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     conjunto ativo sem nenhum anúncio ativo dentro dele agora aparece na
     lista da aba "CPA acima da meta", com um selo vermelho ao lado do
     nome, mesmo que não bata o limite de CPA. Veja o ⚠️ acima
+41. ~~Novo filtro de período "Ontem e hoje" (Etapa 47)~~ ✅ — nova opção
+    no seletor de período de Acompanhamento (e, por ser uma lista
+    compartilhada, também em Análise/Visão Geral/Relatórios). Veja o ⚠️
+    acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1149,7 +1165,8 @@ por Conjuntos/Criativos e destaque de tendência de 7 dias, Conjuntos e
 Criativos virando telas separadas alternadas por botão, caixa de seleção
 pra pausar em massa só quem foi marcado, conserto do bug que desarmava
 sozinho o botão de ação em massa, limite de Conjuntos subindo pro triplo
-da Meta CPA, limite de Criativos subindo de R$2 pra R$4, e selo "Sem
-anúncio ativo" em Análise → Conjuntos) estão 100%
+da Meta CPA, limite de Criativos subindo de R$2 pra R$4, selo "Sem
+anúncio ativo" em Análise → Conjuntos, e novo filtro de período "Ontem e
+hoje") estão 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
 próximos pedidos são novos incrementos, a critério seu.

@@ -21,6 +21,10 @@ export const DATE_PRESETS = [
   { id: "last_3d_plus_today", label: "Últimos 3 dias + hoje" },
   { id: "today", label: "Hoje" },
   { id: "yesterday", label: "Ontem" },
+  // Etapa 47: já existia pronto no cliente da Graph API (lib/meta/client.ts,
+  // portado do app anterior) mas nunca tinha entrado em nenhum filtro da
+  // tela — só faltava esse item na lista.
+  { id: "today_yesterday", label: "Ontem e hoje" },
   { id: "last_3d", label: "Últimos 3 dias" },
   { id: "last_7d", label: "Últimos 7 dias" },
   { id: "this_month", label: "Mês atual" },
