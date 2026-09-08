@@ -887,26 +887,28 @@ export function AnaliseTab({
                                   />
                                 </td>
                               ) : null}
-                              <td className="max-w-[260px] truncate px-4 py-2" title={adset.name}>
-                                <span className="mr-1 inline-block w-3 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
-                                {adset.name}
-                                {noActiveAd ? (
-                                  <span
-                                    title="Esse conjunto está ativo, mas nenhum anúncio dentro dele está ativo"
-                                    className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950 dark:text-red-300"
-                                  >
-                                    Sem anúncio ativo
+                              <td className="max-w-[260px] px-4 py-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="inline-block w-3 shrink-0 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
+                                  <span className="min-w-0 truncate" title={adset.name}>
+                                    {adset.name}
                                   </span>
-                                ) : null}
+                                  {noActiveAd ? (
+                                    <span
+                                      title="Esse conjunto está ativo, mas nenhum anúncio dentro dele está ativo"
+                                      className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950 dark:text-red-300"
+                                    >
+                                      Sem anúncio ativo
+                                    </span>
+                                  ) : null}
+                                </div>
                               </td>
                               <td
                                 className={`px-4 py-2 text-right tabular-nums font-medium ${
                                   mode === "above" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"
                                 }`}
                               >
-                                {noActiveAd ? (
-                                  <span title="Sem anúncio ativo no conjunto — sem gasto pra calcular custo/conversa">—</span>
-                                ) : noConversion ? (
+                                {noConversion ? (
                                   <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
                                     —
                                   </span>
@@ -916,14 +918,10 @@ export function AnaliseTab({
                               </td>
                               <td
                                 className={`px-4 py-2 text-right tabular-nums ${
-                                  noActiveAd
-                                    ? "text-zinc-400 dark:text-zinc-500"
-                                    : diff >= 0
-                                      ? "text-red-600 dark:text-red-400"
-                                      : "text-emerald-600 dark:text-emerald-400"
+                                  diff >= 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
                                 }`}
                               >
-                                {noActiveAd ? "—" : fmtDiffSigned(diff)}
+                                {fmtDiffSigned(diff)}
                               </td>
                               <td className="px-4 py-2 text-right tabular-nums">{adset.conversations ?? "—"}</td>
                               <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(adset.spend)}</td>

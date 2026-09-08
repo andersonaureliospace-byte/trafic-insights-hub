@@ -255,7 +255,12 @@ automaticamente 1x por dia de manhã (07h sugerido) via um novo hook
 público. Veja os ⚠️ abaixo sobre as duas coisas. A tela Evolução (Etapa
 49) ganhou mais um ajuste: uma coluna "CPA ideal" antes da coluna
 "Mensal", e as linhas agora vêm ordenadas pelo CPA do mês (coluna
-"Mensal"), do maior pro menor — quem está pior aparece primeiro. Com
+"Mensal"), do maior pro menor — quem está pior aparece primeiro. O selo
+"Sem anúncio ativo" em Análise → Conjuntos (Etapa 50) foi corrigido: antes
+ficava escondido pelo corte de texto do nome em conjuntos com nome longo,
+e as colunas de custo/diferença sempre voltavam em traço mesmo quando
+havia gasto e conversa reais no período — agora o selo sempre aparece e as
+métricas reais são mostradas normalmente. Com
 isso, todas as
 áreas do plano original + os extras pedidos ao longo do caminho estão
 100% concluídas.
@@ -506,6 +511,25 @@ Auditoria já usava (`ads.effective_status(['ACTIVE']).limit(1)`) — traz,
 pra cada conjunto ativo da conta, se existe pelo menos 1 anúncio ativo
 dentro dele, numa única chamada extra por conta, sem precisar buscar a
 lista inteira de anúncios de novo.
+
+⚠️ **Conserto do selo "Sem anúncio ativo" (Etapa 50)**: dois problemas
+reportados nessa linha. Primeiro, o selo vermelho "Sem anúncio ativo"
+ficava dentro da mesma célula truncada do nome do conjunto — em nome
+comprido (comum, tipo "PROMO SETEMBRO | MULTIFOCAL EM DOBRO (...)"), o
+corte de texto (`truncate`) escondia o selo inteiro junto com o final do
+nome, então na prática ele nunca aparecia. Corrigido separando o nome (que
+trunca sozinho) do selo (que agora sempre fica visível do lado, sem
+encolher). Segundo — e esse era o pedido principal — as colunas "Custo/
+conversa" e "Diferença" dessas linhas estavam SEMPRE em traço, mesmo
+quando o conjunto tinha gasto e conversa reais no período (só não tinha
+anúncio ATIVO no momento — o anúncio que gerou aquele gasto pode ter sido
+pausado depois). Agora essas colunas mostram a métrica de verdade sempre
+que há dado pra calcular (mesma regra "sem conversa = traço" de qualquer
+outra linha) — o selo continua avisando que não tem anúncio ativo, mas não
+apaga mais o resultado real do período. Único caso que ainda mostra
+traço/diferença negativa "estranha" é o conjunto SEM NENHUM gasto no
+período (a entrada "vazia" que a Etapa 46 criou só pra avisar da falta de
+anúncio ativo) — aí não tem métrica real nenhuma pra mostrar mesmo.
 
 ⚠️ **Sobre o novo filtro "Ontem e hoje" (Etapa 47)**: pedido pra
 Acompanhamento, mas foi adicionado na lista compartilhada de períodos
@@ -1241,6 +1265,11 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
 43. ~~Coluna CPA ideal e ordenação por CPA mensal em Evolução (Etapa
     49)~~ ✅ — nova coluna "CPA ideal" antes de "Mensal", e a lista agora
     vem ordenada pelo CPA do mês, do maior pro menor. Veja o ⚠️ acima
+44. ~~Conserto do selo "Sem anúncio ativo" em Análise → Conjuntos (Etapa
+    50)~~ ✅ — o selo ficava escondido pelo corte de texto em nome
+    comprido, e as colunas Custo/conversa e Diferença voltavam sempre em
+    traço mesmo com gasto e conversa reais no período. Agora o selo
+    sempre aparece e a métrica real é mostrada. Veja o ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1268,7 +1297,8 @@ sozinho o botão de ação em massa, limite de Conjuntos subindo pro triplo
 da Meta CPA, limite de Criativos subindo de R$2 pra R$4, selo "Sem
 anúncio ativo" em Análise → Conjuntos, novo filtro de período "Ontem e
 hoje", Evolução com coluna Mensal/cor por CPA ideal/conserto do dia de
-hoje + aviso automático de CPA acima da meta ontem, e coluna CPA ideal +
-ordenação por CPA mensal em Evolução) estão 100%
+hoje + aviso automático de CPA acima da meta ontem, coluna CPA ideal +
+ordenação por CPA mensal em Evolução, e conserto do selo "Sem anúncio
+ativo" em Análise → Conjuntos) estão 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
 próximos pedidos são novos incrementos, a critério seu.
