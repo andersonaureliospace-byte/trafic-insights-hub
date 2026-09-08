@@ -3,16 +3,16 @@ import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";
 import type { DateRangeInput } from "@/lib/meta/client";
 
-// Painel > Análise, sub-painel "Criativos" (Etapa 40 — antes vivia junto do
-// sub-painel de Conjuntos, na aba "CPA acima da meta"): limite mais sensível
-// que o de Conjuntos, de propósito — pega o criativo problemático cedo,
-// antes que o conjunto inteiro precise ser sinalizado. Com custo por
-// conversa iniciada R$ 2 ou mais acima da Meta CPA — ou, quando não teve
-// NENHUMA conversa iniciada (não dá pra calcular custo por conversa), com o
-// próprio gasto R$ 2 ou mais acima da Meta CPA. Só avalia contas com Meta
-// CPA cadastrada (sem meta não dá pra saber o que é "acima"); as demais
-// voltam em "skipped". Só considera anúncio ATIVO.
-const THRESHOLD_ABOVE_TARGET = 2;
+// Painel > Análise, tela "Criativos" (Etapa 40 — antes vivia junto da tela
+// de Conjuntos, na aba "CPA acima da meta"): limite mais sensível que o de
+// Conjuntos, de propósito — pega o criativo problemático cedo, antes que o
+// conjunto inteiro precise ser sinalizado. Com custo por conversa iniciada
+// R$ 4 ou mais acima da Meta CPA (subiu de R$2 pra R$4 na Etapa 45) — ou,
+// quando não teve NENHUMA conversa iniciada (não dá pra calcular custo por
+// conversa), com o próprio gasto R$ 4 ou mais acima da Meta CPA. Só avalia
+// contas com Meta CPA cadastrada (sem meta não dá pra saber o que é
+// "acima"); as demais voltam em "skipped". Só considera anúncio ATIVO.
+const THRESHOLD_ABOVE_TARGET = 4;
 const STATUSES = ["ACTIVE"];
 
 function isFlagged(row: CreativeCostRow, cpaTarget: number): boolean {

@@ -710,7 +710,7 @@ export function AnaliseTab({
           <p className="mt-0.5 max-w-2xl text-xs text-zinc-500 dark:text-zinc-400">
             {mode === "above"
               ? subPanel === "criativos"
-                ? "Custo por conversa R$2+ acima da Meta CPA, ou sem conversa com o próprio gasto R$2+ acima — limite mais " +
+                ? "Custo por conversa R$4+ acima da Meta CPA, ou sem conversa com o próprio gasto R$4+ acima — limite mais " +
                   "sensível que o de Conjuntos, de propósito, pra pegar o problema no criativo cedo. Linha verde = média " +
                   "fixa dos últimos 7 dias já abaixo da Meta CPA. Nada é pausado sozinho."
                 : "Custo por conversa no TRIPLO ou mais da Meta CPA, ou sem conversa com o próprio gasto já no triplo ou " +
