@@ -211,10 +211,11 @@ em qual aba (e com quais filtros) você estava — dar F5 não joga mais de
 volta pra Visão Geral do zero, volta pra onde você tinha deixado, com os
 mesmos filtros. A aba "CPA acima da meta" de Análise ganhou dois critérios
 diferentes (Etapa 40): Conjuntos (limite mais rígido — custo por conversa
-no DOBRO ou mais da Meta CPA, ou sem conversa com gasto R$2+ acima) e
-Criativos (limite mais sensível — R$2+ acima da Meta CPA, com ou sem
-conversa — de propósito, pra pegar o problema no criativo antes de
-precisar sinalizar o conjunto inteiro). A pedido (Etapa 41), Conjuntos e
+no TRIPLO ou mais da Meta CPA, ou sem conversa com o próprio gasto já no
+triplo ou mais — subiu do dobro pro triplo na Etapa 44) e Criativos
+(limite mais sensível — R$2+ acima da Meta CPA, com ou sem conversa — de
+propósito, pra pegar o problema no criativo antes de precisar sinalizar o
+conjunto inteiro). A pedido (Etapa 41), Conjuntos e
 Criativos viraram duas TELAS separadas dentro da aba "CPA acima da meta"
 — um botão igual ao de "CPA acima da meta"/"CPA abaixo da meta" alterna
 entre as duas, em vez de ficarem empilhadas na mesma tela; a aba "CPA
@@ -396,13 +397,15 @@ alguns centavos abaixo. Se isso trouxer conjunto demais pra lista, é só
 avisar que dá pra somar um piso.
 
 ⚠️ **Sobre os limites das telas Conjuntos/Criativos e o destaque de 7 dias
-(Etapa 40)**: a aba "CPA acima da meta" tem dois critérios DIFERENTES um do
-outro, de propósito — Conjuntos exige uma diferença bem maior (custo por
-conversa no DOBRO ou mais da Meta CPA, ou sem conversa com gasto R$2+
-acima) antes de sugerir pausar o conjunto inteiro, enquanto Criativos usa
-um limite mais sensível (R$2+ acima da Meta CPA, com ou sem conversa) pra
-pegar o criativo problemático cedo, antes que o conjunto precise ser
-sinalizado (o limite antigo, R$4 pros dois casos, saiu de uso). Além
+(Etapas 40 e 44)**: a aba "CPA acima da meta" tem dois critérios
+DIFERENTES um do outro, de propósito — Conjuntos exige uma diferença bem
+maior (custo por conversa no TRIPLO ou mais da Meta CPA — subiu do dobro
+pro triplo na Etapa 44 —, ou sem conversa com o próprio gasto já no
+triplo ou mais, mesmo limite pros dois casos) antes de sugerir pausar o
+conjunto inteiro, enquanto Criativos usa um limite bem mais sensível (R$2+
+acima da Meta CPA, com ou sem conversa) pra pegar o criativo problemático
+cedo, antes que o conjunto precise ser sinalizado (o limite antigo de
+Conjuntos, R$4 fixo pros dois casos, saiu de uso desde a Etapa 40). Além
 disso, cada linha (conjunto ou criativo) busca também um recorte FIXO de
 "últimos 7 dias" — sempre o mesmo, independente do período escolhido no
 seletor da tela — só pra saber se a média de custo por conversa nesse
@@ -1078,6 +1081,12 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     aviso vermelho de confirmação por uma fração de segundo e voltava
     sozinho ao normal, sem nem dar tempo do segundo clique. Corrigido —
     veja o ⚠️ abaixo pra causa raiz
+38. ~~Limite de Conjuntos subiu pro triplo da Meta CPA (Etapa 44)~~ ✅ — a
+    tela Conjuntos (aba "CPA acima da meta") passou a exigir o TRIPLO (não
+    mais o dobro) da Meta CPA pra entrar na lista, com o mesmo limite
+    valendo pros dois casos (com ou sem conversa iniciada) — antes o caso
+    sem conversa usava um valor fixo (R$2 acima), agora usa o mesmo
+    múltiplo. A tela Criativos não mudou
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1100,7 +1109,8 @@ colorido por saldo/pagamento + nova ordem da lateral + Painel lembrando
 aba/filtros entre sessões, Análise "acima da meta" com critérios próprios
 por Conjuntos/Criativos e destaque de tendência de 7 dias, Conjuntos e
 Criativos virando telas separadas alternadas por botão, caixa de seleção
-pra pausar em massa só quem foi marcado, e conserto do bug que desarmava
-sozinho o botão de ação em massa) estão 100% concluídos. Não há mais
-nenhum item pendente do escopo combinado — próximos pedidos são novos
+pra pausar em massa só quem foi marcado, conserto do bug que desarmava
+sozinho o botão de ação em massa, e limite de Conjuntos subindo pro
+triplo da Meta CPA) estão 100% concluídos. Não há mais nenhum item
+pendente do escopo combinado — próximos pedidos são novos
 incrementos, a critério seu.

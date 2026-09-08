@@ -6,23 +6,25 @@ import type { DateRangeInput } from "@/lib/meta/client";
 // Painel > Análise, sub-painel "Conjuntos" — duas análises, escolhidas por
 // `mode`:
 //
-// "above" (Etapa 40: limite mais rígido, agora que Criativos ficou num
-// sub-painel à parte com um limite mais sensível): só conjunto ATIVO com
-// custo por conversa iniciada no DOBRO (ou mais) da Meta CPA — ou, sem
-// nenhuma conversa iniciada, com o próprio gasto R$ 2 ou mais acima da Meta
-// CPA.
+// "above" (Etapa 44: limite subiu de 2x pra 3x da Meta CPA, mesmo limite
+// pros dois casos — com ou sem conversa iniciada): só conjunto ATIVO com
+// custo por conversa iniciada no TRIPLO (ou mais) da Meta CPA — ou, sem
+// nenhuma conversa iniciada, com o próprio gasto já no triplo (ou mais) da
+// Meta CPA (ex.: Meta CPA R$6 → só entra com R$18 ou mais, com ou sem
+// conversa).
 //
-// "below" (conjuntos candidatos a escalar, sem mudança na Etapa 40): só
-// conjunto ATIVO, com pelo menos uma conversa iniciada no período, e custo
-// por conversa abaixo da Meta CPA.
+// "below" (conjuntos candidatos a escalar, sem mudança): só conjunto
+// ATIVO, com pelo menos uma conversa iniciada no período, e custo por
+// conversa abaixo da Meta CPA.
 export type AnalysisMode = "above" | "below";
 
-const NO_CONVERSION_THRESHOLD = 2;
+const ABOVE_TARGET_MULTIPLIER = 3;
 
 function isFlaggedAbove(row: AdSetCostRow, cpaTarget: number): boolean {
+  const threshold = cpaTarget * ABOVE_TARGET_MULTIPLIER;
   const noConversion = !row.conversations || row.conversations <= 0;
-  if (noConversion) return row.spend - cpaTarget >= NO_CONVERSION_THRESHOLD;
-  return row.cost_per_conversation != null && row.cost_per_conversation >= cpaTarget * 2;
+  if (noConversion) return row.spend >= threshold;
+  return row.cost_per_conversation != null && row.cost_per_conversation >= threshold;
 }
 
 function isFlaggedBelow(row: AdSetCostRow, cpaTarget: number): boolean {

@@ -713,9 +713,9 @@ export function AnaliseTab({
                 ? "Custo por conversa R$2+ acima da Meta CPA, ou sem conversa com o próprio gasto R$2+ acima — limite mais " +
                   "sensível que o de Conjuntos, de propósito, pra pegar o problema no criativo cedo. Linha verde = média " +
                   "fixa dos últimos 7 dias já abaixo da Meta CPA. Nada é pausado sozinho."
-                : "Custo por conversa no dobro ou mais da Meta CPA, ou sem conversa com o próprio gasto R$2+ acima. Duplo " +
-                  "clique no conjunto mostra os criativos dele. Linha verde = média fixa dos últimos 7 dias já abaixo da " +
-                  "Meta CPA. Nada é pausado sozinho."
+                : "Custo por conversa no TRIPLO ou mais da Meta CPA, ou sem conversa com o próprio gasto já no triplo ou " +
+                  "mais. Duplo clique no conjunto mostra os criativos dele. Linha verde = média fixa dos últimos 7 dias " +
+                  "já abaixo da Meta CPA. Nada é pausado sozinho."
               : "Só conjunto ativo, com pelo menos uma conversa iniciada no período e custo por conversa abaixo da Meta " +
                 "CPA — candidato a receber mais investimento. Duplo clique no conjunto mostra os criativos dele. Nada é " +
                 "alterado sozinho, os botões (individual ou em massa) são manuais."}
@@ -815,7 +815,7 @@ export function AnaliseTab({
             {q
               ? "Nenhum conjunto encontrado com esse nome."
               : mode === "above"
-                ? "Nenhum conjunto ativo no dobro (ou mais) da meta nesse período."
+                ? "Nenhum conjunto ativo no triplo (ou mais) da meta nesse período."
                 : "Nenhum conjunto ativo abaixo da meta nesse período."}
           </p>
         ) : (
