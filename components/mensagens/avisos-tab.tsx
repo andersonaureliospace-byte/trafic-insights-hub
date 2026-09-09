@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { fmtCurrency } from "@/lib/format";
+import { usePriorityOptions } from "@/lib/priority-context";
 
 interface BalanceStatus {
   ad_account_id: string;
@@ -72,7 +73,20 @@ interface LowInvestmentStatus {
   low: boolean;
 }
 
+interface BulkStatusResult {
+  accountId: string;
+  clientName: string;
+  outcome: "updated" | "unchanged" | "skipped";
+  from?: string | null;
+  to?: string | null;
+  reason?: string;
+}
+
 export function AvisosTab() {
+  const { options: priorityOptions } = usePriorityOptions();
+  function priorityLabel(id?: string | null) {
+    return priorityOptions.find((p) => p.id === id)?.label ?? "—";
+  }
   const [statuses, setStatuses] = useState<BalanceStatus[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
@@ -113,6 +127,14 @@ export function AvisosTab() {
   const [lowInvestmentError, setLowInvestmentError] = useState<string | null>(null);
   const [lowInvestmentSendError, setLowInvestmentSendError] = useState<string | null>(null);
   const [checkingLowInvestment, setCheckingLowInvestment] = useState(false);
+
+  // Etapa 55: mesma regra dos 3 checks de cima que já escrevem de verdade
+  // (Criativos/Conjuntos/Orçamento) — não carrega nada sozinho ao abrir a
+  // aba, já que o "check" aqui também escreve o status e reordena o quadro.
+  const [bulkStatusResults, setBulkStatusResults] = useState<BulkStatusResult[] | null>(null);
+  const [bulkStatusError, setBulkStatusError] = useState<string | null>(null);
+  const [bulkStatusSendError, setBulkStatusSendError] = useState<string | null>(null);
+  const [runningBulkStatus, setRunningBulkStatus] = useState(false);
 
   async function load() {
     const res = await fetch("/api/alerts/balance");
@@ -327,6 +349,28 @@ export function AvisosTab() {
       alert(`Aviso enviado pro grupo — ${low} conta(s) com investimento baixo.`);
     } else {
       alert("Nenhuma conta com investimento baixo agora.");
+    }
+  }
+
+  async function handleRunBulkStatus() {
+    setRunningBulkStatus(true);
+    const res = await fetch("/api/alerts/bulk-status", { method: "POST" });
+    const d = await res.json();
+    setRunningBulkStatus(false);
+    if (d.error) {
+      setBulkStatusError(d.error);
+      return;
+    }
+    setBulkStatusError(null);
+    setBulkStatusSendError(d.sendError ?? null);
+    setBulkStatusResults(d.results ?? []);
+    const updated = (d.results ?? []).filter((r: BulkStatusResult) => r.outcome === "updated").length;
+    if (d.sendError) {
+      alert(`${updated} conta(s) com status atualizado, mas não deu pra enviar o aviso: ${d.sendError}`);
+    } else if (updated > 0) {
+      alert(`${updated} conta(s) com status atualizado — quadro reordenado e aviso enviado pro grupo.`);
+    } else {
+      alert("Nenhum status mudou nessa verificação — quadro já reordenado.");
     }
   }
 
@@ -833,6 +877,72 @@ export function AvisosTab() {
                         >
                           {s.low ? "Investimento baixo" : "OK"}
                         </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-4">
+        <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+          Reclassifica toda &quot;Conta exibida&quot; do Painel com o CPA dos últimos 3 dias (sem contar
+          hoje) — mesmo critério do botão &quot;Atualizar status em massa&quot; de Acompanhamento. Sempre
+          desconsidera contas em inauguração. Ao clicar, já ATUALIZA de verdade o status de quem mudou e
+          reordena o quadro inteiro (status mais crítico primeiro e, dentro de cada status, do maior CPA
+          pro menor) — não é só uma prévia. O aviso no WhatsApp traz o status de TODO cliente classificado
+          nessa rodada (mudou ou manteve), sempre só &quot;cliente: status&quot;, sem dizer qual dos dois
+          casos é e sem nenhum outro comentário — só fica de fora quem foi pulado (inauguração, sem meta de
+          CPA ou sem gasto no período). Pensado pra rodar automaticamente segunda e quinta de madrugada via
+          n8n (veja o ⚠️ no README).
+        </div>
+
+        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Atualização de status em massa</h3>
+            <button
+              onClick={() => void handleRunBulkStatus()}
+              disabled={runningBulkStatus}
+              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
+            >
+              {runningBulkStatus ? "Verificando…" : "Verificar e atualizar agora"}
+            </button>
+          </div>
+
+          {bulkStatusSendError ? (
+            <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              ⚠️ {bulkStatusSendError}
+            </p>
+          ) : null}
+
+          {bulkStatusError ? (
+            <p className="px-4 py-6 text-sm text-red-600">{bulkStatusError}</p>
+          ) : !bulkStatusResults ? (
+            <p className="px-4 py-6 text-sm text-zinc-500">Clique em &quot;Verificar e atualizar agora&quot; pra rodar.</p>
+          ) : bulkStatusResults.length === 0 ? (
+            <p className="px-4 py-6 text-sm text-zinc-500">Nenhuma conta exibida ainda (Painel → Contas exibidas).</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
+                    <th className="px-4 py-2 font-medium">Cliente</th>
+                    <th className="px-4 py-2 font-medium">Resultado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bulkStatusResults.map((r) => (
+                    <tr key={r.accountId} className="border-t border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                      <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">{r.clientName}</td>
+                      <td className="px-4 py-2 text-zinc-600 dark:text-zinc-300">
+                        {r.outcome === "updated"
+                          ? `${priorityLabel(r.from)} → ${priorityLabel(r.to)}`
+                          : r.outcome === "unchanged"
+                            ? `Já em ${priorityLabel(r.to)}`
+                            : r.reason}
                       </td>
                     </tr>
                   ))}

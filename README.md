@@ -200,7 +200,16 @@ que olha o status de pagamento que a Meta devolve por conta (desabilitada,
 pagamento pendente, aguardando liquidação, em período de carência) e avisa
 o mesmo grupo do WhatsApp, com o mesmo cooldown de 24h — reaproveitando o
 mesmo hook público que já existia (`balance-alert-tick`), sem precisar de
-workflow novo no n8n (veja os ⚠️ abaixo). Em Acompanhamento, o nome da conta
+workflow novo no n8n (veja os ⚠️ abaixo).
+Mensagens → Avisos ganhou mais uma automação (Etapa 55): "Atualização de
+status em massa" reclassifica sozinha o status de toda conta exibida com o
+CPA dos últimos 3 dias (sem contar hoje) — mesma lógica do botão manual de
+Acompanhamento —, atualiza quem mudou, reordena o quadro inteiro (status
+mais crítico primeiro, e dentro de cada status do maior CPA pro menor) e
+manda uma única mensagem com o status de TODO cliente classificado (mudou
+ou manteve), sempre só "cliente: status", sem dizer qual dos dois casos é
+e sem nenhum outro comentário; pensada pra rodar segunda e quinta de
+madrugada via n8n. Veja o ⚠️ mais abaixo. Em Acompanhamento, o nome da conta
 agora também fica colorido: vermelho quando a conta está com erro no
 pagamento, laranja quando está com saldo baixo (mesma checagem de Mensagens
 → Avisos, só que aqui em modo leitura, sem mandar aviso nenhum) — veja o ⚠️
@@ -281,8 +290,8 @@ importantes dessas 4. O aviso de investimento baixo (Etapa 54) ficou mais
 rigoroso: em vez de só entrar passando de R$10 de diferença, agora entra
 qualquer conta com orçamento diário menor que o Ritmo, mesmo que seja por
 centavos — sem mudar a cor da coluna Ritmo nem o filtro Investimento de
-Acompanhamento, que continuam com a banda de R$10. Com
-isso, todas as
+Acompanhamento, que continuam com a banda de R$10. Com isso, mais a nova
+automação de atualização de status em massa (Etapa 55), todas as
 áreas do plano original + os extras pedidos ao longo do caminho estão
 100% concluídas.
 
@@ -655,6 +664,48 @@ esperar você clicar. Pontos importantes:
   "Investimento Alto" (investindo mais rápido que o necessário) segue sem
   entrar nesse aviso, já que só foi pedido aviso do caso baixo.
 
+⚠️ **Sobre a automação "Atualização de status em massa" (Etapa 55)**: pensada
+pra rodar segunda e quinta de madrugada (01h sugerido no n8n), reaproveita
+EXATAMENTE a mesma lógica de classificação do botão manual já existente em
+Acompanhamento (`components/painel/bulk-status-dialog.tsx`): CPA dos
+últimos 3 dias sem contar hoje, abaixo da meta → Baixa, até +R$2 → Média,
+até +R$3 → Alta, acima disso → Crítica; contas em inauguração, sem CPA
+ideal cadastrado ou sem gasto nos últimos 3 dias não são reclassificadas
+(ficam com o status que já tinham). Pontos que exigiram uma decisão minha,
+sem confirmar antes:
+- **Universo de contas**: usei "Contas exibidas" (`user_selected_accounts`,
+  a lista de contas do Painel inteiro), não o que estiver filtrado numa
+  tela específica no momento — a automação não tem estado de filtro nenhum
+  pra respeitar, então pareceu o universo mais correto pra rodar sozinha de
+  madrugada. Se a ideia era outro recorte de contas, me fala que ajusto.
+- **Reordenar o quadro (pedido à parte, na mesma leva)**: além de
+  reclassificar, essa automação também reordena `sort_order` de TODAS as
+  contas exibidas — primeiro agrupando por status, da situação mais
+  crítica pra menos crítica (Crítica → Alta → Média → Baixa → Inauguração
+  por último), e dentro de cada status, do maior CPA (últimos 3 dias) pro
+  menor; conta sem CPA calculável (sem gasto no período) fica por último
+  dentro do próprio status, desempatando por ordem alfabética do nome do
+  cliente. Esse reordenar é só dessa automação — o diálogo manual de
+  Acompanhamento continua sem mexer no `sort_order` (ele trabalha só com o
+  subconjunto filtrado da tela, onde reordenar o quadro inteiro podia
+  bagunçar linhas que nem entraram na avaliação). Se o critério de
+  ordenação não for esse (por exemplo, se quiser CPA absoluto sem separar
+  por status antes), me fala que ajusto.
+- A mensagem de WhatsApp leva o status de TODO cliente classificado nessa
+  rodada — mudou ou manteve —, sempre só "cliente: status" por linha
+  (rótulo já personalizado em Configurações → Status, se houver), sem dizer
+  qual dos dois casos é e sem nenhum outro comentário/cabeçalho/emoji
+  (ajuste pedido depois da primeira entrega, que mandava só quem tinha
+  mudado). Só fica de fora quem foi pulado nessa rodada — inauguração, sem
+  meta de CPA cadastrada ou sem gasto nos últimos 3 dias — já que esses não
+  têm um status novo calculado pra reportar. Sem cooldown — rodar de novo
+  com os mesmos dados simplesmente reclassifica pro mesmo status (o quadro
+  é reordenado de novo, mas ninguém muda de fato).
+- Sem GET/preview, mesmo motivo das outras 3 automações que já escrevem de
+  verdade (Criativos/Conjuntos/Orçamento, Etapa 53): o próprio "check" já
+  atualiza o status e reordena o quadro, então só o botão manual (POST)
+  existe em Mensagens → Avisos.
+
 ⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
 link `/d/:token` numa entrega anterior, ele para de funcionar com essa
 atualização (a rota foi removida). A tabela `public_dashboards` continua no
@@ -941,6 +992,12 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
     `https://SEU_DOMINIO/api/public/hooks/low-investment-tick`. Isso só
     avisa (nunca muda nada) quais contas estão com investimento baixo
     (seção "Investimento baixo").
+15. (Etapa 55) Crie um décimo workflow com **Schedule Trigger** pra rodar
+    segunda e quinta, às 01h, chamando `POST` para
+    `https://SEU_DOMINIO/api/public/hooks/bulk-status-tick`. Isso
+    reclassifica sozinho o status de toda conta exibida (CPA dos últimos 3
+    dias, sem hoje), reordena o quadro de Acompanhamento e avisa só quem
+    mudou (seção "Atualização de status em massa").
 
 ## Estrutura
 
@@ -978,7 +1035,8 @@ app/
     alerts/adsets-pause    → pausa (de verdade) Conjuntos acima da meta + aviso (Etapa 53, sem GET/preview)
     alerts/budget-increase → aumenta (de verdade) orçamento de Conjuntos com CPA bom + aviso (Etapa 53, sem GET/preview)
     alerts/low-investment  → status de investimento baixo (Ritmo) + "Verificar agora" (Etapa 53)
-    priority-labels → rótulos/cores de prioridade personalizados (Configurações > Status)
+    alerts/bulk-status → reclassifica (de verdade) todas as contas exibidas + reordena o quadro + aviso (Etapa 55, sem GET/preview)
+    priority-labels → rótulos/cores de prioridade personalizados (Configurações > Status; GET usa lib/priority-labels.ts desde a Etapa 55)
     public/hooks/whatsapp-dispatch-tick  → chamado pelo n8n, não pelo navegador
     public/hooks/audit-tick              → idem, roda as duas auditorias
     public/hooks/crm-lead-ingest         → idem, cria lead novo por public_token
@@ -989,6 +1047,7 @@ app/
     public/hooks/adsets-pause-tick       → idem, pausa Conjuntos acima da meta (Etapa 53, sugerido 05h05/09h05/13h05/23h05)
     public/hooks/increase-budget-tick    → idem, aumenta orçamento de Conjuntos com CPA bom (Etapa 53, sugerido 1x/dia às 06h)
     public/hooks/low-investment-tick     → idem, avisa investimento baixo (Etapa 53, sugerido seg-sex 07h/09h15/13h)
+    public/hooks/bulk-status-tick        → idem, reclassifica status + reordena o quadro (Etapa 55, sugerido seg/qui 01h)
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
     painel-ui-state  → lembra a aba ativa + filtros de Acompanhamento/Análise/
@@ -1073,9 +1132,21 @@ lib/alerts/
                   orçamento diário atual MENOR que o Ritmo, qualquer
                   diferença (sem banda de tolerância) e SÓ AVISA — hook
                   público low-investment-tick; SEM cooldown
+  bulk-status-update.ts → Etapa 55: reclassifica toda "Conta exibida" com o
+                  CPA dos últimos 3 dias sem hoje (mesma lógica do diálogo
+                  manual de Acompanhamento), escreve o novo status em
+                  account_bindings, reordena sort_order do quadro inteiro
+                  (status mais crítico primeiro, CPA decrescente dentro de
+                  cada status) e manda "cliente: status" de quem mudou —
+                  hook público bulk-status-tick; SEM cooldown
 lib/scheduling.ts → regra de recorrência genérica (soma o intervalo à última
                     ocorrência, preservando dia da semana/mês) — usada pelos
                     disparos de WhatsApp e pelos relatórios agendados
+lib/priority-labels.ts → Etapa 55: getPriorityOptions(), extraído da rota
+                    priority-labels (mescla os 5 IDs fixos com o rótulo/cor
+                    personalizado salvo) — reaproveitado pela automação de
+                    status em massa pra montar a mensagem com o rótulo
+                    certo do usuário
 lib/priority-context.tsx → Context/Provider dos rótulos de prioridade
                             personalizados (busca uma vez, compartilha entre
                             Painel, diálogo de status em massa e Configurações)
@@ -1413,6 +1484,16 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     igual ao filtro de Acompanhamento. A cor da coluna Ritmo e o filtro
     Investimento de Acompanhamento continuam com a banda de R$10, sem
     mudança. Veja o ⚠️ acima
+49. ~~Automação de atualização de status em massa + reordenar o quadro
+    (Etapa 55)~~ ✅ — Mensagens → Avisos ganhou "Atualização de status em
+    massa": reclassifica sozinha toda conta exibida com o CPA dos últimos 3
+    dias (sem hoje), mesma lógica do botão manual de Acompanhamento, sempre
+    desconsiderando inauguração; escreve o novo status de quem mudou,
+    reordena o quadro inteiro (status mais crítico primeiro, CPA
+    decrescente dentro de cada status) e manda uma única mensagem com o
+    status de TODO cliente classificado — mudou ou manteve —, sempre só
+    "cliente: status", sem dizer qual dos dois casos é e sem comentário —
+    pensada pra rodar segunda e quinta de madrugada via n8n. Veja o ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1446,7 +1527,9 @@ ativo" em Análise → Conjuntos, link direto pro Gerenciador de Anúncios
 no nome do cliente em Evolução, limite de Conjuntos passando do
 triplo pra 2x a Meta CPA + R$1 fixo, as 4 automações novas de pausa de
 Criativos/Conjuntos, aumento de orçamento e aviso de investimento baixo
-via n8n, e o aviso de investimento baixo sem banda de tolerância) estão
+via n8n, o aviso de investimento baixo sem banda de tolerância, e a
+automação de atualização de status em massa com reordenação do quadro)
+estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
 próximos pedidos são novos incrementos, a critério seu.
