@@ -6,26 +6,27 @@ import type { DateRangeInput } from "@/lib/meta/client";
 // Painel > Análise, sub-painel "Conjuntos" — duas análises, escolhidas por
 // `mode`:
 //
-// "above" (Etapa 44: limite subiu de 2x pra 3x da Meta CPA, mesmo limite
-// pros dois casos — com ou sem conversa iniciada): só conjunto ATIVO com
-// custo por conversa iniciada no TRIPLO (ou mais) da Meta CPA — ou, sem
-// nenhuma conversa iniciada, com o próprio gasto já no triplo (ou mais) da
-// Meta CPA (ex.: Meta CPA R$6 → só entra com R$18 ou mais, com ou sem
-// conversa). Etapa 46: ENTRA TAMBÉM, direto, qualquer conjunto ATIVO sem
-// nenhum anúncio ativo dentro dele — independe do CPA (às vezes nem tem
-// gasto no período pra calcular) — só nesse sub-painel (não faz sentido
-// avisar isso em "candidato a escalar").
+// "above" (Etapa 51: limite mudou de 3x pra 2x da Meta CPA + R$1 fixo,
+// mesmo limite pros dois casos — com ou sem conversa iniciada): só conjunto
+// ATIVO com custo por conversa iniciada no DOBRO da Meta CPA MAIS R$1 (ou
+// mais) — ou, sem nenhuma conversa iniciada, com o próprio gasto já nesse
+// mesmo patamar (ex.: Meta CPA R$6 → só entra com R$13 ou mais — 2×6+1 —,
+// com ou sem conversa; antes era 3×6=R$18). Etapa 46: ENTRA TAMBÉM, direto,
+// qualquer conjunto ATIVO sem nenhum anúncio ativo dentro dele — independe
+// do CPA (às vezes nem tem gasto no período pra calcular) — só nesse
+// sub-painel (não faz sentido avisar isso em "candidato a escalar").
 //
 // "below" (conjuntos candidatos a escalar, sem mudança): só conjunto
 // ATIVO, com pelo menos uma conversa iniciada no período, e custo por
 // conversa abaixo da Meta CPA.
 export type AnalysisMode = "above" | "below";
 
-const ABOVE_TARGET_MULTIPLIER = 3;
+const ABOVE_TARGET_MULTIPLIER = 2;
+const ABOVE_TARGET_EXTRA = 1;
 
 function isFlaggedAbove(row: AdSetCostRow, cpaTarget: number): boolean {
   if (!row.has_active_ad) return true; // Etapa 46: avisa mesmo sem bater o limite de CPA
-  const threshold = cpaTarget * ABOVE_TARGET_MULTIPLIER;
+  const threshold = cpaTarget * ABOVE_TARGET_MULTIPLIER + ABOVE_TARGET_EXTRA;
   const noConversion = !row.conversations || row.conversations <= 0;
   if (noConversion) return row.spend >= threshold;
   return row.cost_per_conversation != null && row.cost_per_conversation >= threshold;

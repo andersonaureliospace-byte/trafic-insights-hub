@@ -211,8 +211,9 @@ em qual aba (e com quais filtros) você estava — dar F5 não joga mais de
 volta pra Visão Geral do zero, volta pra onde você tinha deixado, com os
 mesmos filtros. A aba "CPA acima da meta" de Análise ganhou dois critérios
 diferentes (Etapa 40): Conjuntos (limite mais rígido — custo por conversa
-no TRIPLO ou mais da Meta CPA, ou sem conversa com o próprio gasto já no
-triplo ou mais — subiu do dobro pro triplo na Etapa 44) e Criativos
+no DOBRO da Meta CPA + R$1 ou mais, ou sem conversa com o próprio gasto
+já nesse patamar — era 2x a Meta CPA, subiu pro triplo na Etapa 44 e
+voltou pra 2x + R$1 fixo na Etapa 52) e Criativos
 (limite mais sensível — R$4+ acima da Meta CPA, com ou sem conversa —
 subiu de R$2 pra R$4 na Etapa 45 —, de propósito, pra pegar o problema no
 criativo antes de precisar sinalizar o conjunto inteiro). A pedido
@@ -264,7 +265,10 @@ métricas reais são mostradas normalmente. O nome do cliente na tela
 Evolução (Etapa 51) agora é um link direto pro Gerenciador de Anúncios da
 conta correspondente, abrindo em nova aba — mesmo padrão de link
 (sublinhado pontilhado) já usado em Acompanhamento, Controle de Saldo,
-Visão Geral e Clientes. Com
+Visão Geral e Clientes. O limite da tela Conjuntos (aba "CPA acima da
+meta", Etapa 52) mudou de novo: em vez do triplo da Meta CPA (Etapa 44),
+agora é o DOBRO da Meta CPA mais R$1 fixo (ex.: Meta CPA R$6 → limite
+R$13), mesmo cálculo pro caso sem conversa iniciada. Veja o ⚠️ acima. Com
 isso, todas as
 áreas do plano original + os extras pedidos ao longo do caminho estão
 100% concluídas.
@@ -429,15 +433,15 @@ alguns centavos abaixo. Se isso trouxer conjunto demais pra lista, é só
 avisar que dá pra somar um piso.
 
 ⚠️ **Sobre os limites das telas Conjuntos/Criativos e o destaque de 7 dias
-(Etapas 40, 44 e 45)**: a aba "CPA acima da meta" tem dois critérios
+(Etapas 40, 44, 45 e 52)**: a aba "CPA acima da meta" tem dois critérios
 DIFERENTES um do outro, de propósito — Conjuntos exige uma diferença bem
-maior (custo por conversa no TRIPLO ou mais da Meta CPA — subiu do dobro
-pro triplo na Etapa 44 —, ou sem conversa com o próprio gasto já no
-triplo ou mais, mesmo limite pros dois casos) antes de sugerir pausar o
-conjunto inteiro, enquanto Criativos usa um limite mais sensível (R$4+
-acima da Meta CPA, com ou sem conversa — subiu de R$2 pra R$4 na Etapa
-45) pra pegar o criativo problemático cedo, antes que o conjunto precise
-ser sinalizado. Além
+maior (custo por conversa no DOBRO da Meta CPA MAIS R$1 fixo — ex.: Meta
+CPA R$6 → limite R$13 —, ou sem conversa com o próprio gasto já nesse
+patamar, mesmo limite pros dois casos; passou por 2x → 3x na Etapa 44 →
+2x+R$1 na Etapa 52) antes de sugerir pausar o conjunto inteiro, enquanto
+Criativos usa um limite mais sensível (R$4+ acima da Meta CPA, com ou sem
+conversa — subiu de R$2 pra R$4 na Etapa 45) pra pegar o criativo
+problemático cedo, antes que o conjunto precise ser sinalizado. Além
 disso, cada linha (conjunto ou criativo) busca também um recorte FIXO de
 "últimos 7 dias" — sempre o mesmo, independente do período escolhido no
 seletor da tela — só pra saber se a média de custo por conversa nesse
@@ -1279,6 +1283,11 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     Evolução agora abre a conta correspondente no Facebook Ads Manager em
     nova aba, mesmo padrão visual e de link já usado em Acompanhamento,
     Controle de Saldo, Visão Geral e Clientes
+46. ~~Limite de Conjuntos vira 2x a Meta CPA + R$1 fixo (Etapa 52)~~ ✅ —
+    a tela Conjuntos (aba "CPA acima da meta") passou a exigir o DOBRO da
+    Meta CPA MAIS R$1 (não mais o triplo) pra entrar na lista, com o
+    mesmo cálculo valendo pros dois casos (com ou sem conversa iniciada).
+    A tela Criativos não mudou. Veja o ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1308,7 +1317,8 @@ anúncio ativo" em Análise → Conjuntos, novo filtro de período "Ontem e
 hoje", Evolução com coluna Mensal/cor por CPA ideal/conserto do dia de
 hoje + aviso automático de CPA acima da meta ontem, coluna CPA ideal +
 ordenação por CPA mensal em Evolução, conserto do selo "Sem anúncio
-ativo" em Análise → Conjuntos, e link direto pro Gerenciador de Anúncios
-no nome do cliente em Evolução) estão 100%
+ativo" em Análise → Conjuntos, link direto pro Gerenciador de Anúncios
+no nome do cliente em Evolução, e limite de Conjuntos passando do
+triplo pra 2x a Meta CPA + R$1 fixo) estão 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
 próximos pedidos são novos incrementos, a critério seu.
