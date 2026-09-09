@@ -306,7 +306,13 @@ nos exemplos que motivaram o pedido) não entram mais no aviso; e (3) o
 aumento automático de orçamento ganhou um teto de R$25,00: se o orçamento
 diário do conjunto já estiver em R$25 ou mais, a automação simplesmente
 não aumenta mais aquele conjunto (comparação sempre com o orçamento de
-verdade, buscado na Meta na hora — nada guardado em banco).
+verdade, buscado na Meta na hora — nada guardado em banco). A tela Visão
+Geral (Etapa 57) ganhou uma busca por nome de Campanha/Conjunto/Anúncio —
+o campo de busca ignora a conta selecionada no seletor ao lado e pesquisa
+sempre em TODAS as "Contas exibidas" de uma vez (fixo, sem opção de
+escolher uma conta ou algumas), mostrando de qual conta é cada resultado.
+Veja o ⚠️ mais abaixo sobre como isso funciona sem sobrecarregar a Meta de
+chamadas a cada letra digitada.
 
 ⚠️ **Antes de testar a coluna "Otimizado" (Acompanhamento)**: essa entrega
 inclui as migrações `0010_client_optimized.sql` e `0011_drop_optimized_reason.sql`
@@ -704,6 +710,30 @@ esperar você clicar. Pontos importantes:
   Acompanhamento — só entra passando de R$10 de diferença. "Investimento
   Alto" (investindo mais rápido que o necessário) segue sem entrar nesse
   aviso, já que só foi pedido aviso do caso baixo.
+
+⚠️ **Sobre a busca por nome em Visão Geral (Etapa 57)**: o campo de busca
+pesquisa Campanhas, Conjuntos ou Anúncios (o nível escolhido nas abinhas
+logo abaixo), sempre em TODAS as "Contas exibidas" — pedido explícito pra
+deixar o escopo fixo em "todas", sem opção de escolher uma conta específica
+ou um subconjunto. Enquanto o campo está vazio, a tela funciona do jeito de
+sempre (1 conta por vez, escolhida no seletor ao lado, pra não gastar
+chamada à Meta à toa); assim que você digita algo, o seletor de conta fica
+desabilitado (a busca ignora ele) e a tela busca o breakdown de TODAS as
+contas de uma vez — uma chamada por conta, em paralelo. Detalhe de
+performance importante: essa busca em todas as contas só é refeita quando
+você começa a digitar (indo de campo vazio pra algo), troca de nível
+(Campanhas/Conjuntos/Anúncios) ou de período enquanto o campo tem texto, ou
+clica em "↻ Atualizar" — digitar mais letras no meio de uma busca não
+dispara nenhuma chamada nova à Meta, só refina localmente o que já foi
+buscado. O nome é comparado sem diferenciar maiúscula/minúscula nem acento
+("itapetininga" acha "Itapetininga"). Uma conta específica que falhar
+nessa busca (token vencido, conta restrita etc.) não derruba as outras —
+só fica de fora da lista, silenciosamente (mesmo espírito das automações
+em massa que já seguem esse padrão). Como a busca cobre todas as contas,
+a tabela ganha uma coluna extra "Conta" nesse modo, pra saber de qual
+conta é cada linha; o link "Abrir no Facebook" do cabeçalho (que aponta
+pra uma conta só) fica escondido enquanto há busca ativa, já que não faria
+sentido nesse modo.
 
 ⚠️ **Sobre a automação "Atualização de status em massa" (Etapa 55)**: pensada
 pra rodar segunda e quinta de madrugada (01h sugerido no n8n), reaproveita
@@ -1560,6 +1590,11 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     54); e o aumento automático de orçamento ganhou um teto de R$25,00 —
     se o orçamento diário do conjunto já estiver nesse valor ou mais, a
     automação não aumenta mais aquele conjunto. Veja os ⚠️ acima
+51. ~~Busca por nome em Visão Geral (Etapa 57)~~ ✅ — novo campo de busca
+    pesquisa Campanhas/Conjuntos/Anúncios (o nível escolhido) sempre em
+    TODAS as "Contas exibidas" de uma vez, fixo, sem opção de escolher uma
+    conta ou algumas; digitar mais letras não refaz a chamada à Meta, só
+    refina localmente o que já foi buscado. Veja o ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1594,10 +1629,11 @@ no nome do cliente em Evolução, limite de Conjuntos passando do
 triplo pra 2x a Meta CPA + R$1 fixo, as 4 automações novas de pausa de
 Criativos/Conjuntos, aumento de orçamento e aviso de investimento baixo
 via n8n, o aviso de investimento baixo sem banda de tolerância, a
-automação de atualização de status em massa com reordenação do quadro, e
-os três ajustes de produção da Etapa 56 — pausas automáticas sequenciais
-com 3s de intervalo, banda de R$10 de volta no aviso de investimento
-baixo, e teto de R$25 no orçamento diário do aumento automático)
+automação de atualização de status em massa com reordenação do quadro, os
+três ajustes de produção da Etapa 56 — pausas automáticas sequenciais com
+3s de intervalo, banda de R$10 de volta no aviso de investimento baixo, e
+teto de R$25 no orçamento diário do aumento automático — e a busca por
+nome em Visão Geral sempre em todas as contas exibidas)
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
