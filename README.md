@@ -268,7 +268,20 @@ conta correspondente, abrindo em nova aba — mesmo padrão de link
 Visão Geral e Clientes. O limite da tela Conjuntos (aba "CPA acima da
 meta", Etapa 52) mudou de novo: em vez do triplo da Meta CPA (Etapa 44),
 agora é o DOBRO da Meta CPA mais R$1 fixo (ex.: Meta CPA R$6 → limite
-R$13), mesmo cálculo pro caso sem conversa iniciada. Veja o ⚠️ acima. Com
+R$13), mesmo cálculo pro caso sem conversa iniciada. Veja o ⚠️ acima.
+Mensagens → Avisos ganhou 4 automações novas (Etapa 53), pensadas pra rodar
+sozinhas via n8n: pausar Criativos acima da meta (05h/09h/13h/23h), pausar
+Conjuntos acima da meta (05h05/09h05/13h05/23h05), aumentar em R$2,50 fixo
+o orçamento de Conjuntos com CPA bom nos últimos 3 dias (06h) e avisar
+(sem mexer em nada) contas com investimento baixo, de segunda a sexta
+(07h/09h15/13h) — as 3 primeiras usam a MESMA lógica/limite das telas de
+Análise e Acompanhamento (nada de critério novo), e cada uma também ganhou
+um botão manual em Mensagens → Avisos. Veja o ⚠️ acima sobre os detalhes
+importantes dessas 4. O aviso de investimento baixo (Etapa 54) ficou mais
+rigoroso: em vez de só entrar passando de R$10 de diferença, agora entra
+qualquer conta com orçamento diário menor que o Ritmo, mesmo que seja por
+centavos — sem mudar a cor da coluna Ritmo nem o filtro Investimento de
+Acompanhamento, que continuam com a banda de R$10. Com
 isso, todas as
 áreas do plano original + os extras pedidos ao longo do caminho estão
 100% concluídas.
@@ -602,6 +615,46 @@ esperado, não um bug. Se nenhuma conta ficar acima do limite, nenhuma
 mensagem é enviada (mesmo comportamento dos outros dois avisos — nunca
 manda um "está tudo bem").
 
+⚠️ **Sobre as 4 automações novas de Mensagens → Avisos (Etapa 53)**: pausar
+Criativos, pausar Conjuntos, aumentar orçamento e avisar investimento baixo
+— todas reaproveitam EXATAMENTE a mesma lógica/limite que a tela de Análise
+e Acompanhamento já usam (veja `lib/meta/analysis-thresholds.ts` e
+`lib/meta/ritmo.ts`), só que rodando sozinhas via hook do n8n em vez de
+esperar você clicar. Pontos importantes:
+- As 3 primeiras (Criativos, Conjuntos, Orçamento) usam período FIXO —
+  "últimos 3 dias + hoje" pras duas de pausa, "últimos 3 dias" (sem hoje)
+  pro aumento de orçamento — independente de qualquer filtro escolhido em
+  alguma tela; foi a leitura mais direta do pedido, ajustável se não for
+  isso.
+- Diferente de Saldo/Pagamento/CPA/Investimento baixo (que só avisam), as 3
+  de pausa/aumento **JÁ EXECUTAM A AÇÃO DE VERDADE** assim que rodam — não
+  existe um modo "só mostrar o que aconteceria". Por isso, na tela (Mensagens
+  → Avisos), essas 3 não carregam nada sozinhas ao abrir a aba — só quando
+  você clica em "Verificar e pausar/aumentar agora", pro clique não pausar
+  nada sem querer. Mesmo espírito que Auditoria → Erros de veiculação já
+  usava.
+- Nenhuma das 4 tem cooldown — quem controla a frequência é o próprio
+  agendamento do n8n. Pra Criativos e Conjuntos isso não é problema, porque
+  quem já foi pausado deixa de ser ATIVO e some da lista da próxima rodada
+  (sem re-pausa nem re-aviso do mesmo item). Pro aumento de orçamento, um
+  conjunto com CPA bom continua levando +R$2,50 TODO dia que a automação
+  rodar (não guarda "já aumentei esse hoje") — é assim que "aumentar todo
+  dia enquanto o CPA continuar bom" foi entendido do pedido.
+- Conjunto sem orçamento próprio pra aumentar (orçamento na campanha/CBO,
+  ou orçamento vitalício/lifetime) simplesmente falha silenciosamente nessa
+  automação (mesmo erro que o botão manual de Análise já dava) — não entra
+  no aviso de WhatsApp, só aparece como "Falha" na tabela da tela.
+- O aviso de Investimento baixo usa a mesma conta de Ritmo do filtro
+  Investimento de Acompanhamento, mas com um critério mais estrito (Etapa
+  54): entra qualquer conta cujo orçamento diário atual esteja MENOR que o
+  Ritmo necessário, sem banda de tolerância — antes (Etapa 53) só entrava
+  passando de R$10 de diferença, igual ao filtro de Acompanhamento; agora
+  qualquer diferença, por menor que seja, já dispara o aviso. Só esse aviso
+  mudou — a banda de R$10 continua igual na cor da coluna Ritmo e no filtro
+  Investimento (Baixo/Alto) de Acompanhamento, que são telas diferentes.
+  "Investimento Alto" (investindo mais rápido que o necessário) segue sem
+  entrar nesse aviso, já que só foi pedido aviso do caso baixo.
+
 ⚠️ **Link público de dashboard removido**: se você chegou a gerar algum
 link `/d/:token` numa entrega anterior, ele para de funcionar com essa
 atualização (a rota foi removida). A tabela `public_dashboards` continua no
@@ -866,6 +919,28 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
 10. Anexos de mídia (Mensagens → Envio) não precisam de nenhum workflow novo
     no n8n — é um upload síncrono direto pro Supabase Storage, disparado na
     hora do envio.
+11. (Etapa 53) Crie um sexto workflow no n8n com **Schedule Trigger**
+    configurado pra rodar 4x por dia, às 05h, 09h, 13h e 23h (horário de
+    Brasília) → **HTTP Request** `POST` para
+    `https://SEU_DOMINIO/api/public/hooks/creatives-pause-tick` com o mesmo
+    header `x-webhook-secret`. Isso pausa sozinho todo criativo acima da
+    meta (Mensagens → Avisos, seção "Criativos acima da meta") e avisa o
+    grupo de WhatsApp. Veja o ⚠️ mais abaixo sobre essas 4 automações
+    novas.
+12. (Etapa 53) Crie um sétimo workflow igual ao de cima, mas 5 minutos
+    depois — às 05h05, 09h05, 13h05 e 23h05 — chamando `POST` para
+    `https://SEU_DOMINIO/api/public/hooks/adsets-pause-tick`. Isso pausa
+    sozinho todo conjunto acima da meta (seção "Conjuntos acima da meta").
+13. (Etapa 53) Crie um oitavo workflow com **Schedule Trigger** pra rodar
+    1x por dia, às 06h, chamando `POST` para
+    `https://SEU_DOMINIO/api/public/hooks/increase-budget-tick`. Isso
+    aumenta sozinho o orçamento diário (R$2,50 fixo) de todo conjunto com
+    CPA bom nos últimos 3 dias (seção "Conjuntos com CPA bom").
+14. (Etapa 53) Crie um nono workflow com **Schedule Trigger** pra rodar de
+    segunda a sexta, às 07h, 09h15 e 13h, chamando `POST` para
+    `https://SEU_DOMINIO/api/public/hooks/low-investment-tick`. Isso só
+    avisa (nunca muda nada) quais contas estão com investimento baixo
+    (seção "Investimento baixo").
 
 ## Estrutura
 
@@ -886,6 +961,8 @@ app/
     meta/status, meta/daily-cpa
     meta/payment-type  → puxa Pré-paga/Pós-paga da Meta, só p/ conta sem Tipo salvo (Controle de Saldo)
     analysis/creatives  → custo por conversa iniciada acima da Meta CPA (Painel > Análise)
+    analysis/adsets     → conjuntos acima/abaixo da meta, com destaque de 7 dias (Painel > Análise)
+    analysis/increase-budget → aumenta R$2,50 fixo o orçamento de UM conjunto (botão manual, Análise "abaixo da meta")
     whatsapp/credentials, whatsapp/status, whatsapp/connect,
     whatsapp/disconnect, whatsapp/groups, whatsapp/alerts-group,
     whatsapp/send, whatsapp/media, whatsapp/message-templates,
@@ -897,6 +974,10 @@ app/
     alerts/balance  → status de saldo baixo + "Verificar agora" (Mensagens > Avisos)
     alerts/payment  → status de erro no pagamento + "Verificar agora" (Mensagens > Avisos)
     alerts/cpa      → status de CPA acima da meta ontem + "Verificar agora" (Mensagens > Avisos, Etapa 48)
+    alerts/creatives-pause → pausa (de verdade) Criativos acima da meta + aviso (Etapa 53, sem GET/preview)
+    alerts/adsets-pause    → pausa (de verdade) Conjuntos acima da meta + aviso (Etapa 53, sem GET/preview)
+    alerts/budget-increase → aumenta (de verdade) orçamento de Conjuntos com CPA bom + aviso (Etapa 53, sem GET/preview)
+    alerts/low-investment  → status de investimento baixo (Ritmo) + "Verificar agora" (Etapa 53)
     priority-labels → rótulos/cores de prioridade personalizados (Configurações > Status)
     public/hooks/whatsapp-dispatch-tick  → chamado pelo n8n, não pelo navegador
     public/hooks/audit-tick              → idem, roda as duas auditorias
@@ -904,6 +985,10 @@ app/
     public/hooks/report-tick             → idem, dispara os relatórios agendados
     public/hooks/balance-alert-tick      → idem, checa e avisa saldo baixo E erro no pagamento
     public/hooks/cpa-alert-tick          → idem, avisa CPA acima da meta ontem (Etapa 48, sugerido 1x/dia às 07h)
+    public/hooks/creatives-pause-tick    → idem, pausa Criativos acima da meta (Etapa 53, sugerido 05h/09h/13h/23h)
+    public/hooks/adsets-pause-tick       → idem, pausa Conjuntos acima da meta (Etapa 53, sugerido 05h05/09h05/13h05/23h05)
+    public/hooks/increase-budget-tick    → idem, aumenta orçamento de Conjuntos com CPA bom (Etapa 53, sugerido 1x/dia às 06h)
+    public/hooks/low-investment-tick     → idem, avisa investimento baixo (Etapa 53, sugerido seg-sex 07h/09h15/13h)
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
     painel-ui-state  → lembra a aba ativa + filtros de Acompanhamento/Análise/
@@ -923,6 +1008,16 @@ lib/meta/
                   não traz o dia em andamento; getAccountsMonthCpa para o
                   CPA fixo do mês atual, mesma agregação do Ritmo)
   creative-analysis.ts → custo por conversa iniciada por anúncio, com status (Painel > Análise)
+  adset-cost-analysis.ts → agrega os anúncios de creative-analysis.ts por conjunto,
+                         com o próprio "sem anúncio ativo" de cada um (Etapa 46)
+  analysis-thresholds.ts → limites de "acima"/"abaixo da meta" de Conjuntos e
+                         Criativos (Etapa 53) — extraídos pra serem reaproveitados
+                         tanto pela tela de Análise quanto pelas automações de
+                         pausa/aumento de orçamento, sem duplicar o cálculo
+  ritmo.ts      → cálculo do Ritmo + banda de R$10 (Etapa 53) — extraído pra ser
+                  reaproveitado tanto pela tela de Acompanhamento quanto pelo
+                  aviso automático de investimento baixo
+  budget.ts     → aumenta o orçamento diário de UM conjunto em R$2,50 fixo
   ads-manager-link.ts → monta a URL do Gerenciador de Anúncios (campanhas) e a
                          de Cobranças e Pagamentos (billing hub, usada só no
                          Controle de Saldo) a partir do ID da conta e do
@@ -964,6 +1059,20 @@ lib/alerts/
                   ficou mais de R$2 acima da meta, da mais crítica pra menos
                   crítica — compartilhado entre "Verificar agora" e o hook
                   público cpa-alert-tick; SEM cooldown de 24h (ver ⚠️)
+  creatives-pause.ts → Etapa 53: acha Criativos acima da meta (mesma lógica
+                  de Análise) e JÁ PAUSA (setEntitiesStatus), avisando quem
+                  foi pausado — compartilhado entre o botão manual e o hook
+                  público creatives-pause-tick; SEM cooldown (ver ⚠️)
+  adsets-pause.ts → Etapa 53: idem, mas pra Conjuntos acima da meta (inclui
+                  "sem anúncio ativo") — hook público adsets-pause-tick
+  increase-budget-auto.ts → Etapa 53: acha Conjuntos com CPA bom nos últimos
+                  3 dias (mesma lógica de Análise "abaixo da meta") e JÁ
+                  AUMENTA o orçamento (R$2,50 fixo, increaseAdSetDailyBudget)
+                  de todos de uma vez — hook público increase-budget-tick
+  low-investment.ts → Etapa 53 (limite ajustado na 54): acha contas com
+                  orçamento diário atual MENOR que o Ritmo, qualquer
+                  diferença (sem banda de tolerância) e SÓ AVISA — hook
+                  público low-investment-tick; SEM cooldown
 lib/scheduling.ts → regra de recorrência genérica (soma o intervalo à última
                     ocorrência, preservando dia da semana/mês) — usada pelos
                     disparos de WhatsApp e pelos relatórios agendados
@@ -1288,6 +1397,22 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     Meta CPA MAIS R$1 (não mais o triplo) pra entrar na lista, com o
     mesmo cálculo valendo pros dois casos (com ou sem conversa iniciada).
     A tela Criativos não mudou. Veja o ⚠️ acima
+47. ~~4 automações novas de pausa/aumento/aviso via n8n (Etapa 53)~~ ✅ —
+    Mensagens → Avisos ganhou: pausa automática de Criativos acima da meta
+    (05h/09h/13h/23h), pausa automática de Conjuntos acima da meta
+    (05h05/09h05/13h05/23h05), aumento automático de R$2,50 fixo no
+    orçamento de Conjuntos com CPA bom nos últimos 3 dias (06h), e aviso
+    (só notifica, não muda nada) de investimento baixo, de segunda a sexta
+    (07h/09h15/13h) — todas reaproveitando a mesma lógica/limite das telas
+    de Análise e Acompanhamento, cada uma com hook público próprio pro n8n
+    e botão manual na tela. Veja o ⚠️ acima
+48. ~~Aviso de investimento baixo sem banda de tolerância (Etapa 54)~~ ✅ —
+    o aviso automático "Investimento baixo" (Etapa 53) passou a disparar
+    pra QUALQUER conta com orçamento diário menor que o Ritmo necessário,
+    por menor que seja a diferença — antes só entrava passando de R$10,
+    igual ao filtro de Acompanhamento. A cor da coluna Ritmo e o filtro
+    Investimento de Acompanhamento continuam com a banda de R$10, sem
+    mudança. Veja o ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1318,7 +1443,10 @@ hoje", Evolução com coluna Mensal/cor por CPA ideal/conserto do dia de
 hoje + aviso automático de CPA acima da meta ontem, coluna CPA ideal +
 ordenação por CPA mensal em Evolução, conserto do selo "Sem anúncio
 ativo" em Análise → Conjuntos, link direto pro Gerenciador de Anúncios
-no nome do cliente em Evolução, e limite de Conjuntos passando do
-triplo pra 2x a Meta CPA + R$1 fixo) estão 100%
+no nome do cliente em Evolução, limite de Conjuntos passando do
+triplo pra 2x a Meta CPA + R$1 fixo, as 4 automações novas de pausa de
+Criativos/Conjuntos, aumento de orçamento e aviso de investimento baixo
+via n8n, e o aviso de investimento baixo sem banda de tolerância) estão
+100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
 próximos pedidos são novos incrementos, a critério seu.

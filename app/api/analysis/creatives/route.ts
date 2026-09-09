@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";
+import { isCreativeFlaggedAbove } from "@/lib/meta/analysis-thresholds";
 import type { DateRangeInput } from "@/lib/meta/client";
 
 // Painel > Análise, tela "Criativos" (Etapa 40 — antes vivia junto da tela
@@ -12,14 +13,9 @@ import type { DateRangeInput } from "@/lib/meta/client";
 // conversa), com o próprio gasto R$ 4 ou mais acima da Meta CPA. Só avalia
 // contas com Meta CPA cadastrada (sem meta não dá pra saber o que é
 // "acima"); as demais voltam em "skipped". Só considera anúncio ATIVO.
-const THRESHOLD_ABOVE_TARGET = 4;
+// Limite (isCreativeFlaggedAbove) agora mora em lib/meta/analysis-thresholds.ts
+// (Etapa 53) — reaproveitado também pela automação de pausa automática.
 const STATUSES = ["ACTIVE"];
-
-function isFlagged(row: CreativeCostRow, cpaTarget: number): boolean {
-  const noConversion = !row.conversations || row.conversations <= 0;
-  if (noConversion) return row.spend - cpaTarget >= THRESHOLD_ABOVE_TARGET;
-  return row.cost_per_conversation != null && row.cost_per_conversation - cpaTarget >= THRESHOLD_ABOVE_TARGET;
-}
 
 function sortKey(row: CreativeCostRow): number {
   return row.cost_per_conversation ?? row.spend;
@@ -82,7 +78,7 @@ export async function POST(request: Request) {
           const rows = await getCreativeCostAnalysis(token, accountId, datePreset);
           const above = rows
             .filter((r) => STATUSES.includes((r.status ?? "").toUpperCase()))
-            .filter((r) => isFlagged(r, cpaTarget))
+            .filter((r) => isCreativeFlaggedAbove(r, cpaTarget))
             .sort((a, b) => sortKey(b) - sortKey(a));
           if (above.length === 0) return;
           const withTrend = await attachSevenDayTrend(above, token, accountId);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { getAdSetCostAnalysis, type AdSetCostRow, type AdSetCreativeRow } from "@/lib/meta/adset-cost-analysis";
+import { isAdSetFlaggedAbove, isAdSetFlaggedBelow } from "@/lib/meta/analysis-thresholds";
 import type { DateRangeInput } from "@/lib/meta/client";
 
 // Painel > Análise, sub-painel "Conjuntos" — duas análises, escolhidas por
@@ -21,25 +22,9 @@ import type { DateRangeInput } from "@/lib/meta/client";
 // conversa abaixo da Meta CPA.
 export type AnalysisMode = "above" | "below";
 
-const ABOVE_TARGET_MULTIPLIER = 2;
-const ABOVE_TARGET_EXTRA = 1;
-
-function isFlaggedAbove(row: AdSetCostRow, cpaTarget: number): boolean {
-  if (!row.has_active_ad) return true; // Etapa 46: avisa mesmo sem bater o limite de CPA
-  const threshold = cpaTarget * ABOVE_TARGET_MULTIPLIER + ABOVE_TARGET_EXTRA;
-  const noConversion = !row.conversations || row.conversations <= 0;
-  if (noConversion) return row.spend >= threshold;
-  return row.cost_per_conversation != null && row.cost_per_conversation >= threshold;
-}
-
-function isFlaggedBelow(row: AdSetCostRow, cpaTarget: number): boolean {
-  return (
-    !!row.conversations &&
-    row.conversations > 0 &&
-    row.cost_per_conversation != null &&
-    row.cost_per_conversation < cpaTarget
-  );
-}
+// Limites (isAdSetFlaggedAbove/Below) agora moram em lib/meta/analysis-thresholds.ts
+// (Etapa 53) — reaproveitados também pelas automações de pausa/aumento de
+// orçamento, que precisam da mesma lógica exata da tela.
 
 function sortKey(row: AdSetCostRow): number {
   return row.cost_per_conversation ?? row.spend;
@@ -113,7 +98,7 @@ export async function POST(request: Request) {
         }
         try {
           const rows = await getAdSetCostAnalysis(token, accountId, datePreset);
-          const filtered = rows.filter((r) => (mode === "below" ? isFlaggedBelow(r, cpaTarget) : isFlaggedAbove(r, cpaTarget)));
+          const filtered = rows.filter((r) => (mode === "below" ? isAdSetFlaggedBelow(r, cpaTarget) : isAdSetFlaggedAbove(r, cpaTarget)));
           // "above": pior primeiro (mais caro acima da meta). "below": melhor
           // primeiro (mais barato abaixo da meta) — candidato nº 1 a escalar.
           const sorted = filtered.sort((a, b) => (mode === "below" ? sortKey(a) - sortKey(b) : sortKey(b) - sortKey(a)));

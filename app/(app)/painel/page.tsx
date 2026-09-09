@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, type PresetId } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
+import { ritmo, RITMO_BAND } from "@/lib/meta/ritmo";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
 import { ControleSaldo } from "@/components/painel/controle-saldo";
@@ -74,19 +75,10 @@ function rowSortKey(row: { binding?: AccountBinding; insight?: AccountInsight })
   return row.binding?.sort_order ?? (1_000_000_000 - (row.insight?.spend ?? 0));
 }
 
-// Ritmo (Acompanhamento): quanto falta investir por dia, dos dias que
-// restam no mês (incluindo hoje), pra bater a meta de Investimento mensal.
-// Mês sempre considerado com 30 dias, por pedido — não os 28-31 reais do
-// calendário. Sem Investimento mensal cadastrado, não dá pra calcular.
-function ritmo(monthlyInvestment: number | null | undefined, spentThisMonth: number | undefined): number | null {
-  if (monthlyInvestment == null) return null;
-  const dayOfMonth = Number(
-    new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", day: "numeric" }).format(new Date()),
-  );
-  const remainingDays = Math.max(30 - dayOfMonth + 1, 1); // hoje conta como 1 dos dias restantes
-  return (monthlyInvestment - (spentThisMonth ?? 0)) / remainingDays;
-}
-
+// Ritmo e RITMO_BAND agora moram em lib/meta/ritmo.ts (Etapa 53) — extraídos
+// pra serem reaproveitados também pelo aviso automático de investimento
+// baixo (lib/alerts/low-investment.ts), com a mesma conta exata.
+//
 // Cor do Ritmo: compara o quanto precisa investir por dia daqui pra frente
 // (Ritmo) com o orçamento diário JÁ configurado na conta (coluna "Invest.
 // diário" — orçamento atual dos conjuntos/campanhas ativos, não muda com o
@@ -101,7 +93,6 @@ function ritmo(monthlyInvestment: number | null | undefined, spentThisMonth: num
 //   precisaria investir mais do que está configurado → laranja
 // - Ritmo mais de 10 reais ABAIXO do orçamento diário atual ("pra baixo"):
 //   o orçamento atual está investindo mais rápido do que precisa → vermelho
-const RITMO_BAND = 10;
 function ritmoColorClass(rowRitmo: number | null, dailyBudget: number | undefined): string {
   if (rowRitmo == null) return "";
   const diff = rowRitmo - (dailyBudget ?? 0);
