@@ -1533,3 +1533,5 @@ estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
 próximos pedidos são novos incrementos, a critério seu.
+
+edição
