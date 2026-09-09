@@ -1,21 +1,29 @@
-// Aumento automático de orçamento (Etapa 53) — pensado pra rodar 1x por dia
-// de manhã (06h sugerido no n8n), aumentando sozinho em R$2,50 fixo (mesmo
-// valor da ação manual, lib/meta/budget.ts) o orçamento diário de todo
-// conjunto ATIVO com CPA bom nos ÚLTIMOS 3 DIAS (período fixo, não usa o
-// período escolhido em nenhuma tela) — MESMA lógica de Painel > Análise >
-// Conjuntos "abaixo da meta" (isAdSetFlaggedBelow): pelo menos 1 conversa
-// iniciada no período e custo por conversa menor que a Meta CPA. Sem
-// cooldown — roda 1x ao dia, cada rodada aumenta de novo quem continuar
-// qualificado (não guarda "já aumentei esse hoje"). Conjunto com orçamento
-// vitalício (lifetime) ou orçamento só na campanha (CBO) não tem como
-// aumentar por aqui — entra em "failed", não avisa erro no WhatsApp, só no
-// retorno da rota (pra não poluir a mensagem com casos que não são
-// realmente um problema).
+// Aumento automático de orçamento (Etapa 53, teto de R$25 na Etapa 56) —
+// pensado pra rodar 1x por dia de manhã (06h sugerido no n8n), aumentando
+// sozinho em R$2,50 fixo (mesmo valor da ação manual, lib/meta/budget.ts) o
+// orçamento diário de todo conjunto ATIVO com CPA bom nos ÚLTIMOS 3 DIAS
+// (período fixo, não usa o período escolhido em nenhuma tela) — MESMA
+// lógica de Painel > Análise > Conjuntos "abaixo da meta"
+// (isAdSetFlaggedBelow): pelo menos 1 conversa iniciada no período e custo
+// por conversa menor que a Meta CPA. Sem cooldown de tempo — roda 1x ao
+// dia, cada rodada aumenta de novo quem continuar qualificado (não guarda
+// "já aumentei esse hoje") — mas agora tem um teto (Etapa 56, pedido
+// explícito): se o orçamento diário DO CONJUNTO já estiver em R$25,00 ou
+// mais, essa automação não aumenta mais aquele conjunto — comparação
+// sempre com o orçamento de verdade buscado na Meta na hora (nada guardado
+// em banco), então também vale pra um conjunto que já nascesse acima de
+// R$25 (nunca seria aumentado por aqui). Se faltar pouco pro teto, o
+// último aumento sai menor que R$2,50, só o suficiente pra fechar
+// exatamente em R$25,00. Conjunto com orçamento vitalício (lifetime) ou
+// orçamento só na campanha (CBO) não tem como aumentar por aqui — entra em
+// "failed", não avisa erro no WhatsApp, só no retorno da rota (pra não
+// poluir a mensagem com casos que não são realmente um problema) — o
+// mesmo vale pro teto batido.
 
 import type { createClient } from "@/lib/supabase/server";
 import { getAdSetCostAnalysis } from "@/lib/meta/adset-cost-analysis";
 import { isAdSetFlaggedBelow } from "@/lib/meta/analysis-thresholds";
-import { increaseAdSetDailyBudget } from "@/lib/meta/budget";
+import { increaseAdSetDailyBudget, AUTO_INCREASE_CAP_CENTS } from "@/lib/meta/budget";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { fmtCurrency } from "@/lib/format";
@@ -31,6 +39,7 @@ export interface IncreasedAdSet {
   ok: boolean;
   new_daily_budget?: number;
   error?: string;
+  capped?: boolean;
 }
 
 export interface CheckIncreaseBudgetResult {
@@ -73,12 +82,13 @@ export async function checkAndIncreaseBudgets(
 
   const increased: IncreasedAdSet[] = [];
   for (const f of flagged) {
-    const result = await increaseAdSetDailyBudget(token, f.adset_id);
+    const result = await increaseAdSetDailyBudget(token, f.adset_id, { capCents: AUTO_INCREASE_CAP_CENTS });
     increased.push({
       ...f,
       ok: result.ok,
       new_daily_budget: result.ok ? result.newDailyBudget : undefined,
       error: result.ok ? undefined : result.error,
+      capped: result.ok ? undefined : result.capped,
     });
   }
 

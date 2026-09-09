@@ -599,8 +599,10 @@ export function AvisosTab() {
         <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
           Considera toda conta com CPA ideal cadastrado, período fixo &quot;últimos 3 dias + hoje&quot;. Ao
           clicar, já PAUSA de verdade (mesmo limite de Análise → Criativos: R$4+ acima da meta, com ou
-          sem conversa) e manda o aviso — não é só uma prévia. Pensado pra rodar automaticamente várias
-          vezes ao dia via n8n (veja o ⚠️ no README).
+          sem conversa) e manda o aviso — não é só uma prévia. As pausas na Meta saem uma de cada vez,
+          com 3s de intervalo entre elas (mesma cautela dos botões de ação em massa de Análise), não
+          todas juntas. Pensado pra rodar automaticamente várias vezes ao dia via n8n (veja o ⚠️ no
+          README).
         </div>
 
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -671,9 +673,10 @@ export function AvisosTab() {
         <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
           Considera toda conta com CPA ideal cadastrado, período fixo &quot;últimos 3 dias + hoje&quot;. Ao
           clicar, já PAUSA de verdade (mesmo limite de Análise → Conjuntos: dobro da meta + R$1, com ou
-          sem conversa, ou sem anúncio ativo dentro) e manda o aviso — não é só uma prévia. Pensado pra
-          rodar automaticamente várias vezes ao dia via n8n, 5 minutos depois do check de Criativos
-          acima (veja o ⚠️ no README).
+          sem conversa, ou sem anúncio ativo dentro) e manda o aviso — não é só uma prévia. As pausas na
+          Meta saem uma de cada vez, com 3s de intervalo entre elas (mesma cautela dos botões de ação em
+          massa de Análise), não todas juntas. Pensado pra rodar automaticamente várias vezes ao dia via
+          n8n, 5 minutos depois do check de Criativos acima (veja o ⚠️ no README).
         </div>
 
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -749,8 +752,9 @@ export function AvisosTab() {
           Considera toda conta com CPA ideal cadastrado, período fixo &quot;últimos 3 dias&quot; (sem hoje).
           Ao clicar, já AUMENTA de verdade o orçamento diário em R$2,50 fixo de todo conjunto com CPA
           abaixo da meta (mesmo critério de Análise → Conjuntos &quot;abaixo da meta&quot;) e manda o
-          aviso — não é só uma prévia. Pensado pra rodar automaticamente 1x por dia de manhã via n8n
-          (veja o ⚠️ no README).
+          aviso — não é só uma prévia. Se o orçamento diário do conjunto já estiver em R$25,00 ou mais,
+          essa automação não aumenta mais aquele conjunto. Pensado pra rodar automaticamente 1x por dia
+          de manhã via n8n (veja o ⚠️ no README).
         </div>
 
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -820,10 +824,11 @@ export function AvisosTab() {
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
           Considera toda conta com Investimento mensal cadastrado (Clientes/Acompanhamento). Entra no
-          aviso quem está com o orçamento diário atual MENOR que o Ritmo necessário pra bater a meta do
-          mês — qualquer diferença, sem banda de tolerância. Só avisa, nunca muda nada. Pensado pra
-          rodar automaticamente de manhã, de segunda a sexta (veja o ⚠️ no README) — sem cooldown, então
-          &quot;Verificar agora&quot; sempre reenvia se houver alguma conta com investimento baixo.
+          aviso quem está com o orçamento diário atual mais de R$10 MENOR que o Ritmo necessário pra
+          bater a meta do mês (mesma banda usada pra colorir a coluna Ritmo de Acompanhamento). Só
+          avisa, nunca muda nada. Pensado pra rodar automaticamente de manhã, de segunda a sexta (veja o
+          ⚠️ no README) — sem cooldown, então &quot;Verificar agora&quot; sempre reenvia se houver
+          alguma conta com investimento baixo.
         </div>
 
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">

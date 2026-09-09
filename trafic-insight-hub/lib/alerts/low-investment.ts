@@ -1,19 +1,21 @@
-// Aviso de investimento baixo (Etapa 53, limite ajustado na Etapa 54) —
-// pensado pra rodar de manhã, de segunda a sexta (07h/09h15/13h sugeridos
-// no n8n), avisando (sem mexer em nada, só notifica) quais contas estão
-// com o orçamento diário atual MENOR que o Ritmo (quanto falta investir
-// por dia pra bater a meta mensal) — QUALQUER diferença, por menor que
-// seja, já entra no aviso (Etapa 54: pedido explícito pra tirar a banda de
-// R$10 que esse aviso usava antes, ainda que a mesma banda continue valendo
-// pra colorir a coluna Ritmo e o filtro Investimento de Acompanhamento —
-// telas diferentes, critério só mudou aqui). Só contas com Investimento
-// mensal cadastrado entram na conta (sem meta não dá pra calcular Ritmo).
-// Sem cooldown — quem controla a frequência é o agendamento do n8n; rodar
-// de novo no mesmo dia reenvia de novo, de propósito.
+// Aviso de investimento baixo (Etapa 53, limite ajustado na Etapa 54 e
+// devolvido na Etapa 56) — pensado pra rodar de manhã, de segunda a sexta
+// (07h/09h15/13h sugeridos no n8n), avisando (sem mexer em nada, só
+// notifica) quais contas estão com o orçamento diário atual pelo menos
+// R$10 MENOR que o Ritmo (quanto falta investir por dia pra bater a meta
+// mensal) — mesma banda (RITMO_BAND) usada pra colorir a coluna Ritmo e o
+// filtro Investimento de Acompanhamento. Histórico: a Etapa 54 tinha tirado
+// essa banda daqui (QUALQUER diferença entrava), mas a Etapa 56 trouxe de
+// volta por pedido explícito — diferenças pequenas (ex.: R$0,70, R$1,47,
+// R$4,72) estavam poluindo o aviso sem necessidade real de ajuste. Só
+// contas com Investimento mensal cadastrado entram na conta (sem meta não
+// dá pra calcular Ritmo). Sem cooldown — quem controla a frequência é o
+// agendamento do n8n; rodar de novo no mesmo dia reenvia de novo, de
+// propósito.
 
 import type { createClient } from "@/lib/supabase/server";
 import { getAccountsInsights } from "@/lib/meta/insights";
-import { ritmo } from "@/lib/meta/ritmo";
+import { ritmo, RITMO_BAND } from "@/lib/meta/ritmo";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { fmtCurrency } from "@/lib/format";
@@ -66,10 +68,9 @@ export async function checkLowInvestment(
       daily_budget: dailyBudget,
       ritmo: rowRitmo,
       diff,
-      // Etapa 54: qualquer investimento diário menor que o Ritmo já entra —
-      // sem banda de tolerância (era diff > RITMO_BAND, ou seja, só entrava
-      // passando de R$10 de diferença).
-      low: diff > 0,
+      // Etapa 56: de volta à banda de R$10 (era diff > 0 desde a Etapa 54) —
+      // só entra no aviso quem está passando de R$10 de diferença.
+      low: diff > RITMO_BAND,
     };
   });
 

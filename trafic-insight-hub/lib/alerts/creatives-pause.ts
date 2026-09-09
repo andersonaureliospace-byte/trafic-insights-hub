@@ -8,11 +8,15 @@
 // simplesmente não aparece mais nas rodadas seguintes (deixou de ser
 // ATIVO), então não tem re-pausa nem re-aviso do mesmo criativo. Período
 // fixo "últimos 3 dias + hoje" — mesmo padrão default da tela de Análise.
+// Etapa 56: as pausas na Meta agora saem uma de cada vez, com 3s de
+// intervalo (setEntitiesStatusSequential), em vez de todas em paralelo —
+// mesma pauta de segurança contra rate limit que os botões manuais de
+// Análise já seguem (BULK_DELAY_MS).
 
 import type { createClient } from "@/lib/supabase/server";
 import { getCreativeCostAnalysis } from "@/lib/meta/creative-analysis";
 import { isCreativeFlaggedAbove } from "@/lib/meta/analysis-thresholds";
-import { setEntitiesStatus } from "@/lib/meta/status";
+import { setEntitiesStatusSequential } from "@/lib/meta/status";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { fmtCurrency } from "@/lib/format";
@@ -80,7 +84,7 @@ export async function checkAndPauseCreatives(
 
   let paused: PausedCreative[] = [];
   if (flagged.length > 0) {
-    const results = await setEntitiesStatus(
+    const results = await setEntitiesStatusSequential(
       token,
       flagged.map((f) => ({ id: f.ad_id, type: "ad" as const })),
       "PAUSED",

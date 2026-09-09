@@ -290,10 +290,23 @@ importantes dessas 4. O aviso de investimento baixo (Etapa 54) ficou mais
 rigoroso: em vez de só entrar passando de R$10 de diferença, agora entra
 qualquer conta com orçamento diário menor que o Ritmo, mesmo que seja por
 centavos — sem mudar a cor da coluna Ritmo nem o filtro Investimento de
-Acompanhamento, que continuam com a banda de R$10. Com isso, mais a nova
+Acompanhamento, que continuam com a banda de R$10 (a Etapa 56, mais abaixo,
+devolveu essa banda especificamente pro aviso). Com isso, mais a nova
 automação de atualização de status em massa (Etapa 55), todas as
-áreas do plano original + os extras pedidos ao longo do caminho estão
-100% concluídas.
+áreas do plano original + os extras pedidos ao longo do caminho estavam
+100% concluídas — até a Etapa 56, três ajustes pedidos depois de testar as
+automações da Etapa 53/55 em produção: (1) as pausas automáticas de
+Criativos e Conjuntos (`creatives-pause-tick`, `adsets-pause-tick`) agora
+mandam as requisições de pausa pra Meta uma de cada vez, com 3s de intervalo
+entre elas, em vez de todas em paralelo — mesma cautela dos botões manuais
+de ação em massa de Análise, reduzindo o risco de rate limit em listas
+grandes; (2) o aviso de investimento baixo voltou a usar a banda de R$10
+(estava sem banda desde a Etapa 54) — diferenças pequenas (R$0,70 a R$4,72,
+nos exemplos que motivaram o pedido) não entram mais no aviso; e (3) o
+aumento automático de orçamento ganhou um teto de R$25,00: se o orçamento
+diário do conjunto já estiver em R$25 ou mais, a automação simplesmente
+não aumenta mais aquele conjunto (comparação sempre com o orçamento de
+verdade, buscado na Meta na hora — nada guardado em banco).
 
 ⚠️ **Antes de testar a coluna "Otimizado" (Acompanhamento)**: essa entrega
 inclui as migrações `0010_client_optimized.sql` e `0011_drop_optimized_reason.sql`
@@ -421,7 +434,18 @@ reduzir o risco de bloqueio por limite de chamadas da Meta (rate limit) ao
 mexer em muitos conjuntos de uma vez, as chamadas são feitas uma de cada
 vez — nunca em paralelo — com uma pausa de 3s entre elas (aumentada a
 pedido na Etapa 34, era ~0,8s); num lote de 20 conjuntos isso leva uns
-60 segundos, de propósito (mais devagar, mais seguro). Além disso, toda chamada de escrita na Graph API (`metaPost`,
+60 segundos, de propósito (mais devagar, mais seguro). Desde a Etapa 56, as
+automações de pausa via n8n (Criativos e Conjuntos acima da meta,
+`creatives-pause-tick`/`adsets-pause-tick`) seguem a MESMA cautela —
+`setEntitiesStatusSequential` em `lib/meta/status.ts` — em vez do
+`Promise.all` (tudo em paralelo) que usavam antes; motivo do ajuste:
+listas grandes de conjuntos/criativos flagrados de uma vez arriscavam
+disparar rate limit da Meta. O toggle manual de status individual
+(`app/api/meta/status/route.ts`) e a pausa automática de Auditoria
+(`lib/audit/run.ts`, localização/erros de veiculação) continuam usando
+`setEntitiesStatus` (em paralelo) — o primeiro só mexe em 1 item por vez,
+e o segundo já pausa lotes bem menores, por conta; não foi pedido mexer
+nesses dois. Além disso, toda chamada de escrita na Graph API (`metaPost`,
 usada por pausar, ativar e aumentar orçamento — em massa ou individual)
 agora tenta de novo sozinha até 3 vezes quando o erro é claramente
 temporário (erro 5xx/429) ou um erro clássico de "muitas chamadas" da
@@ -642,27 +666,44 @@ esperar você clicar. Pontos importantes:
   você clica em "Verificar e pausar/aumentar agora", pro clique não pausar
   nada sem querer. Mesmo espírito que Auditoria → Erros de veiculação já
   usava.
-- Nenhuma das 4 tem cooldown — quem controla a frequência é o próprio
-  agendamento do n8n. Pra Criativos e Conjuntos isso não é problema, porque
-  quem já foi pausado deixa de ser ATIVO e some da lista da próxima rodada
-  (sem re-pausa nem re-aviso do mesmo item). Pro aumento de orçamento, um
-  conjunto com CPA bom continua levando +R$2,50 TODO dia que a automação
-  rodar (não guarda "já aumentei esse hoje") — é assim que "aumentar todo
-  dia enquanto o CPA continuar bom" foi entendido do pedido.
+- Nenhuma das 4 tem cooldown de TEMPO — quem controla a frequência é o
+  próprio agendamento do n8n. Pra Criativos e Conjuntos isso não é
+  problema, porque quem já foi pausado deixa de ser ATIVO e some da lista
+  da próxima rodada (sem re-pausa nem re-aviso do mesmo item). Pro aumento
+  de orçamento, um conjunto com CPA bom continua levando +R$2,50 TODO dia
+  que a automação rodar (não guarda "já aumentei esse hoje") — é assim que
+  "aumentar todo dia enquanto o CPA continuar bom" foi entendido do pedido
+  — desde a Etapa 56, existe um teto de R$25 no orçamento diário: ver
+  bullet dedicado logo abaixo.
 - Conjunto sem orçamento próprio pra aumentar (orçamento na campanha/CBO,
   ou orçamento vitalício/lifetime) simplesmente falha silenciosamente nessa
   automação (mesmo erro que o botão manual de Análise já dava) — não entra
   no aviso de WhatsApp, só aparece como "Falha" na tabela da tela.
+- **Teto de R$25,00 no aumento automático (Etapa 56)**: se o orçamento
+  diário ATUAL do conjunto já estiver em R$25,00 ou mais, essa automação
+  não aumenta mais aquele conjunto — comparação sempre com o orçamento de
+  verdade, buscado na Meta na hora da checagem (nada guardado em banco),
+  então também vale pra um conjunto que já nascesse com orçamento acima de
+  R$25 (nunca seria aumentado por aqui). Se faltar pouco pro teto, o último
+  aumento sai menor que R$2,50, só o suficiente pra fechar exatamente em
+  R$25,00. Ao bater o teto, o conjunto simplesmente para de ser aumentado
+  — entra como "Falha" na tabela da tela (motivo próprio, "orçamento já em
+  R$25 ou mais"), sem chamar a Meta de novo, e sem entrar no aviso de
+  WhatsApp (mesmo tratamento dos outros casos de falha que não são erro de
+  verdade). O teto só vale pra essa automação — o botão manual "Aumentar
+  +R$2,50" de Análise continua sem limite nenhum, do jeito que sempre foi.
 - O aviso de Investimento baixo usa a mesma conta de Ritmo do filtro
-  Investimento de Acompanhamento, mas com um critério mais estrito (Etapa
-  54): entra qualquer conta cujo orçamento diário atual esteja MENOR que o
-  Ritmo necessário, sem banda de tolerância — antes (Etapa 53) só entrava
-  passando de R$10 de diferença, igual ao filtro de Acompanhamento; agora
-  qualquer diferença, por menor que seja, já dispara o aviso. Só esse aviso
-  mudou — a banda de R$10 continua igual na cor da coluna Ritmo e no filtro
-  Investimento (Baixo/Alto) de Acompanhamento, que são telas diferentes.
-  "Investimento Alto" (investindo mais rápido que o necessário) segue sem
-  entrar nesse aviso, já que só foi pedido aviso do caso baixo.
+  Investimento de Acompanhamento. Histórico: nasceu (Etapa 53) com a mesma
+  banda de R$10 do filtro de Acompanhamento; a Etapa 54 tirou essa banda
+  (qualquer diferença, por menor que fosse, já disparava); a **Etapa 56
+  trouxe a banda de volta** (`diff > RITMO_BAND`, mesma constante
+  `RITMO_BAND = 10` de `lib/meta/ritmo.ts`) — motivo do pedido: o aviso
+  estava chegando com diferenças de R$0,70 a R$4,72, poluindo a mensagem
+  sem indicar um ajuste real necessário. Hoje o critério do aviso é
+  IGUAL ao da cor da coluna Ritmo e do filtro Investimento (Baixo/Alto) de
+  Acompanhamento — só entra passando de R$10 de diferença. "Investimento
+  Alto" (investindo mais rápido que o necessário) segue sem entrar nesse
+  aviso, já que só foi pedido aviso do caso baixo.
 
 ⚠️ **Sobre a automação "Atualização de status em massa" (Etapa 55)**: pensada
 pra rodar segunda e quinta de madrugada (01h sugerido no n8n), reaproveita
@@ -893,7 +934,9 @@ minus o criativo ruim) continua 100% manual, no Gerenciador de Anúncios.
     depois `0011_drop_optimized_reason.sql` e depois
     `0012_payment_alerts.sql`, nessa ordem (a coluna "Otimizado" de
     Acompanhamento e o controle de reaviso da nova checagem de erro no
-    pagamento).
+    pagamento). Não tem migração nova na Etapa 56 — o teto de R$25 do
+    aumento automático de orçamento só compara com o orçamento já existente
+    na Meta, sem guardar nada novo no Supabase.
     (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
     formato que `supabase db push` espera — ele aplica só as migrações que
     ainda não rodaram.)
@@ -1060,7 +1103,10 @@ lib/meta/
                   orçamento diário com CBO e lifetime→diário)
   breakdown.ts  → detalhamento por Campanha/Conjunto/Anúncio (Visão Geral) —
                   no nível campanha só entra quem teve impressão no período
-  status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral, Auditoria e Análise)
+  status.ts     → pausar/ativar nos 3 níveis (ligado na Visão Geral, Auditoria e Análise);
+                  setEntitiesStatus (paralelo) e, desde a Etapa 56,
+                  setEntitiesStatusSequential (uma chamada de cada vez, 3s de
+                  intervalo — usada pelas pausas automáticas de Criativos/Conjuntos)
   daily-cpa.ts  → CPA diário por conta, usado na atualização de status em massa
                   e na tela Evolução (Etapa 48: hoje buscado à parte com
                   date_preset "today" pra não sumir quando a quebra por dia
@@ -1076,7 +1122,13 @@ lib/meta/
   ritmo.ts      → cálculo do Ritmo + banda de R$10 (Etapa 53) — extraído pra ser
                   reaproveitado tanto pela tela de Acompanhamento quanto pelo
                   aviso automático de investimento baixo
-  budget.ts     → aumenta o orçamento diário de UM conjunto em R$2,50 fixo
+  budget.ts     → aumenta o orçamento diário de UM conjunto em R$2,50 fixo;
+                  desde a Etapa 56 aceita um `capCents` opcional (só a
+                  automação passa) — se o orçamento diário atual do
+                  conjunto já bater esse teto, não aumenta mais; senão
+                  aumenta R$2,50, ou menos se faltar pouco pro teto.
+                  AUTO_INCREASE_CAP_CENTS = R$25, o teto usado pela automação
+                  (o botão manual de Análise não passa `capCents`, sem teto)
   ads-manager-link.ts → monta a URL do Gerenciador de Anúncios (campanhas) e a
                          de Cobranças e Pagamentos (billing hub, usada só no
                          Controle de Saldo) a partir do ID da conta e do
@@ -1119,19 +1171,24 @@ lib/alerts/
                   crítica — compartilhado entre "Verificar agora" e o hook
                   público cpa-alert-tick; SEM cooldown de 24h (ver ⚠️)
   creatives-pause.ts → Etapa 53: acha Criativos acima da meta (mesma lógica
-                  de Análise) e JÁ PAUSA (setEntitiesStatus), avisando quem
-                  foi pausado — compartilhado entre o botão manual e o hook
-                  público creatives-pause-tick; SEM cooldown (ver ⚠️)
+                  de Análise) e JÁ PAUSA, avisando quem foi pausado —
+                  compartilhado entre o botão manual e o hook público
+                  creatives-pause-tick; SEM cooldown (ver ⚠️); desde a Etapa
+                  56 pausa um de cada vez (setEntitiesStatusSequential), não
+                  mais tudo em paralelo
   adsets-pause.ts → Etapa 53: idem, mas pra Conjuntos acima da meta (inclui
-                  "sem anúncio ativo") — hook público adsets-pause-tick
+                  "sem anúncio ativo") — hook público adsets-pause-tick;
+                  mesmo ajuste de pausa sequencial da Etapa 56
   increase-budget-auto.ts → Etapa 53: acha Conjuntos com CPA bom nos últimos
                   3 dias (mesma lógica de Análise "abaixo da meta") e JÁ
                   AUMENTA o orçamento (R$2,50 fixo, increaseAdSetDailyBudget)
-                  de todos de uma vez — hook público increase-budget-tick
-  low-investment.ts → Etapa 53 (limite ajustado na 54): acha contas com
-                  orçamento diário atual MENOR que o Ritmo, qualquer
-                  diferença (sem banda de tolerância) e SÓ AVISA — hook
-                  público low-investment-tick; SEM cooldown
+                  — hook público increase-budget-tick; desde a Etapa 56, não
+                  aumenta mais um conjunto cujo orçamento diário já esteja em
+                  R$25 ou mais — ver ⚠️
+  low-investment.ts → Etapa 53 (limite tirado na 54, devolvido na 56): acha
+                  contas com orçamento diário atual mais de R$10 MENOR que o
+                  Ritmo (RITMO_BAND) e SÓ AVISA — hook público
+                  low-investment-tick; SEM cooldown
   bulk-status-update.ts → Etapa 55: reclassifica toda "Conta exibida" com o
                   CPA dos últimos 3 dias sem hoje (mesma lógica do diálogo
                   manual de Acompanhamento), escreve o novo status em
@@ -1494,6 +1551,15 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     status de TODO cliente classificado — mudou ou manteve —, sempre só
     "cliente: status", sem dizer qual dos dois casos é e sem comentário —
     pensada pra rodar segunda e quinta de madrugada via n8n. Veja o ⚠️ acima
+50. ~~Pausas sequenciais, banda de R$10 de volta e teto de R$25 no aumento
+    automático (Etapa 56)~~ ✅ — três ajustes nas automações de Mensagens →
+    Avisos depois de testar em produção: as pausas automáticas de Criativos
+    e Conjuntos agora mandam as requisições pra Meta uma de cada vez, com
+    3s de intervalo, em vez de todas em paralelo; o aviso de investimento
+    baixo voltou a usar a banda de R$10 (estava sem banda desde a Etapa
+    54); e o aumento automático de orçamento ganhou um teto de R$25,00 —
+    se o orçamento diário do conjunto já estiver nesse valor ou mais, a
+    automação não aumenta mais aquele conjunto. Veja os ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1527,8 +1593,11 @@ ativo" em Análise → Conjuntos, link direto pro Gerenciador de Anúncios
 no nome do cliente em Evolução, limite de Conjuntos passando do
 triplo pra 2x a Meta CPA + R$1 fixo, as 4 automações novas de pausa de
 Criativos/Conjuntos, aumento de orçamento e aviso de investimento baixo
-via n8n, o aviso de investimento baixo sem banda de tolerância, e a
-automação de atualização de status em massa com reordenação do quadro)
+via n8n, o aviso de investimento baixo sem banda de tolerância, a
+automação de atualização de status em massa com reordenação do quadro, e
+os três ajustes de produção da Etapa 56 — pausas automáticas sequenciais
+com 3s de intervalo, banda de R$10 de volta no aviso de investimento
+baixo, e teto de R$25 no orçamento diário do aumento automático)
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
