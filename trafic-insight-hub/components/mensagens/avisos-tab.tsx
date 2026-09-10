@@ -54,16 +54,6 @@ interface PausedAdSet {
   error?: string;
 }
 
-interface IncreasedAdSet {
-  ad_account_id: string;
-  client_name: string;
-  adset_id: string;
-  adset_name: string;
-  ok: boolean;
-  new_daily_budget?: number;
-  error?: string;
-}
-
 interface LowInvestmentStatus {
   ad_account_id: string;
   client_name: string;
@@ -117,11 +107,6 @@ export function AvisosTab() {
   const [adsetsPauseError, setAdsetsPauseError] = useState<string | null>(null);
   const [adsetsSendError, setAdsetsSendError] = useState<string | null>(null);
   const [runningAdSetsPause, setRunningAdSetsPause] = useState(false);
-
-  const [increasedAdSets, setIncreasedAdSets] = useState<IncreasedAdSet[] | null>(null);
-  const [budgetError, setBudgetError] = useState<string | null>(null);
-  const [budgetSendError, setBudgetSendError] = useState<string | null>(null);
-  const [runningBudgetIncrease, setRunningBudgetIncrease] = useState(false);
 
   const [lowInvestmentStatuses, setLowInvestmentStatuses] = useState<LowInvestmentStatus[] | null>(null);
   const [lowInvestmentError, setLowInvestmentError] = useState<string | null>(null);
@@ -305,28 +290,6 @@ export function AvisosTab() {
       alert(`${ok} conjunto(s) pausado(s) automaticamente — aviso enviado pro grupo.`);
     } else {
       alert("Nenhum conjunto acima da meta agora.");
-    }
-  }
-
-  async function handleRunBudgetIncrease() {
-    setRunningBudgetIncrease(true);
-    const res = await fetch("/api/alerts/budget-increase", { method: "POST" });
-    const d = await res.json();
-    setRunningBudgetIncrease(false);
-    if (d.error) {
-      setBudgetError(d.error);
-      return;
-    }
-    setBudgetError(null);
-    setBudgetSendError(d.sendError ?? null);
-    setIncreasedAdSets(d.increased ?? []);
-    const ok = (d.increased ?? []).filter((i: IncreasedAdSet) => i.ok).length;
-    if (d.sendError) {
-      alert(`${ok} conjunto(s) com orçamento aumentado, mas não deu pra enviar o aviso: ${d.sendError}`);
-    } else if (ok > 0) {
-      alert(`${ok} conjunto(s) com orçamento aumentado automaticamente — aviso enviado pro grupo.`);
-    } else {
-      alert("Nenhum conjunto com CPA bom nos últimos 3 dias agora.");
     }
   }
 
@@ -736,80 +699,6 @@ export function AvisosTab() {
                           title={p.ok ? undefined : p.error}
                         >
                           {p.ok ? "Pausado" : "Falha ao pausar"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-4">
-        <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-          Considera toda conta com CPA ideal cadastrado, período fixo &quot;últimos 3 dias&quot; (sem hoje).
-          Ao clicar, já AUMENTA de verdade o orçamento diário em R$2,50 fixo de todo conjunto com CPA
-          abaixo da meta (mesmo critério de Análise → Conjuntos &quot;abaixo da meta&quot;) e manda o
-          aviso — não é só uma prévia. Se o orçamento diário do conjunto já estiver em R$25,00 ou mais,
-          essa automação não aumenta mais aquele conjunto. Pensado pra rodar automaticamente 1x por dia
-          de manhã via n8n (veja o ⚠️ no README).
-        </div>
-
-        <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Conjuntos com CPA bom (aumento automático de orçamento)</h3>
-            <button
-              onClick={() => void handleRunBudgetIncrease()}
-              disabled={runningBudgetIncrease}
-              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-60 dark:bg-zinc-100 dark:text-zinc-900"
-            >
-              {runningBudgetIncrease ? "Verificando…" : "Verificar e aumentar agora"}
-            </button>
-          </div>
-
-          {budgetSendError ? (
-            <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-              ⚠️ {budgetSendError}
-            </p>
-          ) : null}
-
-          {budgetError ? (
-            <p className="px-4 py-6 text-sm text-red-600">{budgetError}</p>
-          ) : !increasedAdSets ? (
-            <p className="px-4 py-6 text-sm text-zinc-500">Clique em &quot;Verificar e aumentar agora&quot; pra rodar.</p>
-          ) : increasedAdSets.length === 0 ? (
-            <p className="px-4 py-6 text-sm text-zinc-500">Nenhum conjunto com CPA bom nos últimos 3 dias na última verificação.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
-                    <th className="px-4 py-2 font-medium">Cliente</th>
-                    <th className="px-4 py-2 font-medium">Conjunto</th>
-                    <th className="px-4 py-2 text-right font-medium">Novo orçamento diário</th>
-                    <th className="px-4 py-2 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {increasedAdSets.map((i) => (
-                    <tr key={i.adset_id} className="border-t border-zinc-100 last:border-0 dark:border-zinc-800/60">
-                      <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">{i.client_name}</td>
-                      <td className="max-w-[260px] truncate px-4 py-2" title={i.adset_name}>{i.adset_name}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">
-                        {i.new_daily_budget == null ? "—" : fmtCurrency(i.new_daily_budget)}
-                      </td>
-                      <td className="px-4 py-2">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                            i.ok
-                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                              : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                          }`}
-                          title={i.ok ? undefined : i.error}
-                        >
-                          {i.ok ? "Aumentado" : "Falha"}
                         </span>
                       </td>
                     </tr>

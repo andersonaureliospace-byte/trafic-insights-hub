@@ -1,23 +1,20 @@
 // Painel > Análise, aba "abaixo da meta" — aumenta o orçamento diário do
 // conjunto num valor fixo pedido pelo usuário (R$2,50), sem porcentagem, sem
 // lógica de escala progressiva. Só mexe no orçamento do próprio conjunto
-// (adset.daily_budget) — não toca em orçamento de campanha (CBO). O botão
-// manual de Análise nunca tem teto (`opts.capCents` fica de fora); só a
-// automação (lib/alerts/increase-budget-auto.ts, Etapa 56) passa
-// `capCents: AUTO_INCREASE_CAP_CENTS`.
+// (adset.daily_budget) — não toca em orçamento de campanha (CBO).
+//
+// Etapa 53 tinha adicionado uma automação via n8n que fazia esse mesmo
+// aumento sozinha 1x/dia; a Etapa 58 removeu essa automação por pedido do
+// usuário — hoje esse aumento só acontece manualmente, um conjunto de cada
+// vez, pelo botão "Aumentar +R$2,50" de Análise. A Etapa 59 trouxe de volta
+// o teto de R$25,00 (criado na Etapa 56 pra automação, removido junto com
+// ela na Etapa 58) só que agora aplicado direto ao botão manual: se o
+// orçamento diário ATUAL do conjunto (buscado na Meta na hora, nunca
+// guardado em banco) já estiver em R$25 ou mais, não aumenta mais.
 import { metaGet, metaPost } from "./client";
 
 export const INCREASE_CENTS = 250; // R$2,50 fixo (valor de cada aumento)
-
-// Etapa 56: teto do orçamento diário ATUAL do conjunto (não um acumulado de
-// quanto já foi somado) — pedido explícito: "se o orçamento daquele
-// conjunto for igual a 25, não é pra aumentar mais". Só vale pra automação
-// (increase-budget-tick); o botão manual de Análise não tem teto. Compara
-// sempre o orçamento diário DE VERDADE do conjunto, buscado na Meta na hora
-// (não guarda nada em banco) — então também cobre um conjunto que já
-// estivesse com orçamento igual/maior que R$25 antes mesmo de a automação
-// rodar (nesse caso ela simplesmente nunca aumenta esse conjunto).
-export const AUTO_INCREASE_CAP_CENTS = 2500; // R$25,00
+export const INCREASE_CAP_CENTS = 2500; // R$25,00 — teto do orçamento diário do conjunto
 
 interface AdSetBudgetFields {
   id: string;
@@ -29,11 +26,7 @@ export type IncreaseBudgetResult =
   | { ok: true; newDailyBudget: number }
   | { ok: false; error: string; capped?: boolean };
 
-export async function increaseAdSetDailyBudget(
-  token: string,
-  adsetId: string,
-  opts: { capCents?: number } = {},
-): Promise<IncreaseBudgetResult> {
+export async function increaseAdSetDailyBudget(token: string, adsetId: string): Promise<IncreaseBudgetResult> {
   try {
     const current = await metaGet<AdSetBudgetFields>(token, `/${adsetId}`, {
       fields: "id,daily_budget,lifetime_budget",
@@ -47,15 +40,15 @@ export async function increaseAdSetDailyBudget(
       };
     }
     const currentCents = Number(current.daily_budget);
-    if (opts.capCents != null && currentCents >= opts.capCents) {
+    if (currentCents >= INCREASE_CAP_CENTS) {
       return {
         ok: false,
         capped: true,
-        error: `Orçamento diário já em ${(opts.capCents / 100).toFixed(2).replace(".", ",")} ou mais — limite automático, não aumenta mais sozinho.`,
+        error: `Orçamento diário já em R$${(INCREASE_CAP_CENTS / 100).toFixed(2).replace(".", ",")} ou mais — não aumenta mais esse conjunto.`,
       };
     }
     let newCents = currentCents + INCREASE_CENTS;
-    if (opts.capCents != null && newCents > opts.capCents) newCents = opts.capCents;
+    if (newCents > INCREASE_CAP_CENTS) newCents = INCREASE_CAP_CENTS;
     await metaPost(token, `/${adsetId}`, { daily_budget: String(newCents) });
     return { ok: true, newDailyBudget: newCents / 100 };
   } catch (e) {

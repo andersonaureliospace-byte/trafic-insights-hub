@@ -286,7 +286,8 @@ o orçamento de Conjuntos com CPA bom nos últimos 3 dias (06h) e avisar
 (07h/09h15/13h) — as 3 primeiras usam a MESMA lógica/limite das telas de
 Análise e Acompanhamento (nada de critério novo), e cada uma também ganhou
 um botão manual em Mensagens → Avisos. Veja o ⚠️ acima sobre os detalhes
-importantes dessas 4. O aviso de investimento baixo (Etapa 54) ficou mais
+importantes dessas 4 (a automação de aumento de orçamento foi removida na
+Etapa 58, mais abaixo — hoje restam 3). O aviso de investimento baixo (Etapa 54) ficou mais
 rigoroso: em vez de só entrar passando de R$10 de diferença, agora entra
 qualquer conta com orçamento diário menor que o Ritmo, mesmo que seja por
 centavos — sem mudar a cor da coluna Ritmo nem o filtro Investimento de
@@ -303,16 +304,21 @@ de ação em massa de Análise, reduzindo o risco de rate limit em listas
 grandes; (2) o aviso de investimento baixo voltou a usar a banda de R$10
 (estava sem banda desde a Etapa 54) — diferenças pequenas (R$0,70 a R$4,72,
 nos exemplos que motivaram o pedido) não entram mais no aviso; e (3) o
-aumento automático de orçamento ganhou um teto de R$25,00: se o orçamento
-diário do conjunto já estiver em R$25 ou mais, a automação simplesmente
-não aumenta mais aquele conjunto (comparação sempre com o orçamento de
-verdade, buscado na Meta na hora — nada guardado em banco). A tela Visão
+aumento automático de orçamento ganhou um teto de R$25,00 (removida na
+Etapa 58, ver abaixo — histórico mantido aqui). A tela Visão
 Geral (Etapa 57) ganhou uma busca por nome de Campanha/Conjunto/Anúncio —
 o campo de busca ignora a conta selecionada no seletor ao lado e pesquisa
 sempre em TODAS as "Contas exibidas" de uma vez (fixo, sem opção de
 escolher uma conta ou algumas), mostrando de qual conta é cada resultado.
 Veja o ⚠️ mais abaixo sobre como isso funciona sem sobrecarregar a Meta de
-chamadas a cada letra digitada.
+chamadas a cada letra digitada. A automação de aumento automático de
+orçamento (Etapa 53, com teto de R$25 desde a Etapa 56) foi removida na
+Etapa 58, por pedido — não fazia sentido pra como as contas costumam ser
+geridas na prática. O botão manual "Aumentar +R$2,50" de Análise (aba
+"abaixo da meta") continuou existindo normalmente; na Etapa 59, ganhou de
+volta o mesmo teto de R$25,00 que a automação tinha — se o orçamento
+diário atual do conjunto já estiver em R$25 ou mais, o botão simplesmente
+não aumenta mais aquele conjunto (mensagem de aviso em vez de erro).
 
 ⚠️ **Antes de testar a coluna "Otimizado" (Acompanhamento)**: essa entrega
 inclui as migrações `0010_client_optimized.sql` e `0011_drop_optimized_reason.sql`
@@ -654,50 +660,28 @@ esperado, não um bug. Se nenhuma conta ficar acima do limite, nenhuma
 mensagem é enviada (mesmo comportamento dos outros dois avisos — nunca
 manda um "está tudo bem").
 
-⚠️ **Sobre as 4 automações novas de Mensagens → Avisos (Etapa 53)**: pausar
-Criativos, pausar Conjuntos, aumentar orçamento e avisar investimento baixo
-— todas reaproveitam EXATAMENTE a mesma lógica/limite que a tela de Análise
-e Acompanhamento já usam (veja `lib/meta/analysis-thresholds.ts` e
-`lib/meta/ritmo.ts`), só que rodando sozinhas via hook do n8n em vez de
-esperar você clicar. Pontos importantes:
-- As 3 primeiras (Criativos, Conjuntos, Orçamento) usam período FIXO —
-  "últimos 3 dias + hoje" pras duas de pausa, "últimos 3 dias" (sem hoje)
-  pro aumento de orçamento — independente de qualquer filtro escolhido em
-  alguma tela; foi a leitura mais direta do pedido, ajustável se não for
-  isso.
-- Diferente de Saldo/Pagamento/CPA/Investimento baixo (que só avisam), as 3
-  de pausa/aumento **JÁ EXECUTAM A AÇÃO DE VERDADE** assim que rodam — não
-  existe um modo "só mostrar o que aconteceria". Por isso, na tela (Mensagens
-  → Avisos), essas 3 não carregam nada sozinhas ao abrir a aba — só quando
-  você clica em "Verificar e pausar/aumentar agora", pro clique não pausar
-  nada sem querer. Mesmo espírito que Auditoria → Erros de veiculação já
-  usava.
-- Nenhuma das 4 tem cooldown de TEMPO — quem controla a frequência é o
+⚠️ **Sobre as automações de Mensagens → Avisos (Etapa 53, uma removida na
+Etapa 58)**: nasceram 4 — pausar Criativos, pausar Conjuntos, aumentar
+orçamento e avisar investimento baixo —, todas reaproveitando EXATAMENTE a
+mesma lógica/limite que a tela de Análise e Acompanhamento já usam (veja
+`lib/meta/analysis-thresholds.ts` e `lib/meta/ritmo.ts`), rodando sozinhas
+via hook do n8n em vez de esperar você clicar. A de aumentar orçamento foi
+removida na Etapa 58 (histórico dela fica só no changelog, mais abaixo) —
+hoje restam 3: pausar Criativos, pausar Conjuntos e avisar investimento
+baixo. Pontos importantes:
+- As 2 de pausa (Criativos e Conjuntos) usam período FIXO — "últimos 3 dias
+  + hoje", independente de qualquer filtro escolhido em alguma tela; foi a
+  leitura mais direta do pedido, ajustável se não for isso.
+- Diferente de Saldo/Pagamento/CPA/Investimento baixo (que só avisam), as 2
+  de pausa **JÁ EXECUTAM A AÇÃO DE VERDADE** assim que rodam — não existe
+  um modo "só mostrar o que aconteceria". Por isso, na tela (Mensagens →
+  Avisos), essas 2 não carregam nada sozinhas ao abrir a aba — só quando
+  você clica em "Verificar e pausar agora", pro clique não pausar nada sem
+  querer. Mesmo espírito que Auditoria → Erros de veiculação já usava.
+- Nenhuma das 3 tem cooldown de TEMPO — quem controla a frequência é o
   próprio agendamento do n8n. Pra Criativos e Conjuntos isso não é
   problema, porque quem já foi pausado deixa de ser ATIVO e some da lista
-  da próxima rodada (sem re-pausa nem re-aviso do mesmo item). Pro aumento
-  de orçamento, um conjunto com CPA bom continua levando +R$2,50 TODO dia
-  que a automação rodar (não guarda "já aumentei esse hoje") — é assim que
-  "aumentar todo dia enquanto o CPA continuar bom" foi entendido do pedido
-  — desde a Etapa 56, existe um teto de R$25 no orçamento diário: ver
-  bullet dedicado logo abaixo.
-- Conjunto sem orçamento próprio pra aumentar (orçamento na campanha/CBO,
-  ou orçamento vitalício/lifetime) simplesmente falha silenciosamente nessa
-  automação (mesmo erro que o botão manual de Análise já dava) — não entra
-  no aviso de WhatsApp, só aparece como "Falha" na tabela da tela.
-- **Teto de R$25,00 no aumento automático (Etapa 56)**: se o orçamento
-  diário ATUAL do conjunto já estiver em R$25,00 ou mais, essa automação
-  não aumenta mais aquele conjunto — comparação sempre com o orçamento de
-  verdade, buscado na Meta na hora da checagem (nada guardado em banco),
-  então também vale pra um conjunto que já nascesse com orçamento acima de
-  R$25 (nunca seria aumentado por aqui). Se faltar pouco pro teto, o último
-  aumento sai menor que R$2,50, só o suficiente pra fechar exatamente em
-  R$25,00. Ao bater o teto, o conjunto simplesmente para de ser aumentado
-  — entra como "Falha" na tabela da tela (motivo próprio, "orçamento já em
-  R$25 ou mais"), sem chamar a Meta de novo, e sem entrar no aviso de
-  WhatsApp (mesmo tratamento dos outros casos de falha que não são erro de
-  verdade). O teto só vale pra essa automação — o botão manual "Aumentar
-  +R$2,50" de Análise continua sem limite nenhum, do jeito que sempre foi.
+  da próxima rodada (sem re-pausa nem re-aviso do mesmo item).
 - O aviso de Investimento baixo usa a mesma conta de Ritmo do filtro
   Investimento de Acompanhamento. Histórico: nasceu (Etapa 53) com a mesma
   banda de R$10 do filtro de Acompanhamento; a Etapa 54 tirou essa banda
@@ -734,6 +718,35 @@ a tabela ganha uma coluna extra "Conta" nesse modo, pra saber de qual
 conta é cada linha; o link "Abrir no Facebook" do cabeçalho (que aponta
 pra uma conta só) fica escondido enquanto há busca ativa, já que não faria
 sentido nesse modo.
+
+⚠️ **Remoção do aumento automático de orçamento (Etapa 58)**: a automação
+que aumentava sozinha, 1x/dia, o orçamento diário de todo conjunto com CPA
+bom (nascida na Etapa 53, com teto de R$25 desde a Etapa 56) foi removida
+por pedido explícito — não sobrou nenhum jeito de aumentar orçamento
+automaticamente pelo n8n. Ficam removidos: a seção "Conjuntos com CPA bom
+(aumento automático de orçamento)" de Mensagens → Avisos, a rota
+`/api/alerts/budget-increase` (botão manual daquela seção) e o hook público
+`/api/public/hooks/increase-budget-tick` (chamado pelo n8n). **Ação
+necessária no seu n8n**: apague (ou desative) o workflow/node que chama
+`increase-budget-tick` — como a rota não existe mais no app, ele vai passar
+a dar 404 se continuar agendado. O botão manual "Aumentar +R$2,50" de
+Painel → Análise (aba "abaixo da meta") CONTINUA existindo — só a
+automação sozinha via n8n saiu, não a forma manual de aumentar orçamento
+um conjunto de cada vez (o teto de R$25 do botão manual mudou de novo
+logo em seguida, ver ⚠️ da Etapa 59 abaixo).
+
+⚠️ **Teto de R$25 de volta no botão manual de aumento (Etapa 59)**: a
+Etapa 58 tinha removido o teto de R$25 junto com a automação, deixando o
+botão manual "Aumentar +R$2,50" de Análise sem limite nenhum — pedido
+seguinte foi pra manter esse teto especificamente na ação manual. Hoje
+`increaseAdSetDailyBudget` (`lib/meta/budget.ts`) sempre compara o
+orçamento diário ATUAL do conjunto (buscado na Meta na hora, nada
+guardado em banco) contra R$25: se já estiver em R$25 ou mais, o botão
+não aumenta mais aquele conjunto (mostra um aviso em vez de aumentar); se
+faltar menos de R$2,50 pra chegar em R$25, aumenta só o que falta em vez
+do fixo R$2,50. Vale tanto pro botão individual quanto pro "Aumentar
+todos os orçamentos listados" (em massa) — cada conjunto é conferido na
+hora dele.
 
 ⚠️ **Sobre a automação "Atualização de status em massa" (Etapa 55)**: pensada
 pra rodar segunda e quinta de madrugada (01h sugerido no n8n), reaproveita
@@ -964,9 +977,8 @@ minus o criativo ruim) continua 100% manual, no Gerenciador de Anúncios.
     depois `0011_drop_optimized_reason.sql` e depois
     `0012_payment_alerts.sql`, nessa ordem (a coluna "Otimizado" de
     Acompanhamento e o controle de reaviso da nova checagem de erro no
-    pagamento). Não tem migração nova na Etapa 56 — o teto de R$25 do
-    aumento automático de orçamento só compara com o orçamento já existente
-    na Meta, sem guardar nada novo no Supabase.
+    pagamento). Não tem migração nova desde então (Etapas 55-58 não mexem
+    em schema).
     (Se preferir usar a CLI do Supabase depois, essa mesma pasta já está no
     formato que `supabase db push` espera — ele aplica só as migrações que
     ainda não rodaram.)
@@ -1049,28 +1061,28 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
     `https://SEU_DOMINIO/api/public/hooks/creatives-pause-tick` com o mesmo
     header `x-webhook-secret`. Isso pausa sozinho todo criativo acima da
     meta (Mensagens → Avisos, seção "Criativos acima da meta") e avisa o
-    grupo de WhatsApp. Veja o ⚠️ mais abaixo sobre essas 4 automações
-    novas.
+    grupo de WhatsApp. Veja o ⚠️ mais abaixo sobre essas automações (eram
+    4, uma foi removida na Etapa 58 — restam 3).
 12. (Etapa 53) Crie um sétimo workflow igual ao de cima, mas 5 minutos
     depois — às 05h05, 09h05, 13h05 e 23h05 — chamando `POST` para
     `https://SEU_DOMINIO/api/public/hooks/adsets-pause-tick`. Isso pausa
     sozinho todo conjunto acima da meta (seção "Conjuntos acima da meta").
-13. (Etapa 53) Crie um oitavo workflow com **Schedule Trigger** pra rodar
-    1x por dia, às 06h, chamando `POST` para
-    `https://SEU_DOMINIO/api/public/hooks/increase-budget-tick`. Isso
-    aumenta sozinho o orçamento diário (R$2,50 fixo) de todo conjunto com
-    CPA bom nos últimos 3 dias (seção "Conjuntos com CPA bom").
-14. (Etapa 53) Crie um nono workflow com **Schedule Trigger** pra rodar de
+13. (Etapa 53) Crie um oitavo workflow com **Schedule Trigger** pra rodar de
     segunda a sexta, às 07h, 09h15 e 13h, chamando `POST` para
     `https://SEU_DOMINIO/api/public/hooks/low-investment-tick`. Isso só
     avisa (nunca muda nada) quais contas estão com investimento baixo
     (seção "Investimento baixo").
-15. (Etapa 55) Crie um décimo workflow com **Schedule Trigger** pra rodar
+14. (Etapa 55) Crie um nono workflow com **Schedule Trigger** pra rodar
     segunda e quinta, às 01h, chamando `POST` para
     `https://SEU_DOMINIO/api/public/hooks/bulk-status-tick`. Isso
     reclassifica sozinho o status de toda conta exibida (CPA dos últimos 3
     dias, sem hoje), reordena o quadro de Acompanhamento e avisa só quem
     mudou (seção "Atualização de status em massa").
+
+⚠️ (Etapa 58) Se você já tinha criado o workflow do
+`increase-budget-tick` (antigo passo 13, "oitavo workflow"), apague ou
+desative esse workflow no n8n — a rota não existe mais no app e vai passar
+a responder 404 se continuar agendada.
 
 ## Estrutura
 
@@ -1106,7 +1118,6 @@ app/
     alerts/cpa      → status de CPA acima da meta ontem + "Verificar agora" (Mensagens > Avisos, Etapa 48)
     alerts/creatives-pause → pausa (de verdade) Criativos acima da meta + aviso (Etapa 53, sem GET/preview)
     alerts/adsets-pause    → pausa (de verdade) Conjuntos acima da meta + aviso (Etapa 53, sem GET/preview)
-    alerts/budget-increase → aumenta (de verdade) orçamento de Conjuntos com CPA bom + aviso (Etapa 53, sem GET/preview)
     alerts/low-investment  → status de investimento baixo (Ritmo) + "Verificar agora" (Etapa 53)
     alerts/bulk-status → reclassifica (de verdade) todas as contas exibidas + reordena o quadro + aviso (Etapa 55, sem GET/preview)
     priority-labels → rótulos/cores de prioridade personalizados (Configurações > Status; GET usa lib/priority-labels.ts desde a Etapa 55)
@@ -1118,7 +1129,6 @@ app/
     public/hooks/cpa-alert-tick          → idem, avisa CPA acima da meta ontem (Etapa 48, sugerido 1x/dia às 07h)
     public/hooks/creatives-pause-tick    → idem, pausa Criativos acima da meta (Etapa 53, sugerido 05h/09h/13h/23h)
     public/hooks/adsets-pause-tick       → idem, pausa Conjuntos acima da meta (Etapa 53, sugerido 05h05/09h05/13h05/23h05)
-    public/hooks/increase-budget-tick    → idem, aumenta orçamento de Conjuntos com CPA bom (Etapa 53, sugerido 1x/dia às 06h)
     public/hooks/low-investment-tick     → idem, avisa investimento baixo (Etapa 53, sugerido seg-sex 07h/09h15/13h)
     public/hooks/bulk-status-tick        → idem, reclassifica status + reordena o quadro (Etapa 55, sugerido seg/qui 01h)
     selected-accounts, account-bindings, account-bindings/reorder,
@@ -1148,17 +1158,19 @@ lib/meta/
   analysis-thresholds.ts → limites de "acima"/"abaixo da meta" de Conjuntos e
                          Criativos (Etapa 53) — extraídos pra serem reaproveitados
                          tanto pela tela de Análise quanto pelas automações de
-                         pausa/aumento de orçamento, sem duplicar o cálculo
+                         pausa, sem duplicar o cálculo
   ritmo.ts      → cálculo do Ritmo + banda de R$10 (Etapa 53) — extraído pra ser
                   reaproveitado tanto pela tela de Acompanhamento quanto pelo
                   aviso automático de investimento baixo
-  budget.ts     → aumenta o orçamento diário de UM conjunto em R$2,50 fixo;
-                  desde a Etapa 56 aceita um `capCents` opcional (só a
-                  automação passa) — se o orçamento diário atual do
-                  conjunto já bater esse teto, não aumenta mais; senão
-                  aumenta R$2,50, ou menos se faltar pouco pro teto.
-                  AUTO_INCREASE_CAP_CENTS = R$25, o teto usado pela automação
-                  (o botão manual de Análise não passa `capCents`, sem teto)
+  budget.ts     → aumenta o orçamento diário de UM conjunto em R$2,50 fixo,
+                  com teto de R$25 — usado só pelo botão manual "Aumentar
+                  +R$2,50" de Análise (aba "abaixo da meta"), já que a
+                  automação que também usava essa função foi removida na
+                  Etapa 58. O teto (R$25) tinha sido criado na Etapa 56 só
+                  pra automação, saiu junto com ela na Etapa 58 e voltou na
+                  Etapa 59, dessa vez fixo pro próprio botão manual: se o
+                  orçamento diário atual do conjunto já estiver em R$25 ou
+                  mais, não aumenta mais.
   ads-manager-link.ts → monta a URL do Gerenciador de Anúncios (campanhas) e a
                          de Cobranças e Pagamentos (billing hub, usada só no
                          Controle de Saldo) a partir do ID da conta e do
@@ -1209,12 +1221,6 @@ lib/alerts/
   adsets-pause.ts → Etapa 53: idem, mas pra Conjuntos acima da meta (inclui
                   "sem anúncio ativo") — hook público adsets-pause-tick;
                   mesmo ajuste de pausa sequencial da Etapa 56
-  increase-budget-auto.ts → Etapa 53: acha Conjuntos com CPA bom nos últimos
-                  3 dias (mesma lógica de Análise "abaixo da meta") e JÁ
-                  AUMENTA o orçamento (R$2,50 fixo, increaseAdSetDailyBudget)
-                  — hook público increase-budget-tick; desde a Etapa 56, não
-                  aumenta mais um conjunto cujo orçamento diário já esteja em
-                  R$25 ou mais — ver ⚠️
   low-investment.ts → Etapa 53 (limite tirado na 54, devolvido na 56): acha
                   contas com orçamento diário atual mais de R$10 MENOR que o
                   Ritmo (RITMO_BAND) e SÓ AVISA — hook público
@@ -1595,6 +1601,19 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     TODAS as "Contas exibidas" de uma vez, fixo, sem opção de escolher uma
     conta ou algumas; digitar mais letras não refaz a chamada à Meta, só
     refina localmente o que já foi buscado. Veja o ⚠️ acima
+52. ~~Remoção do aumento automático de orçamento (Etapa 58)~~ ✅ — a
+    automação que aumentava sozinha, 1x/dia via n8n, o orçamento diário de
+    todo conjunto com CPA bom (nascida na Etapa 53, com teto de R$25 desde
+    a Etapa 56) foi removida por pedido — saiu a seção "Conjuntos com CPA
+    bom" de Mensagens → Avisos, a rota `alerts/budget-increase` e o hook
+    `public/hooks/increase-budget-tick`. O botão manual "Aumentar +R$2,50"
+    de Análise (aba "abaixo da meta") continuou existindo. Veja o ⚠️ acima
+53. ~~Teto de R$25 de volta no botão manual de aumento (Etapa 59)~~ ✅ — a
+    remoção da Etapa 58 tinha deixado o botão manual "Aumentar +R$2,50" de
+    Análise sem teto nenhum; pedido explícito pra manter o teto de R$25,00
+    (o mesmo que a automação tinha) só na ação manual — hoje o botão nunca
+    aumenta um conjunto cujo orçamento diário já esteja em R$25 ou mais.
+    Veja o ⚠️ acima
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1632,8 +1651,11 @@ via n8n, o aviso de investimento baixo sem banda de tolerância, a
 automação de atualização de status em massa com reordenação do quadro, os
 três ajustes de produção da Etapa 56 — pausas automáticas sequenciais com
 3s de intervalo, banda de R$10 de volta no aviso de investimento baixo, e
-teto de R$25 no orçamento diário do aumento automático — e a busca por
-nome em Visão Geral sempre em todas as contas exibidas)
+teto de R$25 no orçamento diário do aumento automático —, a busca por
+nome em Visão Geral sempre em todas as contas exibidas (Etapa 57), a
+remoção do próprio aumento automático de orçamento (Etapa 58, mantendo só
+o botão manual de Análise) e o teto de R$25 voltando pra esse botão
+manual (Etapa 59))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
