@@ -318,7 +318,12 @@ geridas na prática. O botão manual "Aumentar +R$2,50" de Análise (aba
 "abaixo da meta") continuou existindo normalmente; na Etapa 59, ganhou de
 volta o mesmo teto de R$25,00 que a automação tinha — se o orçamento
 diário atual do conjunto já estiver em R$25 ou mais, o botão simplesmente
-não aumenta mais aquele conjunto (mensagem de aviso em vez de erro).
+não aumenta mais aquele conjunto (mensagem de aviso em vez de erro). A
+tabela de Acompanhamento ganhou uma coluna "Leads" (Etapa 60), entre CPA
+e Valor usado — é o número de conversas iniciadas (o mesmo "Resultado" do
+Gerenciador de Anúncios, campo `results` da Meta), o mesmo dado que já
+alimentava o cálculo do CPA dessa tabela, só que agora também exibido
+como número.
 
 ⚠️ **Antes de testar a coluna "Otimizado" (Acompanhamento)**: essa entrega
 inclui as migrações `0010_client_optimized.sql` e `0011_drop_optimized_reason.sql`
@@ -1614,6 +1619,11 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     (o mesmo que a automação tinha) só na ação manual — hoje o botão nunca
     aumenta um conjunto cujo orçamento diário já esteja em R$25 ou mais.
     Veja o ⚠️ acima
+54. ~~Coluna Leads em Acompanhamento (Etapa 60)~~ ✅ — nova coluna entre
+    CPA e Valor usado com o número de conversas iniciadas (campo
+    `results` da Meta, o mesmo "Resultado" do Gerenciador de Anúncios) —
+    dado que já existia (é a base do cálculo do CPA), só não aparecia
+    como número na tabela
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1655,7 +1665,8 @@ teto de R$25 no orçamento diário do aumento automático —, a busca por
 nome em Visão Geral sempre em todas as contas exibidas (Etapa 57), a
 remoção do próprio aumento automático de orçamento (Etapa 58, mantendo só
 o botão manual de Análise) e o teto de R$25 voltando pra esse botão
-manual (Etapa 59))
+manual (Etapa 59) e a coluna Leads/conversas iniciadas em Acompanhamento
+(Etapa 60))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

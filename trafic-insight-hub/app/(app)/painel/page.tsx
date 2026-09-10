@@ -684,6 +684,12 @@ export default function PainelPage() {
                           CPA ideal
                         </th>
                         <th className="px-4 py-2 text-right font-medium">CPA</th>
+                        <th
+                          className="px-4 py-2 text-right font-medium"
+                          title="Conversas iniciadas — o mesmo Resultado que aparece no Gerenciador de Anúncios, campo results da Meta (o que também gera o CPA)"
+                        >
+                          Leads
+                        </th>
                         <th className="px-4 py-2 text-right font-medium">Valor usado</th>
                         <th className="px-4 py-2 text-right font-medium">Invest. diário</th>
                         <th
@@ -810,6 +816,7 @@ export default function PainelPage() {
                                 );
                               })()}
                             </td>
+                            <td className="px-4 py-2 text-right tabular-nums">{insight?.results ?? "—"}</td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
                             <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
                             <td
