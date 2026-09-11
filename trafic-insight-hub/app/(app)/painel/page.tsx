@@ -12,6 +12,7 @@ import { VisaoGeral } from "@/components/painel/visao-geral";
 import { AnaliseTab } from "@/components/painel/analise-tab";
 import { ClientesTab } from "@/components/painel/clientes-tab";
 import { EvolucaoTab } from "@/components/painel/evolucao-tab";
+import { MonitorCpaTab } from "@/components/painel/monitor-cpa-tab";
 import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
 import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { EditClientDialog } from "@/components/painel/edit-client-dialog";
@@ -124,6 +125,7 @@ const TABS = [
   { id: "acompanhamento", label: "Acompanhamento" },
   { id: "analise", label: "Análise" },
   { id: "evolucao", label: "Evolução" },
+  { id: "monitor-cpa", label: "Monitor de CPA" },
   { id: "visao-geral", label: "Visão Geral" },
   { id: "saldo", label: "Controle de Saldo" },
   { id: "clientes", label: "Clientes" },
@@ -848,6 +850,14 @@ export default function PainelPage() {
 
             {tab === "evolucao" ? (
               <EvolucaoTab
+                accounts={selectedAccounts}
+                clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
+                cpaTargets={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.binding?.cpa_target ?? null]))}
+              />
+            ) : null}
+
+            {tab === "monitor-cpa" ? (
+              <MonitorCpaTab
                 accounts={selectedAccounts}
                 clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
                 cpaTargets={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.binding?.cpa_target ?? null]))}

@@ -6,8 +6,8 @@ Vercel, com Supabase, n8n e uazapi (WhatsApp).
 
 Estado atual: **etapas 1 e 2 do plano concluídas** — base do Supabase/login
 único, e o Painel já fecha 100%, agora organizado em subgrupos na lateral
-esquerda (Acompanhamento, Evolução, Clientes, Controle de Saldo, Visão
-Geral, Análise — a aba "Geral", que só mostrava 3 KPIs soltos e duplicava a
+esquerda (Acompanhamento, Evolução, Monitor de CPA, Clientes, Controle de
+Saldo, Visão Geral, Análise — a aba "Geral", que só mostrava 3 KPIs soltos e duplicava a
 "Visão Geral", foi removida; a aba que abre por padrão agora é Visão Geral)
 — cada um só
 busca dado do Meta enquanto estiver ativo, pra não gastar requisição à toa
@@ -1084,6 +1084,16 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
     dias, sem hoje), reordena o quadro de Acompanhamento e avisa só quem
     mudou (seção "Atualização de status em massa").
 
+15. (Etapa 61) Crie um décimo workflow no n8n com **Schedule Trigger** pra
+    rodar 1x por dia, às 07h10 (horário de Brasília — 5 minutos depois do
+    `cpa-alert-tick` do passo 9, mesmo motivo de esperar a Meta terminar
+    de consolidar a atribuição de ontem) → **HTTP Request** `POST` para
+    `https://SEU_DOMINIO/api/public/hooks/cpa-board-cache-tick` com o
+    mesmo header `x-webhook-secret`. Isso recalcula sozinho o cache de
+    "Ontem" e "Últimos 3 dias" do Monitor de CPA (Painel). Sem esse
+    workflow, esses dois períodos só atualizam quando você clicar em
+    "Calcular agora" na própria tela.
+
 ⚠️ (Etapa 58) Se você já tinha criado o workflow do
 `increase-budget-tick` (antigo passo 13, "oitavo workflow"), apague ou
 desative esse workflow no n8n — a rota não existe mais no app e vai passar
@@ -1097,8 +1107,9 @@ app/
   c/[token]/      → CRM público de UMA instância (kanban somente leitura), sem login
   (app)/                                                     → área logada
     painel/         → subgrupos na lateral: Acompanhamento, Evolução,
-                      Clientes, Controle de Saldo, Visão Geral, Análise —
-                      cada um só busca no Meta enquanto está ativo
+                      Monitor de CPA, Clientes, Controle de Saldo, Visão
+                      Geral, Análise — cada um só busca no Meta enquanto
+                      está ativo
     mensagens/      → abas Envio, Relatórios e Avisos, todas funcionais
     auditoria/      → Localização e Erros de veiculação, funcionais
     crm/            → instâncias, kanban, detalhe do lead — funcional
@@ -1106,6 +1117,8 @@ app/
   api/
     meta/credentials, meta/accounts, meta/insights, meta/breakdown,
     meta/status, meta/daily-cpa
+    meta/cpa-board-cache, meta/cpa-board-cache/refresh → leitura do cache
+                      e "Calcular agora" do Monitor de CPA (Etapa 61)
     meta/payment-type  → puxa Pré-paga/Pós-paga da Meta, só p/ conta sem Tipo salvo (Controle de Saldo)
     analysis/creatives  → custo por conversa iniciada acima da Meta CPA (Painel > Análise)
     analysis/adsets     → conjuntos acima/abaixo da meta, com destaque de 7 dias (Painel > Análise)
@@ -1136,6 +1149,7 @@ app/
     public/hooks/adsets-pause-tick       → idem, pausa Conjuntos acima da meta (Etapa 53, sugerido 05h05/09h05/13h05/23h05)
     public/hooks/low-investment-tick     → idem, avisa investimento baixo (Etapa 53, sugerido seg-sex 07h/09h15/13h)
     public/hooks/bulk-status-tick        → idem, reclassifica status + reordena o quadro (Etapa 55, sugerido seg/qui 01h)
+    public/hooks/cpa-board-cache-tick    → idem, recalcula o cache de Ontem/Últimos 3 dias do Monitor de CPA (Etapa 61, sugerido 1x/dia às 07h10)
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
     painel-ui-state  → lembra a aba ativa + filtros de Acompanhamento/Análise/
@@ -1157,6 +1171,9 @@ lib/meta/
                   date_preset "today" pra não sumir quando a quebra por dia
                   não traz o dia em andamento; getAccountsMonthCpa para o
                   CPA fixo do mês atual, mesma agregação do Ritmo)
+  cpa-board-cache.ts → cache diário (em meta_insights_cache) de Ontem/Últimos
+                  3 dias pro Monitor de CPA (Etapa 61) — "Hoje" e demais
+                  períodos com o dia em andamento continuam sempre ao vivo
   creative-analysis.ts → custo por conversa iniciada por anúncio, com status (Painel > Análise)
   adset-cost-analysis.ts → agrega os anúncios de creative-analysis.ts por conjunto,
                          com o próprio "sem anúncio ativo" de cada um (Etapa 46)
@@ -1624,6 +1641,24 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     `results` da Meta, o mesmo "Resultado" do Gerenciador de Anúncios) —
     dado que já existia (é a base do cálculo do CPA), só não aparecia
     como número na tabela
+55. ~~Nova aba Monitor de CPA (Etapa 61)~~ ✅ — quadro exclusivo de CPA em
+    Painel, um gráfico de barras por cliente sempre ordenado do pior CPA
+    pro melhor (maior diferença acima do ideal primeiro), com o CPA ideal
+    marcado dentro da própria barra (tracinho + valor) e a diferença
+    logo depois. Cor por faixa: vermelho acima de R$2,00 do ideal
+    (Crítico), laranja até R$2,00 acima (Atenção), verde dentro da meta.
+    Filtro de período (Hoje / Ontem / Hoje e ontem / Últimos 3 dias /
+    Este mês): "Hoje", "Hoje e ontem" e "Este mês" mudam a cada minuto e
+    por isso são sempre buscados ao vivo na Meta, com um botão
+    "Atualizar" manual; "Ontem" e "Últimos 3 dias" são dias fechados (não
+    mudam mais depois que o dia vira), então ficam guardados num cache
+    (reaproveitando a tabela `meta_insights_cache`, que já existia no
+    schema sem uso) recalculado 1x por dia pelo novo hook
+    `public/hooks/cpa-board-cache-tick` — sugerido às 07h10 no n8n, ver
+    passo 15 da seção de deploy. Um botão "Calcular agora" na tela força
+    esse cálculo na hora, útil só pra destravar o primeiro uso antes do
+    hook ter rodado pela primeira vez. Só entram no quadro contas com CPA
+    ideal cadastrado (Painel → Clientes)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1665,8 +1700,9 @@ teto de R$25 no orçamento diário do aumento automático —, a busca por
 nome em Visão Geral sempre em todas as contas exibidas (Etapa 57), a
 remoção do próprio aumento automático de orçamento (Etapa 58, mantendo só
 o botão manual de Análise) e o teto de R$25 voltando pra esse botão
-manual (Etapa 59) e a coluna Leads/conversas iniciadas em Acompanhamento
-(Etapa 60))
+manual (Etapa 59), a coluna Leads/conversas iniciadas em Acompanhamento
+(Etapa 60) e a nova aba Monitor de CPA com cache diário de Ontem/Últimos 3
+dias (Etapa 61))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
