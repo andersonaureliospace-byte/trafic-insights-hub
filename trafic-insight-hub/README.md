@@ -1723,6 +1723,20 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     `manual_check_interval_days`, `manual_check_repeat`,
     `manual_check_next_at`, `manual_check_last_verified_at`,
     `manual_check_alert_sent_at`)
+58. ~~Campo de busca em Personalizar alertas~~ ✅ — o modal de Personalizar
+    alertas (Controle de Saldo) ganhou um campo no topo pra buscar por nome
+    do cliente, nome da conta na Meta ou ID da conta; grupo com resultado
+    abre sozinho enquanto a busca está ativa
+59. ~~Novo filtro "Este mês, até ontem" (Etapa 64)~~ ✅ — mesma ideia do
+    "Mês atual" que já existia, mas sem o dia de hoje (que ainda está em
+    andamento): do dia 01 do mês corrente até ontem, os dois já fechados.
+    Entra na lista compartilhada `DATE_PRESETS`
+    (`this_month_until_yesterday`), então aparece em toda tela que usa esse
+    filtro — Acompanhamento (pedido original), Análise, Visão Geral e
+    modelos de Relatório. Calculado como um `time_range` (dia 01 do mês até
+    ontem, fuso America/Sao_Paulo), igual ao "Ontem e hoje"; no dia 1º do
+    mês (quando "ontem" cairia no mês anterior) usa só o dia 01 em vez de
+    mandar um intervalo invertido pra Meta
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1767,9 +1781,10 @@ o botão manual de Análise) e o teto de R$25 voltando pra esse botão
 manual (Etapa 59), a coluna Leads/conversas iniciadas em Acompanhamento
 (Etapa 60), a nova aba Monitor de CPA com cache diário de Ontem/Últimos 3
 dias (Etapa 61), o seletor de conjuntos em Análise "abaixo da meta"
-(Etapa 62) e o Controle de Saldo virando quadro de monitoramento orientado
-a alerta, com os avisos novos de sexta-feira e verificação manual
-(Etapa 63))
+(Etapa 62), o Controle de Saldo virando quadro de monitoramento orientado
+a alerta com os avisos novos de sexta-feira e verificação manual mais o
+campo de busca em Personalizar alertas (Etapa 63), e o filtro "Este mês,
+até ontem" (Etapa 64))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

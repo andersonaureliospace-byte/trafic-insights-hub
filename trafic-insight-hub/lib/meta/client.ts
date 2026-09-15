@@ -12,6 +12,7 @@ export type DatePreset =
   | "last_3d_plus_today"
   | "last_7d"
   | "this_month"
+  | "this_month_until_yesterday"
   | "maximum";
 
 export type DateRangeInput = DatePreset | { since: string; until: string };
@@ -40,6 +41,17 @@ export function presetParams(preset: DateRangeInput): Record<string, string> {
     const now = new Date();
     const until = spDate(now);
     const since = spDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+    return { time_range: JSON.stringify({ since, until }) };
+  }
+  if (preset === "this_month_until_yesterday") {
+    const now = new Date();
+    const todayStr = spDate(now);
+    const since = `${todayStr.slice(0, 7)}-01`; // dia 01 do mês atual, fuso de Brasília
+    let until = spDate(new Date(now.getTime() - 24 * 60 * 60 * 1000));
+    // No dia 1º do mês, "ontem" cai no mês anterior — nesse caso não tem
+    // nenhum dia fechado ainda pra mostrar, então usa o próprio dia 1 (until
+    // >= since) em vez de mandar um intervalo invertido pra Graph API.
+    if (until < since) until = since;
     return { time_range: JSON.stringify({ since, until }) };
   }
   return { date_preset: preset };

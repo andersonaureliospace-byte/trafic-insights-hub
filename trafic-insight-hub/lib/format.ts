@@ -28,6 +28,9 @@ export const DATE_PRESETS = [
   { id: "last_3d", label: "Últimos 3 dias" },
   { id: "last_7d", label: "Últimos 7 dias" },
   { id: "this_month", label: "Mês atual" },
+  // Etapa 64: mesma ideia do "Mês atual", mas sem o dia de hoje (ainda em
+  // andamento) — do dia 01 até ontem, os dois já fechados.
+  { id: "this_month_until_yesterday", label: "Este mês, até ontem" },
 ] as const;
 
 export type PresetId = (typeof DATE_PRESETS)[number]["id"];
