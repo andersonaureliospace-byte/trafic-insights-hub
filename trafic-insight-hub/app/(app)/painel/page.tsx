@@ -62,6 +62,12 @@ interface PixRow {
   base_amount: number | null;
   notes: string | null;
   alert_threshold: number | null;
+  friday_multiplier: number | null;
+  manual_check_mode: string | null;
+  manual_check_weekday: number | null;
+  manual_check_interval_days: number | null;
+  manual_check_repeat: boolean | null;
+  manual_check_next_at: string | null;
 }
 
 type BindingPatch = Partial<Omit<AccountBinding, "ad_account_id">>;
@@ -408,6 +414,12 @@ export default function PainelPage() {
       base_amount: null,
       notes: null,
       alert_threshold: null,
+      friday_multiplier: null,
+      manual_check_mode: null,
+      manual_check_weekday: null,
+      manual_check_interval_days: null,
+      manual_check_repeat: true,
+      manual_check_next_at: null,
     };
     const next = { ...current, ...patch };
     setPixAccounts((prev) => ({ ...prev, [accountId]: next }));

@@ -1048,7 +1048,10 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
    **Schedule Trigger** a cada 3-6 horas → **HTTP Request** `POST` para
    `https://SEU_DOMINIO/api/public/hooks/balance-alert-tick` com o mesmo
    header `x-webhook-secret`. Isso faz o aviso de saldo baixo em Mensagens
-   → Avisos rodar sozinho.
+   → Avisos rodar sozinho — e, desde a Etapa 63, o mesmo hook também cobre
+   o aviso de sexta-feira (saldo 2x/3x abaixo do limite) e o lembrete de
+   verificação manual do Controle de Saldo, sem precisar de nenhum workflow
+   novo no n8n.
 9. (Opcional, mas recomendado) Crie um quinto workflow no n8n com **Schedule
    Trigger** configurado pra rodar 1x por dia, às 07h (horário de Brasília)
    → **HTTP Request** `POST` para
@@ -1131,8 +1134,11 @@ app/
     crm/instances, crm/instances/[id], crm/leads, crm/leads/[id],
     crm/leads/[id]/events  → CRUD do CRM (instâncias, leads, histórico)
     reports/templates, reports/scheduled  → modelos e agendamentos de Relatórios
-    alerts/balance  → status de saldo baixo + "Verificar agora" (Mensagens > Avisos)
-    alerts/payment  → status de erro no pagamento + "Verificar agora" (Mensagens > Avisos)
+    alerts/balance  → status de saldo baixo + "Verificar agora" (Mensagens > Avisos, Controle de Saldo)
+    alerts/balance-friday → status de saldo de sexta-feira (2x/3x o limite) + "Verificar agora" (Etapa 63)
+    alerts/manual-check, alerts/manual-check/verify → status de verificação manual pendente
+                    e "Marcar como verificado" (Controle de Saldo, Etapa 63)
+    alerts/payment  → status de erro no pagamento + "Verificar agora" (Mensagens > Avisos, Controle de Saldo)
     alerts/cpa      → status de CPA acima da meta ontem + "Verificar agora" (Mensagens > Avisos, Etapa 48)
     alerts/creatives-pause → pausa (de verdade) Criativos acima da meta + aviso (Etapa 53, sem GET/preview)
     alerts/adsets-pause    → pausa (de verdade) Conjuntos acima da meta + aviso (Etapa 53, sem GET/preview)
@@ -1143,7 +1149,8 @@ app/
     public/hooks/audit-tick              → idem, roda as duas auditorias
     public/hooks/crm-lead-ingest         → idem, cria lead novo por public_token
     public/hooks/report-tick             → idem, dispara os relatórios agendados
-    public/hooks/balance-alert-tick      → idem, checa e avisa saldo baixo E erro no pagamento
+    public/hooks/balance-alert-tick      → idem, checa e avisa saldo baixo, erro no pagamento,
+                                            saldo de sexta-feira e verificação manual pendente (Etapa 63)
     public/hooks/cpa-alert-tick          → idem, avisa CPA acima da meta ontem (Etapa 48, sugerido 1x/dia às 07h)
     public/hooks/creatives-pause-tick    → idem, pausa Criativos acima da meta (Etapa 53, sugerido 05h/09h/13h/23h)
     public/hooks/adsets-pause-tick       → idem, pausa Conjuntos acima da meta (Etapa 53, sugerido 05h05/09h05/13h05/23h05)
@@ -1223,11 +1230,23 @@ lib/alerts/
                   agora" (sessão) e o hook público balance-alert-tick (service
                   role); tem cooldown de 24h por conta pra não reavisar toda
                   hora; erro no envio (WhatsApp) volta explícito em vez de
-                  ser engolido em silêncio (Etapa 38)
+                  ser engolido em silêncio (Etapa 38). Desde a Etapa 63
+                  também exporta checkFridayLowBalances: mesma ideia, mas só
+                  conta numa sexta-feira (fuso America/Sao_Paulo) e usa
+                  limite × friday_multiplier (2x ou 3x, configurado por
+                  conta) em vez do limite normal — cooldown próprio
+                  (friday_alert_sent_at), separado do saldo baixo comum
   payment.ts    → checa erro no pagamento (account_status/disable_reason da
                   Meta) em TODAS as contas vinculadas e manda o aviso pro
                   mesmo grupo — mesmo padrão de balance.ts (cooldown de 24h,
                   compartilhado entre "Verificar agora" e o hook público)
+  manual-check.ts → Etapa 63: checagem de "verificação manual" — dia fixo da
+                  semana ou "daqui X dias", não importa o tipo de conta.
+                  computeManualCheckNextAt calcula a próxima data (usado
+                  tanto ao configurar em Personalizar alertas quanto ao
+                  reagendar depois de "Marcar como verificado"); mesmo
+                  padrão de cooldown de 24h (manual_check_alert_sent_at) dos
+                  outros alertas
   cpa.ts        → Etapa 48: checa o CPA de ONTEM (getAccountsInsights, mesma
                   fonte oficial usada em Acompanhamento) de toda conta com
                   CPA ideal cadastrado, e manda UMA mensagem só, com quem
@@ -1672,6 +1691,38 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     lado do "Aumentar todos os orçamentos listados" que já existia (esse
     continua igual, ignorando a seleção). Mesma lógica de confirmação em
     dois cliques e pausa de 3s entre chamadas das outras ações em massa
+57. ~~Controle de Saldo vira quadro de monitoramento orientado a alerta
+    (Etapa 63)~~ ✅ — pedido explícito: toda "Conta exibida" continua sendo
+    monitorada sempre, mas a aba Controle de Saldo agora só lista quem está
+    pendente ou com algum aviso — conta 100% OK simplesmente não aparece.
+    Quatro tipos de monitoramento, todos por conta: (1) erro no pagamento
+    (automático pra toda conta, reaproveitando a checagem que já existia);
+    (2) saldo abaixo do limite, pré-paga/híbrida (já existia); (3) NOVO —
+    sexta-feira: pré-paga/híbrida com um multiplicador configurado (2x ou
+    3x) entra em alerta se o saldo disponível cair abaixo de limite ×
+    multiplicador, pensado pra avisar a tempo do fim de semana (só é
+    avaliado numa sexta-feira, fuso America/Sao_Paulo); (4) NOVO —
+    verificação manual: não importa o tipo de conta, dá pra agendar um
+    lembrete num dia fixo da semana ou "daqui X dias", com Repetir (o
+    lembrete volta a se repetir sozinho depois de marcado como verificado)
+    ou Pausar (fica dormente, configuração preservada, até religar). Os 3
+    campos que já existiam — "Alertar quando <", Observação e Tipo de
+    conta — foram mantidos, junto com o multiplicador de sexta e a
+    verificação manual, todos editáveis no novo botão "Personalizar
+    alertas" da aba, que abre um quadro com TODAS as contas (inclusive as
+    OK) agrupadas por tipo de pagamento, igual a tela antiga fazia sempre.
+    Quem tem uma verificação manual pendente ganha um botão "Marcar como
+    verificado" direto na lista de pendências. Os dois avisos novos também
+    saem no WhatsApp (grupo de Configurações → WhatsApp), reaproveitando o
+    MESMO hook público que já existia (`balance-alert-tick`) — não precisa
+    criar workflow novo no n8n, veja o passo 8 da seção de deploy. Nova
+    migração (`0013_saldo_alertas_avancados.sql`) acrescenta a
+    `pix_accounts`: `friday_multiplier`, `friday_alert_sent_at` (cooldown
+    de 24h próprio, separado do saldo baixo comum) e as colunas de
+    verificação manual (`manual_check_mode`, `manual_check_weekday`,
+    `manual_check_interval_days`, `manual_check_repeat`,
+    `manual_check_next_at`, `manual_check_last_verified_at`,
+    `manual_check_alert_sent_at`)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1715,8 +1766,10 @@ remoção do próprio aumento automático de orçamento (Etapa 58, mantendo só
 o botão manual de Análise) e o teto de R$25 voltando pra esse botão
 manual (Etapa 59), a coluna Leads/conversas iniciadas em Acompanhamento
 (Etapa 60), a nova aba Monitor de CPA com cache diário de Ontem/Últimos 3
-dias (Etapa 61) e o seletor de conjuntos em Análise "abaixo da meta"
-(Etapa 62))
+dias (Etapa 61), o seletor de conjuntos em Análise "abaixo da meta"
+(Etapa 62) e o Controle de Saldo virando quadro de monitoramento orientado
+a alerta, com os avisos novos de sexta-feira e verificação manual
+(Etapa 63))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
