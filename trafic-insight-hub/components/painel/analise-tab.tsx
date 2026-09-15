@@ -320,18 +320,21 @@ export function AnaliseTab({
   const [increasedIds, setIncreasedIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Etapa 42: caixa de seleção pra pausar só quem foi marcado, em vez de
-  // sempre todos os listados — só existe nas duas telas de pausar (Conjuntos
-  // e Criativos da aba "acima da meta"); "Pausar todos os listados" continua
-  // existindo do lado, sem checkbox nenhum marcado.
+  // Etapa 42: caixa de seleção pra agir só em quem foi marcado, em vez de
+  // sempre todos os listados. Existia só nas duas telas de pausar
+  // (Conjuntos e Criativos da aba "acima da meta"); Etapa 62 estendeu o
+  // mesmo seletor pra Conjuntos "abaixo da meta" (aumentar orçamento),
+  // pedido explícito pra ficar igual à tela "acima da meta". "Todos os
+  // listados" continua existindo do lado, sem checkbox nenhum marcado.
   const [selectedAdsetIds, setSelectedAdsetIds] = useState<Set<string>>(new Set());
   const [selectedCreativeIds, setSelectedCreativeIds] = useState<Set<string>>(new Set());
 
-  // Cinco ações em massa independentes: conjuntos "abaixo da meta" (aumentar
-  // orçamento); conjuntos "acima da meta" — todos listados e só selecionados
-  // (pausar); criativos "acima da meta" — todos listados e só selecionados
-  // (pausar).
+  // Seis ações em massa independentes: conjuntos "abaixo da meta" — todos
+  // listados e só selecionados (aumentar orçamento); conjuntos "acima da
+  // meta" — todos listados e só selecionados (pausar); criativos "acima da
+  // meta" — todos listados e só selecionados (pausar).
   const belowBulk = useBulkRunner<AdSetRow>();
+  const belowSelectedBulk = useBulkRunner<AdSetRow>();
   const aboveAdsetBulk = useBulkRunner<AdSetRow>();
   const aboveAdsetSelectedBulk = useBulkRunner<AdSetRow>();
   const aboveCreativeBulk = useBulkRunner<CreativeRow>();
@@ -426,6 +429,7 @@ export function AnaliseTab({
   // sem nem dar tempo do segundo clique de confirmação (bug real
   // corrigido depois de relato).
   const disarmBelow = belowBulk.disarm;
+  const disarmBelowSelected = belowSelectedBulk.disarm;
   const disarmAboveAdset = aboveAdsetBulk.disarm;
   const disarmAboveAdsetSelected = aboveAdsetSelectedBulk.disarm;
   const disarmAboveCreative = aboveCreativeBulk.disarm;
@@ -433,6 +437,7 @@ export function AnaliseTab({
 
   useEffect(() => {
     disarmBelow();
+    disarmBelowSelected();
     disarmAboveAdset();
     disarmAboveAdsetSelected();
     disarmAboveCreative();
@@ -442,6 +447,7 @@ export function AnaliseTab({
     subPanel,
     preset,
     disarmBelow,
+    disarmBelowSelected,
     disarmAboveAdset,
     disarmAboveAdsetSelected,
     disarmAboveCreative,
@@ -614,15 +620,24 @@ export function AnaliseTab({
   const aboveAdsetBulkTargets = filteredGroups.flatMap((g) => g.adsets);
   const aboveCreativeBulkTargets = filteredCreativeGroups.flatMap((g) => g.ads);
 
-  // Etapa 42: dentro dos mesmos listados acima, só quem tem a caixinha
-  // marcada — usado pelo botão "Pausar selecionados", ao lado do "Pausar
-  // todos os listados" (que continua igual, ignorando a seleção).
+  // Etapa 42 (e Etapa 62, estendido pra "abaixo da meta"): dentro dos mesmos
+  // listados acima, só quem tem a caixinha marcada — usado pelo botão
+  // "Pausar selecionados"/"Aumentar selecionados", ao lado do "Todos os
+  // listados" (que continua igual, ignorando a seleção). Mesmo Set
+  // (selectedAdsetIds) serve pras duas abas porque só uma tela de Conjuntos
+  // fica visível por vez, e a seleção já reseta sozinha a cada busca nova
+  // (loadAdsets, inclusive ao trocar de aba).
+  const belowSelectedTargets = belowBulkTargets.filter((a) => selectedAdsetIds.has(a.id));
   const aboveAdsetSelectedTargets = aboveAdsetBulkTargets.filter((a) => selectedAdsetIds.has(a.id));
   const aboveCreativeSelectedTargets = aboveCreativeBulkTargets.filter((a) => selectedCreativeIds.has(a.id));
+  const allBelowAdsetsSelected = belowBulkTargets.length > 0 && belowBulkTargets.every((a) => selectedAdsetIds.has(a.id));
   const allAdsetsSelected = aboveAdsetBulkTargets.length > 0 && aboveAdsetBulkTargets.every((a) => selectedAdsetIds.has(a.id));
   const allCreativesSelected =
     aboveCreativeBulkTargets.length > 0 && aboveCreativeBulkTargets.every((a) => selectedCreativeIds.has(a.id));
 
+  function toggleAllBelowAdsetsSelected() {
+    setSelectedAdsetIds(allBelowAdsetsSelected ? new Set() : new Set(belowBulkTargets.map((a) => a.id)));
+  }
   function toggleAllAdsetsSelected() {
     setSelectedAdsetIds(allAdsetsSelected ? new Set() : new Set(aboveAdsetBulkTargets.map((a) => a.id)));
   }
@@ -633,6 +648,7 @@ export function AnaliseTab({
   // "Ocupado" por lista — trava o botão "todos" enquanto "selecionados"
   // roda (e vice-versa), pra não disparar as duas ações em massa da mesma
   // lista ao mesmo tempo.
+  const belowBusy = belowBulk.running || belowSelectedBulk.running;
   const aboveAdsetBusy = aboveAdsetBulk.running || aboveAdsetSelectedBulk.running;
   const aboveCreativeBusy = aboveCreativeBulk.running || aboveCreativeSelectedBulk.running;
 
@@ -640,6 +656,7 @@ export function AnaliseTab({
     loading ||
     creativeLoading ||
     belowBulk.running ||
+    belowSelectedBulk.running ||
     aboveAdsetBulk.running ||
     aboveAdsetSelectedBulk.running ||
     aboveCreativeBulk.running ||
@@ -768,7 +785,7 @@ export function AnaliseTab({
           count={mode === "above" ? aboveAdsetBulkTargets.length : belowBulkTargets.length}
           verb={mode === "above" ? "Pausando" : "Aumentando"}
           bulk={mode === "above" ? aboveAdsetBulk : belowBulk}
-          disabled={mode === "above" ? aboveAdsetBusy : loading}
+          disabled={mode === "above" ? aboveAdsetBusy : belowBusy}
           onConfirm={() =>
             mode === "above"
               ? void aboveAdsetBulk.run(aboveAdsetBulkTargets, (a) => a.name, pauseOneAdSet)
@@ -780,36 +797,40 @@ export function AnaliseTab({
           verb={mode === "above" ? "conjunto(s) não pausado(s)" : "conjunto(s) não aumentado(s)"}
         />
 
-        {/* Etapa 42: pausar só quem foi marcado na caixinha — só existe no */}
-        {/* modo "acima da meta" (pausar); "abaixo da meta" não tem seleção. */}
-        {mode === "above" ? (
-          <>
-            <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-1.5 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
-              <label className="flex items-center gap-1.5">
-                <input
-                  type="checkbox"
-                  checked={allAdsetsSelected}
-                  onChange={toggleAllAdsetsSelected}
-                  disabled={aboveAdsetBusy}
-                />
-                Selecionar todos os listados
-              </label>
-            </div>
-            <BulkBar
-              label="Pausar selecionados"
-              count={aboveAdsetSelectedTargets.length}
-              verb="Pausando"
-              bulk={aboveAdsetSelectedBulk}
-              disabled={aboveAdsetBusy}
-              onConfirm={() =>
-                void aboveAdsetSelectedBulk
+        {/* Etapa 42 (e Etapa 62: estendido pra "abaixo da meta", pedido */}
+        {/* explícito pra ficar igual à tela "acima da meta") — agir só em */}
+        {/* quem foi marcado na caixinha, nas duas abas. */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-1.5 text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+          <label className="flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={mode === "above" ? allAdsetsSelected : allBelowAdsetsSelected}
+              onChange={mode === "above" ? toggleAllAdsetsSelected : toggleAllBelowAdsetsSelected}
+              disabled={mode === "above" ? aboveAdsetBusy : belowBusy}
+            />
+            Selecionar todos os listados
+          </label>
+        </div>
+        <BulkBar
+          label={mode === "above" ? "Pausar selecionados" : "Aumentar selecionados"}
+          count={mode === "above" ? aboveAdsetSelectedTargets.length : belowSelectedTargets.length}
+          verb={mode === "above" ? "Pausando" : "Aumentando"}
+          bulk={mode === "above" ? aboveAdsetSelectedBulk : belowSelectedBulk}
+          disabled={mode === "above" ? aboveAdsetBusy : belowBusy}
+          onConfirm={() =>
+            mode === "above"
+              ? void aboveAdsetSelectedBulk
                   .run(aboveAdsetSelectedTargets, (a) => a.name, pauseOneAdSet)
                   .then(() => setSelectedAdsetIds(new Set()))
-              }
-            />
-            <BulkErrorsBanner bulk={aboveAdsetSelectedBulk} verb="conjunto(s) selecionado(s) não pausado(s)" />
-          </>
-        ) : null}
+              : void belowSelectedBulk
+                  .run(belowSelectedTargets, (a) => a.name, increaseOneBudget)
+                  .then(() => setSelectedAdsetIds(new Set()))
+          }
+        />
+        <BulkErrorsBanner
+          bulk={mode === "above" ? aboveAdsetSelectedBulk : belowSelectedBulk}
+          verb={mode === "above" ? "conjunto(s) selecionado(s) não pausado(s)" : "conjunto(s) selecionado(s) não aumentado(s)"}
+        />
 
         {error ? (
           <p className="px-4 py-6 text-sm text-red-600">{error}</p>
@@ -847,7 +868,7 @@ export function AnaliseTab({
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
-                        {mode === "above" ? <th className="w-8 px-4 py-1.5"></th> : null}
+                        <th className="w-8 px-4 py-1.5"></th>
                         <th className="px-4 py-1.5 font-medium">Conjunto</th>
                         <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
                         <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
@@ -873,20 +894,18 @@ export function AnaliseTab({
                                 isGood ? GOOD_TREND_CLASS : ""
                               }`}
                             >
-                              {mode === "above" ? (
-                                <td
-                                  className="px-4 py-2"
-                                  onClick={(e) => e.stopPropagation()}
-                                  onDoubleClick={(e) => e.stopPropagation()}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedAdsetIds.has(adset.id)}
-                                    onChange={() => toggleAdsetSelected(adset.id)}
-                                    disabled={aboveAdsetBusy}
-                                  />
-                                </td>
-                              ) : null}
+                              <td
+                                className="px-4 py-2"
+                                onClick={(e) => e.stopPropagation()}
+                                onDoubleClick={(e) => e.stopPropagation()}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedAdsetIds.has(adset.id)}
+                                  onChange={() => toggleAdsetSelected(adset.id)}
+                                  disabled={mode === "above" ? aboveAdsetBusy : belowBusy || wasIncreased}
+                                />
+                              </td>
                               <td className="max-w-[260px] px-4 py-2">
                                 <div className="flex items-center gap-1.5">
                                   <span className="inline-block w-3 shrink-0 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
@@ -955,7 +974,7 @@ export function AnaliseTab({
                             </tr>
                             {isOpen ? (
                               <tr className="border-t border-zinc-100 dark:border-zinc-800/60">
-                                <td colSpan={mode === "above" ? 7 : 6} className="bg-zinc-50/60 px-4 py-2 dark:bg-zinc-800/20">
+                                <td colSpan={7} className="bg-zinc-50/60 px-4 py-2 dark:bg-zinc-800/20">
                                   {adset.ads.length === 0 ? (
                                     <p className="px-3 py-1.5 text-xs text-zinc-500 dark:text-zinc-400">
                                       Nenhum anúncio com gasto nesse conjunto no período selecionado.

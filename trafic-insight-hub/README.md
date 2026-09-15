@@ -1657,8 +1657,21 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     `public/hooks/cpa-board-cache-tick` — sugerido às 07h10 no n8n, ver
     passo 15 da seção de deploy. Um botão "Calcular agora" na tela força
     esse cálculo na hora, útil só pra destravar o primeiro uso antes do
-    hook ter rodado pela primeira vez. Só entram no quadro contas com CPA
-    ideal cadastrado (Painel → Clientes)
+    hook ter rodado pela primeira vez. Toda conta selecionada em "Contas
+    exibidas" aparece no quadro (mesmo critério das outras abas do
+    Painel); quem ainda não tem CPA ideal cadastrado (Painel → Clientes)
+    entra com a barra cinza, sem tracinho nem diferença, só mostrando o
+    CPA real — correção de um bug (Etapa 61-bis): a primeira versão só
+    mostrava quem já tinha CPA ideal, escondendo o resto, e o cache do
+    hook também só cobria essas contas; agora tanto a tela quanto o cache
+    diário cobrem toda conta exibida, com ou sem meta cadastrada
+56. ~~Seletor de conjuntos em Análise "abaixo da meta" (Etapa 62)~~ ✅ —
+    pedido explícito pra ficar igual à tela "acima da meta": agora a lista
+    de Conjuntos "abaixo da meta" também tem checkbox por linha,
+    "Selecionar todos os listados" e um botão "Aumentar selecionados", ao
+    lado do "Aumentar todos os orçamentos listados" que já existia (esse
+    continua igual, ignorando a seleção). Mesma lógica de confirmação em
+    dois cliques e pausa de 3s entre chamadas das outras ações em massa
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1701,8 +1714,9 @@ nome em Visão Geral sempre em todas as contas exibidas (Etapa 57), a
 remoção do próprio aumento automático de orçamento (Etapa 58, mantendo só
 o botão manual de Análise) e o teto de R$25 voltando pra esse botão
 manual (Etapa 59), a coluna Leads/conversas iniciadas em Acompanhamento
-(Etapa 60) e a nova aba Monitor de CPA com cache diário de Ontem/Últimos 3
-dias (Etapa 61))
+(Etapa 60), a nova aba Monitor de CPA com cache diário de Ontem/Últimos 3
+dias (Etapa 61) e o seletor de conjuntos em Análise "abaixo da meta"
+(Etapa 62))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
