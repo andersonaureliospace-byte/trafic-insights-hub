@@ -66,11 +66,24 @@ export function PersonalizarAlertasDialog({
     postpaid: true,
     own_store: true,
   });
+  const [search, setSearch] = useState("");
 
   if (!open) return null;
 
+  // Busca por nome do cliente, nome da conta na Meta, ou ID da conta —
+  // ignora acento/maiúscula. Enquanto o usuário busca, todo grupo com
+  // resultado abre sozinho, senão o filtro ficaria escondido atrás de um
+  // grupo recolhido.
+  const query = search.trim().toLocaleLowerCase("pt-BR");
+  const filteredAccounts = query
+    ? accounts.filter((acc) => {
+        const haystack = `${clientNames[acc.account_id] ?? ""} ${acc.name} ${acc.account_id}`.toLocaleLowerCase("pt-BR");
+        return haystack.includes(query);
+      })
+    : accounts;
+
   const groups: Record<string, AdAccount[]> = { prepaid: [], hybrid: [], postpaid: [], own_store: [] };
-  for (const acc of accounts) {
+  for (const acc of filteredAccounts) {
     const type = pixByAccount[acc.account_id]?.payment_type || "prepaid";
     (groups[type] ?? groups.prepaid).push(acc);
   }
@@ -91,15 +104,26 @@ export function PersonalizarAlertasDialog({
           </button>
         </div>
 
+        <div className="border-b border-zinc-200 px-5 py-3 dark:border-zinc-800">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por cliente, conta ou ID…"
+            className="w-full max-w-sm rounded-md border border-zinc-300 bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
+          />
+        </div>
+
         <div className="flex-1 overflow-auto">
           {accounts.length === 0 ? (
             <p className="px-5 py-6 text-sm text-zinc-500">Nenhuma conta selecionada.</p>
+          ) : filteredAccounts.length === 0 ? (
+            <p className="px-5 py-6 text-sm text-zinc-500">Nenhuma conta encontrada para &quot;{search}&quot;.</p>
           ) : (
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {PAYMENT_TYPES.map(({ id, label }) => {
                 const rows = groups[id] ?? [];
                 if (rows.length === 0) return null;
-                const isOpen = openGroups[id];
+                const isOpen = query ? true : openGroups[id];
                 const isFridayEligible = id === "prepaid" || id === "hybrid";
                 return (
                   <div key={id}>
