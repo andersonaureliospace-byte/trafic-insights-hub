@@ -238,12 +238,14 @@ export function ControleSaldo({
                 <th className="px-4 py-1.5 font-medium">Conta</th>
                 <th className="px-4 py-1.5 text-right font-medium">Saldo disponível</th>
                 <th className="px-4 py-1.5 font-medium">Avisos</th>
+                <th className="px-4 py-1.5 font-medium">Observação</th>
                 <th className="px-4 py-1.5 font-medium">Ação</th>
               </tr>
             </thead>
             <tbody>
               {pending.map(({ acc, reasons, hasManualDue }) => {
                 const funds = availableFunds(acc);
+                const notes = pixByAccount[acc.account_id]?.notes;
                 return (
                   <tr key={acc.id} className="border-t border-zinc-100 align-top dark:border-zinc-800/60">
                     <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">
@@ -277,6 +279,7 @@ export function ControleSaldo({
                         ))}
                       </div>
                     </td>
+                    <td className="max-w-[220px] px-4 py-2 text-zinc-600 dark:text-zinc-300">{notes || "—"}</td>
                     <td className="px-4 py-2">
                       {hasManualDue ? (
                         <button

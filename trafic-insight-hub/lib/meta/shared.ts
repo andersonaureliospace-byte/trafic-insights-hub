@@ -1,6 +1,11 @@
 // Helpers compartilhados entre insights.ts e breakdown.ts.
 
-export const isVaga = (name?: string) => !!name && /(vaga|seguidores)/i.test(name);
+// Nome mantido (isVaga) por já estar espalhado pelo código, mas o critério é
+// "campanha excluída por nomenclatura" — cobre "vaga"/"seguidores" (já
+// existia) e, desde a Etapa 65, também "[TRÁFEGO]" (com ou sem acento), a
+// pedido explícito: campanha com essa tag no nome não deve aparecer em
+// nenhuma métrica/tela do Painel, igual [VAGA] já não aparecia.
+export const isVaga = (name?: string) => !!name && /(vaga|seguidores|tr[aá]fego)/i.test(name);
 
 export const EXCLUDED_OBJECTIVES = new Set([
   "OUTCOME_AWARENESS",

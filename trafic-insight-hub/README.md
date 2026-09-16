@@ -1163,7 +1163,8 @@ app/
                        Visão Geral entre sessões (reaproveita user_ui_prefs)
 lib/meta/
   client.ts     → chamadas cruas à Graph API (get/getAll/post, presets de data)
-  shared.ts     → helpers compartilhados (isVaga, objetivos excluídos, acesso à Página)
+  shared.ts     → helpers compartilhados (isVaga — nome com "vaga"/"seguidores"/
+                  "tráfego", Etapa 65 —, objetivos excluídos, acesso à Página)
   insights.ts   → getAdAccounts + getAccountInsight (regra de negócio: ignora
                   campanhas [VAGA], objetivos de reconhecimento/tráfego, soma
                   orçamento diário com CBO e lifetime→diário)
@@ -1737,6 +1738,22 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     ontem, fuso America/Sao_Paulo), igual ao "Ontem e hoje"; no dia 1º do
     mês (quando "ontem" cairia no mês anterior) usa só o dia 01 em vez de
     mandar um intervalo invertido pra Meta
+60. ~~Exclusão por nomenclatura "[TRÁFEGO]" (Etapa 65)~~ ✅ — pedido
+    explícito: campanha com "[TRÁFEGO]" no nome (com ou sem acento) some de
+    toda métrica/tela do Painel, exatamente como já acontecia com "[VAGA]".
+    Como as duas exclusões por nome sempre passaram pela mesma função
+    central (`isVaga`, em `lib/meta/shared.ts`, reaproveitada por
+    Acompanhamento, Evolução, Análise, Visão Geral e Monitor de CPA), só
+    precisou estender essa checagem — nenhuma tela precisou de ajuste
+    separado. Continua diferente da exclusão por OBJETIVO da campanha
+    (`EXCLUDED_OBJECTIVES`, que já pegava o objetivo "Tráfego" de verdade
+    reportado pela Meta): agora as duas convivem, então uma campanha cai
+    fora tanto por ter o objetivo Tráfego quanto por ter a tag no nome
+61. ~~Coluna Observação em Controle de Saldo (Etapa 66)~~ ✅ — pedido
+    explícito: a lista de contas pendentes/com aviso ganhou uma coluna
+    "Observação" mostrando a nota já cadastrada em Personalizar alertas
+    (campo `notes` de `pix_accounts`), sem precisar abrir o modal só pra ver
+    esse texto
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1783,8 +1800,10 @@ manual (Etapa 59), a coluna Leads/conversas iniciadas em Acompanhamento
 dias (Etapa 61), o seletor de conjuntos em Análise "abaixo da meta"
 (Etapa 62), o Controle de Saldo virando quadro de monitoramento orientado
 a alerta com os avisos novos de sexta-feira e verificação manual mais o
-campo de busca em Personalizar alertas (Etapa 63), e o filtro "Este mês,
-até ontem" (Etapa 64))
+campo de busca em Personalizar alertas (Etapa 63), o filtro "Este mês,
+até ontem" (Etapa 64), a exclusão por nomenclatura "[TRÁFEGO]" (Etapa 65)
+e a coluna Observação na lista de pendentes de Controle de Saldo
+(Etapa 66))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
