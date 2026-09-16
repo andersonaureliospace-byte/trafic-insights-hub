@@ -1,7 +1,9 @@
 // Checagem de "verificação manual" (Etapa 63) — não olha saldo nem status de
 // pagamento: é um lembrete que o usuário agenda por conta, não importa o tipo
 // (pré-paga, híbrida, pós-paga ou loja própria). Duas formas de agendar:
-//   - 'weekday': sempre no mesmo dia da semana (0 = domingo … 6 = sábado).
+//   - 'weekday': um ou mais dias fixos da semana (0 = domingo … 6 = sábado) —
+//     desde a Etapa 67, dá pra marcar mais de um dia (ex.: segunda E quinta),
+//     não só um único dia.
 //   - 'interval': "daqui X dias" a partir de quando foi configurado/verificado.
 // manual_check_next_at (data, fuso America/Sao_Paulo) é o que decide se a
 // conta está "pendente" agora — sempre que a data já chegou, a conta some do
@@ -39,7 +41,7 @@ function addDays(dateStr: string, days: number): string {
 
 export interface ManualCheckConfig {
   mode: "weekday" | "interval" | null;
-  weekday: number | null; // 0-6, só quando mode = 'weekday'
+  weekdays: number[] | null; // 0-6, um ou mais, só quando mode = 'weekday'
   intervalDays: number | null; // só quando mode = 'interval'
 }
 
@@ -55,10 +57,11 @@ export function computeManualCheckNextAt(
   includeFrom: boolean,
 ): string | null {
   if (config.mode === "weekday") {
-    if (config.weekday == null) return null;
+    if (!config.weekdays || config.weekdays.length === 0) return null;
+    const wanted = new Set(config.weekdays);
     let candidate = includeFrom ? fromDateStr : addDays(fromDateStr, 1);
     for (let i = 0; i < 7; i++) {
-      if (weekdaySP(candidate) === config.weekday) return candidate;
+      if (wanted.has(weekdaySP(candidate))) return candidate;
       candidate = addDays(candidate, 1);
     }
     return candidate; // inalcançável (loop cobre os 7 dias), só pra satisfazer o TS

@@ -1720,7 +1720,8 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     migração (`0013_saldo_alertas_avancados.sql`) acrescenta a
     `pix_accounts`: `friday_multiplier`, `friday_alert_sent_at` (cooldown
     de 24h próprio, separado do saldo baixo comum) e as colunas de
-    verificação manual (`manual_check_mode`, `manual_check_weekday`,
+    verificação manual (`manual_check_mode`, `manual_check_weekdays` —
+    renomeada de `manual_check_weekday` na Etapa 67, ver abaixo —,
     `manual_check_interval_days`, `manual_check_repeat`,
     `manual_check_next_at`, `manual_check_last_verified_at`,
     `manual_check_alert_sent_at`)
@@ -1754,6 +1755,18 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     "Observação" mostrando a nota já cadastrada em Personalizar alertas
     (campo `notes` de `pix_accounts`), sem precisar abrir o modal só pra ver
     esse texto
+62. ~~Verificação manual em mais de um dia da semana (Etapa 67)~~ ✅ —
+    pedido explícito: o modo "Dia fixo da semana" da verificação manual
+    (Controle de Saldo → Personalizar alertas) deixou de aceitar só um dia
+    — agora é uma seleção de dias (ex.: segunda E quinta), com um botão
+    por dia da semana (Dom a Sáb, multi-seleção). Coluna
+    `manual_check_weekday` (int único) virou `manual_check_weekdays`
+    (array de int) em `pix_accounts` — migração
+    `0014_manual_check_multi_weekday.sql` faz o backfill de quem já tinha
+    um dia configurado (vira array de 1) e remove a coluna antiga, mesmo
+    padrão de troca de coluna já usado na Etapa 37. `computeManualCheckNextAt`
+    (`lib/alerts/manual-check.ts`) passou a achar o próximo dia dentre
+    QUALQUER um dos escolhidos, não mais um único
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1801,9 +1814,10 @@ dias (Etapa 61), o seletor de conjuntos em Análise "abaixo da meta"
 (Etapa 62), o Controle de Saldo virando quadro de monitoramento orientado
 a alerta com os avisos novos de sexta-feira e verificação manual mais o
 campo de busca em Personalizar alertas (Etapa 63), o filtro "Este mês,
-até ontem" (Etapa 64), a exclusão por nomenclatura "[TRÁFEGO]" (Etapa 65)
-e a coluna Observação na lista de pendentes de Controle de Saldo
-(Etapa 66))
+até ontem" (Etapa 64), a exclusão por nomenclatura "[TRÁFEGO]" (Etapa 65),
+a coluna Observação na lista de pendentes de Controle de Saldo
+(Etapa 66) e a verificação manual em mais de um dia da semana
+(Etapa 67))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
     const { data: pix, error: pixErr } = await supabase
       .from("pix_accounts")
-      .select("manual_check_mode, manual_check_weekday, manual_check_interval_days, manual_check_repeat")
+      .select("manual_check_mode, manual_check_weekdays, manual_check_interval_days, manual_check_repeat")
       .eq("user_id", user.id)
       .eq("ad_account_id", ad_account_id)
       .maybeSingle();
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
       ? computeManualCheckNextAt(
           {
             mode: pix.manual_check_mode as "weekday" | "interval",
-            weekday: pix.manual_check_weekday,
+            weekdays: pix.manual_check_weekdays,
             intervalDays: pix.manual_check_interval_days,
           },
           todaySP(),

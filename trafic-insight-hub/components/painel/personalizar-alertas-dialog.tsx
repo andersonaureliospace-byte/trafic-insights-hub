@@ -7,13 +7,13 @@ import { billingHubUrl } from "@/lib/meta/ads-manager-link";
 import { InlineNumber } from "@/components/painel/inline-number";
 
 const WEEKDAYS = [
-  { id: 0, label: "Domingo" },
-  { id: 1, label: "Segunda" },
-  { id: 2, label: "Terça" },
-  { id: 3, label: "Quarta" },
-  { id: 4, label: "Quinta" },
-  { id: 5, label: "Sexta" },
-  { id: 6, label: "Sábado" },
+  { id: 0, label: "Domingo", short: "Dom" },
+  { id: 1, label: "Segunda", short: "Seg" },
+  { id: 2, label: "Terça", short: "Ter" },
+  { id: 3, label: "Quarta", short: "Qua" },
+  { id: 4, label: "Quinta", short: "Qui" },
+  { id: 5, label: "Sexta", short: "Sex" },
+  { id: 6, label: "Sábado", short: "Sáb" },
 ] as const;
 
 export interface PixRow {
@@ -24,7 +24,7 @@ export interface PixRow {
   alert_threshold: number | null;
   friday_multiplier: number | null;
   manual_check_mode: string | null;
-  manual_check_weekday: number | null;
+  manual_check_weekdays: number[] | null; // um ou mais dias (0-6), Etapa 67
   manual_check_interval_days: number | null;
   manual_check_repeat: boolean | null;
   manual_check_next_at: string | null;
@@ -43,8 +43,9 @@ function fmtDateBR(iso: string | null): string {
 // esse modal é onde toda conta (inclusive as OK) pode ser configurada:
 // tipo de pagamento, valor base, "Alertar quando <" e Observação (os 3 que
 // já existiam, mantidos por pedido explícito), mais o multiplicador de
-// sexta-feira e a verificação manual (dia da semana fixo, ou "daqui X dias",
-// com Repetir/Pausar).
+// sexta-feira e a verificação manual (um ou mais dias fixos da semana — mais
+// de um por semana desde a Etapa 67 —, ou "daqui X dias", com
+// Repetir/Pausar).
 export function PersonalizarAlertasDialog({
   open,
   onClose,
@@ -229,22 +230,32 @@ export function PersonalizarAlertasDialog({
                                         <option value="interval">Daqui X dias</option>
                                       </select>
                                       {mode === "weekday" ? (
-                                        <select
-                                          value={pix?.manual_check_weekday ?? ""}
-                                          onChange={(e) =>
-                                            void onPatch(acc.account_id, {
-                                              manual_check_weekday: e.target.value ? Number(e.target.value) : null,
-                                            })
-                                          }
-                                          className="rounded border border-zinc-200 bg-transparent px-1 py-0.5 text-xs dark:border-zinc-700"
-                                        >
-                                          <option value="">Escolha o dia</option>
-                                          {WEEKDAYS.map((w) => (
-                                            <option key={w.id} value={w.id}>
-                                              {w.label}
-                                            </option>
-                                          ))}
-                                        </select>
+                                        <div className="flex flex-wrap gap-1">
+                                          {WEEKDAYS.map((w) => {
+                                            const selected = (pix?.manual_check_weekdays ?? []).includes(w.id);
+                                            return (
+                                              <button
+                                                key={w.id}
+                                                type="button"
+                                                title={w.label}
+                                                onClick={() => {
+                                                  const current = pix?.manual_check_weekdays ?? [];
+                                                  const next = selected
+                                                    ? current.filter((d) => d !== w.id)
+                                                    : [...current, w.id].sort((a, b) => a - b);
+                                                  void onPatch(acc.account_id, { manual_check_weekdays: next });
+                                                }}
+                                                className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
+                                                  selected
+                                                    ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                                                    : "border border-zinc-200 text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
+                                                }`}
+                                              >
+                                                {w.short}
+                                              </button>
+                                            );
+                                          })}
+                                        </div>
                                       ) : null}
                                       {mode === "interval" ? (
                                         <div className="flex items-center gap-1 text-xs text-zinc-500">

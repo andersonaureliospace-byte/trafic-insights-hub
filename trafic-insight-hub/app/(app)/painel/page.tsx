@@ -64,7 +64,7 @@ interface PixRow {
   alert_threshold: number | null;
   friday_multiplier: number | null;
   manual_check_mode: string | null;
-  manual_check_weekday: number | null;
+  manual_check_weekdays: number[] | null;
   manual_check_interval_days: number | null;
   manual_check_repeat: boolean | null;
   manual_check_next_at: string | null;
@@ -416,7 +416,7 @@ export default function PainelPage() {
       alert_threshold: null,
       friday_multiplier: null,
       manual_check_mode: null,
-      manual_check_weekday: null,
+      manual_check_weekdays: null,
       manual_check_interval_days: null,
       manual_check_repeat: true,
       manual_check_next_at: null,

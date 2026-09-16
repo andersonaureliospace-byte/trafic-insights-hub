@@ -28,7 +28,7 @@ export async function PATCH(request: Request) {
       "alert_threshold",
       "friday_multiplier",
       "manual_check_mode",
-      "manual_check_weekday",
+      "manual_check_weekdays",
       "manual_check_interval_days",
       "manual_check_repeat",
     ];
@@ -37,28 +37,29 @@ export async function PATCH(request: Request) {
     }
 
     // Etapa 63: toda vez que a rotina de verificação manual é criada ou
-    // alterada (modo, dia da semana ou intervalo), recalcula
+    // alterada (modo, dia(s) da semana ou intervalo), recalcula
     // manual_check_next_at a partir de hoje — sem isso a conta configurada
     // nunca ficaria pendente sozinha. Desligar o modo (null) zera o próximo
-    // lembrete junto.
+    // lembrete junto. Etapa 67: manual_check_weekdays agora é uma lista (mais
+    // de um dia por semana), não um único dia.
     const touchesSchedule =
-      "manual_check_mode" in body || "manual_check_weekday" in body || "manual_check_interval_days" in body;
+      "manual_check_mode" in body || "manual_check_weekdays" in body || "manual_check_interval_days" in body;
     if (touchesSchedule) {
       const { data: current } = await supabase
         .from("pix_accounts")
-        .select("manual_check_mode, manual_check_weekday, manual_check_interval_days")
+        .select("manual_check_mode, manual_check_weekdays, manual_check_interval_days")
         .eq("user_id", user.id)
         .eq("ad_account_id", ad_account_id)
         .maybeSingle();
       const mode = ("manual_check_mode" in body ? body.manual_check_mode : current?.manual_check_mode) ?? null;
-      const weekday =
-        ("manual_check_weekday" in body ? body.manual_check_weekday : current?.manual_check_weekday) ?? null;
+      const weekdays =
+        ("manual_check_weekdays" in body ? body.manual_check_weekdays : current?.manual_check_weekdays) ?? null;
       const intervalDays =
         ("manual_check_interval_days" in body
           ? body.manual_check_interval_days
           : current?.manual_check_interval_days) ?? null;
       patch.manual_check_next_at =
-        mode == null ? null : computeManualCheckNextAt({ mode, weekday, intervalDays }, todaySP(), true);
+        mode == null ? null : computeManualCheckNextAt({ mode, weekdays, intervalDays }, todaySP(), true);
     }
 
     const { error } = await supabase.from("pix_accounts").upsert(patch, { onConflict: "user_id,ad_account_id" });
