@@ -1102,35 +1102,47 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
     workflow, esses dois períodos só atualizam quando você clicar em
     "Calcular agora" na própria tela.
 
-16. (Etapa 68) Crie um décimo-primeiro workflow no n8n pra virar a aba
-    Demandas: **WhatsApp Trigger** (ou node equivalente do seu provedor,
-    ex.: uazapi) escutando SÓ o grupo com ID `120363428930571656` (ou o ID
-    salvo em Configurações → WhatsApp → "Grupo para Demandas") → um node de
-    espera/buffer que junta as mensagens de um mesmo remetente chegando em
-    sequência, fechando o pacote depois de ~15s de silêncio → separe a
-    ÚLTIMA mensagem do pacote (é o nome do cliente, `clientNameRaw`) das
-    demais (a solicitação em si, `messages` — pode ter mais de uma
-    mensagem, texto e/ou áudio) → **HTTP Request** `POST` para
-    `https://SEU_DOMINIO/api/public/hooks/demand-ingest` com o header
-    `x-webhook-secret: <o mesmo valor de WHATSAPP_DISPATCH_SECRET>` e corpo
-    JSON:
-    ```json
-    {
-      "groupId": "120363428930571656",
-      "clientNameRaw": "Nome do cliente (texto da última mensagem)",
-      "requestedAt": "2026-08-31T14:23:00Z",
-      "messages": [
-        { "type": "text", "text": "Plano de ação:\n- Item 1\n- Item 2" },
-        { "type": "audio", "mediaUrl": "https://...", "mimeType": "audio/ogg" }
-      ]
-    }
-    ```
-    Se a mensagem com o nome do cliente não vier (a pessoa esqueceu de
-    mandar), pode chamar sem `clientNameRaw` — a demanda entra "em aberto"
-    e dá pra atribuir o cliente manualmente depois, na própria aba
-    Demandas. Ative o workflow — sem ele, nenhuma mensagem do grupo vira
-    tarefa sozinha (dá pra popular a tabela `demands` manualmente via
-    Supabase também, se preferir testar sem n8n).
+16. (Etapa 68) Pra virar a aba Demandas, importe o workflow pronto
+    `n8n-workflows/demandas-whatsapp.json` (Menu do n8n → Import from File).
+    Ele já vem montado só com nós nativos (Webhook, IF, Edit Fields/Set,
+    HTTP Request, Wait, NoOp — nenhum nó Code), porque o n8n não tem um jeito
+    nativo de "esperar até parar de chegar mensagem": cada mensagem que
+    chega no grupo é guardada num buffer (tabela nova
+    `demand_message_buffer`), a execução espera ~15s, confere no banco se
+    ainda é a mensagem mais recente desse remetente e só a última execução
+    processa o pacote inteiro (juntando as mensagens, separando a última
+    como nome do cliente) e cria a demanda — as outras param sozinhas.
+    Depois de importar:
+    1. Troque `SEU_DOMINIO` e `COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET` nos
+       3 nós HTTP Request (tudo explicado no Sticky Note do próprio
+       workflow).
+    2. Confira/ajuste o ID do grupo no nó "É do grupo de Demandas?" — use o
+       mesmo valor salvo em Configurações → WhatsApp → "Grupo para
+       Demandas".
+    3. No painel da uazapi, configure o webhook da instância (evento
+       `messages`) pra chamar a URL de produção do node **Webhook** desse
+       workflow.
+    4. Ative o workflow.
+
+    ✅ Campos de TEXTO confirmados com uma mensagem de teste real (não é
+    mais palpite de documentação): `body.message.chatid` (ID do grupo),
+    `body.message.sender`, `body.message.type` (já vem `"text"`/`"audio"`
+    normalizado pela própria uazapi) e `body.message.text`. Um detalhe que
+    só o teste real revelou: `fromMe` NÃO serve pra filtrar mensagem sua —
+    como a instância é o seu próprio número, `fromMe` vem `true` até quando
+    é você mesmo digitando a solicitação no grupo. Quem realmente indica
+    "isso não foi o n8n/a API que mandou" é `wasSentByApi` — é esse campo
+    que o workflow usa.
+
+    ⚠️ Ainda NÃO confirmado: o campo com a URL do ÁUDIO (o teste real só
+    cobriu mensagem de texto). O nó "Normalizar mensagem" está com um
+    palpite (`fileURL`/`mediaUrl`) que pode estar errado. Antes de confiar
+    no fluxo de áudio, manda uma mensagem de voz de teste no grupo e
+    confere em "Executions" do n8n o nome real do campo — se for diferente,
+    ajusta só a linha `mediaUrl` desse mesmo nó. Sem esse workflow ativo,
+    nenhuma mensagem do grupo vira tarefa sozinha — dá pra testar o hook
+    final sem n8n chamando `demand-ingest` direto (formato descrito na
+    Estrutura, abaixo).
 
 ⚠️ (Etapa 58) Se você já tinha criado o workflow do
 `increase-budget-tick` (antigo passo 13, "oitavo workflow"), apague ou
@@ -1196,7 +1208,10 @@ app/
     public/hooks/low-investment-tick     → idem, avisa investimento baixo (Etapa 53, sugerido seg-sex 07h/09h15/13h)
     public/hooks/bulk-status-tick        → idem, reclassifica status + reordena o quadro (Etapa 55, sugerido seg/qui 01h)
     public/hooks/cpa-board-cache-tick    → idem, recalcula o cache de Ontem/Últimos 3 dias do Monitor de CPA (Etapa 61, sugerido 1x/dia às 07h10)
-    public/hooks/demand-ingest           → idem, recebe as mensagens do grupo de Demandas via n8n e cria a tarefa (Etapa 68, sem agendamento — chamado a cada pacote de mensagens, ver passo 16)
+    public/hooks/demand-ingest           → idem, recebe um pacote JÁ MONTADO de mensagens + nome do cliente e cria a tarefa (Etapa 68) — usado pra teste manual; o workflow oficial (passo 16) usa os 3 hooks de buffer abaixo em vez deste
+    public/hooks/demand-buffer-append    → idem, guarda 1 mensagem recebida no buffer por remetente (Etapa 68, chamado a cada mensagem que chega no grupo de Demandas)
+    public/hooks/demand-buffer-latest    → idem, devolve o horário da mensagem mais recente do buffer de um remetente — usado pelo n8n pra saber se ainda deve processar depois da espera de 15s (Etapa 68)
+    public/hooks/demand-buffer-flush     → idem, monta o pacote com tudo que está no buffer de um remetente, cria a demanda (via lib/demands/ingest.ts) e limpa o buffer (Etapa 68)
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
     painel-ui-state  → lembra a aba ativa + filtros de Acompanhamento/Análise/
@@ -1334,6 +1349,11 @@ lib/whatsapp/
   dispatch.ts   → tipos do disparo de WhatsApp e interpolação de {cliente}
                   (a regra de recorrência em si vem de lib/scheduling.ts)
 lib/demands/ (Etapa 68)
+  ingest.ts     → lógica compartilhada de criação de demanda (transcreve
+                  áudio, organiza em título/itens, casa cliente, grava em
+                  `demands`) — usada tanto por demand-ingest (pacote pronto)
+                  quanto por demand-buffer-flush (pacote montado a partir do
+                  buffer); resolveUserByDemandsGroup() acha o dono do grupo
   parse-request.ts → organiza o texto da solicitação (já com áudio
                   transcrito) em título + itens. Quem separa os pedidos é a
                   IA (splitDemandTasks, lib/ai/gemini.ts) — travada por
@@ -1381,7 +1401,9 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
 supabase/migrations/0013_saldo_alertas_avancados.sql → multiplicador de sexta + campos de verificação manual em pix_accounts
 supabase/migrations/0014_manual_check_multi_weekday.sql → manual_check_weekday (int) → manual_check_weekdays (array)
 supabase/migrations/0015_demandas.sql → tabela demands + demands_group_id/demands_group_name em whatsapp_instances (Etapa 68)
+supabase/migrations/0016_demand_message_buffer.sql → tabela demand_message_buffer, usada pelo workflow do n8n pra implementar o "~15s de silêncio" (Etapa 68)
 ```
+n8n-workflows/demandas-whatsapp.json → workflow pronto pra importar no n8n (Menu → Import from File) que implementa o passo 16 da seção de deploy — só nós nativos (Webhook, IF, Set, HTTP Request, Wait, NoOp), sem nó Code
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
 
@@ -1841,10 +1863,15 @@ supabase/migrations/0015_demandas.sql → tabela demands + demands_group_id/dema
     em Configurações → WhatsApp → "Grupo para Demandas", junto com o de
     alertas) recebe solicitações — texto ou áudio, podendo vir em mais de
     uma mensagem — seguidas de uma última mensagem só com o nome do
-    cliente. Um workflow no n8n (ver passo 16 da seção de deploy) junta as
-    mensagens de um mesmo remetente (~15s de silêncio fecha o pacote) e
-    chama o novo hook público `public/hooks/demand-ingest`, que usa Google
-    Gemini (camada gratuita, `lib/ai/gemini.ts`) em duas etapas — ⚠️
+    cliente. Um workflow pronto pra importar no n8n (`n8n-workflows/demandas-whatsapp.json`,
+    ver passo 16 da seção de deploy — só nós nativos, sem nó Code) guarda
+    cada mensagem recebida num buffer (nova tabela `demand_message_buffer`)
+    e junta as de um mesmo remetente depois de ~15s de silêncio (o n8n não
+    tem um jeito nativo de "esperar até parar de chegar mensagem", então o
+    workflow implementa isso conferindo no banco se ainda é a mensagem mais
+    recente antes de processar). No fim, o pacote montado passa por
+    lib/demands/ingest.ts, que usa Google Gemini (camada gratuita,
+    `lib/ai/gemini.ts`) em duas etapas — ⚠️
     IMPORTANTE, pedido explícito ("a geração da tarefa não é pra adivinhar"):
     as duas são travadas por prompt pra NUNCA reescrever, resumir, corrigir
     ou inventar o que foi dito, só (1) transcrever áudio literalmente e (2)

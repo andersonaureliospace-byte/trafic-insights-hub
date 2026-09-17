@@ -1,0 +1,236 @@
+{
+  "name": "Demandas - WhatsApp para tarefas (Trafic Insight Hub)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Antes de ativar\n\n1. Troque `SEU_DOMINIO` (nos 3 nós HTTP Request) pela URL real do seu app na Vercel.\n2. Troque `COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET` (nos mesmos 3 nós) pelo mesmo valor da variável de ambiente `WHATSAPP_DISPATCH_SECRET`.\n3. No painel da uazapi, configure o webhook da sua instância pra chamar a URL de produção deste node **Webhook**, no evento `messages`.\n4. Confira o ID do grupo de Demandas no nó \"É do grupo de Demandas?\" — copie o mesmo valor salvo em Configurações → WhatsApp → \"Grupo para Demandas\" (é o mesmo formato `numero@g.us`).\n5. Ative o workflow.\n\n✅ Campos confirmados com uma mensagem de teste real (2026-09): `body.message.chatid`, `body.message.sender`, `body.message.type` (\"text\"/\"audio\", já vem normalizado pela uazapi), `body.message.text`, `body.message.wasSentByApi`. Importante: `fromMe` NÃO serve pra filtrar — vem `true` até quando é você mesmo digitando (a instância é o seu próprio número); quem indica \"não fui eu/n8n que mandei\" é `wasSentByApi`.\n\n⚠️ Ainda NÃO confirmado: o campo com a URL/mídia do ÁUDIO (o teste real só cobriu mensagem de texto). O nó \"Normalizar mensagem\" está com um palpite (`fileURL`/`mediaUrl`) — antes de confiar no áudio, manda uma mensagem de voz de teste no grupo e confere em \"Executions\" do n8n o nome real do campo.",
+        "height": 420,
+        "width": 460
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-1220, -420],
+      "id": "49781b59-aba7-4473-824a-34b73ca93f95",
+      "name": "Leia antes de ativar"
+    },
+    {
+      "parameters": {
+        "content": "## Por que esse jeito de esperar 15s?\n\nO n8n não tem um nó nativo de \"esperar até parar de chegar mensagem\". Por isso cada mensagem que chega:\n1. é guardada no buffer (tabela `demand_message_buffer`);\n2. essa execução espera 15s;\n3. depois pergunta pro banco \"ainda sou a mensagem mais nova desse remetente?\";\n4. só quem for a mais nova processa o pacote inteiro e cria a demanda.\n\nSe você mandar 3 mensagens seguidas em 5s, vão rodar 3 execuções em paralelo — as 2 primeiras vão descobrir que não são mais a mais nova e param sozinhas (nó \"Chegou mensagem mais nova\"); só a 3ª processa tudo.",
+        "height": 380,
+        "width": 420
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-100, -420],
+      "id": "5a290f1d-4ca4-4d3d-93aa-935ddfd38827",
+      "name": "Como funciona o buffer"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "demandas-uazapi",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1200, 0],
+      "id": "0e832b61-e2ec-489c-bc7c-0de3ace445ec",
+      "name": "Webhook - mensagem uazapi",
+      "webhookId": "demandas-uazapi-webhook"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-grupo",
+              "leftValue": "={{$json.body.message.chatid}}",
+              "rightValue": "120363428930571656@g.us",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "cond-nao-api",
+              "leftValue": "={{ String($json.body.message.wasSentByApi) }}",
+              "rightValue": "false",
+              "operator": { "type": "string", "operation": "equals" }
+            },
+            {
+              "id": "cond-tipo-suportado",
+              "leftValue": "={{ String([\"text\",\"audio\"].includes($json.body.message.type)) }}",
+              "rightValue": "true",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-980, 0],
+      "id": "da56fb6d-2d12-48f0-b1fc-f38452f9cf25",
+      "name": "É do grupo de Demandas?"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "a-groupid", "name": "groupId", "type": "string", "value": "={{$json.body.message.chatid}}" },
+            { "id": "a-sender", "name": "sender", "type": "string", "value": "={{$json.body.message.sender}}" },
+            {
+              "id": "a-type",
+              "name": "type",
+              "type": "string",
+              "value": "={{$json.body.message.type}}"
+            },
+            { "id": "a-text", "name": "text", "type": "string", "value": "={{$json.body.message.text || \"\"}}" },
+            {
+              "id": "a-media",
+              "name": "mediaUrl",
+              "type": "string",
+              "value": "={{$json.body.message.fileURL || $json.body.message.mediaUrl || \"\"}}"
+            },
+            { "id": "a-mime", "name": "mimeType", "type": "string", "value": "audio/ogg" }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-760, -100],
+      "id": "ca8b63e6-3714-4682-b431-dfd4056c05ea",
+      "name": "Normalizar mensagem"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/demand-buffer-append",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "x-webhook-secret", "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { groupId: $json.groupId, sender: $json.sender, type: $json.type, text: $json.text, mediaUrl: $json.mediaUrl, mimeType: $json.mimeType } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-540, -100],
+      "id": "ba74738f-9550-4dbe-a3a8-03cc65ce6a36",
+      "name": "Guardar mensagem no buffer"
+    },
+    {
+      "parameters": {
+        "amount": 15,
+        "unit": "seconds"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [-320, -100],
+      "id": "9e0a6fe7-a3b3-4aae-bb71-ae2ce2bfb5a9",
+      "name": "Espera 15s de silêncio",
+      "webhookId": "espera-demandas-uazapi"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/demand-buffer-latest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "x-webhook-secret", "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { groupId: $node[\"Normalizar mensagem\"].json.groupId, sender: $node[\"Normalizar mensagem\"].json.sender } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-100, -100],
+      "id": "6970ef81-6672-4b69-80fb-bea24e82338a",
+      "name": "Consulta última mensagem do buffer"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-ainda-ultima",
+              "leftValue": "={{$json.latestReceivedAt}}",
+              "rightValue": "={{$node[\"Guardar mensagem no buffer\"].json.receivedAt}}",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [120, -100],
+      "id": "afb15176-1673-43e3-8250-5c392d048739",
+      "name": "Ainda é a última mensagem?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/demand-buffer-flush",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "x-webhook-secret", "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { groupId: $node[\"Normalizar mensagem\"].json.groupId, sender: $node[\"Normalizar mensagem\"].json.sender } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [340, -180],
+      "id": "415e12fb-7530-4655-bd19-22e6e02eaeaa",
+      "name": "Processa e cria a demanda"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [340, 20],
+      "id": "142fd356-0d63-4d64-9b27-132724b41c7f",
+      "name": "Chegou mensagem mais nova (ignora)"
+    }
+  ],
+  "connections": {
+    "Webhook - mensagem uazapi": {
+      "main": [[{ "node": "É do grupo de Demandas?", "type": "main", "index": 0 }]]
+    },
+    "É do grupo de Demandas?": {
+      "main": [[{ "node": "Normalizar mensagem", "type": "main", "index": 0 }], []]
+    },
+    "Normalizar mensagem": {
+      "main": [[{ "node": "Guardar mensagem no buffer", "type": "main", "index": 0 }]]
+    },
+    "Guardar mensagem no buffer": {
+      "main": [[{ "node": "Espera 15s de silêncio", "type": "main", "index": 0 }]]
+    },
+    "Espera 15s de silêncio": {
+      "main": [[{ "node": "Consulta última mensagem do buffer", "type": "main", "index": 0 }]]
+    },
+    "Consulta última mensagem do buffer": {
+      "main": [[{ "node": "Ainda é a última mensagem?", "type": "main", "index": 0 }]]
+    },
+    "Ainda é a última mensagem?": {
+      "main": [
+        [{ "node": "Processa e cria a demanda", "type": "main", "index": 0 }],
+        [{ "node": "Chegou mensagem mais nova (ignora)", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" },
+  "pinData": {},
+  "meta": { "instanceId": "trafic-insight-hub-demandas" }
+}
