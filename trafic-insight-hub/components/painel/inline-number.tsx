@@ -6,10 +6,17 @@ export function InlineNumber({
   value,
   onSave,
   placeholder = "—",
+  width = "w-24",
+  align = "right",
 }: {
   value: number | null;
   onSave: (v: number | null) => Promise<void>;
   placeholder?: string;
+  // Etapa 69: CPA ideal em Acompanhamento usa uma caixa menor e alinhada à
+  // esquerda (colada no "R$"), diferente do padrão (mais larga, à direita)
+  // usado em Clientes — os outros usos continuam com os defaults de sempre.
+  width?: string;
+  align?: "left" | "right";
 }) {
   const [text, setText] = useState(value == null ? "" : String(value));
 
@@ -40,7 +47,9 @@ export function InlineNumber({
       onKeyDown={(e) => {
         if (e.key === "Enter") (e.target as HTMLInputElement).blur();
       }}
-      className="w-24 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-right text-sm tabular-nums outline-none hover:border-zinc-300 focus:border-zinc-900 dark:hover:border-zinc-700 dark:focus:border-zinc-100"
+      className={`${width} rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm tabular-nums outline-none hover:border-zinc-300 focus:border-zinc-900 dark:hover:border-zinc-700 dark:focus:border-zinc-100 ${
+        align === "left" ? "text-left" : "text-right"
+      }`}
     />
   );
 }

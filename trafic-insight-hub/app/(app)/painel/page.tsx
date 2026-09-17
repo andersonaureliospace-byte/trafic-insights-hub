@@ -836,12 +836,14 @@ export default function PainelPage() {
                                 );
                               })()}
                             </td>
-                            <td className="px-4 py-2 text-right tabular-nums">
-                              <div className="flex items-center justify-end gap-1">
+                            <td className="px-4 py-2 tabular-nums">
+                              <div className="flex items-center justify-center gap-1">
                                 <span className="text-xs text-zinc-400">R$</span>
                                 <InlineNumber
                                   value={binding?.cpa_target ?? null}
                                   onSave={(v) => patchBinding(acc.account_id, { cpa_target: v })}
+                                  width="w-10"
+                                  align="left"
                                 />
                               </div>
                             </td>
@@ -851,7 +853,9 @@ export default function PainelPage() {
                                 const colorClass = ritmoColorClass(rowRitmo, insight?.daily_budget);
                                 return (
                                   <>
-                                    <div>{fmtCurrency(insight?.daily_budget ?? 0)}</div>
+                                    <div className={`text-base font-semibold ${colorClass}`}>
+                                      {fmtCurrency(insight?.daily_budget ?? 0)}
+                                    </div>
                                     {diff != null ? (
                                       <div className={`text-xs opacity-70 ${colorClass}`}>{fmtCurrencySigned(diff)}</div>
                                     ) : null}
