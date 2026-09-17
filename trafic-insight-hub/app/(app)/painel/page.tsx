@@ -87,15 +87,18 @@ function rowSortKey(row: { binding?: AccountBinding; insight?: AccountInsight })
 // pra serem reaproveitados também pelo aviso automático de investimento
 // baixo (lib/alerts/low-investment.ts), com a mesma conta exata.
 //
-// Cor do Ritmo: compara o quanto precisa investir por dia daqui pra frente
-// (Ritmo) com o orçamento diário JÁ configurado na conta (coluna "Invest.
-// diário" — orçamento atual dos conjuntos/campanhas ativos, não muda com o
-// período escolhido no filtro). ⚠️ Suposição: "10 reais para cima/para
-// baixo" do pedido foi interpretado como a diferença entre Ritmo e esse
-// orçamento diário atual (não Ritmo comparado a zero) — é a leitura que faz
-// sentido pra sinalizar se o orçamento diário já configurado está
-// acima/abaixo do necessário pra bater a meta do mês. Ajustável se não for
-// essa a leitura certa.
+// Cor da diferença mostrada embaixo do valor de "Invest. diário" (Etapa 69:
+// mudou de lugar — antes era só uma dica ao passar o mouse em cima do Ritmo,
+// agora fica sempre visível embaixo do orçamento diário, igual ao padrão da
+// coluna CPA). Compara o quanto precisa investir por dia daqui pra frente
+// (Ritmo) com o orçamento diário JÁ configurado na conta (orçamento atual
+// dos conjuntos/campanhas ativos, não muda com o período escolhido no
+// filtro). ⚠️ Suposição: "10 reais para cima/para baixo" do pedido original
+// foi interpretado como a diferença entre Ritmo e esse orçamento diário
+// atual (não Ritmo comparado a zero) — é a leitura que faz sentido pra
+// sinalizar se o orçamento diário já configurado está acima/abaixo do
+// necessário pra bater a meta do mês. Ajustável se não for essa a leitura
+// certa.
 // - diferença dentro de ±10: orçamento diário já está no ritmo certo → verde
 // - Ritmo mais de 10 reais ACIMA do orçamento diário atual ("pra cima"):
 //   precisaria investir mais do que está configurado → laranja
@@ -684,30 +687,35 @@ export default function PainelPage() {
                     <thead>
                       <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
                         <th className="w-6 px-2 py-2 font-medium"></th>
-                        <th className="px-4 py-2 font-medium">Cliente</th>
-                        <th className="px-4 py-2 font-medium">Conta</th>
-                        <th className="px-4 py-2 font-medium">Status</th>
                         <th
                           className="px-4 py-2 font-medium"
                           title="Marcação manual do dia — reseta sozinha à meia-noite (horário de Brasília)"
                         >
                           Otimizado
                         </th>
-                        <th
-                          className="px-4 py-2 text-right font-medium"
-                          title="Editável aqui ou em Clientes — os dois ficam sincronizados"
-                        >
-                          CPA ideal
-                        </th>
-                        <th className="px-4 py-2 text-right font-medium">CPA</th>
+                        <th className="px-4 py-2 font-medium">Cliente</th>
+                        <th className="px-4 py-2 font-medium">Conta</th>
+                        <th className="px-4 py-2 font-medium">Status</th>
+                        <th className="px-4 py-2 text-right font-medium">Valor usado</th>
                         <th
                           className="px-4 py-2 text-right font-medium"
                           title="Conversas iniciadas — o mesmo Resultado que aparece no Gerenciador de Anúncios, campo results da Meta (o que também gera o CPA)"
                         >
                           Leads
                         </th>
-                        <th className="px-4 py-2 text-right font-medium">Valor usado</th>
-                        <th className="px-4 py-2 text-right font-medium">Invest. diário</th>
+                        <th className="px-4 py-2 text-right font-medium">CPA</th>
+                        <th
+                          className="px-4 py-2 text-right font-medium"
+                          title="Editável aqui ou em Clientes — os dois ficam sincronizados"
+                        >
+                          CPA ideal
+                        </th>
+                        <th
+                          className="px-4 py-2 text-right font-medium"
+                          title="Abaixo: diferença entre o orçamento diário já configurado e o Ritmo (Invest. diário − Ritmo)"
+                        >
+                          Invest. diário
+                        </th>
                         <th
                           className="px-4 py-2 text-right font-medium"
                           title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês (mês sempre considerado com 30 dias, incluindo hoje como 1 dos dias restantes)"
@@ -746,6 +754,12 @@ export default function PainelPage() {
                               title={reorderEnabled ? "Arraste para reordenar" : undefined}
                             >
                               {reorderEnabled ? "⠿" : ""}
+                            </td>
+                            <td className="px-4 py-2">
+                              <OptimizedCell
+                                optimized={!!binding?.optimized}
+                                onToggle={(next) => patchBinding(acc.account_id, { optimized: next })}
+                              />
                             </td>
                             <td className="px-4 py-2">
                               <input
@@ -804,18 +818,8 @@ export default function PainelPage() {
                                 ))}
                               </select>
                             </td>
-                            <td className="px-4 py-2">
-                              <OptimizedCell
-                                optimized={!!binding?.optimized}
-                                onToggle={(next) => patchBinding(acc.account_id, { optimized: next })}
-                              />
-                            </td>
-                            <td className="px-4 py-2 text-right tabular-nums">
-                              <InlineNumber
-                                value={binding?.cpa_target ?? null}
-                                onSave={(v) => patchBinding(acc.account_id, { cpa_target: v })}
-                              />
-                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
+                            <td className="px-4 py-2 text-right tabular-nums">{insight?.results ?? "—"}</td>
                             <td className="px-4 py-2 text-right tabular-nums">
                               {(() => {
                                 const cpaActual = insight?.cost_per_result;
@@ -832,19 +836,30 @@ export default function PainelPage() {
                                 );
                               })()}
                             </td>
-                            <td className="px-4 py-2 text-right tabular-nums">{insight?.results ?? "—"}</td>
-                            <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
-                            <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.daily_budget ?? 0)}</td>
-                            <td
-                              className={`px-4 py-2 text-right tabular-nums ${ritmoColorClass(rowRitmo, insight?.daily_budget)}`}
-                              title={
-                                rowRitmo != null
-                                  ? fmtCurrencySigned((insight?.daily_budget ?? 0) - rowRitmo)
-                                  : undefined
-                              }
-                            >
-                              {fmtCurrency(rowRitmo)}
+                            <td className="px-4 py-2 text-right tabular-nums">
+                              <div className="flex items-center justify-end gap-1">
+                                <span className="text-xs text-zinc-400">R$</span>
+                                <InlineNumber
+                                  value={binding?.cpa_target ?? null}
+                                  onSave={(v) => patchBinding(acc.account_id, { cpa_target: v })}
+                                />
+                              </div>
                             </td>
+                            <td className="px-4 py-2 text-right tabular-nums">
+                              {(() => {
+                                const diff = rowRitmo != null ? (insight?.daily_budget ?? 0) - rowRitmo : null;
+                                const colorClass = ritmoColorClass(rowRitmo, insight?.daily_budget);
+                                return (
+                                  <>
+                                    <div>{fmtCurrency(insight?.daily_budget ?? 0)}</div>
+                                    {diff != null ? (
+                                      <div className={`text-xs opacity-70 ${colorClass}`}>{fmtCurrencySigned(diff)}</div>
+                                    ) : null}
+                                  </>
+                                );
+                              })()}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(rowRitmo)}</td>
                             <td className="px-4 py-2 text-right">
                               <button
                                 onClick={() => setEditingAccountId(acc.account_id)}

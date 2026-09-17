@@ -1894,6 +1894,18 @@ n8n-workflows/demandas-whatsapp.json → workflow pronto pra importar no n8n (Me
     finalizar já APAGA a linha de vez, sem manter histórico nenhum. Nova
     tabela `demands` + colunas `demands_group_id`/`demands_group_name` em
     `whatsapp_instances` (migração `0015_demandas.sql`)
+64. ~~Reordenação de colunas em Acompanhamento (Etapa 69)~~ ✅ — pedido
+    explícito: ordem nova é Otimizado, Cliente, Conta, Status, Valor usado,
+    Leads, CPA, CPA ideal, Invest. diário, Ritmo. Além de mover, dois
+    ajustes de exibição: "CPA ideal" ganhou o prefixo "R$" do lado do campo
+    editável (antes era só um número solto, sem indicar que é dinheiro); a
+    diferença que só aparecia como dica ao passar o mouse em cima do Ritmo
+    (Invest. diário − Ritmo) virou uma linha sempre visível embaixo do
+    valor de "Invest. diário", com a mesma cor condicional que já existia
+    (verde/laranja/vermelho, `ritmoColorClass`) — exatamente como a coluna
+    CPA já mostra a diferença pro CPA ideal embaixo do valor. A coluna
+    Ritmo, em troca, ficou só com o valor puro, sem cor nem dica ao passar
+    o mouse
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1947,7 +1959,9 @@ a coluna Observação na lista de pendentes de Controle de Saldo
 (Etapa 67) e a nova aba Demandas, que transforma solicitações de um grupo
 dedicado do WhatsApp em tarefas — com IA travada por prompt só pra
 transcrever áudio literalmente e separar pedidos misturados no mesmo texto,
-nunca pra reescrever/resumir/inventar (Etapa 68))
+nunca pra reescrever/resumir/inventar (Etapa 68) e a reordenação de colunas
+de Acompanhamento com o "R$" na coluna CPA ideal e a diferença do Ritmo
+movida pra embaixo de Invest. diário (Etapa 69))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
