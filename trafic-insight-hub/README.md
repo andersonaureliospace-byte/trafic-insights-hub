@@ -1007,8 +1007,13 @@ cp .env.local.example .env.local
 Preencha `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` e
 `SUPABASE_SERVICE_ROLE_KEY` com os valores do passo 1. Adicione também
 `WHATSAPP_DISPATCH_SECRET` — invente uma senha longa e aleatória (ex.:
-`openssl rand -hex 32`); é ela que protege o hook de disparo agendado de
-WhatsApp contra chamadas de qualquer pessoa na internet.
+`openssl rand -hex 32`); é ela que protege TODOS os hooks públicos
+(`/api/public/hooks/*`, incluindo o novo `demand-ingest` da Etapa 68)
+contra chamadas de qualquer pessoa na internet. Adicione também
+`GEMINI_API_KEY` (Etapa 68) — chave da API do Google Gemini, gratuita,
+gerada em [aistudio.google.com/apikey](https://aistudio.google.com/apikey);
+é usada só pra transcrever literalmente os áudios recebidos no grupo de
+Demandas (nunca pra interpretar texto).
 
 ## 5. Rodar localmente
 
@@ -1024,8 +1029,8 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
 
 1. Suba este projeto pra um repositório no GitHub.
 2. Em [vercel.com/new](https://vercel.com/new), importe o repositório.
-3. Em **Environment Variables**, adicione as mesmas quatro chaves do `.env.local`
-   (incluindo `WHATSAPP_DISPATCH_SECRET`).
+3. Em **Environment Variables**, adicione as mesmas chaves do `.env.local`
+   (incluindo `WHATSAPP_DISPATCH_SECRET` e, desde a Etapa 68, `GEMINI_API_KEY`).
 4. Deploy. A Vercel detecta Next.js automaticamente, sem configuração extra.
 5. No n8n, crie um workflow com um node **Schedule Trigger** (a cada 1
    minuto) → **HTTP Request** fazendo `POST` para
@@ -1097,6 +1102,36 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
     workflow, esses dois períodos só atualizam quando você clicar em
     "Calcular agora" na própria tela.
 
+16. (Etapa 68) Crie um décimo-primeiro workflow no n8n pra virar a aba
+    Demandas: **WhatsApp Trigger** (ou node equivalente do seu provedor,
+    ex.: uazapi) escutando SÓ o grupo com ID `120363428930571656` (ou o ID
+    salvo em Configurações → WhatsApp → "Grupo para Demandas") → um node de
+    espera/buffer que junta as mensagens de um mesmo remetente chegando em
+    sequência, fechando o pacote depois de ~15s de silêncio → separe a
+    ÚLTIMA mensagem do pacote (é o nome do cliente, `clientNameRaw`) das
+    demais (a solicitação em si, `messages` — pode ter mais de uma
+    mensagem, texto e/ou áudio) → **HTTP Request** `POST` para
+    `https://SEU_DOMINIO/api/public/hooks/demand-ingest` com o header
+    `x-webhook-secret: <o mesmo valor de WHATSAPP_DISPATCH_SECRET>` e corpo
+    JSON:
+    ```json
+    {
+      "groupId": "120363428930571656",
+      "clientNameRaw": "Nome do cliente (texto da última mensagem)",
+      "requestedAt": "2026-08-31T14:23:00Z",
+      "messages": [
+        { "type": "text", "text": "Plano de ação:\n- Item 1\n- Item 2" },
+        { "type": "audio", "mediaUrl": "https://...", "mimeType": "audio/ogg" }
+      ]
+    }
+    ```
+    Se a mensagem com o nome do cliente não vier (a pessoa esqueceu de
+    mandar), pode chamar sem `clientNameRaw` — a demanda entra "em aberto"
+    e dá pra atribuir o cliente manualmente depois, na própria aba
+    Demandas. Ative o workflow — sem ele, nenhuma mensagem do grupo vira
+    tarefa sozinha (dá pra popular a tabela `demands` manualmente via
+    Supabase também, se preferir testar sem n8n).
+
 ⚠️ (Etapa 58) Se você já tinha criado o workflow do
 `increase-budget-tick` (antigo passo 13, "oitavo workflow"), apague ou
 desative esse workflow no n8n — a rota não existe mais no app e vai passar
@@ -1111,8 +1146,9 @@ app/
   (app)/                                                     → área logada
     painel/         → subgrupos na lateral: Acompanhamento, Evolução,
                       Monitor de CPA, Clientes, Controle de Saldo, Visão
-                      Geral, Análise — cada um só busca no Meta enquanto
-                      está ativo
+                      Geral, Análise, Demandas (Etapa 68) — cada um só
+                      busca no Meta enquanto está ativo (Demandas nem
+                      busca no Meta, só na própria tabela `demands`)
     mensagens/      → abas Envio, Relatórios e Avisos, todas funcionais
     auditoria/      → Localização e Erros de veiculação, funcionais
     crm/            → instâncias, kanban, detalhe do lead — funcional
@@ -1128,8 +1164,11 @@ app/
     analysis/increase-budget → aumenta R$2,50 fixo o orçamento de UM conjunto (botão manual, Análise "abaixo da meta")
     whatsapp/credentials, whatsapp/status, whatsapp/connect,
     whatsapp/disconnect, whatsapp/groups, whatsapp/alerts-group,
+    whatsapp/demands-group (Etapa 68, grupo dedicado de Demandas),
     whatsapp/send, whatsapp/media, whatsapp/message-templates,
     whatsapp/scheduled-dispatches
+    demands, demands/[id] (GET/PATCH atribuir cliente manualmente/DELETE
+                    "Finalizar"), demands/reorder → CRUD da aba Demandas (Etapa 68)
     audit/location, audit/errors  → "Verificar agora" de cada auditoria
     crm/instances, crm/instances/[id], crm/leads, crm/leads/[id],
     crm/leads/[id]/events  → CRUD do CRM (instâncias, leads, histórico)
@@ -1157,6 +1196,7 @@ app/
     public/hooks/low-investment-tick     → idem, avisa investimento baixo (Etapa 53, sugerido seg-sex 07h/09h15/13h)
     public/hooks/bulk-status-tick        → idem, reclassifica status + reordena o quadro (Etapa 55, sugerido seg/qui 01h)
     public/hooks/cpa-board-cache-tick    → idem, recalcula o cache de Ontem/Últimos 3 dias do Monitor de CPA (Etapa 61, sugerido 1x/dia às 07h10)
+    public/hooks/demand-ingest           → idem, recebe as mensagens do grupo de Demandas via n8n e cria a tarefa (Etapa 68, sem agendamento — chamado a cada pacote de mensagens, ver passo 16)
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
     painel-ui-state  → lembra a aba ativa + filtros de Acompanhamento/Análise/
@@ -1293,6 +1333,32 @@ lib/whatsapp/
   instance.ts   → helpers pra pegar a instância uazapi salva do usuário
   dispatch.ts   → tipos do disparo de WhatsApp e interpolação de {cliente}
                   (a regra de recorrência em si vem de lib/scheduling.ts)
+lib/demands/ (Etapa 68)
+  parse-request.ts → organiza o texto da solicitação (já com áudio
+                  transcrito) em título + itens. Quem separa os pedidos é a
+                  IA (splitDemandTasks, lib/ai/gemini.ts) — travada por
+                  prompt pra só decidir ONDE um pedido termina e outro
+                  começa, nunca reescrever/resumir/corrigir/inventar (pedido
+                  explícito — "não é pra adivinhar a tarefa"): cada item sai
+                  com o texto exatamente como foi escrito/falado. Se a
+                  chamada à IA falhar, cai num split determinístico por
+                  linha/marcador de lista (sem IA), como rede de segurança
+                  pra nunca perder a solicitação
+  match-client.ts → casa o nome de cliente digitado à mão no WhatsApp com
+                  um `account_bindings.client_name` já cadastrado (nome
+                  normalizado — sem acento/maiúscula/pontuação, igual ou
+                  um contendo o outro); sem bater (ou sem nome nenhum
+                  mandado), a demanda fica sem conta vinculada, nunca
+                  bloqueada
+lib/ai/gemini.ts (Etapa 68) → dois usos de IA em Demandas, ambos travados
+                  por prompt pra nunca interpretar/resumir/inventar:
+                  transcribeAudio() faz a transcrição literal de áudio via
+                  Google Gemini (camada gratuita), proibido resumir, corrigir
+                  sentido ou completar frases; splitDemandTasks() separa um
+                  texto (já transcrito) em pedidos distintos quando vêm
+                  misturados sem quebra de linha — só decide ONDE cortar,
+                  cada item sai com o texto exatamente como foi
+                  escrito/falado, nunca reescrito
 lib/supabase/
   client.ts     → cliente do navegador (Client Components)
   server.ts     → cliente do servidor (Server Components / Route Handlers)
@@ -1312,6 +1378,9 @@ supabase/migrations/0009_account_sort_order.sql → ordem manual (drag-and-drop)
 supabase/migrations/0010_client_optimized.sql → coluna "Otimizado" (+ data de referência) em Acompanhamento
 supabase/migrations/0011_drop_optimized_reason.sql → remove a coluna de motivo do "Otimizado" (não usada mais)
 supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da checagem de erro no pagamento
+supabase/migrations/0013_saldo_alertas_avancados.sql → multiplicador de sexta + campos de verificação manual em pix_accounts
+supabase/migrations/0014_manual_check_multi_weekday.sql → manual_check_weekday (int) → manual_check_weekdays (array)
+supabase/migrations/0015_demandas.sql → tabela demands + demands_group_id/demands_group_name em whatsapp_instances (Etapa 68)
 ```
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
@@ -1767,6 +1836,37 @@ supabase/migrations/0012_payment_alerts.sql → controle de reaviso (24h) da che
     padrão de troca de coluna já usado na Etapa 37. `computeManualCheckNextAt`
     (`lib/alerts/manual-check.ts`) passou a achar o próximo dia dentre
     QUALQUER um dos escolhidos, não mais um único
+63. ~~Nova aba Demandas — solicitações do WhatsApp viram tarefas (Etapa
+    68)~~ ✅ — pedido explícito: um grupo dedicado do WhatsApp (configurado
+    em Configurações → WhatsApp → "Grupo para Demandas", junto com o de
+    alertas) recebe solicitações — texto ou áudio, podendo vir em mais de
+    uma mensagem — seguidas de uma última mensagem só com o nome do
+    cliente. Um workflow no n8n (ver passo 16 da seção de deploy) junta as
+    mensagens de um mesmo remetente (~15s de silêncio fecha o pacote) e
+    chama o novo hook público `public/hooks/demand-ingest`, que usa Google
+    Gemini (camada gratuita, `lib/ai/gemini.ts`) em duas etapas — ⚠️
+    IMPORTANTE, pedido explícito ("a geração da tarefa não é pra adivinhar"):
+    as duas são travadas por prompt pra NUNCA reescrever, resumir, corrigir
+    ou inventar o que foi dito, só (1) transcrever áudio literalmente e (2)
+    decidir ONDE separar os pedidos quando a mensagem traz mais de um
+    misturado no mesmo texto (comum em áudio, que sai sem quebra de linha) —
+    cada item final sai com o texto exatamente como foi escrito/falado (ex.:
+    "Vamos começar amanhã as 09" vira a tarefa "Vamos começar amanhã as 09",
+    sem reescrever). Se a chamada à IA falhar, cai num split determinístico
+    por linha/marcador de lista como rede de segurança, pra nunca perder a
+    solicitação; (3) tenta casar o nome de cliente digitado com um cliente
+    já cadastrado (`lib/demands/match-client.ts`, por nome normalizado) —
+    sem bater, ou se a mensagem com o nome nem foi mandada, a demanda entra
+    "em aberto" (sem cliente vinculado) em vez de travar, e dá pra atribuir
+    manualmente depois direto na aba Demandas ("+ atribuir cliente"). Cada
+    demanda mostra dia/hora/minuto exatos da solicitação (fuso
+    America/Sao_Paulo), o texto organizado e, quando tem mais de um item,
+    a lista completa. Dá pra arrastar-e-soltar pra reordenar por
+    prioridade (a mais antiga fica em primeiro por padrão, até alguém
+    mexer manualmente). Um botão "Finalizar" por tarefa — pedido explícito:
+    finalizar já APAGA a linha de vez, sem manter histórico nenhum. Nova
+    tabela `demands` + colunas `demands_group_id`/`demands_group_name` em
+    `whatsapp_instances` (migração `0015_demandas.sql`)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1816,8 +1916,11 @@ a alerta com os avisos novos de sexta-feira e verificação manual mais o
 campo de busca em Personalizar alertas (Etapa 63), o filtro "Este mês,
 até ontem" (Etapa 64), a exclusão por nomenclatura "[TRÁFEGO]" (Etapa 65),
 a coluna Observação na lista de pendentes de Controle de Saldo
-(Etapa 66) e a verificação manual em mais de um dia da semana
-(Etapa 67))
+(Etapa 66), a verificação manual em mais de um dia da semana
+(Etapa 67) e a nova aba Demandas, que transforma solicitações de um grupo
+dedicado do WhatsApp em tarefas — com IA travada por prompt só pra
+transcrever áudio literalmente e separar pedidos misturados no mesmo texto,
+nunca pra reescrever/resumir/inventar (Etapa 68))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

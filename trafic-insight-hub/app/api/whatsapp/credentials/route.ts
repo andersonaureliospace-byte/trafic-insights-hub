@@ -6,7 +6,7 @@ export async function GET() {
     const { supabase, user } = await requireUser();
     const { data } = await supabase
       .from("whatsapp_instances")
-      .select("api_url, token, status, alerts_group_id, alerts_group_name")
+      .select("api_url, token, status, alerts_group_id, alerts_group_name, demands_group_id, demands_group_name")
       .eq("user_id", user.id)
       .maybeSingle();
     return NextResponse.json({
@@ -15,6 +15,8 @@ export async function GET() {
       status: data?.status ?? "disconnected",
       alerts_group_id: data?.alerts_group_id ?? null,
       alerts_group_name: data?.alerts_group_name ?? null,
+      demands_group_id: data?.demands_group_id ?? null,
+      demands_group_name: data?.demands_group_name ?? null,
       configured: !!(data?.api_url && data?.token),
     });
   } catch {

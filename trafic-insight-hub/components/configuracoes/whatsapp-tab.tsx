@@ -33,6 +33,9 @@ export function WhatsappTab() {
   const [alertsGroupId, setAlertsGroupId] = useState<string | null>(null);
   const [alertsGroupName, setAlertsGroupName] = useState<string | null>(null);
   const [savingAlertsGroup, setSavingAlertsGroup] = useState(false);
+  const [demandsGroupId, setDemandsGroupId] = useState<string | null>(null);
+  const [demandsGroupName, setDemandsGroupName] = useState<string | null>(null);
+  const [savingDemandsGroup, setSavingDemandsGroup] = useState(false);
 
   useEffect(() => {
     fetch("/api/whatsapp/credentials")
@@ -44,6 +47,8 @@ export function WhatsappTab() {
         setStatus(d.status ?? "disconnected");
         setAlertsGroupId(d.alerts_group_id ?? null);
         setAlertsGroupName(d.alerts_group_name ?? null);
+        setDemandsGroupId(d.demands_group_id ?? null);
+        setDemandsGroupName(d.demands_group_name ?? null);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -156,6 +161,19 @@ export function WhatsappTab() {
       body: JSON.stringify({ alerts_group_id: g?.id ?? null, alerts_group_name: g?.name ?? null }),
     });
     setSavingAlertsGroup(false);
+  }
+
+  async function saveDemandsGroup(id: string) {
+    const g = groups?.find((x) => x.id === id) ?? null;
+    setDemandsGroupId(g?.id ?? null);
+    setDemandsGroupName(g?.name ?? null);
+    setSavingDemandsGroup(true);
+    await fetch("/api/whatsapp/demands-group", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ demands_group_id: g?.id ?? null, demands_group_name: g?.name ?? null }),
+    });
+    setSavingDemandsGroup(false);
   }
 
   if (loading) return <p className="text-sm text-zinc-500">Carregando…</p>;
@@ -355,6 +373,45 @@ export function WhatsappTab() {
             {groupsError ? <p className="mt-2 text-xs text-red-600">{groupsError}</p> : null}
             <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
               Esse grupo recebe os avisos automáticos de saldo baixo (Controle de Saldo → PIX), via n8n.
+            </p>
+          </div>
+
+          <div className="mt-6 border-t border-zinc-200 pt-4 dark:border-zinc-800">
+            <label className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+              Grupo para Demandas {savingDemandsGroup ? "· salvando…" : ""}
+            </label>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <select
+                value={demandsGroupId ?? ""}
+                onChange={(e) => void saveDemandsGroup(e.target.value)}
+                onFocus={() => {
+                  if (!groups) void loadGroups(false);
+                }}
+                className="h-8 min-w-[220px] rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
+              >
+                <option value="">— Nenhum —</option>
+                {demandsGroupId && !groups?.some((g) => g.id === demandsGroupId) ? (
+                  <option value={demandsGroupId}>{demandsGroupName ?? demandsGroupId}</option>
+                ) : null}
+                {(groups ?? []).map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => void loadGroups(true)}
+                disabled={loadingGroups}
+                className="h-8 rounded-md border border-zinc-300 px-2 text-xs font-medium disabled:opacity-60 dark:border-zinc-700"
+              >
+                {loadingGroups ? "Atualizando…" : "Atualizar grupos"}
+              </button>
+            </div>
+            {groupsError ? <p className="mt-2 text-xs text-red-600">{groupsError}</p> : null}
+            <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+              É o grupo dedicado onde você envia as solicitações (texto ou áudio) que viram tarefas na
+              aba Demandas. Cada solicitação são duas mensagens: a solicitação em si (pode ser mais de
+              uma mensagem) e, por último, o nome do cliente.
             </p>
           </div>
         </div>

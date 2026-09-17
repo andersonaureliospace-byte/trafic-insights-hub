@@ -11,6 +11,7 @@ import { ControleSaldo } from "@/components/painel/controle-saldo";
 import { VisaoGeral } from "@/components/painel/visao-geral";
 import { AnaliseTab } from "@/components/painel/analise-tab";
 import { ClientesTab } from "@/components/painel/clientes-tab";
+import { DemandasTab } from "@/components/painel/demandas-tab";
 import { EvolucaoTab } from "@/components/painel/evolucao-tab";
 import { MonitorCpaTab } from "@/components/painel/monitor-cpa-tab";
 import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
@@ -135,6 +136,7 @@ const TABS = [
   { id: "visao-geral", label: "Visão Geral" },
   { id: "saldo", label: "Controle de Saldo" },
   { id: "clientes", label: "Clientes" },
+  { id: "demandas", label: "Demandas" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -911,6 +913,13 @@ export default function PainelPage() {
                 accounts={selectedAccounts}
                 initialFilters={uiState?.analise}
                 onFiltersChange={handleAnaliseFiltersChange}
+              />
+            ) : null}
+
+            {tab === "demandas" ? (
+              <DemandasTab
+                accounts={selectedAccounts}
+                clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
               />
             ) : null}
           </div>
