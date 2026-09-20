@@ -15,7 +15,12 @@
 //
 // Gemini foi escolhido nas três por ter camada gratuita e aceitar áudio
 // direto.
-const GEMINI_MODEL = "gemini-2.0-flash";
+//
+// gemini-2.0-flash foi descontinuado pelo Google (erro 404 em produção,
+// "model is no longer available") — trocado por gemini-3.6-flash (mesma
+// camada gratuita, mesmo suporte a áudio e responseSchema), o modelo que a
+// própria resposta de erro do Google indicou como substituto.
+const GEMINI_MODEL = "gemini-3.6-flash";
 
 const TRANSCRIBE_PROMPT =
   "Transcreva o áudio a seguir em português, palavra por palavra, exatamente como foi falado. " +
