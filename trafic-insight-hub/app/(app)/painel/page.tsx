@@ -385,15 +385,25 @@ export default function PainelPage() {
     });
   }
 
+  // Atualização otimista (aparece na hora), mas SEMPRE confere se o servidor
+  // gravou de verdade — sem isso, um erro do Supabase (ex.: coluna fora do
+  // cache de schema do PostgREST) passava batido: a tela mostrava o valor
+  // novo, mas nada era salvo, e o campo voltava vazio na próxima vez que a
+  // página carregava, sem nenhum aviso do que aconteceu.
   async function patchBinding(accountId: string, patch: BindingPatch) {
-    const current = bindings[accountId] ?? defaultBinding(accountId);
-    const next = { ...current, ...patch };
+    const previous = bindings[accountId] ?? defaultBinding(accountId);
+    const next = { ...previous, ...patch };
     setBindings((prev) => ({ ...prev, [accountId]: next }));
-    await fetch("/api/account-bindings", {
+    const res = await fetch("/api/account-bindings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ad_account_id: accountId, ...patch }),
     });
+    const d = await res.json().catch(() => ({ error: "Resposta inválida do servidor." }));
+    if (d.error) {
+      setBindings((prev) => ({ ...prev, [accountId]: previous }));
+      alert(`Não deu pra salvar: ${d.error}`);
+    }
   }
 
   // Reordenação por arrastar-e-soltar (Acompanhamento) — grava sort_order de
