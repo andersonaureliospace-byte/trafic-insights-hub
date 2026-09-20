@@ -1,4 +1,4 @@
-// Etapa 68: os dois únicos usos de IA em Demandas — (1) transcrever ÁUDIO
+// Etapa 68: os dois primeiros usos de IA em Demandas — (1) transcrever ÁUDIO
 // recebido no grupo do WhatsApp e (2) separar uma mensagem (texto corrido ou
 // já transcrito) em pedidos distintos, quando ela traz mais de uma
 // solicitação misturada sem quebra de linha nem lista. As duas funções são
@@ -6,7 +6,15 @@
 // que foi dito — pedido explícito do usuário ("a geração da tarefa não é pra
 // adivinhar a tarefa"). splitDemandTasks só decide ONDE um pedido termina e o
 // outro começa; o texto de cada item sai exatamente como foi escrito/falado.
-// Gemini foi escolhido por ter camada gratuita e aceitar áudio direto.
+//
+// Etapa 70: generateCopyVariations é DIFERENTE das duas de cima de propósito
+// — aqui o pedido explícito do usuário foi o oposto ("vamos usar uma IA pra
+// fazer as variações", com liberdade criativa de verdade). Ela escreve copy
+// nova pro Gerador de Copy do Instituto Visão Solidária, usando os modelos
+// reais da marca como referência de padrão (few-shot), não como texto fixo.
+//
+// Gemini foi escolhido nas três por ter camada gratuita e aceitar áudio
+// direto.
 const GEMINI_MODEL = "gemini-2.0-flash";
 
 const TRANSCRIBE_PROMPT =
@@ -99,4 +107,119 @@ export async function splitDemandTasks(text: string): Promise<SplitResult> {
   const parsed = JSON.parse(raw) as { title?: string | null; items?: unknown };
   const items = Array.isArray(parsed.items) ? parsed.items.map((i) => String(i)) : [];
   return { title: parsed.title ?? null, items };
+}
+
+// Etapa 70 — Gerador de Copy (Instituto Visão Solidária).
+export interface CopyReferenceModelInput {
+  endereco_exemplo: string;
+  copy: string;
+  oferta: string;
+  cta: string;
+  condicao: string;
+}
+
+export interface CopyVariationResult {
+  copy: string;
+  oferta: string;
+  cta: string;
+  condicao: string;
+}
+
+const COPY_STRUCTURE_GUIDE = `Você escreve copy de anúncio do Meta Ads (Feed/Stories/Reels) para o Instituto Visão Solidária (IVS), uma franquia de óticas com centenas de unidades — a comunicação segue sempre a mesma linha entre unidades, só muda o endereço e o mecanismo da oferta.
+
+Cada variação tem 4 partes (o endereço da loja é fixo e NÃO faz parte do que você escreve — já vem pronto):
+
+- "copy": o texto criativo completo, em parágrafos curtos separados por linha em branco, nesta ordem: (1) um gancho/headline chamando atenção — pode citar a cidade/região, uma pergunta, um alerta de urgência ou um gatilho mental (concorrência, tempo, economia, política, etc); (2) um parágrafo explicando a oferta com o mecanismo exato (nunca invente valor ou mecanismo diferente do informado); (3) opcionalmente uma linha curta de reforço/diferencial; (4) a tagline fixa da marca, sempre parecida com "BARATO QUE ÓTICA? SÓ AQUI NO INSTITUTO VISÃO SOLIDÁRIA 😍" (pode variar levemente o texto antes do nome da marca, mas mantenha o sentido e o emoji 😍 no final). Use emojis nas posições certas: gancho costuma abrir com 🔵/🚨, o parágrafo da oferta com 👓, o reforço com ✨/💰/🚀/💎/💡.
+- "oferta": uma frase curta (sem emoji) resumindo o mecanismo exato da promoção — deve refletir fielmente o valor/mecanismo informado, nunca inventado.
+- "cta": uma frase curta convidando a falar no WhatsApp, abrindo com um emoji de celular/mão/balão (📲/👉/💬).
+- "condicao": a letra miúda da promoção, começando com "*", em uma frase curta (pode ser string vazia se a oferta não tiver nenhuma condição a esclarecer).
+
+Gere exatamente {{COUNT}} variação(ões), todas fiéis a esse padrão, mas com ganchos e textos diferentes entre si (não repita a mesma frase em variações diferentes).`;
+
+export async function generateCopyVariations(params: {
+  categoryLabel: string;
+  subcategoryName: string;
+  address: string;
+  clientName: string | null;
+  offerText: string;
+  extraFields: { label: string; value: string }[];
+  referenceModels: CopyReferenceModelInput[];
+  count?: number;
+}): Promise<CopyVariationResult[]> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY não configurada no servidor.");
+  const count = params.count && params.count > 0 ? params.count : 5;
+
+  const examplesBlock = params.referenceModels.length
+    ? params.referenceModels
+        .map(
+          (m, i) =>
+            `Exemplo real ${i + 1} (endereço de exemplo: ${m.endereco_exemplo || "—"}):\n` +
+            `copy: """${m.copy}"""\noferta: """${m.oferta}"""\ncta: """${m.cta}"""\ncondicao: """${m.condicao}"""`,
+        )
+        .join("\n\n")
+    : "(nenhum modelo de referência cadastrado ainda pra essa subcategoria — siga só a estrutura descrita acima.)";
+
+  const extraFieldsBlock = params.extraFields.length
+    ? params.extraFields.map((f) => `- ${f.label}: ${f.value}`).join("\n")
+    : "(nenhum)";
+
+  const prompt = `${COPY_STRUCTURE_GUIDE.replace("{{COUNT}}", String(count))}
+
+Categoria: ${params.categoryLabel}
+Subcategoria: ${params.subcategoryName}
+Endereço real da unidade (use exatamente este texto se precisar citar a cidade/região no gancho — não repita o endereço completo dentro do "copy", ele já aparece separado na tela): ${params.address || "—"}
+${params.clientName ? `Nome do cliente/unidade: ${params.clientName}\n` : ""}Oferta desta geração (use este mecanismo exato, não invente outro): ${params.offerText || "(use o mecanismo mostrado nos exemplos de referência abaixo)"}
+Campos extras informados:
+${extraFieldsBlock}
+
+Modelos de referência da marca (few-shot — use como padrão de tom/estrutura, nunca copie literalmente):
+${examplesBlock}
+
+Responda SOMENTE com um JSON array de ${count} objeto(s), neste formato exato: [{"copy": "...", "oferta": "...", "cta": "...", "condicao": "..."}]`;
+
+  const body = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: "ARRAY",
+        items: {
+          type: "OBJECT",
+          properties: {
+            copy: { type: "STRING" },
+            oferta: { type: "STRING" },
+            cta: { type: "STRING" },
+            condicao: { type: "STRING" },
+          },
+          required: ["copy", "oferta", "cta", "condicao"],
+        },
+      },
+    },
+  };
+
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+  const json = (await res.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+  };
+  const raw = json.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!raw || !raw.trim()) throw new Error("Gemini não retornou nenhuma variação de copy.");
+
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error("Gemini não retornou variações no formato esperado.");
+  }
+  return parsed.map((v) => {
+    const item = v as Record<string, unknown>;
+    return {
+      copy: String(item.copy ?? ""),
+      oferta: String(item.oferta ?? ""),
+      cta: String(item.cta ?? ""),
+      condicao: String(item.condicao ?? ""),
+    };
+  });
 }

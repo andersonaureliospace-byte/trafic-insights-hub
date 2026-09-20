@@ -1158,9 +1158,10 @@ app/
   (app)/                                                     → área logada
     painel/         → subgrupos na lateral: Acompanhamento, Evolução,
                       Monitor de CPA, Clientes, Controle de Saldo, Visão
-                      Geral, Análise, Demandas (Etapa 68) — cada um só
-                      busca no Meta enquanto está ativo (Demandas nem
-                      busca no Meta, só na própria tabela `demands`)
+                      Geral, Análise, Demandas (Etapa 68), Copy (Etapa 70)
+                      — cada um só busca no Meta enquanto está ativo
+                      (Demandas e Copy nem buscam no Meta, só nas próprias
+                      tabelas)
     mensagens/      → abas Envio, Relatórios e Avisos, todas funcionais
     auditoria/      → Localização e Erros de veiculação, funcionais
     crm/            → instâncias, kanban, detalhe do lead — funcional
@@ -1212,6 +1213,13 @@ app/
     public/hooks/demand-buffer-append    → idem, guarda 1 mensagem recebida no buffer por remetente (Etapa 68, chamado a cada mensagem que chega no grupo de Demandas)
     public/hooks/demand-buffer-latest    → idem, devolve o horário da mensagem mais recente do buffer de um remetente — usado pelo n8n pra saber se ainda deve processar depois da espera de 15s (Etapa 68)
     public/hooks/demand-buffer-flush     → idem, monta o pacote com tudo que está no buffer de um remetente, cria a demanda (via lib/demands/ingest.ts) e limpa o buffer (Etapa 68)
+    copy/subcategories, copy/subcategories/[id]  → lista (semeando o dataset
+                    inicial na primeira vez)/cria/renomeia/apaga subcategorias
+                    do Gerador de Copy (Etapa 70)
+    copy/generate   → gera as variações (Gemini) e salva no histórico —
+                    aceita count/save opcionais pro botão "gerar de novo só
+                    essa" (Etapa 70)
+    copy/generations → histórico de gerações por cliente (Etapa 70)
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
     painel-ui-state  → lembra a aba ativa + filtros de Acompanhamento/Análise/
@@ -1370,15 +1378,25 @@ lib/demands/ (Etapa 68)
                   um contendo o outro); sem bater (ou sem nome nenhum
                   mandado), a demanda fica sem conta vinculada, nunca
                   bloqueada
-lib/ai/gemini.ts (Etapa 68) → dois usos de IA em Demandas, ambos travados
-                  por prompt pra nunca interpretar/resumir/inventar:
-                  transcribeAudio() faz a transcrição literal de áudio via
-                  Google Gemini (camada gratuita), proibido resumir, corrigir
-                  sentido ou completar frases; splitDemandTasks() separa um
-                  texto (já transcrito) em pedidos distintos quando vêm
-                  misturados sem quebra de linha — só decide ONDE cortar,
-                  cada item sai com o texto exatamente como foi
-                  escrito/falado, nunca reescrito
+lib/ai/gemini.ts → transcribeAudio() e splitDemandTasks() (Etapa 68) são os
+                  dois usos de IA em Demandas, travados por prompt pra nunca
+                  interpretar/resumir/inventar: transcribeAudio() faz a
+                  transcrição literal de áudio via Google Gemini (camada
+                  gratuita), proibido resumir, corrigir sentido ou completar
+                  frases; splitDemandTasks() separa um texto (já transcrito)
+                  em pedidos distintos quando vêm misturados sem quebra de
+                  linha — só decide ONDE cortar, cada item sai com o texto
+                  exatamente como foi escrito/falado, nunca reescrito.
+                  generateCopyVariations() (Etapa 70) é o oposto de
+                  propósito — escreve copy NOVA (com liberdade criativa de
+                  verdade, pedido explícito) pro Gerador de Copy, usando os
+                  modelos de referência da subcategoria como few-shot
+lib/copy/ (Etapa 70)
+  types.ts       → tipos compartilhados do Gerador de Copy (categorias fixas,
+                  subcategoria, modelo de referência, variação gerada)
+  seed-defaults.ts → dataset inicial (subcategorias + modelos de referência,
+                  extraídos de anúncios reais do IVS) semeado automaticamente
+                  na primeira abertura da aba Copy, por usuário
 lib/supabase/
   client.ts     → cliente do navegador (Client Components)
   server.ts     → cliente do servidor (Server Components / Route Handlers)
@@ -1402,6 +1420,7 @@ supabase/migrations/0013_saldo_alertas_avancados.sql → multiplicador de sexta 
 supabase/migrations/0014_manual_check_multi_weekday.sql → manual_check_weekday (int) → manual_check_weekdays (array)
 supabase/migrations/0015_demandas.sql → tabela demands + demands_group_id/demands_group_name em whatsapp_instances (Etapa 68)
 supabase/migrations/0016_demand_message_buffer.sql → tabela demand_message_buffer, usada pelo workflow do n8n pra implementar o "~15s de silêncio" (Etapa 68)
+supabase/migrations/0017_copy_generator.sql → tabelas copy_subcategories, copy_reference_models e copy_generations do Gerador de Copy IVS (Etapa 70)
 ```
 n8n-workflows/demandas-whatsapp.json → workflow pronto pra importar no n8n (Menu → Import from File) que implementa o passo 16 da seção de deploy — só nós nativos (Webhook, IF, Set, HTTP Request, Wait, NoOp), sem nó Code
 
@@ -1906,6 +1925,27 @@ n8n-workflows/demandas-whatsapp.json → workflow pronto pra importar no n8n (Me
     CPA já mostra a diferença pro CPA ideal embaixo do valor. A coluna
     Ritmo, em troca, ficou só com o valor puro, sem cor nem dica ao passar
     o mouse
+65. Nova aba **Copy** (Etapa 70) — gerador de copy de anúncio pro Instituto
+    Visão Solidária (franquia de ótica com centenas de unidades, oferta
+    praticamente igual entre elas, só muda o endereço). 4 categorias fixas
+    (Geral, Promoção, Exames, Inauguração) e subcategorias criadas livremente
+    pelo usuário dentro de cada uma (ex.: "Geral + Cobrimos oferta",
+    "Promoção + Armação por 1 real"); Inauguração já nasce com 3
+    subcategorias pré-criadas (Armação 1 real, Padrão, Exame) e campos
+    extras configuráveis por subcategoria (`extra_fields`, ex.: "Data da
+    inauguração", "Valor do exame") — evita ter que mexer em código toda vez
+    que uma subcategoria precisar de um campo novo. Ao gerar, o cliente (e
+    seu endereço, de Clientes/`account_bindings`) + categoria + subcategoria
+    viram um prompt pro Gemini com os modelos de referência daquela
+    subcategoria como exemplo (few-shot, extraídos de anúncios reais do IVS)
+    — ao contrário da IA de Demandas (só transcreve/separa texto literal,
+    nunca inventa), aqui foi pedido explicitamente liberdade criativa de
+    verdade. Sempre 5 variações (Copy + Oferta + CTA + Condição — Endereço
+    vem fixo do cadastro), cada uma com botão de copiar e "gerar de novo só
+    essa", e histórico salvo por cliente. Novas tabelas `copy_subcategories`,
+    `copy_reference_models` e `copy_generations` (migração
+    `0017_copy_generator.sql`), semeadas automaticamente com o dataset
+    inicial na primeira abertura da aba (`lib/copy/seed-defaults.ts`)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -1959,9 +1999,11 @@ a coluna Observação na lista de pendentes de Controle de Saldo
 (Etapa 67) e a nova aba Demandas, que transforma solicitações de um grupo
 dedicado do WhatsApp em tarefas — com IA travada por prompt só pra
 transcrever áudio literalmente e separar pedidos misturados no mesmo texto,
-nunca pra reescrever/resumir/inventar (Etapa 68) e a reordenação de colunas
+nunca pra reescrever/resumir/inventar (Etapa 68), a reordenação de colunas
 de Acompanhamento com o "R$" na coluna CPA ideal e a diferença do Ritmo
-movida pra embaixo de Invest. diário (Etapa 69))
+movida pra embaixo de Invest. diário (Etapa 69) e a aba Copy, o gerador de
+copy de anúncio do Instituto Visão Solidária com IA generativa de verdade
+(diferente das outras, que só organizam texto literal) (Etapa 70))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

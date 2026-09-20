@@ -11,6 +11,7 @@ import { ControleSaldo } from "@/components/painel/controle-saldo";
 import { VisaoGeral } from "@/components/painel/visao-geral";
 import { AnaliseTab } from "@/components/painel/analise-tab";
 import { ClientesTab } from "@/components/painel/clientes-tab";
+import { CopyTab } from "@/components/painel/copy-tab";
 import { DemandasTab } from "@/components/painel/demandas-tab";
 import { EvolucaoTab } from "@/components/painel/evolucao-tab";
 import { MonitorCpaTab } from "@/components/painel/monitor-cpa-tab";
@@ -140,6 +141,7 @@ const TABS = [
   { id: "saldo", label: "Controle de Saldo" },
   { id: "clientes", label: "Clientes" },
   { id: "demandas", label: "Demandas" },
+  { id: "copy", label: "Copy" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -941,6 +943,8 @@ export default function PainelPage() {
                 clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
               />
             ) : null}
+
+            {tab === "copy" ? <CopyTab accounts={selectedAccounts} bindings={bindings} /> : null}
           </div>
         </div>
       )}
