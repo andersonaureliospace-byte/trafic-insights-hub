@@ -2041,6 +2041,19 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Histórico de envios (loja, vencimento, arquivo, status) numa listinha
     "Ver histórico" na mesma seção, guardado na nova tabela `boleto_sends`
     (migração `0020_boleto_sends.sql`; bucket em `0021_boletos_bucket.sql`).
+67. **Reordenar junto com "Atualizar status em massa" (Etapa 72)** — o botão
+    manual de Acompanhamento (`components/painel/bulk-status-dialog.tsx`),
+    além de reclassificar o status, agora também reordena a lista pedido à
+    parte: **Inauguração no topo**, depois Crítica, Alta, Média e Baixa —
+    ⚠️ ordem DIFERENTE da automação agendada da Etapa 55
+    (`lib/alerts/bulk-status-update.ts`), que deixa Inauguração por último;
+    são dois critérios de ordenação distintos, um por tela. Dentro de cada
+    grupo, do pior CPA (últimos 3 dias) pro melhor — mesmo critério já
+    usado na automação. Só reordena quando a lista está sem busca, grupo de
+    foco ou filtro de Status/CPA/Investimento/Otimizado ativo (mesma trava
+    do arrastar-e-soltar) — com algum desses ativos, o botão continua
+    reclassificando normalmente, só sem mexer na ordem, com um aviso
+    explicando o motivo na tela de confirmação.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2100,7 +2113,9 @@ movida pra embaixo de Invest. diário (Etapa 69), a aba Copy, o gerador de
 copy de anúncio do Instituto Visão Solidária com IA generativa de verdade
 (diferente das outras, que só organizam texto literal) (Etapa 70) e o
 envio de boleto por e-mail direto de Controle de Saldo via webhook do n8n
-(Etapa 71))
+(Etapa 71) e o reordenar automático (Inauguração → Crítica → Alta → Média →
+Baixa, pior CPA primeiro em cada grupo) junto do botão manual "Atualizar
+status em massa" de Acompanhamento (Etapa 72))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

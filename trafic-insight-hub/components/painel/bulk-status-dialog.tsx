@@ -28,16 +28,64 @@ function classify(cpa: number, target: number): string {
   return "critica";
 }
 
+// Etapa 72: ordem pedida pro reordenar automático do botão manual — note que
+// é DIFERENTE da automação agendada (lib/alerts/bulk-status-update.ts), que
+// deixa Inauguração por último. Aqui foi pedido Inauguração primeiro.
+// Quem não tem status nenhum (nunca classificado) fica por último de todos.
+const GROUP_RANK: Record<string, number> = {
+  inauguracao: 0,
+  critica: 1,
+  alta: 2,
+  media: 3,
+  baixa: 4,
+};
+function groupRank(priority: string | null): number {
+  if (priority == null) return 5;
+  return GROUP_RANK[priority] ?? 5;
+}
+
+interface ComputedEntry {
+  accountId: string;
+  clientName: string;
+  finalPriority: string | null;
+  cpa: number | null;
+}
+
+// Do pior resultado pro menor dentro do mesmo grupo — maior CPA primeiro
+// (mesmo critério já usado na automação agendada). Quem não tem CPA
+// calculável (pulado por falta de meta/gasto) fica por último dentro do
+// próprio grupo, desempatando por nome do cliente.
+function reorderedAccountIds(entries: ComputedEntry[]): string[] {
+  return [...entries]
+    .sort((a, b) => {
+      const rankDiff = groupRank(a.finalPriority) - groupRank(b.finalPriority);
+      if (rankDiff !== 0) return rankDiff;
+      if (a.cpa == null && b.cpa == null) return a.clientName.localeCompare(b.clientName, "pt-BR");
+      if (a.cpa == null) return 1;
+      if (b.cpa == null) return -1;
+      if (b.cpa !== a.cpa) return b.cpa - a.cpa;
+      return a.clientName.localeCompare(b.clientName, "pt-BR");
+    })
+    .map((e) => e.accountId);
+}
+
 export function BulkStatusDialog({
   open,
   onClose,
   candidates,
+  reorderEnabled,
   onApply,
+  onReorder,
 }: {
   open: boolean;
   onClose: () => void;
   candidates: Candidate[];
+  // Etapa 72: só reordena quando a lista de Acompanhamento está sem busca/
+  // filtro/grupo de foco ativo — mesma trava já usada no arrastar-e-soltar,
+  // porque reordenar só faz sentido pra lista completa e visível.
+  reorderEnabled: boolean;
   onApply: (accountId: string, priority: string) => Promise<void>;
+  onReorder: (accountIds: string[]) => Promise<void>;
 }) {
   const { options: priorityOptions } = usePriorityOptions();
   const [phase, setPhase] = useState<"confirm" | "running" | "done">("confirm");
@@ -52,13 +100,16 @@ export function BulkStatusDialog({
   async function run() {
     setPhase("running");
     const res: ResultRow[] = [];
+    const computed: ComputedEntry[] = [];
     for (const c of candidates) {
       if (isInauguracao(c.priority)) {
         res.push({ accountId: c.accountId, clientName: c.clientName, outcome: "skipped", reason: "Em inauguração" });
+        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, cpa: null });
         continue;
       }
       if (!c.cpaTarget) {
         res.push({ accountId: c.accountId, clientName: c.clientName, outcome: "skipped", reason: "Sem meta de CPA" });
+        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, cpa: null });
         continue;
       }
       try {
@@ -78,16 +129,19 @@ export function BulkStatusDialog({
             outcome: "skipped",
             reason: "Sem gasto nos últimos 3 dias",
           });
+          computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, cpa: null });
           continue;
         }
         const cpa = totalResults > 0 ? spend / totalResults : spend;
         const next = classify(cpa, c.cpaTarget);
         if (next === c.priority) {
           res.push({ accountId: c.accountId, clientName: c.clientName, outcome: "unchanged", to: next });
+          computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: next, cpa });
           continue;
         }
         await onApply(c.accountId, next);
         res.push({ accountId: c.accountId, clientName: c.clientName, outcome: "updated", from: c.priority, to: next });
+        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: next, cpa });
       } catch (e) {
         res.push({
           accountId: c.accountId,
@@ -95,9 +149,13 @@ export function BulkStatusDialog({
           outcome: "skipped",
           reason: (e as Error).message || "Erro ao calcular",
         });
+        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, cpa: null });
       }
     }
     setResults(res);
+    if (reorderEnabled) {
+      await onReorder(reorderedAccountIds(computed));
+    }
     setPhase("done");
   }
 
@@ -145,6 +203,17 @@ export function BulkStatusDialog({
               <p className="text-xs text-zinc-500">
                 Contas em inauguração, sem meta de CPA cadastrada, ou sem gasto nos últimos 3 dias não são alteradas.
               </p>
+              {reorderEnabled ? (
+                <p className="text-xs text-zinc-500">
+                  Ao final, a lista também é reordenada: Inauguração no topo, depois Crítica, Alta, Média e Baixa —
+                  dentro de cada grupo, do pior CPA pro melhor.
+                </p>
+              ) : (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  A lista não será reordenada dessa vez — limpe a busca, o grupo de foco e os filtros de Status/CPA/
+                  Investimento/Otimizado antes pra reordenar junto com a atualização.
+                </p>
+              )}
             </div>
           ) : phase === "running" ? (
             <p className="py-8 text-center text-zinc-500">Calculando e atualizando…</p>

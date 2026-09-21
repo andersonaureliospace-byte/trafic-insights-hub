@@ -975,7 +975,9 @@ export default function PainelPage() {
           cpaTarget: r.binding?.cpa_target ?? null,
           priority: r.binding?.priority ?? null,
         }))}
+        reorderEnabled={reorderEnabled}
         onApply={(accountId, priority) => patchBinding(accountId, { priority })}
+        onReorder={persistOrder}
       />
 
       <EditClientDialog
