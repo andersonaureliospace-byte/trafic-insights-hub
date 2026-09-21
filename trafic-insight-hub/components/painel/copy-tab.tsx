@@ -46,6 +46,15 @@ function variationText(address: string, v: CopyVariation): string {
   return [address ? `📍 ${address}` : "", v.copy, v.oferta, v.cta, v.condicao].filter(Boolean).join("\n\n");
 }
 
+// Remove acento pra busca de cliente não depender de digitar "Guaratinguetá"
+// com acento igualzinho — normaliza os dois lados antes de comparar.
+function normalizeSearch(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
 // Aba Copy (Etapa 70) — Gerador de Copy do Instituto Visão Solidária. Ao
 // contrário de Demandas (onde a IA só organiza texto já escrito, nunca
 // inventa nada), aqui o usuário pediu explicitamente criatividade de
@@ -62,6 +71,8 @@ export function CopyTab({
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [accountId, setAccountId] = useState<string>("");
+  const [clientQuery, setClientQuery] = useState("");
+  const [clientMenuOpen, setClientMenuOpen] = useState(false);
   const [category, setCategory] = useState<CopyCategory>("geral");
   const [subcategoryId, setSubcategoryId] = useState<string>("");
   const [extraFieldValues, setExtraFieldValues] = useState<Record<string, string>>({});
@@ -99,6 +110,30 @@ export function CopyTab({
       setAccountId(accounts[0].account_id);
     }
   }, [accounts, accountId]);
+
+  const clientLabel = (accId: string) => {
+    const acc = accounts.find((a) => a.account_id === accId);
+    if (!acc) return "";
+    return bindings[acc.account_id]?.client_name ?? acc.name;
+  };
+
+  // Busca de cliente (Etapa 70, ajuste): a lista de contas IVS já passa de
+  // 20 nomes, rolar um <select> gigante ficou ruim — troca por um campo de
+  // texto que filtra e um menu de resultados, mantendo o valor selecionado
+  // no campo quando o menu está fechado.
+  useEffect(() => {
+    if (clientMenuOpen) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mantém o campo mostrando o cliente selecionado quando o menu não está aberto
+    setClientQuery(clientLabel(accountId));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só precisa reagir à troca de cliente/menu, clientLabel é derivado de accounts/bindings já cobertos
+  }, [accountId, clientMenuOpen, accounts, bindings]);
+
+  const filteredAccounts = useMemo(() => {
+    const q = normalizeSearch(clientQuery.trim());
+    if (!q) return accounts;
+    return accounts.filter((acc) => normalizeSearch(clientLabel(acc.account_id)).includes(q));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- clientLabel é derivado de accounts/bindings, já nas deps
+  }, [accounts, bindings, clientQuery]);
 
   const subsOfCategory = useMemo(
     () => (subcategories ?? []).filter((s) => s.category === category),
@@ -256,19 +291,51 @@ export function CopyTab({
         {loadError ? <p className="mt-3 text-sm text-red-600 dark:text-red-400">{loadError}</p> : null}
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">
+          <label className="relative text-sm">
             <span className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Cliente</span>
-            <select
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value)}
+            <input
+              value={clientQuery}
+              onChange={(e) => {
+                setClientMenuOpen(true);
+                setClientQuery(e.target.value);
+              }}
+              onFocus={(e) => {
+                setClientMenuOpen(true);
+                e.target.select();
+              }}
+              onBlur={() => {
+                // pequeno atraso pra deixar o clique numa opção registrar antes de fechar o menu
+                setTimeout(() => setClientMenuOpen(false), 150);
+              }}
+              placeholder="Pesquisar cliente…"
               className="w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700"
-            >
-              {accounts.map((acc) => (
-                <option key={acc.account_id} value={acc.account_id}>
-                  {bindings[acc.account_id]?.client_name ?? acc.name}
-                </option>
-              ))}
-            </select>
+            />
+            {clientMenuOpen ? (
+              <div className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-md border border-zinc-300 bg-white shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                {filteredAccounts.length === 0 ? (
+                  <p className="px-2 py-1.5 text-sm text-zinc-500 dark:text-zinc-400">Nenhum cliente encontrado.</p>
+                ) : (
+                  filteredAccounts.map((acc) => (
+                    <button
+                      key={acc.account_id}
+                      type="button"
+                      onMouseDown={(e) => {
+                        // evita que o onBlur do input feche o menu antes do clique registrar
+                        e.preventDefault();
+                        setAccountId(acc.account_id);
+                        setClientQuery(clientLabel(acc.account_id));
+                        setClientMenuOpen(false);
+                      }}
+                      className={`block w-full px-2 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 ${
+                        acc.account_id === accountId ? "bg-zinc-100 font-medium dark:bg-zinc-800" : ""
+                      }`}
+                    >
+                      {clientLabel(acc.account_id)}
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : null}
           </label>
 
           <div className="text-sm">
