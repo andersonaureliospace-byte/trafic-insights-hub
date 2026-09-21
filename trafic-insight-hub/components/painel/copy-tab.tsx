@@ -112,7 +112,11 @@ export function CopyTab({
       return;
     }
     if (!subsOfCategory.some((s) => s.id === subcategoryId)) {
-      setSubcategoryId(subsOfCategory[0].id);
+      // Subcategoria fixa (ex.: "Neutro" em Geral) é sempre a opção padrão
+      // ao entrar numa categoria — pedido explícito do usuário — mesmo que
+      // não seja a primeira da lista.
+      const defaultSub = subsOfCategory.find((s) => s.fixed) ?? subsOfCategory[0];
+      setSubcategoryId(defaultSub.id);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- só reage à troca de categoria/lista, não à seleção manual
   }, [subsOfCategory]);
