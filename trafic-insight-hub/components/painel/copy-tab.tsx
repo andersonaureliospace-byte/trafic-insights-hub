@@ -2,13 +2,24 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
-import { COPY_CATEGORIES, type CopyCategory, type CopyExtraField, type CopyVariation } from "@/lib/copy/types";
+import {
+  COPY_CATEGORIES,
+  DEFAULT_CONDICAO_TEXT,
+  DEFAULT_TOM,
+  type CopyCategory,
+  type CopyExtraField,
+  type CopyVariation,
+} from "@/lib/copy/types";
 
 interface Subcategory {
   id: string;
   category: CopyCategory;
   name: string;
   extra_fields: CopyExtraField[];
+  oferta: string;
+  condicao: string;
+  tom: string;
+  fixed: boolean;
 }
 
 interface Generation {
@@ -54,8 +65,11 @@ export function CopyTab({
   const [category, setCategory] = useState<CopyCategory>("geral");
   const [subcategoryId, setSubcategoryId] = useState<string>("");
   const [extraFieldValues, setExtraFieldValues] = useState<Record<string, string>>({});
-  const [offerText, setOfferText] = useState("");
+  const [showCreateSub, setShowCreateSub] = useState(false);
   const [newSubName, setNewSubName] = useState("");
+  const [newSubOferta, setNewSubOferta] = useState("");
+  const [newSubCondicao, setNewSubCondicao] = useState("");
+  const [newSubTom, setNewSubTom] = useState("");
   const [creatingSub, setCreatingSub] = useState(false);
 
   const [generating, setGenerating] = useState(false);
@@ -108,7 +122,6 @@ export function CopyTab({
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reseta o formulário ao trocar de subcategoria
     setExtraFieldValues({});
-    setOfferText("");
     setVariations(null);
     setAddress(null);
     setGenError(null);
@@ -136,7 +149,13 @@ export function CopyTab({
       const res = await fetch("/api/copy/subcategories", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, name }),
+        body: JSON.stringify({
+          category,
+          name,
+          oferta: newSubOferta,
+          condicao: newSubCondicao,
+          tom: newSubTom,
+        }),
       });
       const d = await res.json();
       if (d.error) {
@@ -146,6 +165,10 @@ export function CopyTab({
       setSubcategories((prev) => [...(prev ?? []), d.subcategory]);
       setSubcategoryId(d.subcategory.id);
       setNewSubName("");
+      setNewSubOferta("");
+      setNewSubCondicao("");
+      setNewSubTom("");
+      setShowCreateSub(false);
     } finally {
       setCreatingSub(false);
     }
@@ -159,7 +182,7 @@ export function CopyTab({
       const res = await fetch("/api/copy/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ad_account_id: accountId, subcategory_id: subcategoryId, offerText, extraFieldValues }),
+        body: JSON.stringify({ ad_account_id: accountId, subcategory_id: subcategoryId, extraFieldValues }),
       });
       const d = await res.json();
       if (d.error) {
@@ -184,7 +207,6 @@ export function CopyTab({
         body: JSON.stringify({
           ad_account_id: accountId,
           subcategory_id: subcategoryId,
-          offerText,
           extraFieldValues,
           count: 1,
           save: false,
@@ -288,20 +310,74 @@ export function CopyTab({
             </select>
           </label>
 
-          <input
-            value={newSubName}
-            onChange={(e) => setNewSubName(e.target.value)}
-            placeholder="Nova subcategoria…"
-            className="rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700"
-          />
           <button
-            onClick={() => void createSubcategory()}
-            disabled={creatingSub || !newSubName.trim()}
-            className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+            onClick={() => setShowCreateSub((v) => !v)}
+            className="rounded-md border border-zinc-300 px-2.5 py-1.5 text-sm font-medium dark:border-zinc-700"
           >
-            + Criar
+            {showCreateSub ? "Cancelar" : "+ Nova subcategoria"}
           </button>
         </div>
+
+        {showCreateSub ? (
+          <div className="mt-3 space-y-3 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Nome da subcategoria
+              </span>
+              <input
+                value={newSubName}
+                onChange={(e) => setNewSubName(e.target.value)}
+                placeholder="ex.: Exame por R$ 39,99"
+                className="w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                Oferta (opcional — deixe em branco pra IA seguir o padrão dos modelos de referência)
+              </span>
+              <input
+                value={newSubOferta}
+                onChange={(e) => setNewSubOferta(e.target.value)}
+                placeholder="ex.: Armação por R$ 49,99 na compra das lentes"
+                className="w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700"
+              />
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                  Condição (opcional)
+                </span>
+                <input
+                  value={newSubCondicao}
+                  onChange={(e) => setNewSubCondicao(e.target.value)}
+                  placeholder={DEFAULT_CONDICAO_TEXT}
+                  className="w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700"
+                />
+              </label>
+              <label className="block text-sm">
+                <span className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                  Tom de comunicação (opcional)
+                </span>
+                <input
+                  value={newSubTom}
+                  onChange={(e) => setNewSubTom(e.target.value)}
+                  placeholder={DEFAULT_TOM}
+                  className="w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700"
+                />
+              </label>
+            </div>
+            <p className="text-xs text-zinc-400">
+              Deixando Condição e Tom em branco, a subcategoria usa o padrão (condição genérica / tom neutro).
+            </p>
+            <button
+              onClick={() => void createSubcategory()}
+              disabled={creatingSub || !newSubName.trim()}
+              className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+            >
+              {creatingSub ? "Criando…" : "Criar subcategoria"}
+            </button>
+          </div>
+        ) : null}
 
         {selectedSub && selectedSub.extra_fields.length > 0 ? (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -317,18 +393,6 @@ export function CopyTab({
             ))}
           </div>
         ) : null}
-
-        <label className="mt-3 block text-sm">
-          <span className="mb-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">
-            Oferta (opcional — deixe em branco pra IA seguir o padrão da subcategoria)
-          </span>
-          <input
-            value={offerText}
-            onChange={(e) => setOfferText(e.target.value)}
-            placeholder="ex.: Armação por R$ 49,99 na compra das lentes"
-            className="w-full rounded-md border border-zinc-300 bg-transparent px-2 py-1.5 text-sm dark:border-zinc-700"
-          />
-        </label>
 
         {genError ? <p className="mt-3 text-sm text-red-600 dark:text-red-400">{genError}</p> : null}
 

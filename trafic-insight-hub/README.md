@@ -1390,13 +1390,22 @@ lib/ai/gemini.ts → transcribeAudio() e splitDemandTasks() (Etapa 68) são os
                   generateCopyVariations() (Etapa 70) é o oposto de
                   propósito — escreve copy NOVA (com liberdade criativa de
                   verdade, pedido explícito) pro Gerador de Copy, usando os
-                  modelos de referência da subcategoria como few-shot
+                  modelos de referência da subcategoria como few-shot. Recebe
+                  um `tom` (fixado na subcategoria, "neutro" por padrão) e só
+                  gera copy/oferta/cta — condição é anexada depois, fixa
+                  (ajuste pós-Etapa 70)
 lib/copy/ (Etapa 70)
   types.ts       → tipos compartilhados do Gerador de Copy (categorias fixas,
-                  subcategoria, modelo de referência, variação gerada)
+                  subcategoria — com oferta/condicao/tom/fixed fixados na
+                  criação (ajuste pós-Etapa 70) —, modelo de referência,
+                  variação gerada); DEFAULT_CONDICAO_TEXT/DEFAULT_TOM = os
+                  defaults quando a subcategoria deixa Condição/Tom em branco
   seed-defaults.ts → dataset inicial (subcategorias + modelos de referência,
                   extraídos de anúncios reais do IVS) semeado automaticamente
-                  na primeira abertura da aba Copy, por usuário
+                  por usuário — checagem por item (categoria+nome), não só
+                  "tabela vazia", pra poder adicionar novos defaults depois
+                  (caso da subcategoria fixa "Neutro" em Geral) sem duplicar
+                  nem sobrescrever o que o usuário já criou
 lib/supabase/
   client.ts     → cliente do navegador (Client Components)
   server.ts     → cliente do servidor (Server Components / Route Handlers)
@@ -1421,6 +1430,7 @@ supabase/migrations/0014_manual_check_multi_weekday.sql → manual_check_weekday
 supabase/migrations/0015_demandas.sql → tabela demands + demands_group_id/demands_group_name em whatsapp_instances (Etapa 68)
 supabase/migrations/0016_demand_message_buffer.sql → tabela demand_message_buffer, usada pelo workflow do n8n pra implementar o "~15s de silêncio" (Etapa 68)
 supabase/migrations/0017_copy_generator.sql → tabelas copy_subcategories, copy_reference_models e copy_generations do Gerador de Copy IVS (Etapa 70)
+supabase/migrations/0018_copy_subcategory_oferta_condicao_tom.sql → colunas oferta/condicao/tom/fixed em copy_subcategories — Oferta/Condição/Tom passam a ser fixados na subcategoria (perguntados só na criação) em vez de digitados a cada geração (ajuste pós-Etapa 70)
 ```
 n8n-workflows/demandas-whatsapp.json → workflow pronto pra importar no n8n (Menu → Import from File) que implementa o passo 16 da seção de deploy — só nós nativos (Webhook, IF, Set, HTTP Request, Wait, NoOp), sem nó Code
 
@@ -1945,7 +1955,20 @@ n8n-workflows/demandas-whatsapp.json → workflow pronto pra importar no n8n (Me
     essa", e histórico salvo por cliente. Novas tabelas `copy_subcategories`,
     `copy_reference_models` e `copy_generations` (migração
     `0017_copy_generator.sql`), semeadas automaticamente com o dataset
-    inicial na primeira abertura da aba (`lib/copy/seed-defaults.ts`)
+    inicial na primeira abertura da aba (`lib/copy/seed-defaults.ts`).
+    **Ajuste pedido depois de testar em produção:** Oferta/Condição/Tom
+    deixaram de ser digitados a cada geração — agora são fixados na própria
+    subcategoria, perguntados só na hora de criar uma nova (a tela ganhou um
+    formulário "+ Nova subcategoria" com esses 3 campos, todos opcionais).
+    Oferta vazia continua deixando a IA inferir o mecanismo pelos modelos de
+    referência; Condição vazia usa um texto padrão genérico
+    (`DEFAULT_CONDICAO_TEXT`) e Tom vazio vira "neutro" (`DEFAULT_TOM`) —
+    escrita direta e informativa, sem gatilho mental nem emoji de ênfase. A
+    categoria Geral ganhou uma subcategoria fixa **"Neutro"** (não pode ser
+    apagada/renomeada pela tela, coluna `fixed` em `copy_subcategories`),
+    sempre disponível como opção sem tom nenhum. Nova migração
+    `0018_copy_subcategory_oferta_condicao_tom.sql` (colunas `oferta`,
+    `condicao`, `tom`, `fixed` em `copy_subcategories`)
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

@@ -20,8 +20,23 @@ export interface CopySubcategory {
   category: CopyCategory;
   name: string;
   extra_fields: CopyExtraField[];
+  // Etapa 70 (ajuste): fixados na subcategoria (perguntados só na criação),
+  // não mais digitados a cada geração. oferta vazia = IA infere pelos
+  // modelos de referência; condicao/tom vazios = usam os defaults abaixo.
+  oferta: string;
+  condicao: string;
+  tom: string;
+  // Subcategoria que não pode ser apagada/renomeada pela tela (hoje só
+  // "Geral + Neutro").
+  fixed: boolean;
   sort_order: number | null;
 }
+
+// Defaults aplicados quando a subcategoria deixa Condição/Tom em branco —
+// usados tanto na geração (app/api/copy/generate/route.ts) quanto na tela,
+// como placeholder do formulário de criar subcategoria.
+export const DEFAULT_CONDICAO_TEXT = "*Consulte condições, disponibilidade e regulamento na unidade.";
+export const DEFAULT_TOM = "neutro";
 
 export interface CopyReferenceModel {
   id: string;

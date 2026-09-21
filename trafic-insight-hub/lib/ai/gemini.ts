@@ -127,19 +127,37 @@ export interface CopyVariationResult {
   copy: string;
   oferta: string;
   cta: string;
-  condicao: string;
 }
 
+// Etapa 70 (ajuste): "condicao" saiu do que a IA gera — agora é fixada na
+// subcategoria (ou o texto padrão) e só é anexada depois, em
+// app/api/copy/generate/route.ts. O schema/prompt aqui só cobrem copy/oferta/
+// cta.
 const COPY_STRUCTURE_GUIDE = `Você escreve copy de anúncio do Meta Ads (Feed/Stories/Reels) para o Instituto Visão Solidária (IVS), uma franquia de óticas com centenas de unidades — a comunicação segue sempre a mesma linha entre unidades, só muda o endereço e o mecanismo da oferta.
 
-Cada variação tem 4 partes (o endereço da loja é fixo e NÃO faz parte do que você escreve — já vem pronto):
+Cada variação tem 3 partes (o endereço da loja e a condição/letra miúda são fixos e NÃO fazem parte do que você escreve — já vêm prontos):
 
-- "copy": o texto criativo completo, em parágrafos curtos separados por linha em branco, nesta ordem: (1) um gancho/headline chamando atenção — pode citar a cidade/região, uma pergunta, um alerta de urgência ou um gatilho mental (concorrência, tempo, economia, política, etc); (2) um parágrafo explicando a oferta com o mecanismo exato (nunca invente valor ou mecanismo diferente do informado); (3) opcionalmente uma linha curta de reforço/diferencial; (4) a tagline fixa da marca, sempre parecida com "BARATO QUE ÓTICA? SÓ AQUI NO INSTITUTO VISÃO SOLIDÁRIA 😍" (pode variar levemente o texto antes do nome da marca, mas mantenha o sentido e o emoji 😍 no final). Use emojis nas posições certas: gancho costuma abrir com 🔵/🚨, o parágrafo da oferta com 👓, o reforço com ✨/💰/🚀/💎/💡.
+- "copy": o texto criativo completo, em parágrafos curtos separados por linha em branco, nesta ordem: (1) um gancho/headline chamando atenção — pode citar a cidade/região, uma pergunta, um alerta de urgência ou um gatilho mental (concorrência, tempo, economia, política, etc), sempre respeitando o TOM DE COMUNICAÇÃO indicado abaixo; (2) um parágrafo explicando a oferta com o mecanismo exato (nunca invente valor ou mecanismo diferente do informado); (3) opcionalmente uma linha curta de reforço/diferencial; (4) a tagline fixa da marca, sempre parecida com "BARATO QUE ÓTICA? SÓ AQUI NO INSTITUTO VISÃO SOLIDÁRIA 😍" (pode variar levemente o texto antes do nome da marca, mas mantenha o sentido e o emoji 😍 no final). Use emojis nas posições certas: gancho costuma abrir com 🔵/🚨, o parágrafo da oferta com 👓, o reforço com ✨/💰/🚀/💎/💡 — EXCETO no tom "neutro" (veja abaixo).
 - "oferta": uma frase curta (sem emoji) resumindo o mecanismo exato da promoção — deve refletir fielmente o valor/mecanismo informado, nunca inventado.
-- "cta": uma frase curta convidando a falar no WhatsApp, abrindo com um emoji de celular/mão/balão (📲/👉/💬).
-- "condicao": a letra miúda da promoção, começando com "*", em uma frase curta (pode ser string vazia se a oferta não tiver nenhuma condição a esclarecer).
+- "cta": uma frase curta convidando a falar no WhatsApp, abrindo com um emoji de celular/mão/balão (📲/👉/💬) — EXCETO no tom "neutro" (veja abaixo).
+
+TOM DE COMUNICAÇÃO desta geração: {{TOM}}
+{{TOM_GUIDANCE}}
 
 Gere exatamente {{COUNT}} variação(ões), todas fiéis a esse padrão, mas com ganchos e textos diferentes entre si (não repita a mesma frase em variações diferentes).`;
+
+function tomGuidance(tom: string): string {
+  if (tom.toLowerCase() === "neutro") {
+    return (
+      'Instrução especial pro tom "neutro": escreva de forma direta e informativa, SEM nenhum gatilho mental ' +
+      "(nada de urgência, escassez, comparação com concorrência, política, etc), sem emojis de ênfase " +
+      "(🔵🚨✨💰🚀💎💡) e sem exagero ou apelo emocional — só descreva a oferta e a marca com clareza. " +
+      "Pode manter a tagline da marca e um emoji simples no CTA (📲/👉/💬), mas o restante do texto deve soar " +
+      "sóbrio, como um comunicado, não uma propaganda agressiva."
+    );
+  }
+  return `Escreva seguindo esse tom pedido ("${tom}") em todo o texto — no gancho, no reforço e no CTA — sem perder a estrutura descrita acima.`;
+}
 
 export async function generateCopyVariations(params: {
   categoryLabel: string;
@@ -147,6 +165,7 @@ export async function generateCopyVariations(params: {
   address: string;
   clientName: string | null;
   offerText: string;
+  tom: string;
   extraFields: { label: string; value: string }[];
   referenceModels: CopyReferenceModelInput[];
   count?: number;
@@ -154,6 +173,7 @@ export async function generateCopyVariations(params: {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY não configurada no servidor.");
   const count = params.count && params.count > 0 ? params.count : 5;
+  const tom = params.tom.trim() || "neutro";
 
   const examplesBlock = params.referenceModels.length
     ? params.referenceModels
@@ -169,7 +189,7 @@ export async function generateCopyVariations(params: {
     ? params.extraFields.map((f) => `- ${f.label}: ${f.value}`).join("\n")
     : "(nenhum)";
 
-  const prompt = `${COPY_STRUCTURE_GUIDE.replace("{{COUNT}}", String(count))}
+  const prompt = `${COPY_STRUCTURE_GUIDE.replace("{{COUNT}}", String(count)).replace("{{TOM}}", tom).replace("{{TOM_GUIDANCE}}", tomGuidance(tom))}
 
 Categoria: ${params.categoryLabel}
 Subcategoria: ${params.subcategoryName}
@@ -178,10 +198,10 @@ ${params.clientName ? `Nome do cliente/unidade: ${params.clientName}\n` : ""}Ofe
 Campos extras informados:
 ${extraFieldsBlock}
 
-Modelos de referência da marca (few-shot — use como padrão de tom/estrutura, nunca copie literalmente):
+Modelos de referência da marca (few-shot — use como padrão de estrutura, nunca copie literalmente; note que o "condicao" dos exemplos é só referência de padrão, você não gera esse campo):
 ${examplesBlock}
 
-Responda SOMENTE com um JSON array de ${count} objeto(s), neste formato exato: [{"copy": "...", "oferta": "...", "cta": "...", "condicao": "..."}]`;
+Responda SOMENTE com um JSON array de ${count} objeto(s), neste formato exato: [{"copy": "...", "oferta": "...", "cta": "..."}]`;
 
   const body = {
     contents: [{ role: "user", parts: [{ text: prompt }] }],
@@ -195,9 +215,8 @@ Responda SOMENTE com um JSON array de ${count} objeto(s), neste formato exato: [
             copy: { type: "STRING" },
             oferta: { type: "STRING" },
             cta: { type: "STRING" },
-            condicao: { type: "STRING" },
           },
-          required: ["copy", "oferta", "cta", "condicao"],
+          required: ["copy", "oferta", "cta"],
         },
       },
     },
@@ -224,7 +243,6 @@ Responda SOMENTE com um JSON array de ${count} objeto(s), neste formato exato: [
       copy: String(item.copy ?? ""),
       oferta: String(item.oferta ?? ""),
       cta: String(item.cta ?? ""),
-      condicao: String(item.condicao ?? ""),
     };
   });
 }

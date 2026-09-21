@@ -1,13 +1,21 @@
-// Etapa 70: dataset inicial do Gerador de Copy (IVS) — semeado uma única vez
-// por usuário (ver app/api/copy/subcategories/route.ts) na primeira vez que
-// a aba Copy é aberta e ainda não existe nenhuma subcategoria cadastrada.
-// Os exemplos de `copy`/`oferta`/`cta`/`condicao` são recortes reais de
-// modelos de anúncio do Instituto Visão Solidária (analisados a pedido do
+// Etapa 70: dataset inicial do Gerador de Copy (IVS) — semeado por
+// subcategoria (ver app/api/copy/subcategories/route.ts: cada subcategoria
+// daqui que ainda não existe pro usuário é criada na primeira abertura da
+// aba Copy, sem duplicar nem sobrescrever o que o usuário já tiver mexido).
+// Os exemplos de `copy`/`oferta`/`cta`/`condicao` dos modelos são recortes
+// reais de anúncio do Instituto Visão Solidária (analisados a pedido do
 // usuário) — servem só de referência de padrão (few-shot) pra IA, nunca são
 // usados literalmente numa geração. "Qualidade" (Geral), "Padrão" e
 // "Armação 1 real" (Inauguração) ainda não têm modelo real — a geração pra
 // elas conta só com a descrição de estrutura fixa no prompt (ver
 // lib/ai/gemini.ts) até o usuário cadastrar exemplos próprios pela tela.
+//
+// Etapa 70 (ajuste): oferta/condicao/tom de cada subcategoria daqui foram
+// fixados a partir do modelo real mais representativo (mesmo texto que já
+// aparecia repetido em quase todas as variações daquela oferta) — deixa de
+// ser a IA reinventando a condição a cada geração. "Neutro" (Geral) é nova,
+// fixa (não pode ser apagada/renomeada pela tela) e representa comunicação
+// sem gatilho/tom nenhum.
 import type { CopyCategory, CopyExtraField } from "@/lib/copy/types";
 
 export interface SeedReferenceModel {
@@ -22,6 +30,10 @@ export interface SeedSubcategory {
   category: CopyCategory;
   name: string;
   extra_fields: CopyExtraField[];
+  oferta: string;
+  condicao: string;
+  tom: string;
+  fixed: boolean;
   models: SeedReferenceModel[];
 }
 
@@ -31,8 +43,22 @@ const VALOR_EXAME_FIELD: CopyExtraField = { key: "valor", label: "Valor do exame
 export const DEFAULT_SUBCATEGORIES: SeedSubcategory[] = [
   {
     category: "geral",
+    name: "Neutro",
+    extra_fields: [],
+    oferta: "",
+    condicao: "",
+    tom: "neutro",
+    fixed: true,
+    models: [],
+  },
+  {
+    category: "geral",
     name: "Cobrimos oferta",
     extra_fields: [],
+    oferta: "Armação por R$ 49,99 na compra das lentes",
+    condicao: "*: O valor promocional da armação é aplicado mediante a compra das lentes.",
+    tom: "",
+    fixed: false,
     models: [
       {
         endereco_exemplo: "R. XV de Novembro, 563 - Centro, BLUMENAU",
@@ -58,11 +84,24 @@ export const DEFAULT_SUBCATEGORIES: SeedSubcategory[] = [
       },
     ],
   },
-  { category: "geral", name: "Qualidade", extra_fields: [], models: [] },
+  {
+    category: "geral",
+    name: "Qualidade",
+    extra_fields: [],
+    oferta: "",
+    condicao: "",
+    tom: "",
+    fixed: false,
+    models: [],
+  },
   {
     category: "promocao",
     name: "Armação por 1 real",
     extra_fields: [],
+    oferta: "Voucher de R$ 1,00 na armação, na compra das lentes",
+    condicao: "*: O valor promocional da armação é aplicado mediante a compra das lentes.",
+    tom: "",
+    fixed: false,
     models: [
       {
         endereco_exemplo: "R. Quintino Bocaiúva, 367 - Centro, Itatiba - SP",
@@ -94,6 +133,11 @@ export const DEFAULT_SUBCATEGORIES: SeedSubcategory[] = [
     category: "promocao",
     name: "Compre um leve 3",
     extra_fields: [],
+    oferta: "Compre 1 lente e leve a armação + tratamento antirreflexo de presente",
+    condicao:
+      '*A promoção "Compre 1 Leve 3" é válida exclusivamente na compra das lentes, onde o cliente ganha a armação e o tratamento antirreflexo. Consulte o regulamento.',
+    tom: "",
+    fixed: false,
     models: [
       {
         endereco_exemplo: "Rua Doutor Martiniano, 17 - Centro, GUARATINGUETÁ",
@@ -125,6 +169,11 @@ export const DEFAULT_SUBCATEGORIES: SeedSubcategory[] = [
     category: "promocao",
     name: "Multifocal em dobro",
     extra_fields: [],
+    oferta: "Lentes multifocais em dobro (compre uma, ganhe outra) + armação por R$ 49,99",
+    condicao:
+      "*O segundo par de lentes de presente e a armação por R$ 49,99 são ofertas vinculadas à compra do primeiro par de lentes.",
+    tom: "",
+    fixed: false,
     models: [
       {
         endereco_exemplo: "AV Bayer filho, 720, Centro",
@@ -156,6 +205,10 @@ export const DEFAULT_SUBCATEGORIES: SeedSubcategory[] = [
     category: "exames",
     name: "Exame por R$ 49,99",
     extra_fields: [],
+    oferta: "Exame de vista por R$ 49,99",
+    condicao: "",
+    tom: "",
+    fixed: false,
     models: [
       {
         endereco_exemplo: "Rua Doutor Martiniano, 17 - Centro, GUARATINGUETÁ",
@@ -192,6 +245,10 @@ export const DEFAULT_SUBCATEGORIES: SeedSubcategory[] = [
     category: "exames",
     name: "Exame por R$ 29,99",
     extra_fields: [],
+    oferta: "Exame de vista por R$ 29,99",
+    condicao: "",
+    tom: "",
+    fixed: false,
     models: [
       {
         endereco_exemplo: "Rua Doutor Martiniano, 17 - Centro, GUARATINGUETÁ",
@@ -208,12 +265,37 @@ export const DEFAULT_SUBCATEGORIES: SeedSubcategory[] = [
       },
     ],
   },
-  { category: "inauguracao", name: "Armação 1 real", extra_fields: [DATA_INAUGURACAO_FIELD], models: [] },
-  { category: "inauguracao", name: "Padrão", extra_fields: [DATA_INAUGURACAO_FIELD], models: [] },
+  {
+    category: "inauguracao",
+    name: "Armação 1 real",
+    extra_fields: [DATA_INAUGURACAO_FIELD],
+    oferta: "",
+    condicao: "",
+    tom: "",
+    fixed: false,
+    models: [],
+  },
+  {
+    category: "inauguracao",
+    name: "Padrão",
+    extra_fields: [DATA_INAUGURACAO_FIELD],
+    oferta: "",
+    condicao: "",
+    tom: "",
+    fixed: false,
+    models: [],
+  },
   {
     category: "inauguracao",
     name: "Exame",
     extra_fields: [DATA_INAUGURACAO_FIELD, VALOR_EXAME_FIELD],
+    // oferta fica vazia de propósito — o valor do exame na inauguração vem
+    // do campo extra "Valor do exame", preenchido a cada geração (varia por
+    // unidade/data), não é fixo na subcategoria como nas outras.
+    oferta: "",
+    condicao: "",
+    tom: "",
+    fixed: false,
     models: [
       {
         endereco_exemplo: "R BARAO DO MONTE ALTO, 67 - CENTRO, GUARATINGUETÁ",

@@ -1,19 +1,29 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { generateCopyVariations } from "@/lib/ai/gemini";
-import { COPY_CATEGORIES, type CopyCategory, type CopyExtraField } from "@/lib/copy/types";
+import {
+  COPY_CATEGORIES,
+  DEFAULT_CONDICAO_TEXT,
+  DEFAULT_TOM,
+  type CopyCategory,
+  type CopyExtraField,
+} from "@/lib/copy/types";
 
 // Etapa 70: gera as 5 variações de copy pra um cliente + subcategoria.
 // Endereço/nome do cliente vêm sempre do cadastro (account_bindings) — nunca
 // digitados na tela — e cada geração fica salva em copy_generations pra
 // formar o histórico por cliente.
+//
+// Etapa 70 (ajuste): Oferta/Condição/Tom não são mais digitados a cada
+// geração — vêm fixados na própria subcategoria (preenchidos na criação).
+// Oferta vazia continua deixando a IA inferir o mecanismo pelos modelos de
+// referência; Condição/Tom vazios usam os defaults (texto padrão / neutro).
 export async function POST(request: Request) {
   try {
     const { supabase, user } = await requireUser();
     const body = await request.json();
     const ad_account_id = String(body.ad_account_id ?? "").trim();
     const subcategory_id = String(body.subcategory_id ?? "").trim();
-    const offerText = String(body.offerText ?? "").trim();
     const extraFieldValues = (body.extraFieldValues ?? {}) as Record<string, string>;
     // count/save: usados pra regenerar UMA variação isolada (botão "gerar de
     // novo só essa" na tela) sem criar uma entrada nova no histórico.
@@ -62,16 +72,30 @@ export async function POST(request: Request) {
     const categoryLabel =
       COPY_CATEGORIES.find((c) => c.id === (subcategory.category as CopyCategory))?.label ?? subcategory.category;
 
-    const variations = await generateCopyVariations({
+    const offerText = ((subcategory.oferta as string | null) ?? "").trim();
+    const condicao = ((subcategory.condicao as string | null) ?? "").trim() || DEFAULT_CONDICAO_TEXT;
+    const tom = ((subcategory.tom as string | null) ?? "").trim() || DEFAULT_TOM;
+
+    const rawVariations = await generateCopyVariations({
       categoryLabel,
       subcategoryName: subcategory.name as string,
       address,
       clientName,
       offerText,
+      tom,
       extraFields: extraFieldsForPrompt,
       referenceModels: models ?? [],
       count,
     });
+
+    // Oferta e condição são fixas na subcategoria (quando preenchidas) — a IA
+    // não decide isso mais, só escreve o texto criativo em volta.
+    const variations = rawVariations.map((v) => ({
+      copy: v.copy,
+      oferta: offerText || v.oferta,
+      cta: v.cta,
+      condicao,
+    }));
 
     if (!save) {
       return NextResponse.json({ ok: true, address, variations });
