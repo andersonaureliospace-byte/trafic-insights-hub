@@ -43,7 +43,7 @@ function fmtDate(iso: string): string {
 }
 
 function variationText(address: string, v: CopyVariation): string {
-  return [v.copy, v.oferta ? `Oferta: ${v.oferta}` : "", v.cta, v.condicao].filter(Boolean).join("\n\n");
+  return [v.copy, v.oferta, v.cta, v.condicao].filter(Boolean).join("\n\n");
 }
 
 // Aba Copy (Etapa 70) — Gerador de Copy do Instituto Visão Solidária. Ao
@@ -416,7 +416,7 @@ export function CopyTab({
               <p className="text-xs font-medium text-zinc-400">Variação {i + 1}</p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">📍 {address}</p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">{v.copy}</p>
-              {v.oferta ? <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">Oferta: {v.oferta}</p> : null}
+              {v.oferta ? <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{v.oferta}</p> : null}
               <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">{v.cta}</p>
               {v.condicao ? <p className="mt-2 text-xs text-zinc-400">{v.condicao}</p> : null}
               <div className="mt-3 flex gap-2">
