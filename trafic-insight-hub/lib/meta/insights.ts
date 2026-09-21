@@ -3,7 +3,9 @@
 //  - ignora campanhas "[VAGA]"/"[SEGUIDORES]" (vagas de emprego disfarçadas de campanha)
 //  - ignora campanhas de objetivo de reconhecimento/tráfego/engajamento (não é o
 //    tipo de resultado que o gestor acompanha aqui)
-//  - só soma campanha/conjunto que tenha ao menos um anúncio ATIVO entregando
+//  - só soma campanha/conjunto que tenha ao menos um anúncio "ligado" (ver
+//    ATIVE_ISH_STATUSES abaixo — inclui "Programado", que também conta pro
+//    Invest. diário mesmo sem estar entregando ainda)
 //  - "resultado"/CPA vem do campo oficial `results` / `cost_per_result` do
 //    Graph API — a mesma fonte que o Gerenciador de Anúncios usa, sem inflar
 //    com `actions`
@@ -12,6 +14,25 @@
 
 import { metaGet, metaGetAll, presetParams, type DateRangeInput } from "./client";
 import { isVaga, EXCLUDED_OBJECTIVES, pickFirstNumeric, lifetimeToDailyEquivalent } from "./shared";
+
+// Ajuste pedido pelo usuário: um conjunto "Programado" (Meta Ads mostra o
+// círculo vazado "○ Programado" em vez da bolinha verde "● Ativo") tem o
+// toggle ligado (status ACTIVE) mas ainda não começou a entregar — por
+// horário de início futuro, ou por revisão/análise de conta ainda em
+// andamento. O `effective_status` do Graph API reflete esse "ainda não
+// entregando" e por padrão SÓ "ACTIVE" passava no filtro, deixando
+// Programado de fora do Invest. diário. Esses status aqui são os "ligado,
+// mas ainda não entregando por motivo temporário" — contam igual a ACTIVE.
+// DISAPPROVED/PAUSED/CAMPAIGN_PAUSED/ADSET_PAUSED/ARCHIVED/DELETED ficam de
+// fora de propósito (não vão gastar enquanto isso, diferente de Programado).
+const ACTIVE_ISH_STATUSES = [
+  "ACTIVE",
+  "PENDING_REVIEW",
+  "PREAPPROVED",
+  "PENDING_BILLING_INFO",
+  "IN_PROCESS",
+  "WITH_ISSUES",
+];
 
 export interface AdAccount {
   id: string;
@@ -114,7 +135,7 @@ export async function getAccountInsight(
       {
         fields: "campaign_id,adset_id",
         limit: "500",
-        filtering: JSON.stringify([{ field: "ad.effective_status", operator: "IN", value: ["ACTIVE"] }]),
+        filtering: JSON.stringify([{ field: "ad.effective_status", operator: "IN", value: ACTIVE_ISH_STATUSES }]),
       },
     );
     for (const a of activeAds) {
@@ -172,7 +193,7 @@ export async function getAccountInsight(
       }>(token, `/${id}/adsets`, {
         fields: "id,campaign_id,daily_budget,lifetime_budget,start_time,end_time,created_time",
         limit: "500",
-        filtering: JSON.stringify([{ field: "adset.effective_status", operator: "IN", value: ["ACTIVE"] }]),
+        filtering: JSON.stringify([{ field: "adset.effective_status", operator: "IN", value: ACTIVE_ISH_STATUSES }]),
       });
       for (const a of adsets) {
         if (!a.campaign_id) continue;
