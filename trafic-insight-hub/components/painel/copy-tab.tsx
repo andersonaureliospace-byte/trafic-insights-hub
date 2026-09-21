@@ -43,7 +43,7 @@ function fmtDate(iso: string): string {
 }
 
 function variationText(address: string, v: CopyVariation): string {
-  return [v.copy, v.oferta, v.cta, v.condicao].filter(Boolean).join("\n\n");
+  return [address ? `📍 ${address}` : "", v.copy, v.oferta, v.cta, v.condicao].filter(Boolean).join("\n\n");
 }
 
 // Aba Copy (Etapa 70) — Gerador de Copy do Instituto Visão Solidária. Ao
