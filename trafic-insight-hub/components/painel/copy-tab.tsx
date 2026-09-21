@@ -20,6 +20,7 @@ interface Subcategory {
   condicao: string;
   tom: string;
   fixed: boolean;
+  bank_variations: CopyVariation[];
 }
 
 interface Generation {
@@ -87,8 +88,11 @@ export function CopyTab({
   const [genError, setGenError] = useState<string | null>(null);
   const [address, setAddress] = useState<string | null>(null);
   const [variations, setVariations] = useState<CopyVariation[] | null>(null);
+  const [fromBank, setFromBank] = useState(false);
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [savingBank, setSavingBank] = useState(false);
+  const [bankMsg, setBankMsg] = useState<string | null>(null);
 
   const [history, setHistory] = useState<Generation[] | null>(null);
 
@@ -157,13 +161,18 @@ export function CopyTab({
   }, [subsOfCategory]);
 
   const selectedSub = subsOfCategory.find((s) => s.id === subcategoryId) ?? null;
+  // Etapa 70 (ajuste): banco de 5 variações fixas — quando a subcategoria
+  // tem as 5 salvas, gerar reusa elas direto (endereço à parte), sem IA.
+  const usingBank = (selectedSub?.bank_variations.length ?? 0) === 5;
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reseta o formulário ao trocar de subcategoria
     setExtraFieldValues({});
     setVariations(null);
+    setFromBank(false);
     setAddress(null);
     setGenError(null);
+    setBankMsg(null);
   }, [subcategoryId]);
 
   async function loadHistory(accId: string) {
@@ -217,6 +226,7 @@ export function CopyTab({
     if (!accountId || !subcategoryId) return;
     setGenerating(true);
     setGenError(null);
+    setBankMsg(null);
     try {
       const res = await fetch("/api/copy/generate", {
         method: "POST",
@@ -230,14 +240,64 @@ export function CopyTab({
       }
       setAddress(d.address);
       setVariations(d.generation.variations);
+      setFromBank(!!d.fromBank);
       setHistory((prev) => [d.generation, ...(prev ?? [])]);
     } finally {
       setGenerating(false);
     }
   }
 
+  // Salva as 5 variações mostradas agora (já geradas por IA e revisadas)
+  // como o banco fixo da subcategoria — daqui pra frente, gerar pra
+  // qualquer cliente nessa subcategoria reusa essas 5, sem chamar a IA.
+  async function saveAsBank() {
+    if (!subcategoryId || !variations || variations.length !== 5) return;
+    setSavingBank(true);
+    setBankMsg(null);
+    try {
+      const res = await fetch(`/api/copy/subcategories/${subcategoryId}/bank`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ variations }),
+      });
+      const d = await res.json();
+      if (d.error) {
+        setBankMsg(d.error);
+        return;
+      }
+      setSubcategories((prev) =>
+        (prev ?? []).map((s) => (s.id === subcategoryId ? { ...s, bank_variations: variations } : s)),
+      );
+      setFromBank(true);
+      setBankMsg("Banco salvo — as próximas gerações dessa subcategoria não usam mais IA.");
+    } finally {
+      setSavingBank(false);
+    }
+  }
+
+  async function removeBank() {
+    if (!subcategoryId) return;
+    setSavingBank(true);
+    setBankMsg(null);
+    try {
+      const res = await fetch(`/api/copy/subcategories/${subcategoryId}/bank`, { method: "DELETE" });
+      const d = await res.json();
+      if (d.error) {
+        setBankMsg(d.error);
+        return;
+      }
+      setSubcategories((prev) =>
+        (prev ?? []).map((s) => (s.id === subcategoryId ? { ...s, bank_variations: [] } : s)),
+      );
+      setFromBank(false);
+      setBankMsg("Banco removido — essa subcategoria volta a gerar com IA.");
+    } finally {
+      setSavingBank(false);
+    }
+  }
+
   async function regenerateOne(index: number) {
-    if (!accountId || !subcategoryId || !variations) return;
+    if (!accountId || !subcategoryId || !variations || usingBank) return;
     setRegeneratingIndex(index);
     try {
       const res = await fetch("/api/copy/generate", {
@@ -389,6 +449,21 @@ export function CopyTab({
           </button>
         </div>
 
+        {usingBank ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
+            <span>🗄️ Essa subcategoria usa um banco de 5 variações fixas — gerar não chama mais a IA, só troca o endereço.</span>
+            <button
+              onClick={() => void removeBank()}
+              disabled={savingBank}
+              className="rounded border border-amber-400 px-2 py-0.5 font-medium disabled:opacity-50 dark:border-amber-800"
+            >
+              Remover banco (voltar a gerar com IA)
+            </button>
+          </div>
+        ) : null}
+
+        {bankMsg ? <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{bankMsg}</p> : null}
+
         {showCreateSub ? (
           <div className="mt-3 space-y-3 rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
             <label className="block text-sm">
@@ -450,7 +525,7 @@ export function CopyTab({
           </div>
         ) : null}
 
-        {selectedSub && selectedSub.extra_fields.length > 0 ? (
+        {selectedSub && selectedSub.extra_fields.length > 0 && !usingBank ? (
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {selectedSub.extra_fields.map((f) => (
               <label key={f.key} className="text-sm">
@@ -472,15 +547,34 @@ export function CopyTab({
           disabled={generating || !accountId || !subcategoryId || !!missingAddress}
           className="mt-4 rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
         >
-          {generating ? "Gerando…" : "Gerar 5 variações"}
+          {generating ? "Gerando…" : usingBank ? "Buscar 5 variações do banco" : "Gerar 5 variações"}
         </button>
       </div>
+
+      {variations && variations.length === 5 && !usingBank ? (
+        <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+          <p className="text-sm text-zinc-700 dark:text-zinc-300">
+            Gostou dessas 5? Salve como o banco fixo dessa subcategoria — as próximas gerações (pra qualquer
+            cliente) reusam esse texto, só trocando o endereço, sem chamar a IA de novo.
+          </p>
+          <button
+            onClick={() => void saveAsBank()}
+            disabled={savingBank}
+            className="mt-2 rounded-md border border-zinc-300 px-3 py-1.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+          >
+            {savingBank ? "Salvando…" : "💾 Salvar essas 5 como banco fixo"}
+          </button>
+        </div>
+      ) : null}
 
       {variations ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {variations.map((v, i) => (
             <div key={i} className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
-              <p className="text-xs font-medium text-zinc-400">Variação {i + 1}</p>
+              <p className="text-xs font-medium text-zinc-400">
+                Variação {i + 1}
+                {fromBank ? " · 🗄️ do banco (sem IA)" : ""}
+              </p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">📍 {address}</p>
               <p className="mt-2 whitespace-pre-wrap text-sm text-zinc-800 dark:text-zinc-200">{v.copy}</p>
               {v.oferta ? <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">{v.oferta}</p> : null}
@@ -493,13 +587,15 @@ export function CopyTab({
                 >
                   {copiedIndex === i ? "Copiado!" : "Copiar"}
                 </button>
-                <button
-                  onClick={() => void regenerateOne(i)}
-                  disabled={regeneratingIndex === i}
-                  className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
-                >
-                  {regeneratingIndex === i ? "Gerando…" : "Gerar de novo"}
-                </button>
+                {usingBank ? null : (
+                  <button
+                    onClick={() => void regenerateOne(i)}
+                    disabled={regeneratingIndex === i}
+                    className="rounded-md border border-zinc-300 px-2.5 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
+                  >
+                    {regeneratingIndex === i ? "Gerando…" : "Gerar de novo"}
+                  </button>
+                )}
               </div>
             </div>
           ))}

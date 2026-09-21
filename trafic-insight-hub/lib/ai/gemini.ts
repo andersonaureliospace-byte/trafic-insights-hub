@@ -22,6 +22,38 @@
 // própria resposta de erro do Google indicou como substituto.
 const GEMINI_MODEL = "gemini-3.6-flash";
 
+// Ajuste: o Gemini grátis de vez em quando devolve 503 "model is currently
+// experiencing high demand" (sobrecarga temporária do lado do Google, não um
+// erro nosso) — antes isso quebrava a geração na hora. Agora tenta de novo
+// automaticamente (com uma pequena espera crescente) antes de desistir, nas
+// três funções que chamam o Gemini.
+const RETRYABLE_STATUSES = new Set([503, 429]);
+const MAX_ATTEMPTS = 3;
+
+interface GeminiResponse {
+  candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+}
+
+async function callGemini(apiKey: string, body: unknown): Promise<GeminiResponse> {
+  let lastError: Error = new Error("Gemini: falha desconhecida.");
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+    );
+    if (res.ok) return (await res.json()) as GeminiResponse;
+
+    const statusText = await res.text();
+    const retryable = RETRYABLE_STATUSES.has(res.status);
+    lastError = retryable
+      ? new Error("O Gemini está sobrecarregado no momento (alta demanda no plano gratuito) — tentamos de novo automaticamente sem sucesso. Espere um pouco e tente gerar de novo.")
+      : new Error(`Gemini ${res.status}: ${statusText}`);
+    if (!retryable || attempt === MAX_ATTEMPTS) throw lastError;
+    await new Promise((resolve) => setTimeout(resolve, 1000 * attempt)); // 1s, depois 2s
+  }
+  throw lastError;
+}
+
 const TRANSCRIBE_PROMPT =
   "Transcreva o áudio a seguir em português, palavra por palavra, exatamente como foi falado. " +
   "Não resuma, não corrija o sentido, não complete frases que a pessoa deixou incompletas, não adicione " +
@@ -48,14 +80,7 @@ export async function transcribeAudio(mediaUrl: string, mimeType: string): Promi
     ],
   };
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
-  );
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
-  const json = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
+  const json = await callGemini(apiKey, body);
   const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text || !text.trim()) throw new Error("Gemini não retornou nenhuma transcrição pro áudio.");
   return text.trim();
@@ -98,14 +123,7 @@ export async function splitDemandTasks(text: string): Promise<SplitResult> {
     },
   };
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
-  );
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
-  const json = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
+  const json = await callGemini(apiKey, body);
   const raw = json.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!raw || !raw.trim()) throw new Error("Gemini não retornou nenhum resultado pro split da demanda.");
 
@@ -222,14 +240,7 @@ Responda SOMENTE com um JSON array de ${count} objeto(s), neste formato exato: [
     },
   };
 
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
-  );
-  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
-  const json = (await res.json()) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-  };
+  const json = await callGemini(apiKey, body);
   const raw = json.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!raw || !raw.trim()) throw new Error("Gemini não retornou nenhuma variação de copy.");
 

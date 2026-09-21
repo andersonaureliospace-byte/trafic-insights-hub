@@ -30,6 +30,11 @@ export interface CopySubcategory {
   // "Geral + Neutro").
   fixed: boolean;
   sort_order: number | null;
+  // Etapa 70 (ajuste): banco de 5 variações fixas — quando preenchido
+  // (length === 5), gerar pra qualquer cliente reusa essas 5 tal e qual (só
+  // o endereço muda, que é campo separado), sem chamar a IA. Vazio = gera
+  // com IA normalmente, como sempre foi.
+  bank_variations: CopyVariation[];
 }
 
 // Defaults aplicados quando a subcategoria deixa Condição/Tom em branco —

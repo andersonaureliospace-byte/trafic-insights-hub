@@ -1013,7 +1013,11 @@ contra chamadas de qualquer pessoa na internet. Adicione também
 `GEMINI_API_KEY` (Etapa 68) — chave da API do Google Gemini, gratuita,
 gerada em [aistudio.google.com/apikey](https://aistudio.google.com/apikey);
 é usada só pra transcrever literalmente os áudios recebidos no grupo de
-Demandas (nunca pra interpretar texto).
+Demandas (nunca pra interpretar texto). Adicione também `BOLETO_WEBHOOK_URL`
+e `BOLETO_FINANCE_EMAIL` (Etapa 71) — a URL do workflow do n8n
+(`n8n-workflows/boleto-email.json`, passo 17 da seção de deploy) e o e-mail
+do financeiro que recebe o boleto; sem essas duas o botão "Enviar e-mail"
+de Controle de Saldo responde com erro.
 
 ## 5. Rodar localmente
 
@@ -1149,6 +1153,26 @@ Abra [http://localhost:3000](http://localhost:3000) — deve redirecionar pra
 desative esse workflow no n8n — a rota não existe mais no app e vai passar
 a responder 404 se continuar agendada.
 
+17. (Etapa 71) Pra virar o "Enviar boleto por e-mail" (dentro de Controle de
+    Saldo), importe o workflow pronto `n8n-workflows/boleto-email.json`
+    (Menu do n8n → Import from File). Diferente dos workflows acima, esse
+    não é chamado pelo n8n num horário fixo — é o próprio app que chama o
+    webhook na hora que você clica em "Enviar e-mail". Só 2 nós de verdade,
+    nativos (Webhook + Gmail — o meio do caminho é um HTTP Request que só
+    baixa o PDF, sem nó Code):
+    1. Ative o workflow e copie a URL de produção do nó **Webhook**.
+    2. Cole essa URL na variável de ambiente `BOLETO_WEBHOOK_URL` (Vercel) e
+       redeploy.
+    3. Configure `BOLETO_FINANCE_EMAIL` com o e-mail que deve receber o
+       boleto (ex.: financeiro@ivs.com.br).
+    4. No nó **Enviar e-mail (Gmail)**, conecte sua credencial do Gmail
+       (OAuth2).
+    5. Teste pelo app: Painel → Controle de Saldo → "Enviar boleto por
+       e-mail" → escolha o cliente, o vencimento, anexe um PDF e clique em
+       "Enviar e-mail". O assunto vira o nome da loja e o corpo é sempre o
+       mesmo texto fixo, só trocando loja/data/anexo — igual ao padrão que
+       você já mandava manualmente pelo Gmail.
+
 ## Estrutura
 
 ```
@@ -1216,10 +1240,23 @@ app/
     copy/subcategories, copy/subcategories/[id]  → lista (semeando o dataset
                     inicial na primeira vez)/cria/renomeia/apaga subcategorias
                     do Gerador de Copy (Etapa 70)
-    copy/generate   → gera as variações (Gemini) e salva no histórico —
-                    aceita count/save opcionais pro botão "gerar de novo só
-                    essa" (Etapa 70)
+    copy/subcategories/[id]/bank → PUT salva (ou substitui) as 5 variações do
+                    banco fixo da subcategoria, DELETE limpa (ajuste
+                    pós-Etapa 70 — ver "Banco de 5 variações" mais abaixo)
+    copy/generate   → gera as variações e salva no histórico — usa o banco
+                    fixo direto (sem IA) se a subcategoria tiver as 5
+                    salvas, senão chama o Gemini como sempre; aceita
+                    count/save opcionais pro botão "gerar de novo só essa"
+                    (Etapa 70)
     copy/generations → histórico de gerações por cliente (Etapa 70)
+    boletos/upload  → sobe o PDF do boleto pro bucket boletos (Storage) e
+                    devolve a URL pública (Etapa 71)
+    boletos/send    → monta o e-mail padrão (assunto = nome da loja, corpo
+                    fixo com vencimento) e dispara pro webhook do n8n
+                    (BOLETO_WEBHOOK_URL), gravando o histórico em
+                    boleto_sends (Etapa 71)
+    boletos/history → últimos envios de boleto, pra listinha de histórico em
+                    Controle de Saldo (Etapa 71)
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
     painel-ui-state  → lembra a aba ativa + filtros de Acompanhamento/Análise/
@@ -1431,8 +1468,12 @@ supabase/migrations/0015_demandas.sql → tabela demands + demands_group_id/dema
 supabase/migrations/0016_demand_message_buffer.sql → tabela demand_message_buffer, usada pelo workflow do n8n pra implementar o "~15s de silêncio" (Etapa 68)
 supabase/migrations/0017_copy_generator.sql → tabelas copy_subcategories, copy_reference_models e copy_generations do Gerador de Copy IVS (Etapa 70)
 supabase/migrations/0018_copy_subcategory_oferta_condicao_tom.sql → colunas oferta/condicao/tom/fixed em copy_subcategories — Oferta/Condição/Tom passam a ser fixados na subcategoria (perguntados só na criação) em vez de digitados a cada geração (ajuste pós-Etapa 70)
+supabase/migrations/0019_copy_subcategory_bank.sql → coluna bank_variations (jsonb) em copy_subcategories — banco de 5 variações fixas por subcategoria, reusadas pra qualquer cliente sem chamar IA (ajuste pós-Etapa 70)
+supabase/migrations/0020_boleto_sends.sql → tabela boleto_sends — histórico de envio de boleto por e-mail (Controle de Saldo, Etapa 71)
+supabase/migrations/0021_boletos_bucket.sql → bucket boletos (Storage) + policies de dono/leitura pública, mesmo padrão do whatsapp-media (Etapa 71)
 ```
 n8n-workflows/demandas-whatsapp.json → workflow pronto pra importar no n8n (Menu → Import from File) que implementa o passo 16 da seção de deploy — só nós nativos (Webhook, IF, Set, HTTP Request, Wait, NoOp), sem nó Code
+n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu → Import from File) que implementa o passo 17 da seção de deploy — Webhook + HTTP Request (baixa o PDF) + Gmail, sem nó Code
 
 ## Próximas etapas (ver plano completo no artifact "Trafic Insight Hub")
 
@@ -1968,7 +2009,38 @@ n8n-workflows/demandas-whatsapp.json → workflow pronto pra importar no n8n (Me
     apagada/renomeada pela tela, coluna `fixed` em `copy_subcategories`),
     sempre disponível como opção sem tom nenhum. Nova migração
     `0018_copy_subcategory_oferta_condicao_tom.sql` (colunas `oferta`,
-    `condicao`, `tom`, `fixed` em `copy_subcategories`)
+    `condicao`, `tom`, `fixed` em `copy_subcategories`). **Banco de 5
+    variações fixas por subcategoria (outro ajuste pós-produção):** pedido
+    explícito do usuário pra parar de chamar a IA toda vez que gera pra um
+    cliente diferente da mesma oferta. Fluxo: gera as 5 com IA normalmente
+    (uma vez), revisa o texto na tela, e clica em "💾 Salvar essas 5 como
+    banco fixo" — dali em diante, gerar pra QUALQUER cliente dessa
+    subcategoria reusa essas 5 variações tal e qual, sem chamar o Gemini,
+    trocando só o endereço (que já é um campo separado, vindo do cadastro do
+    cliente, nunca embutido no texto de "copy" mesmo no fluxo de IA — por
+    isso "trocar só o endereço" não precisou de lógica nova). Um aviso amarelo
+    aparece na tela quando a subcategoria está nesse modo, com um botão
+    "Remover banco" pra voltar a gerar com IA. Nova coluna
+    `bank_variations` (jsonb) em `copy_subcategories` (migração
+    `0019_copy_subcategory_bank.sql`) e nova rota
+    `PUT/DELETE /api/copy/subcategories/[id]/bank`
+66. **Enviar boleto por e-mail (Etapa 71)** — dentro de Controle de Saldo,
+    uma seção nova "📧 Enviar boleto por e-mail": escolhe o cliente, a data
+    de vencimento e sobe o PDF do boleto; um clique em "Enviar e-mail"
+    dispara pro financeiro o mesmo e-mail que já era mandado manualmente
+    pelo Gmail — assunto com o nome da loja, corpo fixo ("Solicito
+    verificar a possibilidade do pagamento do boleto em anexo, {loja} até
+    {dia da semana} {data}. Obrigado!..."), sempre pro mesmo destinatário
+    (`BOLETO_FINANCE_EMAIL`). O app não manda e-mail direto: sobe o PDF pro
+    bucket `boletos` (Storage, público — mesmo motivo do `whatsapp-media`,
+    é o n8n que baixa o arquivo pela URL) e faz um POST pro webhook do n8n
+    (`BOLETO_WEBHOOK_URL`), que manda de verdade pelo nó nativo do Gmail —
+    mesmo padrão "app empurra pro n8n" do webhook de venda do CRM. Workflow
+    pronto `n8n-workflows/boleto-email.json` (Webhook + HTTP Request pra
+    baixar o PDF + Gmail, sem nó Code — passo 17 da seção de deploy).
+    Histórico de envios (loja, vencimento, arquivo, status) numa listinha
+    "Ver histórico" na mesma seção, guardado na nova tabela `boleto_sends`
+    (migração `0020_boleto_sends.sql`; bucket em `0021_boletos_bucket.sql`).
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2024,9 +2096,11 @@ dedicado do WhatsApp em tarefas — com IA travada por prompt só pra
 transcrever áudio literalmente e separar pedidos misturados no mesmo texto,
 nunca pra reescrever/resumir/inventar (Etapa 68), a reordenação de colunas
 de Acompanhamento com o "R$" na coluna CPA ideal e a diferença do Ritmo
-movida pra embaixo de Invest. diário (Etapa 69) e a aba Copy, o gerador de
+movida pra embaixo de Invest. diário (Etapa 69), a aba Copy, o gerador de
 copy de anúncio do Instituto Visão Solidária com IA generativa de verdade
-(diferente das outras, que só organizam texto literal) (Etapa 70))
+(diferente das outras, que só organizam texto literal) (Etapa 70) e o
+envio de boleto por e-mail direto de Controle de Saldo via webhook do n8n
+(Etapa 71))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

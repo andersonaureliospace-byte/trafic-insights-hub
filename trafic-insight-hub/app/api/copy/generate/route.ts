@@ -53,6 +53,40 @@ export async function POST(request: Request) {
       .single();
     if (subError) throw subError;
 
+    // Etapa 70 (ajuste): banco de 5 variações fixas (pedido explícito do
+    // usuário — menos chamada de IA/custo/erro de sobrecarga pra ofertas já
+    // validadas e repetidas entre unidades). Se a subcategoria tem as 5
+    // salvas, usa elas direto — só o endereço muda, que já vem separado do
+    // cadastro do cliente (nunca embutido no texto de "copy"), sem chamar o
+    // Gemini nem checar campos extras (que só fazem sentido no fluxo de IA).
+    const bankVariations = (subcategory.bank_variations ?? []) as {
+      copy: string;
+      oferta: string;
+      cta: string;
+      condicao: string;
+    }[];
+    if (bankVariations.length === 5) {
+      if (!save) {
+        return NextResponse.json({ ok: true, address, variations: bankVariations, fromBank: true });
+      }
+      const { data: saved, error: saveError } = await supabase
+        .from("copy_generations")
+        .insert({
+          user_id: user.id,
+          ad_account_id,
+          subcategory_id,
+          category: subcategory.category,
+          subcategory_name: subcategory.name,
+          address,
+          extra_field_values: extraFieldValues,
+          variations: bankVariations,
+        })
+        .select("*")
+        .single();
+      if (saveError) throw saveError;
+      return NextResponse.json({ ok: true, address, generation: saved, fromBank: true });
+    }
+
     const { data: models, error: modelsError } = await supabase
       .from("copy_reference_models")
       .select("endereco_exemplo, copy, oferta, cta, condicao")

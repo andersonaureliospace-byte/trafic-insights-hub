@@ -45,6 +45,17 @@ interface Reason {
   tone: "red" | "amber";
 }
 
+interface BoletoSend {
+  id: string;
+  ad_account_id: string;
+  client_name: string;
+  due_date: string;
+  pdf_file_name: string;
+  status: string;
+  error: string | null;
+  created_at: string;
+}
+
 function fmtDateBR(iso: string): string {
   const [y, m, d] = iso.split("-");
   return `${d}/${m}/${y}`;
@@ -80,6 +91,18 @@ export function ControleSaldo({
   const [loadingStatuses, setLoadingStatuses] = useState(false);
   const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
+  // Etapa 71: envio de boleto por e-mail (upload do PDF → dispara pro n8n,
+  // que manda de verdade pelo Gmail — ver app/api/boletos/send/route.ts).
+  const [boletoAccountId, setBoletoAccountId] = useState("");
+  const [boletoDueDate, setBoletoDueDate] = useState("");
+  const [boletoFile, setBoletoFile] = useState<{ url: string; fileName: string } | null>(null);
+  const [boletoUploading, setBoletoUploading] = useState(false);
+  const [boletoSending, setBoletoSending] = useState(false);
+  const [boletoMsg, setBoletoMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const boletoFileInputRef = useRef<HTMLInputElement>(null);
+  const [boletoHistory, setBoletoHistory] = useState<BoletoSend[] | null>(null);
+  const [boletoHistoryOpen, setBoletoHistoryOpen] = useState(false);
+
   const loadStatuses = useCallback(async () => {
     setLoadingStatuses(true);
     const [balanceRes, fridayRes, paymentRes, manualRes] = await Promise.all([
@@ -114,6 +137,61 @@ export function ControleSaldo({
   async function handleRefresh() {
     onRefresh();
     await loadStatuses();
+  }
+
+  async function uploadBoleto(file: File) {
+    setBoletoUploading(true);
+    setBoletoMsg(null);
+    const form = new FormData();
+    form.append("file", file);
+    try {
+      const res = await fetch("/api/boletos/upload", { method: "POST", body: form });
+      const d = await res.json();
+      if (d.error) {
+        setBoletoMsg({ ok: false, text: d.error });
+      } else {
+        setBoletoFile({ url: d.url, fileName: d.fileName });
+      }
+    } catch {
+      setBoletoMsg({ ok: false, text: "Falha ao enviar o PDF." });
+    }
+    setBoletoUploading(false);
+  }
+
+  async function loadBoletoHistory() {
+    const res = await fetch("/api/boletos/history").then((r) => r.json());
+    setBoletoHistory(res.sends ?? []);
+  }
+
+  async function sendBoleto() {
+    if (!boletoAccountId || !boletoDueDate || !boletoFile) return;
+    setBoletoSending(true);
+    setBoletoMsg(null);
+    try {
+      const res = await fetch("/api/boletos/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ad_account_id: boletoAccountId,
+          due_date: boletoDueDate,
+          pdf_url: boletoFile.url,
+          pdf_file_name: boletoFile.fileName,
+        }),
+      });
+      const d = await res.json();
+      if (d.error) {
+        setBoletoMsg({ ok: false, text: d.error });
+      } else {
+        setBoletoMsg({ ok: true, text: "E-mail disparado — pode conferir no financeiro." });
+        setBoletoFile(null);
+        setBoletoDueDate("");
+        if (boletoFileInputRef.current) boletoFileInputRef.current.value = "";
+        if (boletoHistoryOpen) void loadBoletoHistory();
+      }
+    } catch {
+      setBoletoMsg({ ok: false, text: "Falha ao disparar o e-mail." });
+    }
+    setBoletoSending(false);
   }
 
   // Puxa o tipo de pagamento (pré-paga/pós-paga) direto da Meta — só na
@@ -156,6 +234,10 @@ export function ControleSaldo({
   const manualById = new Map((manualStatuses ?? []).map((s) => [s.ad_account_id, s]));
 
   const statusesLoaded = balanceStatuses !== null && fridayStatuses !== null && paymentStatuses !== null && manualStatuses !== null;
+
+  const sortedAccountsForBoleto = [...accounts].sort((a, b) =>
+    (clientNames[a.account_id] ?? a.name).localeCompare(clientNames[b.account_id] ?? b.name, "pt-BR"),
+  );
 
   const pending = accounts
     .map((acc) => {
@@ -220,6 +302,144 @@ export function ControleSaldo({
         Todas as contas exibidas são monitoradas — aqui só aparece quem está pendente ou com algum aviso. Contas
         OK não aparecem. Ajuste limites, tipo e rotinas em &quot;Personalizar alertas&quot;.
       </p>
+
+      {/* Etapa 71: envio de boleto por e-mail — sobe o PDF, escolhe cliente e
+          vencimento, e dispara o e-mail padrão pro financeiro (texto fixo,
+          só troca loja/data/anexo). Ver app/api/boletos/*. */}
+      <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+        <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">📧 Enviar boleto por e-mail</h3>
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+          Sobe o boleto em PDF e dispara o e-mail padrão pro financeiro — só troca a loja e o vencimento.
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-500">Cliente</label>
+            <select
+              value={boletoAccountId}
+              onChange={(e) => setBoletoAccountId(e.target.value)}
+              className="h-8 min-w-[220px] rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
+            >
+              <option value="">Selecione…</option>
+              {sortedAccountsForBoleto.map((acc) => (
+                <option key={acc.account_id} value={acc.account_id}>
+                  {clientNames[acc.account_id] ?? acc.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-500">Vencimento</label>
+            <input
+              type="date"
+              value={boletoDueDate}
+              onChange={(e) => setBoletoDueDate(e.target.value)}
+              className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-zinc-500">Boleto (PDF)</label>
+            <input
+              ref={boletoFileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void uploadBoleto(f);
+              }}
+            />
+            {boletoFile ? (
+              <span className="flex h-8 items-center gap-2 rounded-md border border-zinc-300 px-2 text-xs dark:border-zinc-700">
+                📎 <span className="max-w-[160px] truncate">{boletoFile.fileName}</span>
+                <button
+                  onClick={() => {
+                    setBoletoFile(null);
+                    if (boletoFileInputRef.current) boletoFileInputRef.current.value = "";
+                  }}
+                  className="font-medium text-red-600"
+                >
+                  Remover
+                </button>
+              </span>
+            ) : (
+              <button
+                onClick={() => boletoFileInputRef.current?.click()}
+                disabled={boletoUploading}
+                className="h-8 rounded-md border border-zinc-300 px-2.5 text-xs font-medium disabled:opacity-60 dark:border-zinc-700"
+              >
+                {boletoUploading ? "Enviando…" : "📎 Anexar PDF"}
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => void sendBoleto()}
+            disabled={boletoSending || boletoUploading || !boletoAccountId || !boletoDueDate || !boletoFile}
+            className="h-8 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            {boletoSending ? "Enviando…" : "Enviar e-mail"}
+          </button>
+          <button
+            onClick={() => {
+              setBoletoHistoryOpen((v) => !v);
+              if (!boletoHistoryOpen && boletoHistory === null) void loadBoletoHistory();
+            }}
+            className="h-8 rounded-md border border-zinc-300 px-2.5 text-xs font-medium dark:border-zinc-700"
+          >
+            {boletoHistoryOpen ? "Ocultar histórico" : "Ver histórico"}
+          </button>
+        </div>
+        {boletoMsg ? (
+          <p
+            className={`mt-2 text-xs font-medium ${
+              boletoMsg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600"
+            }`}
+          >
+            {boletoMsg.text}
+          </p>
+        ) : null}
+        {boletoHistoryOpen ? (
+          <div className="mt-3 overflow-x-auto rounded-md border border-zinc-200 dark:border-zinc-800">
+            {boletoHistory === null ? (
+              <p className="px-3 py-2 text-xs text-zinc-500">Carregando…</p>
+            ) : boletoHistory.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-zinc-500">Nenhum envio ainda.</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left uppercase tracking-wide text-zinc-400">
+                    <th className="px-3 py-1 font-medium">Loja</th>
+                    <th className="px-3 py-1 font-medium">Vencimento</th>
+                    <th className="px-3 py-1 font-medium">Arquivo</th>
+                    <th className="px-3 py-1 font-medium">Status</th>
+                    <th className="px-3 py-1 font-medium">Quando</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {boletoHistory.map((s) => (
+                    <tr key={s.id} className="border-t border-zinc-100 dark:border-zinc-800/60">
+                      <td className="px-3 py-1.5">{s.client_name}</td>
+                      <td className="px-3 py-1.5">{fmtDateBR(s.due_date)}</td>
+                      <td className="max-w-[160px] truncate px-3 py-1.5">{s.pdf_file_name || "—"}</td>
+                      <td className="px-3 py-1.5">
+                        {s.status === "sent" ? (
+                          <span className="text-emerald-600 dark:text-emerald-400">Enviado</span>
+                        ) : s.status === "error" ? (
+                          <span title={s.error ?? ""} className="text-red-600">
+                            Erro
+                          </span>
+                        ) : (
+                          <span className="text-zinc-500">Pendente</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-500">{new Date(s.created_at).toLocaleString("pt-BR")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : null}
+      </div>
 
       {accounts.length === 0 ? (
         <p className="px-4 py-6 text-sm text-zinc-500">Nenhuma conta selecionada.</p>

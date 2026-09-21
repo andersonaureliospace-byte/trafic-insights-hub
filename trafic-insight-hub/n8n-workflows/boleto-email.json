@@ -1,0 +1,104 @@
+{
+  "name": "Boleto - E-mail pro financeiro (Trafic Insight Hub)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Antes de ativar\n\n1. Ative o workflow e copie a URL de produção do nó **Webhook** (aba \"Webhook URLs\" do nó, valor \"Production URL\").\n2. Cole essa URL na variável de ambiente `BOLETO_WEBHOOK_URL` do app (Vercel → Settings → Environment Variables) e faça um redeploy.\n3. Configure a variável `BOLETO_FINANCE_EMAIL` do app com o e-mail que deve receber o boleto (ex.: financeiro@ivs.com.br) — é só pra registro; quem manda de verdade é o campo `to` que já vem pronto no corpo do webhook.\n4. No nó **Enviar e-mail (Gmail)**, conecte sua credencial do Gmail (OAuth2) em \"Credential to connect with\".\n5. Confira se o anexo chegou certo: rode uma execução de teste pelo app (Controle de Saldo → Enviar boleto por e-mail) e olhe em \"Executions\" se o PDF foi baixado (nó \"Baixar PDF do boleto\") e anexado no e-mail.\n\nPayload que o app manda: `{ to, subject, message, pdf_url, pdf_file_name, client_name, due_date }`. `to`/`subject`/`message` já vêm prontos (texto fixo definido no app) — este workflow só baixa o PDF de `pdf_url` e manda pelo Gmail, sem nó de Code.",
+        "height": 460,
+        "width": 480
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-980, -420],
+      "id": "b1b6b2b1-2f1a-4a3a-9c1a-3a9a1b6c0a01",
+      "name": "Leia antes de ativar"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "boleto-email",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-980, 0],
+      "id": "d2c7f3a0-6b1e-4c8a-9a2e-1f6b3c7d9e02",
+      "name": "Webhook - boleto",
+      "webhookId": "boleto-email-webhook"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.body.pdf_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-740, 0],
+      "id": "e3d8a4b1-7c2f-4d9b-8b3f-2a7c4d8e0f03",
+      "name": "Baixar PDF do boleto"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Webhook - boleto').item.json.body.to }}",
+        "subject": "={{ $('Webhook - boleto').item.json.body.subject }}",
+        "message": "={{ $('Webhook - boleto').item.json.body.message }}",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "data"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-500, 0],
+      "id": "f4e9b5c2-8d3a-4eab-9c4a-3b8d5e9f1a04",
+      "name": "Enviar e-mail (Gmail)",
+      "webhookId": "boleto-email-gmail",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "COLOQUE_AQUI_O_ID_DA_CREDENCIAL",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook - boleto": {
+      "main": [
+        [
+          {
+            "node": "Baixar PDF do boleto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Baixar PDF do boleto": {
+      "main": [
+        [
+          {
+            "node": "Enviar e-mail (Gmail)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
