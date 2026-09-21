@@ -48,22 +48,25 @@ interface ComputedEntry {
   accountId: string;
   clientName: string;
   finalPriority: string | null;
-  cpa: number | null;
+  // Etapa 72 (ajuste): CPA real MENOS o CPA ideal da própria conta (a mesma
+  // conta de classify()) — não o CPA absoluto. Pedido explícito: dentro do
+  // mesmo grupo de status, quem estourou MAIS a própria meta vem primeiro,
+  // mesmo que o CPA absoluto de outra conta (com meta mais alta) seja maior.
+  diff: number | null;
 }
 
-// Do pior resultado pro menor dentro do mesmo grupo — maior CPA primeiro
-// (mesmo critério já usado na automação agendada). Quem não tem CPA
-// calculável (pulado por falta de meta/gasto) fica por último dentro do
-// próprio grupo, desempatando por nome do cliente.
+// Maior diferença pro CPA ideal primeiro, dentro do mesmo grupo de status.
+// Quem não tem diferença calculável (pulado por falta de meta/gasto) fica
+// por último dentro do próprio grupo, desempatando por nome do cliente.
 function reorderedAccountIds(entries: ComputedEntry[]): string[] {
   return [...entries]
     .sort((a, b) => {
       const rankDiff = groupRank(a.finalPriority) - groupRank(b.finalPriority);
       if (rankDiff !== 0) return rankDiff;
-      if (a.cpa == null && b.cpa == null) return a.clientName.localeCompare(b.clientName, "pt-BR");
-      if (a.cpa == null) return 1;
-      if (b.cpa == null) return -1;
-      if (b.cpa !== a.cpa) return b.cpa - a.cpa;
+      if (a.diff == null && b.diff == null) return a.clientName.localeCompare(b.clientName, "pt-BR");
+      if (a.diff == null) return 1;
+      if (b.diff == null) return -1;
+      if (b.diff !== a.diff) return b.diff - a.diff;
       return a.clientName.localeCompare(b.clientName, "pt-BR");
     })
     .map((e) => e.accountId);
@@ -104,12 +107,12 @@ export function BulkStatusDialog({
     for (const c of candidates) {
       if (isInauguracao(c.priority)) {
         res.push({ accountId: c.accountId, clientName: c.clientName, outcome: "skipped", reason: "Em inauguração" });
-        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, cpa: null });
+        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, diff: null });
         continue;
       }
       if (!c.cpaTarget) {
         res.push({ accountId: c.accountId, clientName: c.clientName, outcome: "skipped", reason: "Sem meta de CPA" });
-        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, cpa: null });
+        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, diff: null });
         continue;
       }
       try {
@@ -129,19 +132,20 @@ export function BulkStatusDialog({
             outcome: "skipped",
             reason: "Sem gasto nos últimos 3 dias",
           });
-          computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, cpa: null });
+          computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, diff: null });
           continue;
         }
         const cpa = totalResults > 0 ? spend / totalResults : spend;
+        const diff = cpa - c.cpaTarget;
         const next = classify(cpa, c.cpaTarget);
         if (next === c.priority) {
           res.push({ accountId: c.accountId, clientName: c.clientName, outcome: "unchanged", to: next });
-          computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: next, cpa });
+          computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: next, diff });
           continue;
         }
         await onApply(c.accountId, next);
         res.push({ accountId: c.accountId, clientName: c.clientName, outcome: "updated", from: c.priority, to: next });
-        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: next, cpa });
+        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: next, diff });
       } catch (e) {
         res.push({
           accountId: c.accountId,
@@ -149,7 +153,7 @@ export function BulkStatusDialog({
           outcome: "skipped",
           reason: (e as Error).message || "Erro ao calcular",
         });
-        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, cpa: null });
+        computed.push({ accountId: c.accountId, clientName: c.clientName, finalPriority: c.priority, diff: null });
       }
     }
     setResults(res);
@@ -206,7 +210,7 @@ export function BulkStatusDialog({
               {reorderEnabled ? (
                 <p className="text-xs text-zinc-500">
                   Ao final, a lista também é reordenada: Inauguração no topo, depois Crítica, Alta, Média e Baixa —
-                  dentro de cada grupo, do pior CPA pro melhor.
+                  dentro de cada grupo, de quem tem a maior diferença pro próprio CPA ideal pra quem tem a menor.
                 </p>
               ) : (
                 <p className="text-xs text-amber-600 dark:text-amber-400">

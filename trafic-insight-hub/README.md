@@ -2048,12 +2048,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     ⚠️ ordem DIFERENTE da automação agendada da Etapa 55
     (`lib/alerts/bulk-status-update.ts`), que deixa Inauguração por último;
     são dois critérios de ordenação distintos, um por tela. Dentro de cada
-    grupo, do pior CPA (últimos 3 dias) pro melhor — mesmo critério já
-    usado na automação. Só reordena quando a lista está sem busca, grupo de
-    foco ou filtro de Status/CPA/Investimento/Otimizado ativo (mesma trava
-    do arrastar-e-soltar) — com algum desses ativos, o botão continua
-    reclassificando normalmente, só sem mexer na ordem, com um aviso
-    explicando o motivo na tela de confirmação.
+    grupo, **ajuste pedido depois de testar em produção**: não é mais o CPA
+    absoluto (últimos 3 dias) — é a diferença entre o CPA real e o CPA
+    ideal DA PRÓPRIA CONTA (`cpa - cpa_target`, a mesma conta de
+    `classify()`), maior diferença primeiro. Isso evita o caso de uma conta
+    com meta mais alta (CPA absoluto maior, mas relativamente mais perto da
+    própria meta) furar na frente de outra que estourou mais a própria
+    meta com um CPA absoluto menor. Só reordena quando a lista está sem
+    busca, grupo de foco ou filtro de Status/CPA/Investimento/Otimizado
+    ativo (mesma trava do arrastar-e-soltar) — com algum desses ativos, o
+    botão continua reclassificando normalmente, só sem mexer na ordem, com
+    um aviso explicando o motivo na tela de confirmação.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
