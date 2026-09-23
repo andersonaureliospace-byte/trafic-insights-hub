@@ -28,6 +28,12 @@ export interface PixRow {
   manual_check_interval_days: number | null;
   manual_check_repeat: boolean | null;
   manual_check_next_at: string | null;
+  // Etapa 73: destino do envio de PIX por WhatsApp (botão "Enviar Pix" em
+  // Controle de Saldo) — "grupo" reaproveita o grupo já vinculado ao cliente
+  // (Painel → Clientes); "numero" manda direto pra um número fixo. Raramente
+  // muda, por isso configurado aqui junto do resto.
+  pix_target_type: "grupo" | "numero" | null;
+  pix_target_number: string | null;
 }
 
 export type PixPatch = Partial<Omit<PixRow, "ad_account_id">>;
@@ -146,6 +152,7 @@ export function PersonalizarAlertasDialog({
                             <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
                               <th className="px-4 py-1.5 font-medium">Conta</th>
                               <th className="px-4 py-1.5 font-medium">Tipo</th>
+                              <th className="px-4 py-1.5 font-medium">Destino do Pix</th>
                               <th className="px-4 py-1.5 text-right font-medium">Valor base</th>
                               <th className="px-4 py-1.5 text-right font-medium">Alertar quando &lt;</th>
                               <th className="px-4 py-1.5 font-medium">Sexta (fim de semana)</th>
@@ -182,6 +189,35 @@ export function PersonalizarAlertasDialog({
                                         </option>
                                       ))}
                                     </select>
+                                  </td>
+                                  <td className="px-4 py-2">
+                                    <div className="flex flex-col gap-1">
+                                      <select
+                                        value={pix?.pix_target_type ?? "grupo"}
+                                        onChange={(e) =>
+                                          void onPatch(acc.account_id, {
+                                            pix_target_type: e.target.value as "grupo" | "numero",
+                                          })
+                                        }
+                                        className="rounded border border-zinc-200 bg-transparent px-1 py-0.5 text-xs dark:border-zinc-700"
+                                      >
+                                        <option value="grupo">Grupo do cliente</option>
+                                        <option value="numero">Número específico</option>
+                                      </select>
+                                      {pix?.pix_target_type === "numero" ? (
+                                        <input
+                                          defaultValue={pix?.pix_target_number ?? ""}
+                                          placeholder="Ex: 5547999998888"
+                                          onBlur={(e) => {
+                                            const v = e.target.value.trim();
+                                            if (v !== (pix?.pix_target_number ?? "")) {
+                                              void onPatch(acc.account_id, { pix_target_number: v || null });
+                                            }
+                                          }}
+                                          className="w-32 rounded border border-zinc-200 bg-transparent px-1.5 py-0.5 text-xs outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
+                                        />
+                                      ) : null}
+                                    </div>
                                   </td>
                                   <td className="px-4 py-2 text-right">
                                     <InlineNumber

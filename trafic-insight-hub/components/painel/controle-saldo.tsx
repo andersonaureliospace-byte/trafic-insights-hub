@@ -6,6 +6,7 @@ import { fmtCurrency } from "@/lib/format";
 import { billingHubUrl } from "@/lib/meta/ads-manager-link";
 import { availableFunds } from "@/lib/meta/funds";
 import { PersonalizarAlertasDialog, type PixRow, type PixPatch } from "@/components/painel/personalizar-alertas-dialog";
+import { EnviarPixDialog } from "@/components/painel/enviar-pix-dialog";
 
 export type { PixRow, PixPatch };
 
@@ -51,6 +52,18 @@ interface BoletoSend {
   client_name: string;
   due_date: string;
   pdf_file_name: string;
+  status: string;
+  error: string | null;
+  created_at: string;
+}
+
+interface PixSend {
+  id: string;
+  ad_account_id: string;
+  client_name: string;
+  target_type: string;
+  target_label: string;
+  scheduled_at: string | null;
   status: string;
   error: string | null;
   created_at: string;
@@ -102,6 +115,13 @@ export function ControleSaldo({
   const boletoFileInputRef = useRef<HTMLInputElement>(null);
   const [boletoHistory, setBoletoHistory] = useState<BoletoSend[] | null>(null);
   const [boletoHistoryOpen, setBoletoHistoryOpen] = useState(false);
+
+  // Etapa 73: envio de Pix por WhatsApp — o botão fica na coluna Ação de cada
+  // conta pendente (destino já configurado em Personalizar alertas); aqui só
+  // guardamos qual conta abriu o modal e o histórico dos últimos envios.
+  const [pixDialogAccount, setPixDialogAccount] = useState<{ id: string; clientName: string } | null>(null);
+  const [pixHistory, setPixHistory] = useState<PixSend[] | null>(null);
+  const [pixHistoryOpen, setPixHistoryOpen] = useState(false);
 
   const loadStatuses = useCallback(async () => {
     setLoadingStatuses(true);
@@ -161,6 +181,11 @@ export function ControleSaldo({
   async function loadBoletoHistory() {
     const res = await fetch("/api/boletos/history").then((r) => r.json());
     setBoletoHistory(res.sends ?? []);
+  }
+
+  async function loadPixHistory() {
+    const res = await fetch("/api/pix/history").then((r) => r.json());
+    setPixHistory(res.sends ?? []);
   }
 
   async function sendBoleto() {
@@ -282,6 +307,15 @@ export function ControleSaldo({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Controle de Saldo</h2>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => {
+              setPixHistoryOpen((v) => !v);
+              if (!pixHistoryOpen && pixHistory === null) void loadPixHistory();
+            }}
+            className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium dark:border-zinc-700"
+          >
+            {pixHistoryOpen ? "Ocultar histórico de Pix" : "📲 Histórico de Pix"}
+          </button>
           <button
             onClick={() => setDialogOpen(true)}
             className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium dark:border-zinc-700"
@@ -441,6 +475,61 @@ export function ControleSaldo({
         ) : null}
       </div>
 
+      {/* Etapa 73: histórico de Pix — o envio em si acontece pelo botão
+          "Enviar Pix" na coluna Ação de cada conta pendente (o destino já
+          vem configurado em Personalizar alertas). Ver app/api/pix/*. */}
+      {pixHistoryOpen ? (
+        <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">📲 Histórico de Pix</h3>
+          <div className="mt-2 overflow-x-auto rounded-md border border-zinc-200 dark:border-zinc-800">
+            {pixHistory === null ? (
+              <p className="px-3 py-2 text-xs text-zinc-500">Carregando…</p>
+            ) : pixHistory.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-zinc-500">Nenhum envio ainda.</p>
+            ) : (
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left uppercase tracking-wide text-zinc-400">
+                    <th className="px-3 py-1 font-medium">Loja</th>
+                    <th className="px-3 py-1 font-medium">Destino</th>
+                    <th className="px-3 py-1 font-medium">Status</th>
+                    <th className="px-3 py-1 font-medium">Agendado para</th>
+                    <th className="px-3 py-1 font-medium">Quando</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pixHistory.map((s) => (
+                    <tr key={s.id} className="border-t border-zinc-100 dark:border-zinc-800/60">
+                      <td className="px-3 py-1.5">{s.client_name}</td>
+                      <td className="max-w-[160px] truncate px-3 py-1.5">
+                        {s.target_type === "numero" ? "Número" : "Grupo"}: {s.target_label || "—"}
+                      </td>
+                      <td className="px-3 py-1.5">
+                        {s.status === "sent" ? (
+                          <span className="text-emerald-600 dark:text-emerald-400">Enviado</span>
+                        ) : s.status === "error" ? (
+                          <span title={s.error ?? ""} className="text-red-600">
+                            Erro
+                          </span>
+                        ) : s.status === "scheduled" ? (
+                          <span className="text-zinc-500">Programado</span>
+                        ) : (
+                          <span className="text-zinc-500">Pendente</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-500">
+                        {s.scheduled_at ? new Date(s.scheduled_at).toLocaleString("pt-BR") : "—"}
+                      </td>
+                      <td className="px-3 py-1.5 text-zinc-500">{new Date(s.created_at).toLocaleString("pt-BR")}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      ) : null}
+
       {accounts.length === 0 ? (
         <p className="px-4 py-6 text-sm text-zinc-500">Nenhuma conta selecionada.</p>
       ) : !statusesLoaded ? (
@@ -501,15 +590,28 @@ export function ControleSaldo({
                     </td>
                     <td className="max-w-[220px] px-4 py-2 text-zinc-600 dark:text-zinc-300">{notes || "—"}</td>
                     <td className="px-4 py-2">
-                      {hasManualDue ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {hasManualDue ? (
+                          <button
+                            onClick={() => void handleVerify(acc.account_id)}
+                            disabled={verifyingId === acc.account_id}
+                            className="h-7 rounded-md border border-zinc-300 px-2 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
+                          >
+                            {verifyingId === acc.account_id ? "Marcando…" : "Marcar como verificado"}
+                          </button>
+                        ) : null}
                         <button
-                          onClick={() => void handleVerify(acc.account_id)}
-                          disabled={verifyingId === acc.account_id}
-                          className="h-7 rounded-md border border-zinc-300 px-2 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
+                          onClick={() =>
+                            setPixDialogAccount({
+                              id: acc.account_id,
+                              clientName: clientNames[acc.account_id] ?? acc.name,
+                            })
+                          }
+                          className="h-7 rounded-md border border-zinc-300 px-2 text-xs font-medium dark:border-zinc-700"
                         >
-                          {verifyingId === acc.account_id ? "Marcando…" : "Marcar como verificado"}
+                          📲 Enviar Pix
                         </button>
-                      ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -526,6 +628,17 @@ export function ControleSaldo({
         clientNames={clientNames}
         pixByAccount={pixByAccount}
         onPatch={onPatch}
+      />
+
+      <EnviarPixDialog
+        open={pixDialogAccount !== null}
+        onClose={() => setPixDialogAccount(null)}
+        accountId={pixDialogAccount?.id ?? ""}
+        clientName={pixDialogAccount?.clientName ?? ""}
+        pixRow={pixDialogAccount ? pixByAccount[pixDialogAccount.id] : undefined}
+        onSent={() => {
+          if (pixHistoryOpen) void loadPixHistory();
+        }}
       />
     </div>
   );

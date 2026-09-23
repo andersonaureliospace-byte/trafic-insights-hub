@@ -1017,7 +1017,10 @@ Demandas (nunca pra interpretar texto). Adicione também `BOLETO_WEBHOOK_URL`
 e `BOLETO_FINANCE_EMAIL` (Etapa 71) — a URL do workflow do n8n
 (`n8n-workflows/boleto-email.json`, passo 17 da seção de deploy) e o e-mail
 do financeiro que recebe o boleto; sem essas duas o botão "Enviar e-mail"
-de Controle de Saldo responde com erro.
+de Controle de Saldo responde com erro. O envio de Pix por WhatsApp (Etapa
+73) não precisa de nenhuma variável nova — reaproveita a mesma instância
+uazapi (`whatsapp_instances`) e o mesmo `WHATSAPP_DISPATCH_SECRET` já
+configurados pra Mensagens &gt; Envio.
 
 ## 5. Rodar localmente
 
@@ -1173,6 +1176,15 @@ a responder 404 se continuar agendada.
        mesmo texto fixo, só trocando loja/data/anexo — igual ao padrão que
        você já mandava manualmente pelo Gmail.
 
+18. (Etapa 73) O botão "Enviar Pix" (Controle de Saldo) **não precisa de
+    nenhum workflow novo no n8n** — tanto o envio imediato quanto o
+    agendado reaproveitam a instância uazapi e, quando programado, o mesmo
+    hook `whatsapp-dispatch-tick` que o passo 16 (Demandas) e a aba
+    Mensagens &gt; Envio já usam. Se aquele workflow (Schedule Trigger →
+    HTTP Request pro hook, a cada ~1 minuto) já está ativo, o agendamento
+    de Pix funciona sozinho assim que a migração `0022_pix_whatsapp_dispatch.sql`
+    for aplicada.
+
 ## Estrutura
 
 ```
@@ -1257,6 +1269,14 @@ app/
                     boleto_sends (Etapa 71)
     boletos/history → últimos envios de boleto, pra listinha de histórico em
                     Controle de Saldo (Etapa 71)
+    pix/send        → dispara (ou agenda) a sequência de Pix por WhatsApp —
+                    saudação + texto fixo + texto do pix + print — resolvendo
+                    o destino (grupo do cliente ou número) configurado em
+                    pix_accounts; agendado insere em
+                    whatsapp_scheduled_dispatches (campo `parts`) igual a
+                    Mensagens > Envio (Etapa 73)
+    pix/history     → últimos envios de Pix, pra listinha de histórico em
+                    Controle de Saldo (Etapa 73)
     selected-accounts, account-bindings, account-bindings/reorder,
     pix-accounts, focus-groups
     painel-ui-state  → lembra a aba ativa + filtros de Acompanhamento/Análise/
@@ -1471,6 +1491,7 @@ supabase/migrations/0018_copy_subcategory_oferta_condicao_tom.sql → colunas of
 supabase/migrations/0019_copy_subcategory_bank.sql → coluna bank_variations (jsonb) em copy_subcategories — banco de 5 variações fixas por subcategoria, reusadas pra qualquer cliente sem chamar IA (ajuste pós-Etapa 70)
 supabase/migrations/0020_boleto_sends.sql → tabela boleto_sends — histórico de envio de boleto por e-mail (Controle de Saldo, Etapa 71)
 supabase/migrations/0021_boletos_bucket.sql → bucket boletos (Storage) + policies de dono/leitura pública, mesmo padrão do whatsapp-media (Etapa 71)
+supabase/migrations/0022_pix_whatsapp_dispatch.sql → pix_target_type/pix_target_number em pix_accounts (destino do Pix), coluna parts em whatsapp_scheduled_dispatches (sequência de mensagens), last_run_at/last_error (bug pré-existente corrigido) e tabela pix_sends (histórico de envio de Pix) (Etapa 73)
 ```
 n8n-workflows/demandas-whatsapp.json → workflow pronto pra importar no n8n (Menu → Import from File) que implementa o passo 16 da seção de deploy — só nós nativos (Webhook, IF, Set, HTTP Request, Wait, NoOp), sem nó Code
 n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu → Import from File) que implementa o passo 17 da seção de deploy — Webhook + HTTP Request (baixa o PDF) + Gmail, sem nó Code
@@ -2059,6 +2080,35 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     ativo (mesma trava do arrastar-e-soltar) — com algum desses ativos, o
     botão continua reclassificando normalmente, só sem mexer na ordem, com
     um aviso explicando o motivo na tela de confirmação.
+68. **Enviar Pix por WhatsApp (Etapa 73)** — igual ao boleto por e-mail, só
+    que por WhatsApp: na coluna Ação de cada conta pendente em Controle de
+    Saldo, um botão "📲 Enviar Pix" abre um modal com o destino já resolvido
+    (grupo do cliente ou um número fixo — configurado uma vez em
+    Personalizar alertas &gt; "Destino do Pix", raramente muda), um campo
+    pro texto do Pix (copia e cola) e o upload do print. Ao confirmar, manda
+    4 mensagens em sequência no chat, igual ao que já era feito manualmente:
+    saudação (Bom dia/Boa tarde/Boa noite, conforme o horário de Brasília na
+    hora do envio), o texto fixo "Segue pix para adicionar saldo na conta de
+    anúncios", o texto do Pix, e por último o print. Dá pra **enviar agora**
+    ou **programar** o disparo pra uma data/hora — o agendado reaproveita o
+    mesmo sistema de agendamento de Mensagens &gt; Envio
+    (`whatsapp_scheduled_dispatches` + o hook `whatsapp-dispatch-tick`, sem
+    workflow novo no n8n — ver passo 18 da seção de deploy), só que com uma
+    nova coluna `parts` (sequência de mensagens) em vez do `message` único
+    usado por Mensagens &gt; Envio; a lista "Agendados" dessa aba mostra um
+    rótulo "📲 Pix — {cliente}" pra esses agendamentos. Um botão "📲
+    Histórico de Pix" no topo de Controle de Saldo mostra os últimos envios
+    (loja, destino, status, agendado para quando) — nova tabela `pix_sends`.
+    Nova coluna "Destino do Pix" em Personalizar alertas (grupo/número +
+    campo do número quando aplicável). De brinde, corrigido um bug antigo:
+    o hook `whatsapp-dispatch-tick` já gravava `last_run_at`/`last_error`
+    desde sempre (e a tela de Mensagens &gt; Envio já lia esses campos), mas
+    as colunas nunca existiram na tabela — o update final de cada disparo
+    vinha silenciosamente falhando. ⚠️ O contrato de `/send/media` da uazapi
+    usado aqui (mesmo já usado pelos anexos de Mensagens &gt; Envio) foi
+    montado por analogia com `/send/text` e nunca foi confirmado contra a
+    documentação oficial — teste com atenção o primeiro envio de print.
+    Tudo na migração `0022_pix_whatsapp_dispatch.sql`.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2118,9 +2168,11 @@ movida pra embaixo de Invest. diário (Etapa 69), a aba Copy, o gerador de
 copy de anúncio do Instituto Visão Solidária com IA generativa de verdade
 (diferente das outras, que só organizam texto literal) (Etapa 70) e o
 envio de boleto por e-mail direto de Controle de Saldo via webhook do n8n
-(Etapa 71) e o reordenar automático (Inauguração → Crítica → Alta → Média →
+(Etapa 71), o reordenar automático (Inauguração → Crítica → Alta → Média →
 Baixa, pior CPA primeiro em cada grupo) junto do botão manual "Atualizar
-status em massa" de Acompanhamento (Etapa 72))
+status em massa" de Acompanhamento (Etapa 72) e o envio de Pix por
+WhatsApp direto de Controle de Saldo — imediato ou agendado, 4 mensagens em
+sequência, destino configurável por grupo ou número (Etapa 73))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

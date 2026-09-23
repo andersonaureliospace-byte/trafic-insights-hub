@@ -8,7 +8,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("whatsapp_scheduled_dispatches")
       .select(
-        "id, message, targets, scheduled_at, recurrence, status, last_run_at, last_error, created_at",
+        "id, message, parts, targets, scheduled_at, recurrence, status, last_run_at, last_error, created_at",
       )
       .eq("user_id", user.id)
       .in("status", ["pending", "running", "error"])

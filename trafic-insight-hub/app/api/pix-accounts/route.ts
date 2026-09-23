@@ -31,6 +31,10 @@ export async function PATCH(request: Request) {
       "manual_check_weekdays",
       "manual_check_interval_days",
       "manual_check_repeat",
+      // Etapa 73: destino do envio de PIX por WhatsApp — configurado uma vez
+      // aqui (raramente muda), ver supabase/migrations/0022_*.
+      "pix_target_type",
+      "pix_target_number",
     ];
     for (const key of WHITELIST) {
       if (key in body) patch[key] = body[key];

@@ -70,6 +70,10 @@ interface PixRow {
   manual_check_interval_days: number | null;
   manual_check_repeat: boolean | null;
   manual_check_next_at: string | null;
+  // Etapa 73: destino do envio de Pix por WhatsApp — ver
+  // components/painel/personalizar-alertas-dialog.tsx.
+  pix_target_type: "grupo" | "numero" | null;
+  pix_target_number: string | null;
 }
 
 type BindingPatch = Partial<Omit<AccountBinding, "ad_account_id">>;
@@ -437,6 +441,8 @@ export default function PainelPage() {
       manual_check_interval_days: null,
       manual_check_repeat: true,
       manual_check_next_at: null,
+      pix_target_type: "grupo" as const,
+      pix_target_number: null,
     };
     const next = { ...current, ...patch };
     setPixAccounts((prev) => ({ ...prev, [accountId]: next }));

@@ -29,7 +29,11 @@ interface DispatchTargetRow {
 
 interface Dispatch {
   id: string;
-  message: string;
+  message: string | null;
+  // Etapa 73: disparos de PIX (agendados em Controle de Saldo) usam `parts`
+  // (sequência de mensagens) em vez de `message` — só o comprimento importa
+  // aqui, pra saber qual rótulo mostrar na lista.
+  parts: unknown[] | null;
   targets: DispatchTargetRow[];
   scheduled_at: string;
   recurrence: "none" | "daily" | "weekly" | "monthly";
@@ -434,7 +438,11 @@ export function EnvioTab() {
               {dispatches.map((d) => (
                 <li key={d.id} className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-zinc-900 dark:text-zinc-50">{d.message}</p>
+                    <p className="truncate font-medium text-zinc-900 dark:text-zinc-50">
+                      {d.parts && d.parts.length > 0
+                        ? `📲 Pix — ${d.targets[0]?.client_name || d.targets[0]?.wa_group_name || "destino configurado"}`
+                        : d.message}
+                    </p>
                     <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                       {new Date(d.scheduled_at).toLocaleString("pt-BR")} · {RECURRENCE_LABELS[d.recurrence]} ·{" "}
                       {d.targets.length} destinatário(s) · {d.status}

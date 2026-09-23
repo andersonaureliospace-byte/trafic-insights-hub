@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { sendText } from "@/lib/whatsapp/client";
-import { nextOccurrence, interpolate, type DispatchTarget, type Recurrence } from "@/lib/whatsapp/dispatch";
+import { sendText, sendMedia, mediaTypeFromMime } from "@/lib/whatsapp/client";
+import { nextOccurrence, interpolate, type DispatchTarget, type PixMessagePart, type Recurrence } from "@/lib/whatsapp/dispatch";
+import { greetingNow } from "@/lib/whatsapp/pix-message";
 
 // Endpoint público chamado pelo n8n (num intervalo curto, ex.: a cada
 // minuto) pra efetivamente disparar as mensagens agendadas. Não depende de
@@ -12,11 +13,18 @@ import { nextOccurrence, interpolate, type DispatchTarget, type Recurrence } fro
 // Portado do app anterior (whatsapp-dispatch-tick.ts), sem a camada de
 // workspace: cada disparo já carrega o user_id, e a instância uazapi é lida
 // direto de whatsapp_instances.
+//
+// Etapa 73: além do disparo de texto único (Mensagens > Envio, `message`),
+// agora também processa disparos de PIX por WhatsApp — uma SEQUÊNCIA de
+// partes (`parts`: saudação + texto fixo + texto do pix + imagem) mandada em
+// ordem pra cada target. Um disparo tem `message` OU `parts` preenchido,
+// nunca os dois; `parts` tem prioridade quando presente.
 
 interface DispatchRow {
   id: string;
   user_id: string;
-  message: string;
+  message: string | null;
+  parts: PixMessagePart[] | null;
   targets: DispatchTarget[];
   scheduled_at: string;
   recurrence: Recurrence;
@@ -43,7 +51,7 @@ export async function POST(request: Request) {
     .update({ status: "running" })
     .lte("scheduled_at", nowIso)
     .eq("status", "pending")
-    .select("id, user_id, message, targets, scheduled_at, recurrence");
+    .select("id, user_id, message, parts, targets, scheduled_at, recurrence");
   if (claimErr) {
     return NextResponse.json({ error: claimErr.message }, { status: 500 });
   }
@@ -69,9 +77,31 @@ export async function POST(request: Request) {
 
       for (let i = 0; i < d.targets.length; i++) {
         const t = d.targets[i];
-        const msg = interpolate(d.message, t.client_name);
         try {
-          await sendText({ api_url: apiUrl, token }, t.wa_group_id, msg);
+          if (d.parts && d.parts.length > 0) {
+            // Etapa 73: sequência de partes (PIX) — manda cada uma em ordem,
+            // com uma pausa curta entre elas (mensagens do mesmo "pacote",
+            // não precisa do intervalo anti-spam de 30-60s usado entre
+            // targets diferentes abaixo).
+            for (let p = 0; p < d.parts.length; p++) {
+              const part = d.parts[p];
+              if (part.type === "greeting") {
+                await sendText({ api_url: apiUrl, token }, t.wa_group_id, greetingNow());
+              } else if (part.type === "text") {
+                await sendText({ api_url: apiUrl, token }, t.wa_group_id, part.text);
+              } else {
+                await sendMedia({ api_url: apiUrl, token }, t.wa_group_id, {
+                  url: part.url,
+                  type: mediaTypeFromMime(part.mime),
+                  fileName: part.fileName,
+                });
+              }
+              if (p < d.parts.length - 1) await sleep(1_500);
+            }
+          } else {
+            const msg = interpolate(d.message ?? "", t.client_name);
+            await sendText({ api_url: apiUrl, token }, t.wa_group_id, msg);
+          }
           successCount++;
         } catch (e) {
           errorCount++;
@@ -105,6 +135,16 @@ export async function POST(request: Request) {
       update.status = errorCount > 0 && successCount === 0 ? "error" : "done";
     }
     await supabase.from("whatsapp_scheduled_dispatches").update(update).eq("id", d.id);
+
+    // Etapa 73: disparo de PIX agendado — atualiza o histórico (pix_sends)
+    // com o resultado. Não faz nada quando não é um disparo de PIX (nenhuma
+    // linha em pix_sends aponta pra esse dispatch_id).
+    if (d.parts && d.parts.length > 0) {
+      await supabase
+        .from("pix_sends")
+        .update({ status: errorCount === 0 ? "sent" : "error", error: runError })
+        .eq("dispatch_id", d.id);
+    }
 
     results.push({ id: d.id, ok: errorCount === 0 });
   }
