@@ -2109,6 +2109,16 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     montado por analogia com `/send/text` e nunca foi confirmado contra a
     documentação oficial — teste com atenção o primeiro envio de print.
     Tudo na migração `0022_pix_whatsapp_dispatch.sql`.
+69. **Correção: lista de grupos do WhatsApp incompleta (Etapa 74)** — em
+    qualquer tela que lista grupos pra vincular/selecionar (Painel →
+    Clientes, Mensagens → Envio, Relatórios), quem tem muitos grupos via de
+    menos grupos do que realmente existem, sem nenhum erro na tela — nem o
+    botão "Atualizar grupos" resolvia. Causa: `POST /group/list` da uazapi é
+    paginado (`limit`/`offset`), e o código só pedia uma página, sem nunca
+    pedir as seguintes — o problema nunca foi cache (por isso "Atualizar"
+    não fazia diferença), era faltar paginar. `listGroups`
+    (`lib/whatsapp/client.ts`) agora busca todas as páginas (100 por vez, até
+    uma página vir incompleta) antes de devolver a lista.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2172,7 +2182,9 @@ envio de boleto por e-mail direto de Controle de Saldo via webhook do n8n
 Baixa, pior CPA primeiro em cada grupo) junto do botão manual "Atualizar
 status em massa" de Acompanhamento (Etapa 72) e o envio de Pix por
 WhatsApp direto de Controle de Saldo — imediato ou agendado, 4 mensagens em
-sequência, destino configurável por grupo ou número (Etapa 73))
+sequência, destino configurável por grupo ou número (Etapa 73) e a correção
+da lista de grupos do WhatsApp incompleta pra quem tem muitos grupos
+(Etapa 74))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

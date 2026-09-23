@@ -107,21 +107,33 @@ export interface WhatsappGroup {
   name: string;
 }
 
+// Bug corrigido: POST /group/list da uazapi é PAGINADO (limit/offset) — a
+// versão antiga pedia só uma página (sem limit/offset), então qualquer
+// instância com mais grupos que o tamanho de uma página perdia o resto em
+// silêncio (sem erro, "Atualizar grupos" não resolvia porque o problema
+// nunca foi cache, e sim faltar pedir as páginas seguintes). Agora pagina
+// até uma página vir com menos itens que o limite pedido.
+const GROUP_PAGE_SIZE = 100;
+const GROUP_MAX_PAGES = 50; // trava de segurança (até 5.000 grupos)
+
 export async function listGroups(creds: WhatsappCreds, force = false): Promise<WhatsappGroup[]> {
-  // uazapi: POST /group/list (com body) retorna a lista completa de grupos.
-  const json = await waFetch<unknown>(creds, "/group/list", {
-    method: "POST",
-    body: JSON.stringify({ force }),
-  });
-  const arr: unknown[] = Array.isArray(json)
-    ? json
-    : Array.isArray((json as { groups?: unknown[] })?.groups)
-      ? (json as { groups: unknown[] }).groups
-      : Array.isArray((json as { data?: unknown[] })?.data)
-        ? (json as { data: unknown[] }).data
-        : [];
-  const groups: WhatsappGroup[] = arr
-    .map((g) => {
+  const seen = new Set<string>();
+  const groups: WhatsappGroup[] = [];
+
+  for (let page = 0; page < GROUP_MAX_PAGES; page++) {
+    const json = await waFetch<unknown>(creds, "/group/list", {
+      method: "POST",
+      body: JSON.stringify({ force, limit: GROUP_PAGE_SIZE, offset: page * GROUP_PAGE_SIZE, noParticipants: true }),
+    });
+    const arr: unknown[] = Array.isArray(json)
+      ? json
+      : Array.isArray((json as { groups?: unknown[] })?.groups)
+        ? (json as { groups: unknown[] }).groups
+        : Array.isArray((json as { data?: unknown[] })?.data)
+          ? (json as { data: unknown[] }).data
+          : [];
+
+    for (const g of arr) {
       const o = g as Record<string, unknown>;
       const id = (o.JID as string) || (o.id as string) || (o.wa_chatid as string) || "";
       const name =
@@ -131,9 +143,15 @@ export async function listGroups(creds: WhatsappCreds, force = false): Promise<W
         (o.subject as string) ||
         (o.wa_name as string) ||
         id;
-      return { id, name };
-    })
-    .filter((g) => g.id && g.id.includes("@g.us"));
+      if (id && id.includes("@g.us") && !seen.has(id)) {
+        seen.add(id);
+        groups.push({ id, name });
+      }
+    }
+
+    if (arr.length < GROUP_PAGE_SIZE) break; // última página
+  }
+
   groups.sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
   return groups;
 }
