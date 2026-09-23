@@ -61,19 +61,6 @@ export function EnviarPixDialog({
       .finally(() => setLoadingBinding(false));
   }, [open, accountId]);
 
-  if (!open) return null;
-
-  const targetType = pixRow?.pix_target_type ?? "grupo";
-  const destinationLabel =
-    targetType === "numero"
-      ? pixRow?.pix_target_number
-        ? `Número ${pixRow.pix_target_number}`
-        : null
-      : binding?.wa_group_name
-        ? `Grupo "${binding.wa_group_name}"`
-        : null;
-  const destinationReady = !!destinationLabel;
-
   async function uploadImage(file: File) {
     setUploading(true);
     setUploadError(null);
@@ -92,6 +79,53 @@ export function EnviarPixDialog({
     }
     setUploading(false);
   }
+
+  // Etapa 74: cola direto (Ctrl+V) o print do Pix copiado da área de
+  // transferência — sem precisar salvar o arquivo antes pra depois escolher
+  // no seletor. Um ref guarda a versão mais recente de uploadImage pra não
+  // precisar recriar o listener a cada render (hooks têm que rodar antes do
+  // "if (!open) return null" abaixo, senão a ordem dos hooks quebra).
+  const uploadImageRef = useRef(uploadImage);
+  useEffect(() => {
+    uploadImageRef.current = uploadImage;
+  });
+
+  useEffect(() => {
+    if (!open) return;
+    function handlePaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            const named =
+              file.name && file.name !== "image.png"
+                ? file
+                : new File([file], `pix-print-${Date.now()}.png`, { type: file.type });
+            void uploadImageRef.current(named);
+          }
+          break;
+        }
+      }
+    }
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [open]);
+
+  if (!open) return null;
+
+  const targetType = pixRow?.pix_target_type ?? "grupo";
+  const destinationLabel =
+    targetType === "numero"
+      ? pixRow?.pix_target_number
+        ? `Número ${pixRow.pix_target_number}`
+        : null
+      : binding?.wa_group_name
+        ? `Grupo "${binding.wa_group_name}"`
+        : null;
+  const destinationReady = !!destinationLabel;
 
   async function removeImage() {
     if (image) {
@@ -201,13 +235,18 @@ export function EnviarPixDialog({
               </button>
             </span>
           ) : (
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              className="h-8 w-fit rounded-md border border-zinc-300 px-2.5 text-xs font-medium disabled:opacity-60 dark:border-zinc-700"
-            >
-              {uploading ? "Enviando…" : "📎 Anexar print"}
-            </button>
+            <>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className="h-8 w-fit rounded-md border border-zinc-300 px-2.5 text-xs font-medium disabled:opacity-60 dark:border-zinc-700"
+              >
+                {uploading ? "Enviando…" : "📎 Anexar print"}
+              </button>
+              <p className="mt-1 text-xs text-zinc-400">
+                Ou tire o print e cole aqui com Ctrl+V (Cmd+V no Mac).
+              </p>
+            </>
           )}
           {uploadError ? <span className="text-xs text-red-600">{uploadError}</span> : null}
         </div>

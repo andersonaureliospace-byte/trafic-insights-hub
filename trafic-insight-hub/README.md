@@ -2119,6 +2119,14 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     não fazia diferença), era faltar paginar. `listGroups`
     (`lib/whatsapp/client.ts`) agora busca todas as páginas (100 por vez, até
     uma página vir incompleta) antes de devolver a lista.
+70. **Colar o print do Pix direto (Ctrl+V) no modal "Enviar Pix" (ajuste
+    pós-Etapa 73)** — em vez de só o botão "📎 Anexar print" (que abre o
+    seletor de arquivo), agora dá pra tirar o print e colar direto no modal
+    com Ctrl+V (Cmd+V no Mac) — sobe pro mesmo bucket `whatsapp-media` de
+    sempre. ⚠️ Se o upload (por botão ou por colar) responder "Bucket not
+    found", o bucket `whatsapp-media` (Storage) não existe nesse projeto do
+    Supabase — rode de novo o SQL da migração `0006_whatsapp_media_bucket.sql`
+    (idempotente, pode rodar de novo mesmo que parte já exista).
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2184,7 +2192,8 @@ status em massa" de Acompanhamento (Etapa 72) e o envio de Pix por
 WhatsApp direto de Controle de Saldo — imediato ou agendado, 4 mensagens em
 sequência, destino configurável por grupo ou número (Etapa 73) e a correção
 da lista de grupos do WhatsApp incompleta pra quem tem muitos grupos
-(Etapa 74))
+(Etapa 74) e o suporte a colar (Ctrl+V) o print do Pix direto no modal
+"Enviar Pix")
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —
