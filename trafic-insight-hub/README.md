@@ -1492,6 +1492,7 @@ supabase/migrations/0019_copy_subcategory_bank.sql → coluna bank_variations (j
 supabase/migrations/0020_boleto_sends.sql → tabela boleto_sends — histórico de envio de boleto por e-mail (Controle de Saldo, Etapa 71)
 supabase/migrations/0021_boletos_bucket.sql → bucket boletos (Storage) + policies de dono/leitura pública, mesmo padrão do whatsapp-media (Etapa 71)
 supabase/migrations/0022_pix_whatsapp_dispatch.sql → pix_target_type/pix_target_number em pix_accounts (destino do Pix), coluna parts em whatsapp_scheduled_dispatches (sequência de mensagens), last_run_at/last_error (bug pré-existente corrigido) e tabela pix_sends (histórico de envio de Pix) (Etapa 73)
+supabase/migrations/0023_pix_dispatch_message_nullable.sql → message em whatsapp_scheduled_dispatches deixa de ser NOT NULL — disparo de Pix agendado insere parts e message null, e a coluna ainda exigia message desde a criação da tabela (0001_init.sql) (correção pós-Etapa 73)
 ```
 n8n-workflows/demandas-whatsapp.json → workflow pronto pra importar no n8n (Menu → Import from File) que implementa o passo 16 da seção de deploy — só nós nativos (Webhook, IF, Set, HTTP Request, Wait, NoOp), sem nó Code
 n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu → Import from File) que implementa o passo 17 da seção de deploy — Webhook + HTTP Request (baixa o PDF) + Gmail, sem nó Code
@@ -2127,6 +2128,21 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     found", o bucket `whatsapp-media` (Storage) não existe nesse projeto do
     Supabase — rode de novo o SQL da migração `0006_whatsapp_media_bucket.sql`
     (idempotente, pode rodar de novo mesmo que parte já exista).
+71. **Correção: Pix agendado falhava com erro de banco (ajuste pós-Etapa
+    73)** — programar o disparo de Pix (em vez de mandar na hora) respondia
+    `null value in column "message"... violates not-null constraint`. A
+    coluna `message` de `whatsapp_scheduled_dispatches` é obrigatória desde a
+    criação da tabela, mas o Pix agendado sempre insere `message: null` (usa
+    `parts`, a sequência de mensagens, no lugar) — ninguém tinha liberado essa
+    coluna pra aceitar null. Corrigido na migração
+    `0023_pix_dispatch_message_nullable.sql`.
+72. **Coluna "Invest. diário" em Controle de Saldo (Etapa 75)** — na tabela
+    de contas pendentes, nova coluna mostra o orçamento diário atual dos
+    conjuntos/campanhas ativos de cada conta (`insight.daily_budget`), o
+    mesmo dado já usado na coluna de mesmo nome em Acompanhamento — sem o
+    comparativo com o Ritmo que existe lá, só o valor. Controle de Saldo
+    passou a buscar `insights` da Meta (antes só rodava fora da aba
+    Acompanhamento).
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2192,8 +2208,10 @@ status em massa" de Acompanhamento (Etapa 72) e o envio de Pix por
 WhatsApp direto de Controle de Saldo — imediato ou agendado, 4 mensagens em
 sequência, destino configurável por grupo ou número (Etapa 73) e a correção
 da lista de grupos do WhatsApp incompleta pra quem tem muitos grupos
-(Etapa 74) e o suporte a colar (Ctrl+V) o print do Pix direto no modal
-"Enviar Pix")
+(Etapa 74), o suporte a colar (Ctrl+V) o print do Pix direto no modal
+"Enviar Pix", a correção do erro de banco no Pix agendado (coluna message
+não aceitava null) e a coluna "Invest. diário" em Controle de Saldo
+(Etapa 75))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

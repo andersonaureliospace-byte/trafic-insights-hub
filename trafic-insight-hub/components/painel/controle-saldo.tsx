@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AdAccount } from "@/lib/meta/insights";
+import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { fmtCurrency } from "@/lib/format";
 import { billingHubUrl } from "@/lib/meta/ads-manager-link";
 import { availableFunds } from "@/lib/meta/funds";
@@ -85,6 +85,7 @@ export function ControleSaldo({
   accounts,
   clientNames,
   pixByAccount,
+  insights,
   onPatch,
   onRefresh,
   refreshing,
@@ -92,6 +93,10 @@ export function ControleSaldo({
   accounts: AdAccount[];
   clientNames: Record<string, string>;
   pixByAccount: Record<string, PixRow>;
+  // Etapa 75: orçamento diário atual (coluna "Invest. diário") — mesmo dado
+  // já buscado pra Acompanhamento (insight.daily_budget, independente do
+  // período escolhido no filtro de lá), reaproveitado aqui.
+  insights: Record<string, AccountInsight>;
   onPatch: (accountId: string, patch: PixPatch) => Promise<void>;
   onRefresh: () => void;
   refreshing: boolean;
@@ -546,6 +551,12 @@ export function ControleSaldo({
                 <th className="px-4 py-1.5 font-medium">Cliente</th>
                 <th className="px-4 py-1.5 font-medium">Conta</th>
                 <th className="px-4 py-1.5 text-right font-medium">Saldo disponível</th>
+                <th
+                  className="px-4 py-1.5 text-right font-medium"
+                  title="Orçamento diário atual dos conjuntos/campanhas ativos (mesmo dado de Acompanhamento)"
+                >
+                  Invest. diário
+                </th>
                 <th className="px-4 py-1.5 font-medium">Avisos</th>
                 <th className="px-4 py-1.5 font-medium">Observação</th>
                 <th className="px-4 py-1.5 font-medium">Ação</th>
@@ -572,6 +583,9 @@ export function ControleSaldo({
                       </a>
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(funds.amount, acc.currency)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {fmtCurrency(insights[acc.account_id]?.daily_budget, acc.currency)}
+                    </td>
                     <td className="px-4 py-2">
                       <div className="flex flex-col gap-1">
                         {reasons.map((r) => (

@@ -348,9 +348,10 @@ export default function PainelPage() {
 
   useEffect(() => {
     // Só busca no Meta (o que consome requisição de verdade) quando a aba
-    // que precisa desse dado está ativa — Acompanhamento (tabela). Nas
-    // outras abas, essa chamada não roda.
-    if (tab !== "acompanhamento") return;
+    // que precisa desse dado está ativa — Acompanhamento (tabela) e, desde a
+    // Etapa 75, também Controle de Saldo (coluna "Invest. diário" usa
+    // insight.daily_budget). Nas outras abas, essa chamada não roda.
+    if (tab !== "acompanhamento" && tab !== "saldo") return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca os insights ao entrar na aba, ou quando seleção/período mudam com a aba já ativa
     void loadInsights();
   }, [loadInsights, tab]);
@@ -930,6 +931,7 @@ export default function PainelPage() {
                 accounts={selectedAccounts}
                 clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
                 pixByAccount={pixAccounts}
+                insights={insights}
                 onPatch={patchPix}
                 onRefresh={loadAccounts}
                 refreshing={loadingAccounts}
