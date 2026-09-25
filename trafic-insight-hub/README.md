@@ -2143,6 +2143,19 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     comparativo com o Ritmo que existe lá, só o valor. Controle de Saldo
     passou a buscar `insights` da Meta (antes só rodava fora da aba
     Acompanhamento).
+73. **Correção: pausa automática de Criativos/Conjuntos mexendo em conta
+    fora do Painel (ajuste pós-Etapa 53)** — as automações "Criativos
+    pausados automaticamente" e "Conjuntos pausados automaticamente"
+    (`lib/alerts/creatives-pause.ts` e `lib/alerts/adsets-pause.ts`, tanto no
+    botão manual de Mensagens → Avisos quanto no disparo automático via n8n)
+    varriam TODA conta com meta de CPA cadastrada em `account_bindings`, sem
+    checar se ela ainda está entre as "Contas exibidas" do Painel
+    (`user_selected_accounts`) — uma conta desmarcada do Painel, mas com meta
+    de CPA de uma configuração antiga, continuava tendo criativos/conjuntos
+    pausados sozinha, sem aparecer em lugar nenhum da tela (relatado com a
+    conta "Marcia Dantas"). Agora as duas automações usam o mesmo universo de
+    contas já usado pela atualização de status em massa
+    (`lib/alerts/bulk-status-update.ts`): só quem está selecionado no Painel.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2210,8 +2223,9 @@ sequência, destino configurável por grupo ou número (Etapa 73) e a correção
 da lista de grupos do WhatsApp incompleta pra quem tem muitos grupos
 (Etapa 74), o suporte a colar (Ctrl+V) o print do Pix direto no modal
 "Enviar Pix", a correção do erro de banco no Pix agendado (coluna message
-não aceitava null) e a coluna "Invest. diário" em Controle de Saldo
-(Etapa 75))
+não aceitava null), a coluna "Invest. diário" em Controle de Saldo
+(Etapa 75) e a correção da pausa automática de Criativos/Conjuntos mexendo
+em conta fora do Painel (Etapa 76))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

@@ -12,6 +12,14 @@
 // intervalo (setEntitiesStatusSequential), em vez de todas em paralelo —
 // mesma pauta de segurança contra rate limit que os botões manuais de
 // Análise já seguem (BULK_DELAY_MS).
+//
+// Etapa 76 (correção): universo de contas restrito a user_selected_accounts
+// ("Contas exibidas" do Painel) — mesmo critério já usado em
+// bulk-status-update.ts. Antes, essa automação varria TODO account_bindings
+// com cpa_target preenchido, então uma conta desmarcada do Painel (mas ainda
+// com meta de CPA cadastrada de antes) continuava tendo criativos pausados
+// sozinha, sem aparecer em lugar nenhum da tela — bug relatado com a conta
+// "Marcia Dantas".
 
 import type { createClient } from "@/lib/supabase/server";
 import { getCreativeCostAnalysis } from "@/lib/meta/creative-analysis";
@@ -47,10 +55,19 @@ export async function checkAndPauseCreatives(
   token: string,
   opts: { send: boolean } = { send: false },
 ): Promise<CheckCreativesPauseResult> {
+  const { data: selected, error: selectedErr } = await db
+    .from("user_selected_accounts")
+    .select("ad_account_id")
+    .eq("user_id", userId);
+  if (selectedErr) throw selectedErr;
+  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string);
+  if (accountIds.length === 0) return { paused: [], sendError: null };
+
   const { data: bindings, error: bindingsErr } = await db
     .from("account_bindings")
     .select("ad_account_id, client_name, cpa_target")
     .eq("user_id", userId)
+    .in("ad_account_id", accountIds)
     .not("cpa_target", "is", null);
   if (bindingsErr) throw bindingsErr;
   if (!bindings || bindings.length === 0) return { paused: [], sendError: null };
