@@ -2156,6 +2156,15 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     conta "Marcia Dantas"). Agora as duas automações usam o mesmo universo de
     contas já usado pela atualização de status em massa
     (`lib/alerts/bulk-status-update.ts`): só quem está selecionado no Painel.
+74. **Monitor de CPA sempre abre em "Hoje" (Etapa 77)** — o período inicial
+    era "Ontem" toda vez que a aba era aberta (não tem nada persistido de
+    uma sessão pra outra, era só o valor padrão mesmo); trocado pra "Hoje".
+75. **Análise → Conjuntos (acima da meta): separação dos "Sem anúncio
+    ativo" (Etapa 78)** — os conjuntos com o selo "Sem anúncio ativo" agora
+    sempre aparecem primeiro dentro de cada conta, com um divisor "Com
+    anúncio ativo" separando o resto da lista (mesmo sem nenhum filtro
+    ligado), e um novo filtro "Só sem anúncio ativo" ao lado da busca
+    esconde o restante quando só interessa ver esses.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2224,8 +2233,10 @@ da lista de grupos do WhatsApp incompleta pra quem tem muitos grupos
 (Etapa 74), o suporte a colar (Ctrl+V) o print do Pix direto no modal
 "Enviar Pix", a correção do erro de banco no Pix agendado (coluna message
 não aceitava null), a coluna "Invest. diário" em Controle de Saldo
-(Etapa 75) e a correção da pausa automática de Criativos/Conjuntos mexendo
-em conta fora do Painel (Etapa 76))
+(Etapa 75), a correção da pausa automática de Criativos/Conjuntos mexendo
+em conta fora do Painel (Etapa 76), o Monitor de CPA sempre abrindo em
+"Hoje" (Etapa 77) e a separação dos conjuntos "Sem anúncio ativo" dos
+demais em Análise → Conjuntos, com filtro pra ver só esses (Etapa 78))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

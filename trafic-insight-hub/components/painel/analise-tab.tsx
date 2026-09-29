@@ -278,6 +278,7 @@ interface AnaliseFilters {
   subPanel: SubPanel;
   preset: string;
   search: string;
+  noActiveAdOnly: boolean;
 }
 
 export function AnaliseTab({
@@ -304,6 +305,14 @@ export function AnaliseTab({
     typeof initialFilters?.preset === "string" ? initialFilters.preset : "last_3d_plus_today",
   );
   const [search, setSearch] = useState(typeof initialFilters?.search === "string" ? initialFilters.search : "");
+  // Etapa 78: filtro pra ver só os conjuntos "Sem anúncio ativo" (mesmo
+  // critério do badge acima) dentro de Conjuntos > acima da meta — em vez de
+  // precisar caçar o badge no meio dos outros. Junto com isso, os conjuntos
+  // "Sem anúncio ativo" agora sempre aparecem primeiro dentro de cada conta,
+  // com um divisor, mesmo sem o filtro ligado.
+  const [noActiveAdOnly, setNoActiveAdOnly] = useState(
+    typeof initialFilters?.noActiveAdOnly === "boolean" ? initialFilters.noActiveAdOnly : false,
+  );
 
   // Conjuntos — usado nas duas abas ("acima" e "abaixo" da meta).
   const [groups, setGroups] = useState<Group[] | null>(null);
@@ -341,8 +350,8 @@ export function AnaliseTab({
   const aboveCreativeSelectedBulk = useBulkRunner<CreativeRow>();
 
   useEffect(() => {
-    onFiltersChange?.({ mode, subPanel, preset, search });
-  }, [mode, subPanel, preset, search, onFiltersChange]);
+    onFiltersChange?.({ mode, subPanel, preset, search, noActiveAdOnly });
+  }, [mode, subPanel, preset, search, noActiveAdOnly, onFiltersChange]);
 
   const accountNameById = useMemo(() => new Map(accounts.map((a) => [a.account_id, a.name])), [accounts]);
 
@@ -591,15 +600,27 @@ export function AnaliseTab({
   // Busca por nome — de propósito global: filtra o conjunto (ou a campanha)
   // em qualquer conta/cliente ao mesmo tempo, não só dentro de um grupo.
   const q = search.trim().toLowerCase();
+  // Etapa 78: filtro "Só sem anúncio ativo" só faz sentido em Conjuntos >
+  // acima da meta (onde o badge existe) — nas demais telas fica sempre
+  // desligado, mesmo que o estado continue marcado por trás.
+  const noActiveAdFilterActive = mode === "above" && subPanel === "conjuntos" && noActiveAdOnly;
+  // Etapa 78: em Conjuntos > acima da meta, os "Sem anúncio ativo" sempre
+  // vêm primeiro dentro de cada conta (com um divisor na renderização),
+  // mantendo a ordem por gravidade (sortKey da API) dentro de cada grupo —
+  // não mistura mais os dois pra achar o badge no meio da lista.
+  const separateNoActiveAd = mode === "above" && subPanel === "conjuntos";
   const filteredGroups = (groups ?? [])
-    .map((g) => ({
-      ...g,
-      adsets: q
-        ? g.adsets.filter(
-            (as) => as.name.toLowerCase().includes(q) || (as.campaign_name ?? "").toLowerCase().includes(q),
-          )
-        : g.adsets,
-    }))
+    .map((g) => {
+      const adsets = g.adsets
+        .filter((as) => !q || as.name.toLowerCase().includes(q) || (as.campaign_name ?? "").toLowerCase().includes(q))
+        .filter((as) => !noActiveAdFilterActive || as.has_active_ad === false);
+      return {
+        ...g,
+        adsets: separateNoActiveAd
+          ? [...adsets.filter((as) => as.has_active_ad === false), ...adsets.filter((as) => as.has_active_ad !== false)]
+          : adsets,
+      };
+    })
     .filter((g) => g.adsets.length > 0);
 
   const filteredCreativeGroups = (creativeGroups ?? [])
@@ -751,6 +772,17 @@ export function AnaliseTab({
             placeholder="Buscar conjunto/criativo/campanha…"
             className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 disabled:opacity-50 dark:border-zinc-700 dark:focus:border-zinc-100"
           />
+          {mode === "above" && subPanel === "conjuntos" ? (
+            <label className="flex h-8 items-center gap-1.5 rounded-md border border-zinc-300 px-2.5 text-xs font-medium text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
+              <input
+                type="checkbox"
+                checked={noActiveAdOnly}
+                onChange={(e) => setNoActiveAdOnly(e.target.checked)}
+                disabled={controlsDisabled}
+              />
+              Só sem anúncio ativo
+            </label>
+          ) : null}
           <select
             value={preset}
             onChange={(e) => setPreset(e.target.value)}
@@ -840,9 +872,11 @@ export function AnaliseTab({
           <p className="px-4 py-6 text-sm text-zinc-500">
             {q
               ? "Nenhum conjunto encontrado com esse nome."
-              : mode === "above"
-                ? "Nenhum conjunto ativo no dobro da meta + R$1 (ou mais), ou sem anúncio ativo, nesse período."
-                : "Nenhum conjunto ativo abaixo da meta nesse período."}
+              : noActiveAdFilterActive
+                ? "Nenhum conjunto sem anúncio ativo nesse período."
+                : mode === "above"
+                  ? "Nenhum conjunto ativo no dobro da meta + R$1 (ou mais), ou sem anúncio ativo, nesse período."
+                  : "Nenhum conjunto ativo abaixo da meta nesse período."}
           </p>
         ) : (
           <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -878,15 +912,31 @@ export function AnaliseTab({
                       </tr>
                     </thead>
                     <tbody>
-                      {g.adsets.map((adset) => {
+                      {(() => {
+                        // Etapa 78: só usado pra decidir onde entra o divisor
+                        // "Com anúncio ativo" — os "Sem anúncio ativo" já vêm
+                        // primeiro (ver filteredGroups acima).
+                        const noActiveAdCount = separateNoActiveAd
+                          ? g.adsets.filter((as) => as.has_active_ad === false).length
+                          : 0;
+                        return g.adsets.map((adset, adsetIdx) => {
                         const noConversion = !adset.conversations || adset.conversations <= 0;
                         const noActiveAd = adset.has_active_ad === false;
                         const diff = diffFor(adset.spend, adset.conversations, adset.cost_per_conversation, g.cpaTarget);
                         const isOpen = expanded.has(adset.id);
                         const wasIncreased = increasedIds.has(adset.id);
                         const isGood = goodTrend(adset.avg_cost_7d, g.cpaTarget);
+                        const showDivider =
+                          separateNoActiveAd && noActiveAdCount > 0 && noActiveAdCount < g.adsets.length && adsetIdx === noActiveAdCount;
                         return (
                           <Fragment key={adset.id}>
+                            {showDivider ? (
+                              <tr>
+                                <td colSpan={7} className="border-t border-zinc-200 bg-zinc-50 px-4 py-1 text-xs font-medium text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800/60 dark:text-zinc-400">
+                                  Com anúncio ativo
+                                </td>
+                              </tr>
+                            ) : null}
                             <tr
                               onDoubleClick={() => toggleExpand(adset.id)}
                               title={isGood ? GOOD_TREND_TITLE : "Duplo clique pra ver os criativos desse conjunto"}
@@ -1041,7 +1091,8 @@ export function AnaliseTab({
                             ) : null}
                           </Fragment>
                         );
-                      })}
+                        });
+                      })()}
                     </tbody>
                   </table>
                 </div>

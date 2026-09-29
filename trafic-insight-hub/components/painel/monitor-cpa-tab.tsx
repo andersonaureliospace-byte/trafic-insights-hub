@@ -30,7 +30,7 @@ type Band = "good" | "warning" | "critical";
 interface Row {
   accountId: string;
   clientName: string;
-  cpaTarget: number;
+  cpaTarget: number | null;
   cpa: number | null;
   diff: number | null;
 }
@@ -80,24 +80,25 @@ export function MonitorCpaTab({
   clientNames: Record<string, string>;
   cpaTargets: Record<string, number | null>;
 }) {
-  const [period, setPeriod] = useState<Period>("yesterday");
+  // Etapa 77: sempre abre em "Hoje" — não fica preso no último período
+  // escolhido (não há estado persistido aqui; o susto era só o valor
+  // inicial mesmo, "Ontem", toda vez que a aba é montada de novo).
+  const [period, setPeriod] = useState<Period>("today");
   const [insights, setInsights] = useState<Record<string, { cost_per_result: number | null }>>({});
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshingCache, setRefreshingCache] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Só entram no quadro contas com CPA ideal cadastrado — sem meta não dá
-  // pra calcular diferença nem cor (mesmo critério do aviso de WhatsApp,
-  // lib/alerts/cpa.ts).
-  const accountsWithTarget = useMemo(
-    () => accounts.filter((a) => cpaTargets[a.account_id] != null),
-    [accounts, cpaTargets],
-  );
-  const accountsWithoutTarget = accounts.length - accountsWithTarget.length;
-
+  // Etapa 61 (correção): antes só entravam no quadro contas com CPA ideal
+  // cadastrado, e o resto ficava escondido — inconsistente com o resto do
+  // Painel (Acompanhamento e Evolução sempre mostram toda conta
+  // selecionada, com "—" quando falta a meta) e foi isso que fez parecer
+  // que "faltavam dados de clientes". Agora TODA conta selecionada aparece;
+  // só quem não tem CPA ideal cadastrado fica sem barra colorida/tracinho
+  // (nada pra comparar), mas o CPA real continua sendo mostrado.
   const load = useCallback(async () => {
-    if (accountsWithTarget.length === 0) {
+    if (accounts.length === 0) {
       setInsights({});
       setCachedAt(null);
       return;
@@ -116,7 +117,7 @@ export function MonitorCpaTab({
         setInsights(d.cache?.insights ?? {});
         setCachedAt(d.cache?.computed_at ?? null);
       } else {
-        const accountIds = accountsWithTarget.map((a) => a.account_id);
+        const accountIds = accounts.map((a) => a.account_id);
         const res = await fetch("/api/meta/insights", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -132,7 +133,7 @@ export function MonitorCpaTab({
     } finally {
       setLoading(false);
     }
-  }, [accountsWithTarget, period]);
+  }, [accounts, period]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca ao entrar na aba ou trocar de período/seleção de contas
@@ -155,11 +156,11 @@ export function MonitorCpaTab({
   }
 
   const rows: Row[] = useMemo(() => {
-    return accountsWithTarget
+    return accounts
       .map((a) => {
-        const cpaTarget = cpaTargets[a.account_id] as number;
+        const cpaTarget = cpaTargets[a.account_id] ?? null;
         const cpa = insights[a.account_id]?.cost_per_result ?? null;
-        const diff = cpa != null ? cpa - cpaTarget : null;
+        const diff = cpa != null && cpaTarget != null ? cpa - cpaTarget : null;
         return {
           accountId: a.account_id,
           clientName: clientNames[a.account_id] ?? a.name,
@@ -169,17 +170,21 @@ export function MonitorCpaTab({
         };
       })
       .sort((x, y) => {
-        // pior pro melhor, sempre — sem dado (diff null) vai pro final
+        // pior pro melhor, sempre — sem dado (diff null, geralmente por
+        // falta de CPA ideal cadastrado) vai pro final
         if (x.diff == null && y.diff == null) return 0;
         if (x.diff == null) return 1;
         if (y.diff == null) return -1;
         return y.diff - x.diff;
       });
-  }, [accountsWithTarget, clientNames, cpaTargets, insights]);
+  }, [accounts, clientNames, cpaTargets, insights]);
+
+  const accountsWithoutTarget = rows.filter((r) => r.cpaTarget == null).length;
 
   const max = useMemo(() => {
     const values = rows.map((r) => r.cpa ?? 0).filter((v) => v > 0);
-    const target = rows.length > 0 ? Math.max(...rows.map((r) => r.cpaTarget)) : 0;
+    const targets = rows.map((r) => r.cpaTarget).filter((v): v is number => v != null);
+    const target = targets.length > 0 ? Math.max(...targets) : 0;
     return Math.max(...values, target, 1) * 1.15;
   }, [rows]);
 
@@ -254,10 +259,6 @@ export function MonitorCpaTab({
 
       {error ? (
         <p className="px-4 py-6 text-sm text-red-600">{error}</p>
-      ) : rows.length === 0 ? (
-        <p className="px-4 py-6 text-sm text-zinc-500">
-          Nenhuma conta selecionada tem CPA ideal cadastrado ainda — cadastre em Painel → Clientes.
-        </p>
       ) : (
         <div className="px-4 py-4">
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-zinc-600 dark:text-zinc-400">
@@ -280,8 +281,8 @@ export function MonitorCpaTab({
             {rows.map((r) => {
               const b = band(r.diff);
               const cpaPct = r.cpa != null ? Math.min(100, (r.cpa / max) * 100) : 0;
-              const idealPct = Math.min(100, (r.cpaTarget / max) * 100);
-              const tooNarrow = idealPct < 11;
+              const idealPct = r.cpaTarget != null ? Math.min(100, (r.cpaTarget / max) * 100) : null;
+              const tooNarrow = idealPct != null && idealPct < 11;
               return (
                 <div
                   key={r.accountId}
@@ -298,13 +299,13 @@ export function MonitorCpaTab({
                   </a>
 
                   <div className="relative h-[22px] rounded bg-zinc-100 dark:bg-zinc-800">
-                    {b ? (
+                    {r.cpa != null ? (
                       <div
-                        className={`absolute inset-y-0 left-0 rounded ${BAND_BG[b]}`}
+                        className={`absolute inset-y-0 left-0 rounded ${b ? BAND_BG[b] : "bg-zinc-400 dark:bg-zinc-600"}`}
                         style={{ width: `${cpaPct}%` }}
                       />
                     ) : null}
-                    {b && !tooNarrow ? (
+                    {b && idealPct != null && !tooNarrow ? (
                       <div
                         className={`absolute inset-y-0 left-0 flex items-center justify-end overflow-hidden whitespace-nowrap pr-1.5 text-[11px] font-semibold tabular-nums ${BAND_TEXT_ON_FILL[b]}`}
                         style={{ width: `${idealPct}%` }}
@@ -312,12 +313,14 @@ export function MonitorCpaTab({
                         {fmtCurrency(r.cpaTarget)}
                       </div>
                     ) : null}
-                    <div
-                      className="absolute -top-[3px] h-[28px] w-0.5 bg-zinc-900 opacity-60 dark:bg-zinc-100"
-                      style={{ left: `${idealPct}%` }}
-                      title={`CPA ideal: ${fmtCurrency(r.cpaTarget)}`}
-                    />
-                    {b && tooNarrow ? (
+                    {idealPct != null ? (
+                      <div
+                        className="absolute -top-[3px] h-[28px] w-0.5 bg-zinc-900 opacity-60 dark:bg-zinc-100"
+                        style={{ left: `${idealPct}%` }}
+                        title={`CPA ideal: ${fmtCurrency(r.cpaTarget)}`}
+                      />
+                    ) : null}
+                    {b && idealPct != null && tooNarrow ? (
                       <div
                         className="absolute top-1/2 -translate-y-1/2 whitespace-nowrap pl-1.5 text-[11px] font-semibold tabular-nums text-zinc-600 dark:text-zinc-400"
                         style={{ left: `${idealPct}%` }}
@@ -367,8 +370,9 @@ export function MonitorCpaTab({
 
           {accountsWithoutTarget > 0 ? (
             <p className="mt-3 text-xs text-zinc-400">
-              {accountsWithoutTarget} conta{accountsWithoutTarget > 1 ? "s" : ""} sem CPA ideal cadastrado não
-              aparece{accountsWithoutTarget > 1 ? "m" : ""} aqui — cadastre em Painel → Clientes.
+              {accountsWithoutTarget} conta{accountsWithoutTarget > 1 ? "s" : ""} sem CPA ideal cadastrado ainda —
+              aparece{accountsWithoutTarget > 1 ? "m" : ""} com a barra cinza, sem tracinho nem diferença; cadastre em
+              Painel → Clientes pra entrar na comparação.
             </p>
           ) : null}
         </div>
