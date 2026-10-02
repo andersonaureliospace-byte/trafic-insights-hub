@@ -22,18 +22,55 @@ export async function GET(request: Request) {
     // "ad_account_billing_charge" — agora pedindo extra_data (onde costuma
     // vir o detalhe do valor) e um período maior, pra pegar também o
     // "Pagamento manual" que não apareceu nos 5 mais recentes.
-    const since = searchParams.get("since") ?? "2026-09-25";
-    const until = searchParams.get("until") ?? "2026-10-03";
     const results: Record<string, unknown> = {};
+
+    // Testa se dá pra filtrar só os eventos de pagamento direto na Graph
+    // API (bem mais barato que paginar tudo e filtrar aqui depois).
+    for (const category of ["PAYMENT", "BILLING", "ADACCOUNT_BILLING", "ACCOUNT"]) {
+      try {
+        const data = await metaGet<Record<string, unknown>>(token, `/${id}/activities`, {
+          fields: "event_type,event_time,extra_data",
+          category,
+          since: "2026-09-01",
+          until: "2026-10-03",
+          limit: "25",
+        });
+        results[`category_${category}`] = data;
+      } catch (e) {
+        results[`category_${category}`] = { error: (e as Error).message };
+      }
+    }
+
+    // Conta quantas páginas tem só nos últimos 90 dias, sem filtro de
+    // categoria, pra ter noção do volume total de eventos.
     try {
-      results.activities = await metaGet<Record<string, unknown>>(token, `/${id}/activities`, {
-        fields: "event_type,event_time,translated_event_type,extra_data",
-        since,
-        until,
-        limit: "100",
+      let pages = 0;
+      let count = 0;
+      let url: string | null = null;
+      const qs = new URLSearchParams({
+        fields: "event_type",
+        since: "2026-07-04",
+        until: "2026-10-03",
+        limit: "500",
       });
+      let data = await metaGet<{ data: unknown[]; paging?: { next?: string } }>(
+        token,
+        `/${id}/activities`,
+        Object.fromEntries(qs),
+      );
+      pages++;
+      count += data.data.length;
+      url = data.paging?.next ?? null;
+      while (url && pages < 10) {
+        const res = await fetch(url);
+        data = (await res.json()) as { data: unknown[]; paging?: { next?: string } };
+        pages++;
+        count += data.data.length;
+        url = data.paging?.next ?? null;
+      }
+      results.volume_90d = { pages_fetched: pages, total_events: count, reached_cap: pages >= 10 };
     } catch (e) {
-      results.activities = { error: (e as Error).message };
+      results.volume_90d = { error: (e as Error).message };
     }
 
     return NextResponse.json({ account_id: id, results });
