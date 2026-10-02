@@ -18,17 +18,22 @@ export async function GET(request: Request) {
     }
     const id = accountId.startsWith("act_") ? accountId : `act_${accountId}`;
 
-    const candidateEdges = ["transactions", "activities", "payments"];
+    // "activities" já confirmado que existe e tem evento
+    // "ad_account_billing_charge" — agora pedindo extra_data (onde costuma
+    // vir o detalhe do valor) e um período maior, pra pegar também o
+    // "Pagamento manual" que não apareceu nos 5 mais recentes.
+    const since = searchParams.get("since") ?? "2026-09-25";
+    const until = searchParams.get("until") ?? "2026-10-03";
     const results: Record<string, unknown> = {};
-    for (const edge of candidateEdges) {
-      try {
-        const data = await metaGet<Record<string, unknown>>(token, `/${id}/${edge}`, {
-          limit: "5",
-        });
-        results[edge] = data;
-      } catch (e) {
-        results[edge] = { error: (e as Error).message };
-      }
+    try {
+      results.activities = await metaGet<Record<string, unknown>>(token, `/${id}/activities`, {
+        fields: "event_type,event_time,translated_event_type,extra_data",
+        since,
+        until,
+        limit: "100",
+      });
+    } catch (e) {
+      results.activities = { error: (e as Error).message };
     }
 
     return NextResponse.json({ account_id: id, results });
