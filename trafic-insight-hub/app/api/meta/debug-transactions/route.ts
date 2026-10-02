@@ -73,6 +73,33 @@ export async function GET(request: Request) {
       results.volume_90d = { error: (e as Error).message };
     }
 
+    // Testa since sem until (igual o que o cálculo de saldo por fundos vai
+    // usar de verdade) e desde uma data bem antiga, pra ver se pagina certo
+    // e não trava/erra num histórico longo.
+    try {
+      let pages = 0;
+      let count = 0;
+      let url: string | null = null;
+      let data = await metaGet<{ data: unknown[]; paging?: { next?: string } }>(
+        token,
+        `/${id}/activities`,
+        { fields: "event_type,event_time,extra_data", since: "2015-01-01", limit: "500" },
+      );
+      pages++;
+      count += data.data.length;
+      url = data.paging?.next ?? null;
+      while (url && pages < 30) {
+        const res = await fetch(url);
+        data = (await res.json()) as { data: unknown[]; paging?: { next?: string } };
+        pages++;
+        count += data.data.length;
+        url = data.paging?.next ?? null;
+      }
+      results.full_history_since_only = { pages_fetched: pages, total_events: count, reached_cap: pages >= 30 };
+    } catch (e) {
+      results.full_history_since_only = { error: (e as Error).message };
+    }
+
     return NextResponse.json({ account_id: id, results });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
