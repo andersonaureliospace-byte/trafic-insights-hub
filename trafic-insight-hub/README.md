@@ -2190,6 +2190,23 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     é o que vai ser cobrado, não sobra nenhuma). Agora cada linha mostra um
     selo "disponível" ou "a pagar" do lado do valor, com o detalhe (teto −
     gasto, ou aviso de que é valor acumulado) explicado ao passar o mouse.
+78. **"Saldo por fundos", independente do Tipo de conta (Etapa 81)** — a
+    Meta não expõe pela API o "Fundos" que aparece no Ads Manager (testado
+    direto: nem o campo `balance`, nem `funding_source_details` trazem
+    esse número — só o valor acumulado a pagar e o método de pagamento).
+    Pra conta cujo saldo real não bate com o cálculo padrão de Pix/Híbrida/
+    Boleto/Cartão (ex.: uma conta classificada como Boleto que na prática
+    também recebe pagamento manual), dá pra ligar em Configurações um
+    cálculo à parte, conta por conta: você informa o saldo atual real (que
+    já vê no Ads Manager) uma vez, e dali em diante o app soma todo
+    pagamento manual/PIX e subtrai toda cobrança da Meta que acontecer
+    (reconstruído do histórico de atividades da conta, que a própria Meta
+    só guarda por ~90 dias — por isso não dá pra reconstruir "desde
+    sempre", só rastrear pra frente a partir do saldo informado). Atualiza
+    via um novo hook (`/api/public/hooks/funds-balance-tick`, mesmo padrão
+    dos outros — precisa ser chamado periodicamente pelo n8n) e aparece na
+    coluna Saldo de Controle de Saldo com o selo "fundos" no lugar do
+    cálculo padrão, só nas contas em que foi ligado.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2264,8 +2281,11 @@ em conta fora do Painel (Etapa 76), o Monitor de CPA sempre abrindo em
 demais em Análise → Conjuntos, com filtro pra ver só esses (Etapa 78) e o
 Controle de Saldo reorganizado em sub-abas Pendências/Pix/Híbrida/Boleto/
 Cartão/Configurações, com Tipo de conta agora preenchido manualmente
-(Etapa 79), e a coluna Saldo dessa mesma tela deixando claro se o valor é
-disponível (Pix/Híbrida) ou a pagar (Boleto/Cartão) (Etapa 80))
+(Etapa 79), a coluna Saldo dessa mesma tela deixando claro se o valor é
+disponível (Pix/Híbrida) ou a pagar (Boleto/Cartão) (Etapa 80) e o "Saldo
+por fundos" opcional por conta, independente do Tipo de conta, rastreando
+pagamento manual menos cobrança a partir de um saldo inicial informado
+(Etapa 81))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

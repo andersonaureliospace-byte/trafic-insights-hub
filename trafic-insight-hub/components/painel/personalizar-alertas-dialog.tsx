@@ -37,6 +37,17 @@ export interface PixRow {
   // muda, por isso configurado aqui junto do resto.
   pix_target_type: "grupo" | "numero" | null;
   pix_target_number: string | null;
+  // Etapa 81: "Saldo por fundos" (pagamentos menos cobranças, rastreado a
+  // partir de um saldo inicial informado manualmente) — independente do
+  // Tipo de conta, liga conta por conta pra qualquer uma cujo saldo real
+  // não bata com o "a pagar"/"disponível" padrão (ex.: conta Boleto que na
+  // prática também recebe pagamento manual). Ver supabase/migrations/0025_*
+  // e lib/meta/funds-balance.ts.
+  funds_balance_enabled: boolean | null;
+  funds_balance_amount: number | null;
+  funds_balance_currency: string | null;
+  funds_balance_watermark: string | null;
+  funds_balance_updated_at: string | null;
 }
 
 export type PixPatch = Partial<Omit<PixRow, "ad_account_id">>;
@@ -144,6 +155,12 @@ export function PersonalizarAlertasPanel({
                           <th className="px-4 py-1.5 font-medium">Sexta (fim de semana)</th>
                           <th className="px-4 py-1.5 font-medium">Verificação manual</th>
                           <th className="px-4 py-1.5 font-medium">Observação</th>
+                          <th
+                            className="px-4 py-1.5 font-medium"
+                            title="Saldo rastreado à parte, independente do Tipo de conta: começa de um valor que você informa (o saldo real, visto no Ads Manager) e a partir daí soma pagamento manual/PIX e subtrai cobrança — útil quando o Tipo de conta não reflete sozinho como a Meta cobra essa conta."
+                          >
+                            Saldo por fundos
+                          </th>
                         </tr>
                       </thead>
                       <tbody>
@@ -328,6 +345,42 @@ export function PersonalizarAlertasPanel({
                                   }}
                                   className="w-40 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm outline-none hover:border-zinc-300 focus:border-zinc-900 dark:hover:border-zinc-700 dark:focus:border-zinc-100"
                                 />
+                              </td>
+                              <td className="px-4 py-2">
+                                <div className="flex flex-col gap-1">
+                                  <label className="flex items-center gap-1.5 text-xs text-zinc-500">
+                                    <input
+                                      type="checkbox"
+                                      checked={pix?.funds_balance_enabled ?? false}
+                                      onChange={(e) =>
+                                        void onPatch(acc.account_id, { funds_balance_enabled: e.target.checked })
+                                      }
+                                    />
+                                    Ativar
+                                  </label>
+                                  {pix?.funds_balance_enabled ? (
+                                    <>
+                                      <div className="flex items-center gap-1">
+                                        <span className="text-xs text-zinc-400">Saldo atual</span>
+                                        <InlineNumber
+                                          value={pix?.funds_balance_amount ?? null}
+                                          width="w-20"
+                                          onSave={(v) =>
+                                            onPatch(acc.account_id, {
+                                              funds_balance_amount: v,
+                                              funds_balance_watermark: new Date().toISOString(),
+                                            })
+                                          }
+                                        />
+                                      </div>
+                                      <span className="text-[11px] text-zinc-400">
+                                        {pix?.funds_balance_updated_at
+                                          ? `Atualizado em ${new Date(pix.funds_balance_updated_at).toLocaleString("pt-BR")}`
+                                          : "Defina o saldo atual pra começar"}
+                                      </span>
+                                    </>
+                                  ) : null}
+                                </div>
                               </td>
                             </tr>
                           );

@@ -74,6 +74,13 @@ interface PixRow {
   // components/painel/personalizar-alertas-dialog.tsx.
   pix_target_type: "grupo" | "numero" | null;
   pix_target_number: string | null;
+  // Etapa 81: "Saldo por fundos" — ver
+  // components/painel/personalizar-alertas-dialog.tsx.
+  funds_balance_enabled: boolean | null;
+  funds_balance_amount: number | null;
+  funds_balance_currency: string | null;
+  funds_balance_watermark: string | null;
+  funds_balance_updated_at: string | null;
 }
 
 type BindingPatch = Partial<Omit<AccountBinding, "ad_account_id">>;
@@ -446,6 +453,11 @@ export default function PainelPage() {
       manual_check_next_at: null,
       pix_target_type: "grupo" as const,
       pix_target_number: null,
+      funds_balance_enabled: false,
+      funds_balance_amount: null,
+      funds_balance_currency: null,
+      funds_balance_watermark: null,
+      funds_balance_updated_at: null,
     };
     const next = { ...current, ...patch };
     setPixAccounts((prev) => ({ ...prev, [accountId]: next }));

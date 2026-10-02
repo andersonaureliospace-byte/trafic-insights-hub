@@ -181,19 +181,36 @@ function ContasTable({
                     {acc.name}
                   </a>
                 </td>
-                <td
-                  className="px-4 py-2 text-right tabular-nums"
-                  title={
-                    funds.fromCap
-                      ? `Teto de gasto ${fmtCurrency(Number(acc.spend_cap ?? 0) / 100, acc.currency)} − já gasto ${fmtCurrency(Number(acc.amount_spent ?? 0) / 100, acc.currency)} = disponível pra gastar antes de recarregar.`
-                      : "Valor acumulado desde a última cobrança (reseta quando a Meta cobra) — não é saldo que sobra, é o que vai ser cobrado."
-                  }
-                >
-                  {fmtCurrency(funds.amount, acc.currency)}
-                  <span className="ml-1 text-[10px] font-normal text-zinc-400">
-                    {funds.fromCap ? "disponível" : "a pagar"}
-                  </span>
-                </td>
+                {pix?.funds_balance_enabled ? (
+                  <td
+                    className="px-4 py-2 text-right tabular-nums"
+                    title={
+                      "Saldo por fundos (Etapa 81): rastreado à parte do cálculo padrão — começa de um saldo " +
+                      "inicial informado manualmente e, a partir daí, soma pagamento manual/PIX e subtrai cobrança " +
+                      "da Meta. " +
+                      (pix.funds_balance_updated_at
+                        ? `Atualizado em ${new Date(pix.funds_balance_updated_at).toLocaleString("pt-BR")}.`
+                        : "Ainda sem nenhuma atualização — defina o saldo inicial em Configurações.")
+                    }
+                  >
+                    {fmtCurrency(pix.funds_balance_amount ?? 0, pix.funds_balance_currency ?? acc.currency)}
+                    <span className="ml-1 text-[10px] font-normal text-zinc-400">fundos</span>
+                  </td>
+                ) : (
+                  <td
+                    className="px-4 py-2 text-right tabular-nums"
+                    title={
+                      funds.fromCap
+                        ? `Teto de gasto ${fmtCurrency(Number(acc.spend_cap ?? 0) / 100, acc.currency)} − já gasto ${fmtCurrency(Number(acc.amount_spent ?? 0) / 100, acc.currency)} = disponível pra gastar antes de recarregar.`
+                        : "Valor acumulado desde a última cobrança (reseta quando a Meta cobra) — não é saldo que sobra, é o que vai ser cobrado."
+                    }
+                  >
+                    {fmtCurrency(funds.amount, acc.currency)}
+                    <span className="ml-1 text-[10px] font-normal text-zinc-400">
+                      {funds.fromCap ? "disponível" : "a pagar"}
+                    </span>
+                  </td>
+                )}
                 <td className="px-4 py-2 text-right tabular-nums">
                   {fmtCurrency(insights[acc.account_id]?.daily_budget, acc.currency)}
                 </td>
