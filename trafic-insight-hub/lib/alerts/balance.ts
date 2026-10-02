@@ -1,9 +1,11 @@
 // Checagem de saldo baixo — usada tanto pela rota "Verificar agora" (sessão
 // do usuário, em Mensagens > Avisos) quanto pelo hook público
 // balance-alert-tick (service role, chamado pelo n8n). Só considera contas
-// pré-paga/híbrida (pós-paga não fica sem saldo, é cobrada depois) que
+// Pix/Híbrida (Boleto e Cartão não ficam sem saldo, são cobradas depois) que
 // tenham um limite definido (explícito em alert_threshold, ou 20% do
-// "Valor base" como padrão).
+// "Valor base" como padrão). Etapa 79: payment_type agora é 'pix'/'hybrid'/
+// 'boleto'/'card' (ou null, sem tipo definido ainda) — ver
+// supabase/migrations/0024_*.
 
 import type { createClient } from "@/lib/supabase/server";
 import { getAdAccounts } from "@/lib/meta/insights";
@@ -46,7 +48,7 @@ export async function checkLowBalances(
     .from("pix_accounts")
     .select("ad_account_id, payment_type, base_amount, alert_threshold, last_alert_sent_at")
     .eq("user_id", userId)
-    .in("payment_type", ["prepaid", "hybrid"]);
+    .in("payment_type", ["pix", "hybrid"]);
   if (pixErr) throw pixErr;
   const withThreshold = (pixRows ?? []).filter(
     (p) => p.alert_threshold != null || p.base_amount != null,
@@ -131,7 +133,7 @@ export async function checkLowBalances(
   return { statuses, sendError };
 }
 
-// Etapa 63: checagem extra de sexta-feira — pré-paga/híbrida com um
+// Etapa 63: checagem extra de sexta-feira — Pix/Híbrida com um
 // multiplicador configurado (2x ou 3x) ficam "em alerta de fim de semana"
 // quando o saldo disponível está abaixo de limite × multiplicador, mesmo que
 // ainda não tenha cruzado o limite normal do checkLowBalances acima. Só faz
@@ -173,7 +175,7 @@ export async function checkFridayLowBalances(
     .from("pix_accounts")
     .select("ad_account_id, payment_type, base_amount, alert_threshold, friday_multiplier, friday_alert_sent_at")
     .eq("user_id", userId)
-    .in("payment_type", ["prepaid", "hybrid"])
+    .in("payment_type", ["pix", "hybrid"])
     .not("friday_multiplier", "is", null);
   if (pixErr) throw pixErr;
   if (!pixRows || pixRows.length === 0) return { statuses: [], sendError: null };

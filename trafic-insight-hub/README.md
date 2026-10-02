@@ -2165,6 +2165,31 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     anúncio ativo" separando o resto da lista (mesmo sem nenhum filtro
     ligado), e um novo filtro "Só sem anúncio ativo" ao lado da busca
     esconde o restante quando só interessa ver esses.
+76. **Controle de Saldo reorganizado em sub-abas por Tipo de conta (Etapa
+    79)** — a tela virou abas: Pendências (só quem tem algum aviso agora,
+    de qualquer tipo), Pix, Híbrida, Boleto e Cartão (cada uma mostrando
+    TODAS as contas daquele tipo, pendente ou não) e Configurações (onde
+    cada conta é classificada manualmente num desses 4 tipos — antes era o
+    modal "Personalizar alertas"). "Enviar Pix" só aparece pra Pix/Híbrida,
+    "Enviar boleto" só pra Boleto (o formulário de boleto mudou pra dentro
+    dessa aba), e Cartão não tem ação específica, só os avisos normais
+    (saldo/pagamento/verificação manual). O campo Tipo de conta é o mesmo
+    de sempre (antes Pré-paga/Híbrida/Pós-paga/Loja própria), só que agora
+    é preenchido manualmente — parou de puxar automático da Meta (Pós-paga
+    misturava quem paga por boleto e por cartão, sem distinguir os dois) —
+    e, como não dava pra migrar esse valor sozinho, toda conta começa "sem
+    tipo definido" até ser reclassificada (o resto da configuração de cada
+    uma — Observação, limites, sexta-feira, verificação manual — continua
+    intacto).
+77. **Controle de Saldo: coluna "Saldo" deixa claro se é disponível ou a
+    pagar (Etapa 80)** — a mesma coluna misturava dois significados opostos
+    sob o mesmo rótulo "Saldo disponível": em conta Pix/Híbrida com teto de
+    gasto, o número é o quanto ainda dá pra gastar antes de recarregar
+    (cai com o uso); em conta Boleto/Cartão sem teto, o número bruto da
+    Meta é o valor JÁ acumulado desde a última cobrança (sobe com o uso —
+    é o que vai ser cobrado, não sobra nenhuma). Agora cada linha mostra um
+    selo "disponível" ou "a pagar" do lado do valor, com o detalhe (teto −
+    gasto, ou aviso de que é valor acumulado) explicado ao passar o mouse.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2235,8 +2260,12 @@ da lista de grupos do WhatsApp incompleta pra quem tem muitos grupos
 não aceitava null), a coluna "Invest. diário" em Controle de Saldo
 (Etapa 75), a correção da pausa automática de Criativos/Conjuntos mexendo
 em conta fora do Painel (Etapa 76), o Monitor de CPA sempre abrindo em
-"Hoje" (Etapa 77) e a separação dos conjuntos "Sem anúncio ativo" dos
-demais em Análise → Conjuntos, com filtro pra ver só esses (Etapa 78))
+"Hoje" (Etapa 77), a separação dos conjuntos "Sem anúncio ativo" dos
+demais em Análise → Conjuntos, com filtro pra ver só esses (Etapa 78) e o
+Controle de Saldo reorganizado em sub-abas Pendências/Pix/Híbrida/Boleto/
+Cartão/Configurações, com Tipo de conta agora preenchido manualmente
+(Etapa 79), e a coluna Saldo dessa mesma tela deixando claro se o valor é
+disponível (Pix/Híbrida) ou a pagar (Boleto/Cartão) (Etapa 80))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

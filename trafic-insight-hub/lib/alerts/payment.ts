@@ -2,7 +2,7 @@
 // lib/alerts/balance.ts (status calculado + envio opcional pro WhatsApp com
 // cooldown de 24h), mas olhando pra `account_status`/`disable_reason` da
 // Meta em vez de saldo. Ao contrário do saldo baixo, considera TODAS as
-// contas vinculadas (account_bindings), não só pré-paga/híbrida — problema
+// contas vinculadas (account_bindings), não só Pix/Híbrida — problema
 // de pagamento trava qualquer tipo de conta.
 
 import type { createClient } from "@/lib/supabase/server";

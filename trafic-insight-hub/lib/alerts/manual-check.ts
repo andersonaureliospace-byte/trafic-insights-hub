@@ -1,6 +1,6 @@
 // Checagem de "verificação manual" (Etapa 63) — não olha saldo nem status de
 // pagamento: é um lembrete que o usuário agenda por conta, não importa o tipo
-// (pré-paga, híbrida, pós-paga ou loja própria). Duas formas de agendar:
+// (qualquer Tipo de conta — Pix, Híbrida, Boleto ou Cartão). Duas formas de agendar:
 //   - 'weekday': um ou mais dias fixos da semana (0 = domingo … 6 = sábado) —
 //     desde a Etapa 67, dá pra marcar mais de um dia (ex.: segunda E quinta),
 //     não só um único dia.

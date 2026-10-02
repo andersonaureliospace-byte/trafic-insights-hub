@@ -353,7 +353,7 @@ export function AvisosTab() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-          Considera contas pré-paga/híbrida com um limite definido (campo &quot;Alertar quando &lt;&quot; no
+          Considera contas Pix/Híbrida com um limite definido (campo &quot;Alertar quando &lt;&quot; no
           Controle de Saldo/PIX do Painel — se ficar em branco, usa 20% do Valor base). O aviso vai pro
           grupo configurado em Configurações → WhatsApp.
         </div>
@@ -382,7 +382,7 @@ export function AvisosTab() {
             <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p>
           ) : statuses.length === 0 ? (
             <p className="px-4 py-6 text-sm text-zinc-500">
-              Nenhuma conta pré-paga/híbrida com limite definido ainda.
+              Nenhuma conta Pix/Híbrida com limite definido ainda.
             </p>
           ) : (
             <div className="overflow-x-auto">

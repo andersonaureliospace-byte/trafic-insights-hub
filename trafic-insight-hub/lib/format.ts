@@ -35,11 +35,17 @@ export const DATE_PRESETS = [
 
 export type PresetId = (typeof DATE_PRESETS)[number]["id"];
 
+// Etapa 79: "Tipo de conta" de Controle de Saldo — define em qual sub-aba
+// (Pix/Híbrida/Boleto/Cartão) cada conta aparece. Antes era
+// prepaid/hybrid/postpaid/own_store (ver supabase/migrations/0024_*); agora
+// é escolhido manualmente pelo usuário, sem sincronização automática com a
+// Meta (Pós-paga misturava Boleto e Cartão sem distinguir — não dava pra
+// saber automaticamente qual dos dois).
 export const PAYMENT_TYPES = [
-  { id: "prepaid", label: "Pré-paga" },
+  { id: "pix", label: "Pix" },
   { id: "hybrid", label: "Híbrida" },
-  { id: "postpaid", label: "Pós-paga" },
-  { id: "own_store", label: "Loja própria" },
+  { id: "boleto", label: "Boleto" },
+  { id: "card", label: "Cartão" },
 ] as const;
 
 export interface PriorityOption {

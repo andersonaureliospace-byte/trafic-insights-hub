@@ -6,13 +6,13 @@ import { checkManualReviews } from "@/lib/alerts/manual-check";
 
 // Endpoint público chamado pelo n8n (ex.: a cada 3-6 horas — saldo não
 // muda de minuto a minuto) pra checar saldo baixo em todas as contas
-// pré-paga/híbrida com limite definido, e conta com erro no pagamento em
+// Pix/Híbrida com limite definido, e conta com erro no pagamento em
 // TODAS as contas vinculadas, avisando o grupo de WhatsApp configurado em
 // Configurações > WhatsApp. Respeita o cooldown de 24h por conta (ao
 // contrário do "Verificar agora" manual da tela de Avisos). Etapa 38: as
 // duas checagens (saldo e pagamento) ficam no mesmo hook de propósito, pra
 // não exigir um segundo workflow no n8n. Etapa 63: entram mais duas — saldo
-// de sexta-feira (2x/3x o limite, pré-paga/híbrida) e verificação manual
+// de sexta-feira (2x/3x o limite, Pix/Híbrida) e verificação manual
 // pendente (qualquer tipo de conta) — pelo mesmo motivo.
 export async function POST(request: Request) {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;

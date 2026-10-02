@@ -432,7 +432,9 @@ export default function PainelPage() {
   async function patchPix(accountId: string, patch: PixPatch) {
     const current = pixAccounts[accountId] ?? {
       ad_account_id: accountId,
-      payment_type: "prepaid",
+      // Etapa 79: sem tipo definido até o usuário classificar manualmente
+      // em Controle de Saldo → Configurações (antes era "prepaid" fixo).
+      payment_type: null,
       base_amount: null,
       notes: null,
       alert_threshold: null,
