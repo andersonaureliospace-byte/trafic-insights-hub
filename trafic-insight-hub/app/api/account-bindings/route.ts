@@ -16,9 +16,13 @@ export async function GET() {
     // em BRT — de um dia pro outro, a leitura já devolve não-otimizado de
     // novo sem precisar apagar nada no banco.
     const todayBRT = spDate(new Date());
-    const bindings = (data ?? []).map((b) =>
-      b.optimized && b.optimized_date !== todayBRT ? { ...b, optimized: false } : b,
-    );
+    // Etapa 83: a aba "Otimizado" tem a própria marcação (tab_optimized), com a
+    // mesma regra de reset diário e sem nenhuma ligação com a de Acompanhamento.
+    const bindings = (data ?? []).map((b) => ({
+      ...b,
+      optimized: b.optimized && b.optimized_date === todayBRT,
+      tab_optimized: !!b.tab_optimized && b.tab_optimized_date === todayBRT,
+    }));
     return NextResponse.json({ bindings });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
@@ -58,6 +62,13 @@ export async function PATCH(request: Request) {
       const optimized = !!body.optimized;
       patch.optimized = optimized;
       patch.optimized_date = optimized ? spDate(new Date()) : null;
+    }
+
+    // Etapa 83: marcação da aba "Otimizado" — mesma regra, colunas próprias.
+    if ("tab_optimized" in body) {
+      const tabOptimized = !!body.tab_optimized;
+      patch.tab_optimized = tabOptimized;
+      patch.tab_optimized_date = tabOptimized ? spDate(new Date()) : null;
     }
 
     const { error } = await supabase.from("account_bindings").upsert(patch, { onConflict: "user_id,ad_account_id" });

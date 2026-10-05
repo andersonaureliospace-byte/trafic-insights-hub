@@ -37,6 +37,8 @@ interface AccountBinding {
   address: string | null;
   sort_order: number | null;
   optimized: boolean | null;
+  // Etapa 83: marcação própria da aba "Otimizado", separada de `optimized`.
+  tab_optimized: boolean | null;
 }
 
 // Base usada tanto no patch otimista de um campo quanto na reordenação em
@@ -56,6 +58,7 @@ function defaultBinding(accountId: string): AccountBinding {
     address: null,
     sort_order: null,
     optimized: false,
+    tab_optimized: false,
   };
 }
 
@@ -124,6 +127,7 @@ function cpaDiffColorClass(diff: number | null): string {
 // é "Visão Geral". Ordem da lateral a pedido (Etapa 39).
 const TABS = [
   { id: "acompanhamento", label: "Acompanhamento" },
+  { id: "otimizado", label: "Otimizado" },
   { id: "metas", label: "Acompanhamento de metas" },
   { id: "analise", label: "Análise" },
   { id: "evolucao", label: "Evolução" },
@@ -158,6 +162,9 @@ export default function PainelPage() {
   // Filtro da coluna "Otimizado" (Etapa 36) — mesmo padrão dos outros 3:
   // começa fixo em "Todos".
   const [optimizedFilter, setOptimizedFilter] = useState<"all" | "optimized" | "pending">("all");
+  // Etapa 83: a aba "Otimizado" tem o próprio filtro Otimizado/Pendente — não
+  // compartilha o de Acompanhamento.
+  const [tabOptimizedFilter, setTabOptimizedFilter] = useState<"all" | "optimized" | "pending">("all");
   const [focusGroups, setFocusGroups] = useState<FocusGroup[]>([]);
   const [activeFocusGroupId, setActiveFocusGroupId] = useState<string | null>(null);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
@@ -241,6 +248,8 @@ export default function PainelPage() {
     if (a.investFilter === "all" || a.investFilter === "low" || a.investFilter === "high") setInvestFilter(a.investFilter);
     if (a.optimizedFilter === "all" || a.optimizedFilter === "optimized" || a.optimizedFilter === "pending")
       setOptimizedFilter(a.optimizedFilter);
+    if (a.tabOptimizedFilter === "all" || a.tabOptimizedFilter === "optimized" || a.tabOptimizedFilter === "pending")
+      setTabOptimizedFilter(a.tabOptimizedFilter);
     if (typeof a.preset === "string") setPreset(a.preset as PresetId);
     if (typeof a.activeFocusGroupId === "string" || a.activeFocusGroupId === null)
       setActiveFocusGroupId((a.activeFocusGroupId as string | null) ?? null);
@@ -253,9 +262,29 @@ export default function PainelPage() {
     if (!uiHydrated.current) return;
     patchUiState({
       tab,
-      acompanhamento: { search, priorityFilter, cpaFilter, investFilter, optimizedFilter, preset, activeFocusGroupId },
+      acompanhamento: {
+        search,
+        priorityFilter,
+        cpaFilter,
+        investFilter,
+        optimizedFilter,
+        tabOptimizedFilter,
+        preset,
+        activeFocusGroupId,
+      },
     });
-  }, [tab, search, priorityFilter, cpaFilter, investFilter, optimizedFilter, preset, activeFocusGroupId, patchUiState]);
+  }, [
+    tab,
+    search,
+    priorityFilter,
+    cpaFilter,
+    investFilter,
+    optimizedFilter,
+    tabOptimizedFilter,
+    preset,
+    activeFocusGroupId,
+    patchUiState,
+  ]);
 
   const handleAnaliseFiltersChange = useCallback(
     (filters: { mode: string; subPanel: string; preset: string; search: string }) => {
@@ -297,7 +326,7 @@ export default function PainelPage() {
   }, []);
 
   useEffect(() => {
-    if (tab !== "acompanhamento") return;
+    if (tab !== "acompanhamento" && tab !== "otimizado") return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca o status de saldo/pagamento ao entrar na aba, só pra colorir o nome da conta
     void loadAlertStatuses();
   }, [loadAlertStatuses, tab]);
@@ -338,7 +367,7 @@ export default function PainelPage() {
     // que precisa desse dado está ativa — Acompanhamento (tabela) e, desde a
     // Etapa 75, também Controle de Saldo (coluna "Invest. diário" usa
     // insight.daily_budget). Nas outras abas, essa chamada não roda.
-    if (tab !== "acompanhamento" && tab !== "saldo") return;
+    if (tab !== "acompanhamento" && tab !== "otimizado" && tab !== "saldo") return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca os insights ao entrar na aba, ou quando seleção/período mudam com a aba já ativa
     void loadInsights();
   }, [loadInsights, tab]);
@@ -363,7 +392,7 @@ export default function PainelPage() {
   }, [selectedAccounts]);
 
   useEffect(() => {
-    if (tab !== "acompanhamento") return;
+    if (tab !== "acompanhamento" && tab !== "otimizado") return;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca o gasto do mês (fixo, pro Ritmo) ao entrar na aba ou trocar a seleção de contas
     void loadMonthlyInsights();
   }, [loadMonthlyInsights, tab]);
@@ -495,12 +524,24 @@ export default function PainelPage() {
         return diff < -RITMO_BAND;
       })
       .filter((r) => {
-        if (optimizedFilter === "all") return true;
-        const isOptimized = !!r.binding?.optimized;
-        return optimizedFilter === "optimized" ? isOptimized : !isOptimized;
+        // Etapa 83: cada aba olha a própria marcação e o próprio filtro.
+        const filter = tab === "otimizado" ? tabOptimizedFilter : optimizedFilter;
+        if (filter === "all") return true;
+        const isOptimized = tab === "otimizado" ? !!r.binding?.tab_optimized : !!r.binding?.optimized;
+        return filter === "optimized" ? isOptimized : !isOptimized;
       })
       .sort((a, b) => rowSortKey(a) - rowSortKey(b));
-  }, [focusFilteredRows, search, priorityFilter, cpaFilter, investFilter, optimizedFilter, monthlyInsights]);
+  }, [
+    focusFilteredRows,
+    search,
+    priorityFilter,
+    cpaFilter,
+    investFilter,
+    optimizedFilter,
+    tabOptimizedFilter,
+    tab,
+    monthlyInsights,
+  ]);
 
   // Arrastar só faz sentido reordenando a lista completa e visível — com
   // busca, grupo de foco ou qualquer um dos 4 filtros (Status/CPA/
@@ -512,7 +553,8 @@ export default function PainelPage() {
     priorityFilter === "all" &&
     cpaFilter === "all" &&
     investFilter === "all" &&
-    optimizedFilter === "all";
+    optimizedFilter === "all" &&
+    tabOptimizedFilter === "all";
 
   function handleRowDrop(targetAccountId: string) {
     if (!draggedAccountId || draggedAccountId === targetAccountId) return;
@@ -584,11 +626,12 @@ export default function PainelPage() {
           </aside>
 
           <div className="min-w-0">
-            {tab === "acompanhamento" ? (
+            {tab === "acompanhamento" || tab === "otimizado" ? (
               <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
                   <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-                    Acompanhamento de Resultados {loadingInsights ? "· atualizando…" : ""}
+                    {tab === "otimizado" ? "Otimizado" : "Acompanhamento de Resultados"}{" "}
+                    {loadingInsights ? "· atualizando…" : ""}
                   </h2>
                   <div className="flex flex-wrap items-center gap-2">
                     <FocusGroupsBar
@@ -677,8 +720,12 @@ export default function PainelPage() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Otimizado</span>
                     <select
-                      value={optimizedFilter}
-                      onChange={(e) => setOptimizedFilter(e.target.value as "all" | "optimized" | "pending")}
+                      value={tab === "otimizado" ? tabOptimizedFilter : optimizedFilter}
+                      onChange={(e) => {
+                        const v = e.target.value as "all" | "optimized" | "pending";
+                        if (tab === "otimizado") setTabOptimizedFilter(v);
+                        else setOptimizedFilter(v);
+                      }}
                       className="h-7 rounded-md border border-zinc-300 bg-transparent px-2 text-xs dark:border-zinc-700"
                     >
                       <option value="all">Todos</option>
@@ -770,8 +817,13 @@ export default function PainelPage() {
                             </td>
                             <td className="px-4 py-2">
                               <OptimizedCell
-                                optimized={!!binding?.optimized}
-                                onToggle={(next) => patchBinding(acc.account_id, { optimized: next })}
+                                optimized={tab === "otimizado" ? !!binding?.tab_optimized : !!binding?.optimized}
+                                onToggle={(next) =>
+                                  patchBinding(
+                                    acc.account_id,
+                                    tab === "otimizado" ? { tab_optimized: next } : { optimized: next },
+                                  )
+                                }
                               />
                             </td>
                             <td className="px-4 py-2">
