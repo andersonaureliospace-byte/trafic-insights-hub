@@ -2245,18 +2245,18 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     investimento baixo, que reaproveita a mesma conta (`monthCalendarSP` em
     `lib/meta/ritmo.ts`).
 
-80. **Aba "Otimizado" (Etapa 83)** — nova aba na lateral do Painel, logo
-    depois de Acompanhamento, com a mesma tabela (mesmas colunas, busca,
-    período, grupos de foco e filtros), mas com a **própria marcação
-    "Otimizado"**, totalmente separada da de Acompanhamento: marcar um
-    cliente como otimizado numa aba não muda nada na outra, e cada aba tem o
-    seu filtro Otimizado/Pendente. Mesma regra de reset à meia-noite
-    (horário de Brasília) — a marcação só vale se a data gravada
-    (`tab_optimized_date`) for hoje. Colunas novas em `account_bindings`
+80. **Coluna "Otimizado" em Acompanhamento de metas (Etapa 83)** — a aba
+    Acompanhamento de metas ganhou a sua própria coluna Otimizado (primeira
+    coluna), com o mesmo comportamento da de Acompanhamento: um clique
+    alterna entre "Não otimizado" e "Otimizado", filtro Otimizado/Pendente na
+    barra da aba e reset à meia-noite (horário de Brasília) — a marcação só
+    vale se a data gravada (`tab_optimized_date`) for hoje. Cada aba tem a
+    sua: marcar na de Acompanhamento não muda nada na de metas e vice-versa,
+    e os filtros Otimizado/Pendente também são separados. (Uma primeira
+    versão criou por engano uma aba "Otimizado" à parte; foi removida e a
+    coluna foi pra aba de metas.) Colunas novas em `account_bindings`
     (`tab_optimized`, `tab_optimized_date`) — **precisa rodar a migração
     `supabase/migrations/0026_otimizado_tab.sql`** no SQL Editor do Supabase.
-    Os dados do cliente (nome, status, CPA ideal, ordem de arrastar) são do
-    cliente, não da aba, então continuam compartilhados entre as duas.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2336,8 +2336,8 @@ disponível (Pix/Híbrida) ou a pagar (Boleto/Cartão) (Etapa 80) e o "Saldo
 por fundos" opcional por conta, independente do Tipo de conta, rastreando
 pagamento manual menos cobrança a partir de um saldo inicial informado
 (Etapa 81) e a aba Acompanhamento de metas, com o Ritmo passando a usar os
-dias reais do mês (Etapa 82) e a aba Otimizado, com marcação própria
-separada da de Acompanhamento (Etapa 83))
+dias reais do mês (Etapa 82) e a coluna Otimizado própria de Acompanhamento de
+metas, separada da de Acompanhamento (Etapa 83))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

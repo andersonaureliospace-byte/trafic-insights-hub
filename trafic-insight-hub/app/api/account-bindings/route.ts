@@ -16,8 +16,9 @@ export async function GET() {
     // em BRT — de um dia pro outro, a leitura já devolve não-otimizado de
     // novo sem precisar apagar nada no banco.
     const todayBRT = spDate(new Date());
-    // Etapa 83: a aba "Otimizado" tem a própria marcação (tab_optimized), com a
-    // mesma regra de reset diário e sem nenhuma ligação com a de Acompanhamento.
+    // Etapa 83: a coluna Otimizado de Acompanhamento de metas tem a própria
+    // marcação (tab_optimized), com a mesma regra de reset diário e sem nenhuma
+    // ligação com a de Acompanhamento.
     const bindings = (data ?? []).map((b) => ({
       ...b,
       optimized: b.optimized && b.optimized_date === todayBRT,
@@ -64,7 +65,8 @@ export async function PATCH(request: Request) {
       patch.optimized_date = optimized ? spDate(new Date()) : null;
     }
 
-    // Etapa 83: marcação da aba "Otimizado" — mesma regra, colunas próprias.
+    // Etapa 83: marcação da coluna Otimizado de Acompanhamento de metas — mesma
+    // regra, colunas próprias.
     if ("tab_optimized" in body) {
       const tabOptimized = !!body.tab_optimized;
       patch.tab_optimized = tabOptimized;

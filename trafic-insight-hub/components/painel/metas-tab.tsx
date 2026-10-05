@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
+import { OptimizedCell } from "@/components/painel/optimized-cell";
 import { ritmo, ritmoColorClass } from "@/lib/meta/ritmo";
 import {
   METAS_SORTS,
@@ -84,11 +85,22 @@ export function MetasTab({
   clientNames,
   cpaTargets,
   monthlyTargets,
+  optimized,
+  onToggleOptimized,
+  optimizedFilter,
+  onOptimizedFilterChange,
 }: {
   accounts: AdAccount[];
   clientNames: Record<string, string>;
   cpaTargets: Record<string, number | null>;
   monthlyTargets: Record<string, number | null>;
+  // Etapa 83: coluna Otimizado própria desta aba (separada da de
+  // Acompanhamento) — mesmo comportamento: marca/desmarca, filtro
+  // Otimizado/Pendente e reset à meia-noite (horário de Brasília).
+  optimized: Record<string, boolean>;
+  onToggleOptimized: (accountId: string, next: boolean) => Promise<void> | void;
+  optimizedFilter: "all" | "optimized" | "pending";
+  onOptimizedFilterChange: (v: "all" | "optimized" | "pending") => void;
 }) {
   const [insights, setInsights] = useState<
     Record<string, { spend: number; cost_per_result: number | null; daily_budget: number }>
@@ -161,9 +173,10 @@ export function MetasTab({
           ),
         };
       })
-      .filter((r) => !q || r.clientName.toLowerCase().includes(q) || r.accountName.toLowerCase().includes(q));
+      .filter((r) => !q || r.clientName.toLowerCase().includes(q) || r.accountName.toLowerCase().includes(q))
+      .filter((r) => optimizedFilter === "all" || (optimizedFilter === "optimized") === !!optimized[r.accountId]);
     return built.sort((a, b) => metasSortKey(b.metas, sort) - metasSortKey(a.metas, sort));
-  }, [accounts, insights, monthlyInsights, clientNames, cpaTargets, monthlyTargets, sort, search, elapsedDays, daysInMonth]);
+  }, [accounts, insights, monthlyInsights, clientNames, cpaTargets, monthlyTargets, optimized, optimizedFilter, sort, search, elapsedDays, daysInMonth]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -178,6 +191,18 @@ export function MetasTab({
             placeholder="Buscar cliente ou conta…"
             className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
           />
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Otimizado</span>
+            <select
+              value={optimizedFilter}
+              onChange={(e) => onOptimizedFilterChange(e.target.value as "all" | "optimized" | "pending")}
+              className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
+            >
+              <option value="all">Todos</option>
+              <option value="optimized">Otimizado</option>
+              <option value="pending">Pendente</option>
+            </select>
+          </div>
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as MetasSort)}
@@ -217,6 +242,12 @@ export function MetasTab({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
+              <th
+                className="px-4 py-2 font-medium"
+                title="Marcação manual do dia desta aba — reseta sozinha à meia-noite (horário de Brasília), separada da de Acompanhamento"
+              >
+                Otimizado
+              </th>
               <th className="px-4 py-2 font-medium">Cliente</th>
               <th className="px-4 py-2 text-right font-medium" title="Investimento mensal cadastrado (meta do mês)">
                 Invest. mensal
@@ -251,6 +282,12 @@ export function MetasTab({
               const cpaColor = m.cpaStatus ? CPA_TEXT[m.cpaStatus] : "";
               return (
                 <tr key={r.accountId} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                  <td className="px-4 py-2">
+                    <OptimizedCell
+                      optimized={!!optimized[r.accountId]}
+                      onToggle={(next) => onToggleOptimized(r.accountId, next)}
+                    />
+                  </td>
                   <td className="px-4 py-2">
                     <div className="font-medium text-zinc-900 dark:text-zinc-50">{r.clientName}</div>
                     <a
@@ -305,7 +342,7 @@ export function MetasTab({
             })}
             {rows.length === 0 && !loading ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-sm text-zinc-500">
+                <td colSpan={10} className="px-4 py-8 text-center text-sm text-zinc-500">
                   Nenhuma conta encontrada.
                 </td>
               </tr>
