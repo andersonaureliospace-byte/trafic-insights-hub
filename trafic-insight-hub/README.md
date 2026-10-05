@@ -2272,9 +2272,12 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     delas entra em Invest. diário (pra não comparar um Ritmo que já conta o
     gasto delas com um orçamento que não conta). Resultado, CPA e custo por
     resultado continuam **só das demais campanhas** (o custo por resultado
-    usa o gasto sem elas, `cpaSpend` em `lib/meta/insights.ts`). Campanhas
-    com [VAGA] no nome (e as outras tags de nome de `isVaga`: seguidores e
-    [TRÁFEGO]) continuam fora de tudo. Não mudou: telas por campanha/conjunto/
+    usa o gasto sem elas, `cpaSpend` em `lib/meta/insights.ts`). **Só campanha
+    com [VAGA] no nome fica fora de tudo** (`isJobCampaign` em
+    `lib/meta/shared.ts`). Campanha com [TRÁFEGO] ou [SEGUIDORES] no nome
+    (tags que `isVaga` também pegava) agora conta no investimento e no
+    orçamento diário, mas continua fora de resultado/CPA, igual aos objetivos
+    acima. Não mudou: telas por campanha/conjunto/
     anúncio (Visão Geral, Análise), Evolução, Monitor de CPA e a classificação
     de status em massa, que são de CPA e seguem sem essas campanhas.
 

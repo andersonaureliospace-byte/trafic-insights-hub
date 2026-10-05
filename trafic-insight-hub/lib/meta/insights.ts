@@ -4,8 +4,9 @@
 //  - campanhas de objetivo de reconhecimento/tráfego/visitas ao perfil/
 //    engajamento (EXCLUDED_OBJECTIVES) entram SÓ no investimento (spend e
 //    orçamento diário) — nunca em resultado, CPA nem custo por resultado (desde
-//    a Etapa 84, a pedido; antes eram ignoradas por completo). [VAGA] (e as
-//    outras tags de nome de isVaga) continuam fora de tudo.
+//    a Etapa 84, a pedido; antes eram ignoradas por completo). O mesmo vale
+//    pra campanha com [SEGUIDORES]/[TRÁFEGO] no nome (isVaga): investimento
+//    conta, resultado/CPA não. SÓ [VAGA] (isJobCampaign) fica fora de tudo.
 //  - só soma campanha/conjunto que tenha ao menos um anúncio "ligado" (ver
 //    ATIVE_ISH_STATUSES abaixo — inclui "Programado", que também conta pro
 //    Invest. diário mesmo sem estar entregando ainda)
@@ -16,7 +17,7 @@
 //    dos conjuntos ativos, convertendo lifetime_budget pro equivalente diário
 
 import { metaGet, metaGetAll, presetParams, type DateRangeInput } from "./client";
-import { isVaga, EXCLUDED_OBJECTIVES, pickFirstNumeric, lifetimeToDailyEquivalent } from "./shared";
+import { isVaga, isJobCampaign, EXCLUDED_OBJECTIVES, pickFirstNumeric, lifetimeToDailyEquivalent } from "./shared";
 
 // Ajuste pedido pelo usuário: um conjunto "Programado" (Meta Ads mostra o
 // círculo vazado "○ Programado" em vez da bolinha verde "● Ativo") tem o
@@ -159,10 +160,13 @@ export async function getAccountInsight(
       limit: "500",
     });
     for (const c of camps.data ?? []) {
-      if (isVaga(c.name)) {
+      if (isJobCampaign(c.name)) {
         if (c.id) vagaIds.add(c.id);
         continue;
       }
+      // Etapa 84: [SEGUIDORES]/[TRÁFEGO] no nome conta no investimento (gasto e
+      // orçamento diário), só fica fora de resultado/CPA — igual aos objetivos.
+      if (c.id && isVaga(c.name)) excludedIds.add(c.id);
       // Etapa 84: objetivo "fora do CPA" não pula mais a conta de orçamento
       // diário — o investimento delas conta (só o resultado/CPA não).
       if (c.id && c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) excludedIds.add(c.id);
@@ -236,12 +240,13 @@ export async function getAccountInsight(
     let totalResults = 0;
     let hasResults = false;
     for (const row of ins.data ?? []) {
-      if (isVaga(row.campaign_name)) continue;
+      if (isJobCampaign(row.campaign_name)) continue;
       if (row.campaign_id && vagaIds.has(row.campaign_id)) continue;
       const rowSpend = row.spend ? Number(row.spend) : 0;
       // Etapa 84: campanha de objetivo excluído soma no investimento e para aqui
       // — não entra em cpaSpend, resultado nem tipo de resultado.
       spend += rowSpend;
+      if (isVaga(row.campaign_name)) continue; // tag de nome (seguidores/tráfego): fora do CPA
       if (row.campaign_id && excludedIds.has(row.campaign_id)) continue;
       cpaSpend += rowSpend;
       const rowResults = pickFirstNumeric(row.results);
