@@ -2224,7 +2224,10 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     corrigido pra contar hoje, como a Speed faz (o investimento continua até
     ontem, só o ideal conta o dia de hoje). Colunas: Investimento até ontem (com a
     diferença em R$ pro ideal), Ideal até hoje, % de investimento (barra com o
-    tracinho do ideal e dica com atual/meta/ideal), CPA atual (com a
+    tracinho do ideal e dica com atual/meta/ideal), Invest. diário e Ritmo
+    (iguais aos de Acompanhamento — o Ritmo usa o gasto do mês inteiro, contando
+    hoje, numa busca à parte; a cor da diferença `ritmoColorClass` passou a
+    morar em `lib/meta/ritmo.ts`), CPA atual (com a
     diferença pro CPA ideal) e CPA ideal. Status de investimento: abaixo de
     80% do ideal = laranja "Faltam"; de 80% a 120% = verde "Dentro da
     meta"; acima de 120% = vermelho "Acima do ideal" (o limite de 80% foi

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
+import { ritmo, ritmoColorClass } from "@/lib/meta/ritmo";
 import {
   METAS_SORTS,
   computeMetas,
@@ -23,6 +24,8 @@ import {
 
 interface Row {
   accountId: string;
+  dailyBudget: number;
+  ritmo: number | null;
   accountName: string;
   clientName: string;
   metas: MetasRow;
@@ -100,7 +103,12 @@ export function MetasTab({
   cpaTargets: Record<string, number | null>;
   monthlyTargets: Record<string, number | null>;
 }) {
-  const [insights, setInsights] = useState<Record<string, { spend: number; cost_per_result: number | null }>>({});
+  const [insights, setInsights] = useState<
+    Record<string, { spend: number; cost_per_result: number | null; daily_budget: number }>
+  >({});
+  // Ritmo precisa do gasto do MÊS CORRENTE inteiro (contando hoje), igual a
+  // Acompanhamento — por isso uma busca à parte, além do "até ontem" acima.
+  const [monthlyInsights, setMonthlyInsights] = useState<Record<string, { spend: number }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<MetasSort>("critical");
@@ -109,22 +117,24 @@ export function MetasTab({
   const load = useCallback(async () => {
     if (accounts.length === 0) {
       setInsights({});
+      setMonthlyInsights({});
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/meta/insights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountIds: accounts.map((a) => a.account_id),
-          datePreset: "this_month_until_yesterday",
-        }),
-      });
-      const d = await res.json();
-      if (d.error) throw new Error(d.error);
-      setInsights(d.insights ?? {});
+      const accountIds = accounts.map((a) => a.account_id);
+      const post = (datePreset: string) =>
+        fetch("/api/meta/insights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountIds, datePreset }),
+        }).then((r) => r.json());
+      const [untilYesterday, thisMonth] = await Promise.all([post("this_month_until_yesterday"), post("this_month")]);
+      if (untilYesterday.error) throw new Error(untilYesterday.error);
+      if (thisMonth.error) throw new Error(thisMonth.error);
+      setInsights(untilYesterday.insights ?? {});
+      setMonthlyInsights(thisMonth.insights ?? {});
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -148,6 +158,8 @@ export function MetasTab({
         const ins = insights[acc.account_id];
         return {
           accountId: acc.account_id,
+          dailyBudget: ins?.daily_budget ?? 0,
+          ritmo: ritmo(monthlyTargets[acc.account_id] ?? null, monthlyInsights[acc.account_id]?.spend),
           accountName: acc.name,
           clientName: clientNames[acc.account_id] ?? acc.name,
           metas: computeMetas(
@@ -164,7 +176,7 @@ export function MetasTab({
       })
       .filter((r) => !q || r.clientName.toLowerCase().includes(q) || r.accountName.toLowerCase().includes(q));
     return built.sort((a, b) => metasSortKey(b.metas, sort) - metasSortKey(a.metas, sort));
-  }, [accounts, insights, clientNames, cpaTargets, monthlyTargets, sort, search, elapsedDays, daysInMonth]);
+  }, [accounts, insights, monthlyInsights, clientNames, cpaTargets, monthlyTargets, sort, search, elapsedDays, daysInMonth]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -224,6 +236,18 @@ export function MetasTab({
               <th className="px-4 py-2 font-medium" title="Investimento até ontem ÷ Investimento mensal cadastrado; o tracinho marca o ideal até hoje">
                 % de investimento
               </th>
+              <th
+                className="px-4 py-2 text-right font-medium"
+                title="Orçamento diário atual dos conjuntos/campanhas ativos. Abaixo: diferença entre o orçamento diário já configurado e o Ritmo (Invest. diário − Ritmo)"
+              >
+                Invest. diário
+              </th>
+              <th
+                className="px-4 py-2 text-right font-medium"
+                title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês (dias reais do mês — 28 a 31 —, incluindo hoje como 1 dos dias restantes)"
+              >
+                Ritmo
+              </th>
               <th className="px-4 py-2 text-right font-medium" title="Abaixo: diferença pro CPA ideal">
                 CPA atual
               </th>
@@ -260,6 +284,21 @@ export function MetasTab({
                     <InvestCell m={m} elapsedDays={elapsedDays} daysInMonth={daysInMonth} />
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">
+                    {(() => {
+                      const diff = r.ritmo != null ? r.dailyBudget - r.ritmo : null;
+                      const color = ritmoColorClass(r.ritmo, r.dailyBudget);
+                      return (
+                        <>
+                          <div className={`text-base font-semibold ${color}`}>{fmtCurrency(r.dailyBudget)}</div>
+                          {diff != null ? (
+                            <div className={`text-xs opacity-70 ${color}`}>{fmtCurrencySigned(diff)}</div>
+                          ) : null}
+                        </>
+                      );
+                    })()}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(r.ritmo)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">
                     <div className={`text-base font-semibold ${cpaColor}`}>{fmtCurrency(m.cpa)}</div>
                     {m.cpaDiff != null ? (
                       <div className={`text-xs opacity-70 ${cpaColor}`}>{fmtCurrencySigned(m.cpaDiff)}</div>
@@ -273,7 +312,7 @@ export function MetasTab({
             })}
             {rows.length === 0 && !loading ? (
               <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-sm text-zinc-500">
+                <td colSpan={8} className="px-4 py-8 text-center text-sm text-zinc-500">
                   Nenhuma conta encontrada.
                 </td>
               </tr>

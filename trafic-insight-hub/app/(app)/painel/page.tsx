@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, type PresetId } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
-import { ritmo, RITMO_BAND } from "@/lib/meta/ritmo";
+import { ritmo, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
 import { ControleSaldo } from "@/components/painel/controle-saldo";
@@ -100,30 +100,8 @@ function rowSortKey(row: { binding?: AccountBinding; insight?: AccountInsight })
 // pra serem reaproveitados também pelo aviso automático de investimento
 // baixo (lib/alerts/low-investment.ts), com a mesma conta exata.
 //
-// Cor da diferença mostrada embaixo do valor de "Invest. diário" (Etapa 69:
-// mudou de lugar — antes era só uma dica ao passar o mouse em cima do Ritmo,
-// agora fica sempre visível embaixo do orçamento diário, igual ao padrão da
-// coluna CPA). Compara o quanto precisa investir por dia daqui pra frente
-// (Ritmo) com o orçamento diário JÁ configurado na conta (orçamento atual
-// dos conjuntos/campanhas ativos, não muda com o período escolhido no
-// filtro). ⚠️ Suposição: "10 reais para cima/para baixo" do pedido original
-// foi interpretado como a diferença entre Ritmo e esse orçamento diário
-// atual (não Ritmo comparado a zero) — é a leitura que faz sentido pra
-// sinalizar se o orçamento diário já configurado está acima/abaixo do
-// necessário pra bater a meta do mês. Ajustável se não for essa a leitura
-// certa.
-// - diferença dentro de ±10: orçamento diário já está no ritmo certo → verde
-// - Ritmo mais de 10 reais ACIMA do orçamento diário atual ("pra cima"):
-//   precisaria investir mais do que está configurado → laranja
-// - Ritmo mais de 10 reais ABAIXO do orçamento diário atual ("pra baixo"):
-//   o orçamento atual está investindo mais rápido do que precisa → vermelho
-function ritmoColorClass(rowRitmo: number | null, dailyBudget: number | undefined): string {
-  if (rowRitmo == null) return "";
-  const diff = rowRitmo - (dailyBudget ?? 0);
-  if (diff > RITMO_BAND) return "text-orange-600 dark:text-orange-400";
-  if (diff < -RITMO_BAND) return "text-red-600 dark:text-red-400";
-  return "text-emerald-600 dark:text-emerald-400";
-}
+// ritmoColorClass (cor da diferença embaixo de "Invest. diário") agora mora em
+// lib/meta/ritmo.ts (Etapa 82) — compartilhada com Acompanhamento de metas.
 
 // Cor da coluna CPA (Acompanhamento): compara o CPA real com o CPA ideal
 // cadastrado do cliente — diferença = CPA − CPA ideal.

@@ -43,3 +43,21 @@ export function ritmo(monthlyInvestment: number | null | undefined, spentThisMon
 // ("Investimento Baixo"); mais de R$10 ABAIXO = investindo mais rápido do
 // que precisa ("Investimento Alto").
 export const RITMO_BAND = 10;
+
+// Cor da diferença mostrada embaixo de "Invest. diário" (Acompanhamento e,
+// desde a Etapa 82, Acompanhamento de metas). Compara o quanto precisa
+// investir por dia daqui pra frente (Ritmo) com o orçamento diário JÁ
+// configurado na conta (orçamento atual dos conjuntos/campanhas ativos, não
+// muda com o período escolhido).
+// - diferença dentro de ±10: orçamento diário já está no ritmo certo → verde
+// - Ritmo mais de 10 reais ACIMA do orçamento diário atual: precisaria
+//   investir mais do que está configurado → laranja
+// - Ritmo mais de 10 reais ABAIXO do orçamento diário atual: o orçamento
+//   atual está investindo mais rápido do que precisa → vermelho
+export function ritmoColorClass(rowRitmo: number | null, dailyBudget: number | undefined): string {
+  if (rowRitmo == null) return "";
+  const diff = rowRitmo - (dailyBudget ?? 0);
+  if (diff > RITMO_BAND) return "text-orange-600 dark:text-orange-400";
+  if (diff < -RITMO_BAND) return "text-red-600 dark:text-red-400";
+  return "text-emerald-600 dark:text-emerald-400";
+}
