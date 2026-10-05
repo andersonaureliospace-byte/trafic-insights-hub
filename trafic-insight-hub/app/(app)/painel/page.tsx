@@ -15,6 +15,7 @@ import { CopyTab } from "@/components/painel/copy-tab";
 import { DemandasTab } from "@/components/painel/demandas-tab";
 import { EvolucaoTab } from "@/components/painel/evolucao-tab";
 import { MonitorCpaTab } from "@/components/painel/monitor-cpa-tab";
+import { MetasTab } from "@/components/painel/metas-tab";
 import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
 import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { EditClientDialog } from "@/components/painel/edit-client-dialog";
@@ -145,6 +146,7 @@ function cpaDiffColorClass(diff: number | null): string {
 // é "Visão Geral". Ordem da lateral a pedido (Etapa 39).
 const TABS = [
   { id: "acompanhamento", label: "Acompanhamento" },
+  { id: "metas", label: "Acompanhamento de metas" },
   { id: "analise", label: "Análise" },
   { id: "evolucao", label: "Evolução" },
   { id: "monitor-cpa", label: "Monitor de CPA" },
@@ -751,7 +753,7 @@ export default function PainelPage() {
                         </th>
                         <th
                           className="px-4 py-2 text-right font-medium"
-                          title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês (mês sempre considerado com 30 dias, incluindo hoje como 1 dos dias restantes)"
+                          title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês (dias reais do mês — 28 a 31 —, incluindo hoje como 1 dos dias restantes)"
                         >
                           Ritmo
                         </th>
@@ -919,6 +921,17 @@ export default function PainelPage() {
                 accounts={selectedAccounts}
                 clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
                 cpaTargets={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.binding?.cpa_target ?? null]))}
+              />
+            ) : null}
+
+            {tab === "metas" ? (
+              <MetasTab
+                accounts={selectedAccounts}
+                clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
+                cpaTargets={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.binding?.cpa_target ?? null]))}
+                monthlyTargets={Object.fromEntries(
+                  allRows.map((r) => [r.acc.account_id, r.binding?.monthly_investment ?? null]),
+                )}
               />
             ) : null}
 

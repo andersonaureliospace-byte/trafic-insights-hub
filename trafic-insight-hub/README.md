@@ -52,8 +52,8 @@ abre igual em qualquer computador/navegador que você use; a reordenação só
 fica disponível com a busca e o grupo de foco desligados (com filtro ativo,
 a posição na tela não bate com a posição real entre todas as contas). Em
 Acompanhamento também tem a coluna Ritmo: quanto falta investir por dia
-(dos dias que restam no mês, contando hoje, mês sempre considerado com 30
-dias) pra bater o Investimento mensal cadastrado — (Investimento mensal −
+(dos dias que restam no mês, contando hoje, com os dias reais do mês — 28 a 31
+— desde a Etapa 82) pra bater o Investimento mensal cadastrado — (Investimento mensal −
 Valor usado no mês corrente) ÷ dias restantes; a cor compara o Ritmo com o
 Invest. diário já configurado na conta: verde quando a diferença é de até
 R$ 10 pra mais ou pra menos (orçamento diário já está no ritmo certo),
@@ -850,9 +850,11 @@ acesso totalmente novo (sem nada salvo ainda), o Painel continua abrindo em
 Visão Geral, sem filtro nenhum ativo, do jeito que já era.
 
 ⚠️ **Sobre a coluna Ritmo (Acompanhamento)**: o cálculo é (Investimento
-mensal − Valor usado no mês corrente) ÷ dias restantes do mês, sempre
-considerando o mês com 30 dias (não os 28-31 reais do calendário) e contando
-hoje como um dos dias restantes (ex.: dia 20, restam 11 dias — 30 − 20 + 1).
+mensal − Valor usado no mês corrente) ÷ dias restantes do mês, usando
+os dias reais do mês (28-31, fuso de Brasília — desde a Etapa 82; antes era
+fixo em 30, mas o dashboard de referência da Speed usa os dias reais) e
+contando hoje como um dos dias restantes (ex.: outubro, dia 20, restam 12
+dias — 31 − 20 + 1).
 "Valor usado no mês corrente" é sempre o gasto de `this_month` da Meta,
 independente do período escolhido no filtro da tabela (Hoje/Últimos 7
 dias/etc. são pra CPA e Valor usado, não pro Ritmo). Sem Investimento
@@ -1580,8 +1582,8 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     criativo (global, todas as contas), botão Atualizar (sem precisar dar
     F5), o nome da conta virou link direto pro Gerenciador de Anúncios, e
     um filtro de status Ativos (padrão) / Todos. Acompanhamento
-    ganhou a coluna Ritmo: quanto investir por dia até o fim do mês (sempre
-    considerado com 30 dias) pra bater o Investimento mensal cadastrado
+    ganhou a coluna Ritmo: quanto investir por dia até o fim do mês (dias
+    reais do mês desde a Etapa 82; antes fixo em 30) pra bater o Investimento mensal cadastrado
 15. ~~Filtro de status da Análise: Ativos/Todos (Etapa 20)~~ ✅ — o filtro de
     status da Análise trocou de "Ativos + checkbox Incluir pausados" para
     duas opções fixas, Ativos (padrão) e Todos (ativos + pausados)
@@ -2208,6 +2210,34 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     coluna Saldo de Controle de Saldo com o selo "fundos" no lugar do
     cálculo padrão, só nas contas em que foi ligado.
 
+79. **Aba "Acompanhamento de metas" + Ritmo com dias reais do mês (Etapa 82)** —
+    nova aba na lateral do Painel, modelada no dashboard de referência da
+    Speed (Gerenciamento de Contas). Tudo "até ontem": investimento e CPA
+    do dia 01 até ontem (preset `this_month_until_yesterday`, já existente,
+    sem rota nova nem migração) contra o **Ideal até ontem** = Investimento
+    mensal ÷ dias reais do mês × dias já fechados (ex.: R$ 5.095 ÷ 31 × 4 =
+    R$ 657,42 — conferido contra 21 contas da Speed, todas batendo com 31
+    dias e nenhuma com 30). Colunas: Investimento até ontem (com a diferença
+    em R$ pro ideal), Ideal até ontem, % de investimento (barra com o
+    tracinho do ideal e dica com atual/meta/ideal), CPA atual (com a
+    diferença pro CPA ideal) e CPA ideal. Status de investimento: abaixo de
+    80% do ideal = laranja "Faltam"; de 80% a 120% = verde "Dentro da
+    meta"; acima de 120% = vermelho "Acima do ideal" (o limite de 80% foi
+    deduzido da Speed; o de 120% é palpite, a Speed não mostra esse caso —
+    `INVEST_LOW_RATIO`/`INVEST_HIGH_RATIO` em `lib/meta/metas.ts`). CPA: mesma
+    banda do Acompanhamento (até R$ 1,40 acima do ideal = aceitável, mais
+    que isso = crítico). 4 ordenações: Mais crítica (CPA crítico + investimento
+    fora primeiro, depois só um dos problemas, depois quem está ok), CPA
+    elevado (maior diferença pro ideal primeiro), Investimento fora pra cima
+    e Investimento fora pra baixo (maior diferença em R$ primeiro; ninguém é
+    escondido, só desce na lista). Conta sem meta cadastrada vai pro fim.
+    No dia 01 não há dia fechado: o ideal e o status só aparecem a partir
+    do dia 02. **Junto disso o Ritmo de Acompanhamento deixou de fixar o mês
+    em 30 dias** e passou a usar os dias reais (28-31, fuso de Brasília) —
+    a mesma base da nova aba; isso também vale pro aviso automático de
+    investimento baixo, que reaproveita a mesma conta (`monthCalendarSP` em
+    `lib/meta/ritmo.ts`).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
@@ -2285,7 +2315,8 @@ Cartão/Configurações, com Tipo de conta agora preenchido manualmente
 disponível (Pix/Híbrida) ou a pagar (Boleto/Cartão) (Etapa 80) e o "Saldo
 por fundos" opcional por conta, independente do Tipo de conta, rastreando
 pagamento manual menos cobrança a partir de um saldo inicial informado
-(Etapa 81))
+(Etapa 81) e a aba Acompanhamento de metas, com o Ritmo passando a usar os
+dias reais do mês (Etapa 82))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

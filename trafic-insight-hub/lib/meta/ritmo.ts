@@ -5,14 +5,33 @@
 // baixo (lib/alerts/low-investment.ts), com a mesma conta exata que a tela
 // usa.
 
-// Mês sempre considerado com 30 dias, por pedido — não os 28-31 reais do
-// calendário. Sem Investimento mensal cadastrado, não dá pra calcular.
+// Etapa 82: calendário do mês corrente no fuso de Brasília — dia de hoje e
+// quantos dias o mês tem DE VERDADE (28-31). Antes o Ritmo fixava o mês em 30
+// dias; o dashboard de referência (Speed) usa os dias reais (31 em outubro:
+// R$ 5.095 ÷ 31 × 4 dias fechados = R$ 657,42, confere em todas as contas
+// conferidas), então o Ritmo passou a usar a mesma base pra não divergir.
+// Compartilhado com a aba Acompanhamento de metas (lib/meta/metas.ts).
+export function monthCalendarSP(now: Date = new Date()): { year: number; month: number; day: number; daysInMonth: number } {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value);
+  const year = get("year");
+  const month = get("month"); // 1-12
+  const day = get("day");
+  // Dia 0 do mês seguinte = último dia do mês atual.
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return { year, month, day, daysInMonth };
+}
+
+// Sem Investimento mensal cadastrado, não dá pra calcular.
 export function ritmo(monthlyInvestment: number | null | undefined, spentThisMonth: number | undefined): number | null {
   if (monthlyInvestment == null) return null;
-  const dayOfMonth = Number(
-    new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", day: "numeric" }).format(new Date()),
-  );
-  const remainingDays = Math.max(30 - dayOfMonth + 1, 1); // hoje conta como 1 dos dias restantes
+  const { day, daysInMonth } = monthCalendarSP();
+  const remainingDays = Math.max(daysInMonth - day + 1, 1); // hoje conta como 1 dos dias restantes
   return (monthlyInvestment - (spentThisMonth ?? 0)) / remainingDays;
 }
 
