@@ -2212,13 +2212,18 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
 
 79. **Aba "Acompanhamento de metas" + Ritmo com dias reais do mês (Etapa 82)** —
     nova aba na lateral do Painel, modelada no dashboard de referência da
-    Speed (Gerenciamento de Contas). Tudo "até ontem": investimento e CPA
-    do dia 01 até ontem (preset `this_month_until_yesterday`, já existente,
-    sem rota nova nem migração) contra o **Ideal até ontem** = Investimento
-    mensal ÷ dias reais do mês × dias já fechados (ex.: R$ 5.095 ÷ 31 × 4 =
-    R$ 657,42 — conferido contra 21 contas da Speed, todas batendo com 31
-    dias e nenhuma com 30). Colunas: Investimento até ontem (com a diferença
-    em R$ pro ideal), Ideal até ontem, % de investimento (barra com o
+    Speed (Gerenciamento de Contas). Investimento e CPA vêm do dia 01 até
+    ontem (preset `this_month_until_yesterday`, já existente, sem rota nova
+    nem migração), comparados com o **Ideal até hoje** = Investimento
+    mensal ÷ dias reais do mês × dia de hoje (contando hoje) — igual à
+    Speed, que chama de "Ideal até hoje" (ex.: dia 04 de outubro, meta
+    R$ 3.000 → 3.000 ÷ 31 × 4 = R$ 387,10; conferido contra as contas da
+    Speed, todas batendo com 31 dias e nenhuma com 30). ⚠️ A primeira versão
+    usava só os dias já fechados (dia − 1) no ideal e a conta IVS Teresina
+    aparecia "Acima do ideal" enquanto na Speed estava "Dentro da meta" —
+    corrigido pra contar hoje, como a Speed faz (o investimento continua até
+    ontem, só o ideal conta o dia de hoje). Colunas: Investimento até ontem (com a
+    diferença em R$ pro ideal), Ideal até hoje, % de investimento (barra com o
     tracinho do ideal e dica com atual/meta/ideal), CPA atual (com a
     diferença pro CPA ideal) e CPA ideal. Status de investimento: abaixo de
     80% do ideal = laranja "Faltam"; de 80% a 120% = verde "Dentro da
@@ -2231,8 +2236,7 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     elevado (maior diferença pro ideal primeiro), Investimento fora pra cima
     e Investimento fora pra baixo (maior diferença em R$ primeiro; ninguém é
     escondido, só desce na lista). Conta sem meta cadastrada vai pro fim.
-    No dia 01 não há dia fechado: o ideal e o status só aparecem a partir
-    do dia 02. **Junto disso o Ritmo de Acompanhamento deixou de fixar o mês
+    **Junto disso o Ritmo de Acompanhamento deixou de fixar o mês
     em 30 dias** e passou a usar os dias reais (28-31, fuso de Brasília) —
     a mesma base da nova aba; isso também vale pro aviso automático de
     investimento baixo, que reaproveita a mesma conta (`monthCalendarSP` em

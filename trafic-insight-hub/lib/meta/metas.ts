@@ -1,7 +1,10 @@
 // Acompanhamento de metas (Etapa 82) — cálculo puro (sem React, sem Meta),
-// modelado no dashboard de referência da Speed. Tudo é "até ontem": o
-// investimento e o CPA vêm do preset this_month_until_yesterday (dia 01 até
-// ontem, dias já fechados), e o ideal é proporcional a esses mesmos dias.
+// modelado no dashboard de referência da Speed. O investimento e o CPA vêm do
+// preset this_month_until_yesterday (dia 01 até ontem, dias já fechados). O
+// IDEAL, igual à Speed ("Ideal até hoje" na dica deles), é proporcional aos
+// dias do mês ATÉ HOJE (dia do mês, contando hoje): Investimento mensal ÷ dias
+// do mês × dia de hoje. Conferido na Speed: dia 04 de outubro, meta R$ 3.000
+// → 3.000 ÷ 31 × 4 = R$ 387,10.
 
 import { monthCalendarSP } from "./ritmo";
 
@@ -11,7 +14,7 @@ import { monthCalendarSP } from "./ritmo";
 // ("Dentro do aceitável" em +R$1,32, "Acima da meta" em +R$1,62).
 export const CPA_ACCEPTABLE_BAND = 1.4;
 
-// Investimento: dentro de 80%–120% do ideal até ontem = "dentro da meta".
+// Investimento: dentro de 80%–120% do ideal até hoje = "dentro da meta".
 // O limite de baixo (80%) foi deduzido da Speed (conta com 83% do ideal já
 // aparece verde, com 77% ainda aparece laranja "Faltam"). O de cima (120%)
 // é palpite — a Speed não mostra nenhuma conta muito acima do ideal.
@@ -31,7 +34,7 @@ export interface MetasInput {
 export interface MetasRow {
   invested: number;
   monthlyTarget: number | null;
-  idealUntilYesterday: number | null;
+  idealUntilToday: number | null; // Investimento mensal ÷ dias do mês × dia de hoje // Investimento mensal ÷ dias do mês × dia de hoje
   pctOfTarget: number | null; // investido ÷ meta mensal (0-1+)
   investDiff: number | null; // investido − ideal (R$; negativo = faltou)
   investRatio: number | null; // investido ÷ ideal
@@ -42,27 +45,28 @@ export interface MetasRow {
   cpaStatus: CpaStatus | null;
 }
 
-// Dias já fechados do mês corrente (até ontem) e dias reais do mês — mesma
-// base do Ritmo (monthCalendarSP). No dia 01 não há nenhum dia fechado ainda.
+// Dia de hoje (dias do mês decorridos, contando hoje) e dias reais do mês — mesma
+// base do Ritmo (monthCalendarSP). untilLabel = "dd/mm" de ontem, último dia
+// com dado fechado ("" no dia 01, quando ainda não há nenhum).
 export function metasCalendar(now: Date = new Date()): {
-  closedDays: number;
+  elapsedDays: number;
   daysInMonth: number;
-  untilLabel: string; // "dd/mm" do último dia fechado ("" no dia 01)
+  untilLabel: string;
 } {
   const { month, day, daysInMonth } = monthCalendarSP(now);
   const pad = (n: number) => String(n).padStart(2, "0");
-  return { closedDays: day - 1, daysInMonth, untilLabel: day > 1 ? `${pad(day - 1)}/${pad(month)}` : "" };
+  return { elapsedDays: day, daysInMonth, untilLabel: day > 1 ? `${pad(day - 1)}/${pad(month)}` : "" };
 }
 
-export function computeMetas(input: MetasInput, closedDays: number, daysInMonth: number): MetasRow {
+export function computeMetas(input: MetasInput, elapsedDays: number, daysInMonth: number): MetasRow {
   const { invested, monthlyTarget, cpa, cpaTarget } = input;
 
   const hasMonthly = monthlyTarget != null && monthlyTarget > 0;
-  const idealUntilYesterday =
-    hasMonthly && closedDays > 0 ? (monthlyTarget / daysInMonth) * closedDays : null;
+  const idealUntilToday =
+    hasMonthly ? (monthlyTarget / daysInMonth) * elapsedDays : null;
   const pctOfTarget = hasMonthly ? invested / monthlyTarget : null;
-  const investDiff = idealUntilYesterday != null ? invested - idealUntilYesterday : null;
-  const investRatio = idealUntilYesterday != null && idealUntilYesterday > 0 ? invested / idealUntilYesterday : null;
+  const investDiff = idealUntilToday != null ? invested - idealUntilToday : null;
+  const investRatio = idealUntilToday != null && idealUntilToday > 0 ? invested / idealUntilToday : null;
   let investStatus: InvestStatus | null = null;
   if (investRatio != null) {
     investStatus = investRatio < INVEST_LOW_RATIO ? "below" : investRatio > INVEST_HIGH_RATIO ? "above" : "ok";
@@ -77,7 +81,7 @@ export function computeMetas(input: MetasInput, closedDays: number, daysInMonth:
   return {
     invested,
     monthlyTarget: hasMonthly ? monthlyTarget : null,
-    idealUntilYesterday,
+    idealUntilToday,
     pctOfTarget,
     investDiff,
     investRatio,
@@ -114,7 +118,7 @@ function criticalScore(r: MetasRow): number {
   const group = cpaBad && investBad ? 3 : cpaBad || investBad ? 2 : 1;
   const cpaPart = r.cpaDiff != null && r.cpaTarget ? Math.max(r.cpaDiff, 0) / r.cpaTarget : 0;
   const investPart =
-    r.investDiff != null && r.idealUntilYesterday ? Math.abs(r.investDiff) / r.idealUntilYesterday : 0;
+    r.investDiff != null && r.idealUntilToday ? Math.abs(r.investDiff) / r.idealUntilToday : 0;
   return group * 1000 + cpaPart + investPart;
 }
 
