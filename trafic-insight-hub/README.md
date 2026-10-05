@@ -2261,6 +2261,23 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     (`tab_optimized`, `tab_optimized_date`) — **precisa rodar a migração
     `supabase/migrations/0026_otimizado_tab.sql`** no SQL Editor do Supabase.
 
+81. **Reconhecimento/tráfego/visitas ao perfil contam no investimento, não no CPA (Etapa 84)** —
+    campanhas de objetivo Reconhecimento, Alcance, Tráfego/cliques no link
+    (inclui visitas ao perfil), vídeo, engajamento e curtidas de página
+    (`EXCLUDED_OBJECTIVES` em `lib/meta/shared.ts`) eram ignoradas por
+    completo nos totais por conta. Agora o **investimento** delas entra
+    (Valor usado em Acompanhamento, Investimento até ontem em Acompanhamento
+    de metas, o gasto do mês que alimenta o Ritmo, o aviso de investimento
+    baixo e o "investido" dos relatórios) e o **orçamento diário** ativo
+    delas entra em Invest. diário (pra não comparar um Ritmo que já conta o
+    gasto delas com um orçamento que não conta). Resultado, CPA e custo por
+    resultado continuam **só das demais campanhas** (o custo por resultado
+    usa o gasto sem elas, `cpaSpend` em `lib/meta/insights.ts`). Campanhas
+    com [VAGA] no nome (e as outras tags de nome de `isVaga`: seguidores e
+    [TRÁFEGO]) continuam fora de tudo. Não mudou: telas por campanha/conjunto/
+    anúncio (Visão Geral, Análise), Evolução, Monitor de CPA e a classificação
+    de status em massa, que são de CPA e seguem sem essas campanhas.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
@@ -2340,7 +2357,8 @@ por fundos" opcional por conta, independente do Tipo de conta, rastreando
 pagamento manual menos cobrança a partir de um saldo inicial informado
 (Etapa 81) e a aba Acompanhamento de metas, com o Ritmo passando a usar os
 dias reais do mês (Etapa 82) e a coluna Otimizado própria de Acompanhamento de
-metas, separada da de Acompanhamento (Etapa 83))
+metas, separada da de Acompanhamento (Etapa 83) e reconhecimento/tráfego
+contando só no investimento, nunca no CPA (Etapa 84))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

@@ -1,8 +1,11 @@
 // Contas e métricas — portado do app anterior (getAdAccounts / getAccountsInsights
 // em src/lib/meta.functions.ts), mesma regra de negócio:
 //  - ignora campanhas "[VAGA]"/"[SEGUIDORES]" (vagas de emprego disfarçadas de campanha)
-//  - ignora campanhas de objetivo de reconhecimento/tráfego/engajamento (não é o
-//    tipo de resultado que o gestor acompanha aqui)
+//  - campanhas de objetivo de reconhecimento/tráfego/visitas ao perfil/
+//    engajamento (EXCLUDED_OBJECTIVES) entram SÓ no investimento (spend e
+//    orçamento diário) — nunca em resultado, CPA nem custo por resultado (desde
+//    a Etapa 84, a pedido; antes eram ignoradas por completo). [VAGA] (e as
+//    outras tags de nome de isVaga) continuam fora de tudo.
 //  - só soma campanha/conjunto que tenha ao menos um anúncio "ligado" (ver
 //    ATIVE_ISH_STATUSES abaixo — inclui "Programado", que também conta pro
 //    Invest. diário mesmo sem estar entregando ainda)
@@ -116,7 +119,10 @@ export async function getAccountInsight(
 ): Promise<AccountInsight> {
   const id = actId.startsWith("act_") ? actId : `act_${actId}`;
 
-  let spend = 0;
+  let spend = 0; // investimento total: tudo, menos [VAGA] (inclui reconhecimento/tráfego)
+  // Gasto só das campanhas que contam pra resultado/CPA (fora os objetivos de
+  // EXCLUDED_OBJECTIVES) — é o numerador do custo por resultado.
+  let cpaSpend = 0;
   let costPerResult: number | null = null;
   let results: number | null = null;
 
@@ -157,10 +163,9 @@ export async function getAccountInsight(
         if (c.id) vagaIds.add(c.id);
         continue;
       }
-      if (c.id && c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) {
-        excludedIds.add(c.id);
-        continue;
-      }
+      // Etapa 84: objetivo "fora do CPA" não pula mais a conta de orçamento
+      // diário — o investimento delas conta (só o resultado/CPA não).
+      if (c.id && c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) excludedIds.add(c.id);
       const isActive = c.effective_status === "ACTIVE" || c.status === "ACTIVE";
       if (!isActive) continue;
       if (!c.id || !campaignsWithActiveAd.has(c.id)) continue;
@@ -197,7 +202,6 @@ export async function getAccountInsight(
       });
       for (const a of adsets) {
         if (!a.campaign_id) continue;
-        if (excludedIds.has(a.campaign_id)) continue;
         if (!activeNoCboIds.has(a.campaign_id)) continue;
         if (!a.id || !adsetsWithActiveAd.has(a.id)) continue;
         if (a.daily_budget) {
@@ -234,9 +238,12 @@ export async function getAccountInsight(
     for (const row of ins.data ?? []) {
       if (isVaga(row.campaign_name)) continue;
       if (row.campaign_id && vagaIds.has(row.campaign_id)) continue;
-      if (row.campaign_id && excludedIds.has(row.campaign_id)) continue;
       const rowSpend = row.spend ? Number(row.spend) : 0;
+      // Etapa 84: campanha de objetivo excluído soma no investimento e para aqui
+      // — não entra em cpaSpend, resultado nem tipo de resultado.
       spend += rowSpend;
+      if (row.campaign_id && excludedIds.has(row.campaign_id)) continue;
+      cpaSpend += rowSpend;
       const rowResults = pickFirstNumeric(row.results);
       let rowType: string | null = null;
       if (rowResults != null && rowResults > 0) {
@@ -254,7 +261,7 @@ export async function getAccountInsight(
     }
     if (hasResults) {
       results = totalResults;
-      if (spend > 0) costPerResult = spend / totalResults;
+      if (cpaSpend > 0) costPerResult = cpaSpend / totalResults;
     }
   } catch (e) {
     console.error("insights err", id, e);
