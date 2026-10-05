@@ -56,7 +56,6 @@ function InvestCell({ m, elapsedDays, daysInMonth }: { m: MetasRow; elapsedDays:
   const status = m.investStatus;
   const fill = Math.min(m.pctOfTarget, 1) * 100;
   const marker = (elapsedDays / daysInMonth) * 100;
-  const remaining = Math.max(m.monthlyTarget - m.invested, 0);
   const tooltip =
     `Investimento atual: ${fmtCurrency(m.invested)}\n` +
     `Meta: ${fmtCurrency(m.monthlyTarget)}\n` +
@@ -75,18 +74,6 @@ function InvestCell({ m, elapsedDays, daysInMonth }: { m: MetasRow; elapsedDays:
             style={{ left: `${Math.min(marker, 100)}%` }}
           />
         ) : null}
-      </div>
-      <div className="mt-1 flex items-center justify-between gap-2 text-[11px]">
-        <span className="text-zinc-400">Ideal: {fmtCurrency(m.idealUntilToday)}</span>
-        {status === "ok" ? (
-          <span className={`font-medium ${INVEST_TEXT.ok}`}>✓ Dentro da meta</span>
-        ) : status === "above" ? (
-          <span className={`font-medium ${INVEST_TEXT.above}`}>Acima do ideal</span>
-        ) : (
-          <span className={`font-medium ${status ? INVEST_TEXT.below : "text-zinc-400"}`}>
-            Faltam: {fmtCurrency(remaining)}
-          </span>
-        )}
       </div>
     </div>
   );
@@ -231,6 +218,9 @@ export function MetasTab({
           <thead>
             <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
               <th className="px-4 py-2 font-medium">Cliente</th>
+              <th className="px-4 py-2 text-right font-medium" title="Investimento mensal cadastrado (meta do mês)">
+                Invest. mensal
+              </th>
               <th className="px-4 py-2 text-right font-medium">Investimento até ontem</th>
               <th className="px-4 py-2 text-right font-medium">Ideal até hoje</th>
               <th className="px-4 py-2 font-medium" title="Investimento até ontem ÷ Investimento mensal cadastrado; o tracinho marca o ideal até hoje">
@@ -274,6 +264,9 @@ export function MetasTab({
                     </a>
                   </td>
                   <td className="px-4 py-2 text-right tabular-nums">
+                    {m.monthlyTarget != null ? fmtCurrency(m.monthlyTarget) : <span className="text-zinc-400">—</span>}
+                  </td>
+                  <td className="px-4 py-2 text-right tabular-nums">
                     <div className={`text-base font-semibold ${investColor}`}>{fmtCurrency(m.invested)}</div>
                     {m.investDiff != null ? (
                       <div className={`text-xs opacity-70 ${investColor}`}>{fmtCurrencySigned(m.investDiff)}</div>
@@ -312,7 +305,7 @@ export function MetasTab({
             })}
             {rows.length === 0 && !loading ? (
               <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-sm text-zinc-500">
+                <td colSpan={9} className="px-4 py-8 text-center text-sm text-zinc-500">
                   Nenhuma conta encontrada.
                 </td>
               </tr>

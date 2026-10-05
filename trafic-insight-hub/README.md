@@ -2222,7 +2222,7 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     usava só os dias já fechados (dia − 1) no ideal e a conta IVS Teresina
     aparecia "Acima do ideal" enquanto na Speed estava "Dentro da meta" —
     corrigido pra contar hoje, como a Speed faz (o investimento continua até
-    ontem, só o ideal conta o dia de hoje). Colunas: Investimento até ontem (com a
+    ontem, só o ideal conta o dia de hoje). Colunas: Invest. mensal, Investimento até ontem (com a
     diferença em R$ pro ideal), Ideal até hoje, % de investimento (barra com o
     tracinho do ideal e dica com atual/meta/ideal), Invest. diário e Ritmo
     (iguais aos de Acompanhamento — o Ritmo usa o gasto do mês inteiro, contando
