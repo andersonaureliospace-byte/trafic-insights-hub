@@ -1,6 +1,5 @@
-// Ritmo (Acompanhamento): quanto falta investir por dia, dos dias que
-// restam no mês (incluindo hoje), pra bater a meta de Investimento mensal.
-// Extraído pra cá (Etapa 53) — antes vivia só em app/(app)/painel/page.tsx
+// Ritmo (Acompanhamento): quanto investir por dia, a partir de hoje, pra
+// acompanhar o ideal da meta de Investimento mensal. Extraído pra cá (Etapa 53) — antes vivia só em app/(app)/painel/page.tsx
 // — pra ser reaproveitado também pelo aviso automático de investimento
 // baixo (lib/alerts/low-investment.ts), com a mesma conta exata que a tela
 // usa.
@@ -27,12 +26,32 @@ export function monthCalendarSP(now: Date = new Date()): { year: number; month: 
   return { year, month, day, daysInMonth };
 }
 
-// Sem Investimento mensal cadastrado, não dá pra calcular.
-export function ritmo(monthlyInvestment: number | null | undefined, spentThisMonth: number | undefined): number | null {
+// Etapa 85: o Ritmo deixou de ser "(meta − gasto) ÷ dias restantes" e virou um
+// ritmo de ALCANCE do ideal: o investimento diário normal (Investimento mensal
+// ÷ dias do mês) mais/menos a diferença pro "Ideal até hoje" (mesmo da aba
+// Acompanhamento de metas: normal × dia de hoje), com o ajuste limitado a ±50%
+// do normal. Ex.: meta 3.000 em mês de 30 dias → normal 100; dia 5, ideal 500,
+// gasto até ontem 300 → falta 200 → ajuste de +50 (teto) → Ritmo 150, e daria
+// 150, 150, 150, 150, 100 nos dias seguintes até zerar a diferença (com falta de
+// 115: 150, 150, 115, 100). Adiantado (gasto acima do ideal) desacelera na
+// mesma proporção, até −50% do normal (nunca abaixo de zero).
+// `spentUntilYesterday` = gasto do dia 01 até ONTEM (dias fechados) — compara
+// com o ideal que já conta hoje, igual à Speed. No dia 01 não há dia fechado,
+// então o gasto considerado é 0. Sem Investimento mensal, não dá pra calcular.
+export const RITMO_MAX_ADJUST = 0.5;
+export function ritmo(
+  monthlyInvestment: number | null | undefined,
+  spentUntilYesterday: number | undefined,
+  now: Date = new Date(),
+): number | null {
   if (monthlyInvestment == null) return null;
-  const { day, daysInMonth } = monthCalendarSP();
-  const remainingDays = Math.max(daysInMonth - day + 1, 1); // hoje conta como 1 dos dias restantes
-  return (monthlyInvestment - (spentThisMonth ?? 0)) / remainingDays;
+  const { day, daysInMonth } = monthCalendarSP(now);
+  const normal = monthlyInvestment / daysInMonth;
+  const idealUntilToday = normal * day;
+  const spent = day === 1 ? 0 : (spentUntilYesterday ?? 0);
+  const gap = idealUntilToday - spent; // positivo = atrasado; negativo = adiantado
+  const cap = normal * RITMO_MAX_ADJUST;
+  return normal + Math.max(-cap, Math.min(gap, cap));
 }
 
 // Compara o quanto precisa investir por dia daqui pra frente (Ritmo) com o

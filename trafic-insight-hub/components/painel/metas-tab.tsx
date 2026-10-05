@@ -105,9 +105,6 @@ export function MetasTab({
   const [insights, setInsights] = useState<
     Record<string, { spend: number; cost_per_result: number | null; daily_budget: number }>
   >({});
-  // Ritmo precisa do gasto do MÊS CORRENTE inteiro (contando hoje), igual a
-  // Acompanhamento — por isso uma busca à parte, além do "até ontem" acima.
-  const [monthlyInsights, setMonthlyInsights] = useState<Record<string, { spend: number }>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<MetasSort>("critical");
@@ -116,24 +113,22 @@ export function MetasTab({
   const load = useCallback(async () => {
     if (accounts.length === 0) {
       setInsights({});
-      setMonthlyInsights({});
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const accountIds = accounts.map((a) => a.account_id);
-      const post = (datePreset: string) =>
-        fetch("/api/meta/insights", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountIds, datePreset }),
-        }).then((r) => r.json());
-      const [untilYesterday, thisMonth] = await Promise.all([post("this_month_until_yesterday"), post("this_month")]);
-      if (untilYesterday.error) throw new Error(untilYesterday.error);
-      if (thisMonth.error) throw new Error(thisMonth.error);
-      setInsights(untilYesterday.insights ?? {});
-      setMonthlyInsights(thisMonth.insights ?? {});
+      const res = await fetch("/api/meta/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountIds: accounts.map((a) => a.account_id),
+          datePreset: "this_month_until_yesterday",
+        }),
+      });
+      const d = await res.json();
+      if (d.error) throw new Error(d.error);
+      setInsights(d.insights ?? {});
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -156,7 +151,7 @@ export function MetasTab({
       .map<Row>((acc) => {
         const ins = insights[acc.account_id];
         const dailyBudget = ins?.daily_budget ?? 0;
-        const rowRitmo = ritmo(monthlyTargets[acc.account_id] ?? null, monthlyInsights[acc.account_id]?.spend);
+        const rowRitmo = ritmo(monthlyTargets[acc.account_id] ?? null, ins?.spend);
         return {
           accountId: acc.account_id,
           dailyBudget,
@@ -180,7 +175,7 @@ export function MetasTab({
       .filter((r) => !q || r.clientName.toLowerCase().includes(q) || r.accountName.toLowerCase().includes(q))
       .filter((r) => optimizedFilter === "all" || (optimizedFilter === "optimized") === !!optimized[r.accountId]);
     return built.sort((a, b) => metasSortKey(b.metas, sort) - metasSortKey(a.metas, sort));
-  }, [accounts, insights, monthlyInsights, clientNames, cpaTargets, monthlyTargets, optimized, optimizedFilter, sort, search, elapsedDays, daysInMonth]);
+  }, [accounts, insights, clientNames, cpaTargets, monthlyTargets, optimized, optimizedFilter, sort, search, elapsedDays, daysInMonth]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -269,7 +264,7 @@ export function MetasTab({
               </th>
               <th
                 className="px-4 py-2 text-right font-medium"
-                title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês (dias reais do mês — 28 a 31 —, incluindo hoje como 1 dos dias restantes)"
+                title="Quanto investir por dia pra alcançar o Ideal até hoje: investimento diário normal (Investimento mensal ÷ dias do mês) ± a diferença pro ideal, limitada a ±50% do normal"
               >
                 Ritmo
               </th>

@@ -52,9 +52,8 @@ abre igual em qualquer computador/navegador que você use; a reordenação só
 fica disponível com a busca e o grupo de foco desligados (com filtro ativo,
 a posição na tela não bate com a posição real entre todas as contas). Em
 Acompanhamento também tem a coluna Ritmo: quanto falta investir por dia
-(dos dias que restam no mês, contando hoje, com os dias reais do mês — 28 a 31
-— desde a Etapa 82) pra bater o Investimento mensal cadastrado — (Investimento mensal −
-Valor usado no mês corrente) ÷ dias restantes; a cor compara o Ritmo com o
+(até a Etapa 84: (Investimento mensal − Valor usado) ÷ dias restantes; desde a
+Etapa 85 é o ritmo pra alcançar o Ideal até hoje, ver abaixo); a cor compara o Ritmo com o
 Invest. diário já configurado na conta: verde quando a diferença é de até
 R$ 10 pra mais ou pra menos (orçamento diário já está no ritmo certo),
 laranja quando o Ritmo está mais de R$ 10 acima do orçamento diário atual
@@ -849,15 +848,24 @@ Evolução, Controle de Saldo e Clientes não têm filtro nenhum pra lembrar
 acesso totalmente novo (sem nada salvo ainda), o Painel continua abrindo em
 Visão Geral, sem filtro nenhum ativo, do jeito que já era.
 
-⚠️ **Sobre a coluna Ritmo (Acompanhamento)**: o cálculo é (Investimento
-mensal − Valor usado no mês corrente) ÷ dias restantes do mês, usando
-os dias reais do mês (28-31, fuso de Brasília — desde a Etapa 82; antes era
-fixo em 30, mas o dashboard de referência da Speed usa os dias reais) e
-contando hoje como um dos dias restantes (ex.: outubro, dia 20, restam 12
-dias — 31 − 20 + 1).
-"Valor usado no mês corrente" é sempre o gasto de `this_month` da Meta,
-independente do período escolhido no filtro da tabela (Hoje/Últimos 7
-dias/etc. são pra CPA e Valor usado, não pro Ritmo). Sem Investimento
+⚠️ **Sobre a coluna Ritmo (Acompanhamento) — regra da Etapa 85**: o Ritmo
+é o investimento diário pra ALCANÇAR o Ideal até hoje, não mais "o que falta
+÷ dias restantes". Investimento diário normal = Investimento mensal ÷ dias
+reais do mês (28-31, fuso de Brasília); Ideal até hoje = normal × dia de hoje;
+diferença = Ideal até hoje − gasto do dia 01 até ONTEM (dias fechados,
+preset `this_month_until_yesterday`, igual à Speed). Ritmo = normal + a
+diferença, com o ajuste limitado a ±50% do normal. Ex.: meta 3.000 em mês de
+30 dias → normal 100; dia 5, ideal 500, gasto 300 → falta 200 → Ritmo 150
+(teto de +50 por dia: 150, 150, 150, 150 e volta a 100); se faltar 115 →
+150, 150, 115, 100. Conta adiantada (gasto acima do ideal) desacelera na
+mesma proporção, até −50% do normal (nunca abaixo de zero). No dia 01 o gasto
+considerado é 0. A conta vale também pro aviso automático de investimento
+baixo (`lib/alerts/low-investment.ts`, que passou a buscar
+`this_month_until_yesterday`) e pra cor/filtro Investimento (Baixo/Alto), que
+continuam comparando o Ritmo com o Invest. diário (banda de R$ 10). O gasto
+usado é sempre o do mês até ontem, independente do período escolhido no
+filtro da tabela (Hoje/Últimos 7 dias/etc. são pra CPA e Valor usado, não pro
+Ritmo). Sem Investimento
 mensal cadastrado (Painel > Clientes ou no modal Editar), a coluna fica em
 branco — não dá pra calcular ritmo sem meta.
 
@@ -2281,6 +2289,13 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     anúncio (Visão Geral, Análise), Evolução, Monitor de CPA e a classificação
     de status em massa, que são de CPA e seguem sem essas campanhas.
 
+82. **Ritmo agora acelera/desacelera pra alcançar o Ideal até hoje (Etapa 85)** —
+    em Acompanhamento, Acompanhamento de metas e no aviso de investimento
+    baixo, o Ritmo = investimento diário normal (meta ÷ dias do mês) + a
+    diferença pro Ideal até hoje, limitada a ±50% do normal (detalhes e
+    exemplo no aviso "Sobre a coluna Ritmo", acima). Antes era (meta − gasto)
+    ÷ dias restantes.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
@@ -2361,7 +2376,8 @@ pagamento manual menos cobrança a partir de um saldo inicial informado
 (Etapa 81) e a aba Acompanhamento de metas, com o Ritmo passando a usar os
 dias reais do mês (Etapa 82) e a coluna Otimizado própria de Acompanhamento de
 metas, separada da de Acompanhamento (Etapa 83) e reconhecimento/tráfego
-contando só no investimento, nunca no CPA (Etapa 84))
+contando só no investimento, nunca no CPA (Etapa 84) e o Ritmo passando a
+alcançar o Ideal até hoje (Etapa 85))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

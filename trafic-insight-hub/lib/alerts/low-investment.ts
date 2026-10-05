@@ -51,9 +51,10 @@ export async function checkLowInvestment(
   if (!bindings || bindings.length === 0) return { statuses: [], sendError: null };
 
   const accountIds = bindings.map((b) => b.ad_account_id as string);
-  // "this_month" dá, na mesma chamada, o gasto do mês corrente (pro Ritmo) e
-  // o orçamento diário atual (daily_budget não muda com o preset escolhido).
-  const insights = await getAccountsInsights(token, accountIds, "this_month");
+  // "this_month_until_yesterday" dá, na mesma chamada, o gasto do mês até ontem
+  // (pro Ritmo, que desde a Etapa 85 compara com o Ideal até hoje) e o
+  // orçamento diário atual (daily_budget não muda com o preset escolhido).
+  const insights = await getAccountsInsights(token, accountIds, "this_month_until_yesterday");
 
   const statuses: LowInvestmentStatus[] = bindings.map((b) => {
     const accountId = b.ad_account_id as string;

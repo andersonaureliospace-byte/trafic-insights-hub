@@ -371,9 +371,10 @@ export default function PainelPage() {
     void loadInsights();
   }, [loadInsights, tab]);
 
-  // Ritmo (coluna de Acompanhamento) precisa do gasto do MÊS CORRENTE
-  // sempre, independente do período escolhido no filtro da tabela acima —
-  // por isso é uma busca à parte, presa em "this_month" e não em `preset`.
+  // Ritmo (coluna de Acompanhamento) precisa do gasto do mês corrente ATÉ ONTEM
+  // (Etapa 85: é comparado com o "Ideal até hoje") sempre, independente do
+  // período escolhido no filtro da tabela acima — por isso é uma busca à
+  // parte, presa em "this_month_until_yesterday" e não em `preset`.
   // Só depende da seleção de contas, não do período, pra não duplicar
   // chamada toda vez que o filtro de data da tabela mudar.
   const loadMonthlyInsights = useCallback(async () => {
@@ -384,7 +385,7 @@ export default function PainelPage() {
     const res = await fetch("/api/meta/insights", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountIds: selectedAccounts.map((a) => a.account_id), datePreset: "this_month" }),
+      body: JSON.stringify({ accountIds: selectedAccounts.map((a) => a.account_id), datePreset: "this_month_until_yesterday" }),
     });
     const d = await res.json();
     setMonthlyInsights(d.insights ?? {});
@@ -767,7 +768,7 @@ export default function PainelPage() {
                         </th>
                         <th
                           className="px-4 py-2 text-right font-medium"
-                          title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês (dias reais do mês — 28 a 31 —, incluindo hoje como 1 dos dias restantes)"
+                          title="Quanto investir por dia pra alcançar o Ideal até hoje: investimento diário normal (Investimento mensal ÷ dias do mês) ± a diferença pro ideal, limitada a ±50% do normal"
                         >
                           Ritmo
                         </th>
