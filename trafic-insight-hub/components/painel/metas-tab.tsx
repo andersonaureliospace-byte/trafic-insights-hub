@@ -155,10 +155,12 @@ export function MetasTab({
     const built = accounts
       .map<Row>((acc) => {
         const ins = insights[acc.account_id];
+        const dailyBudget = ins?.daily_budget ?? 0;
+        const rowRitmo = ritmo(monthlyTargets[acc.account_id] ?? null, monthlyInsights[acc.account_id]?.spend);
         return {
           accountId: acc.account_id,
-          dailyBudget: ins?.daily_budget ?? 0,
-          ritmo: ritmo(monthlyTargets[acc.account_id] ?? null, monthlyInsights[acc.account_id]?.spend),
+          dailyBudget,
+          ritmo: rowRitmo,
           accountName: acc.name,
           clientName: clientNames[acc.account_id] ?? acc.name,
           metas: computeMetas(
@@ -167,6 +169,8 @@ export function MetasTab({
               monthlyTarget: monthlyTargets[acc.account_id] ?? null,
               cpa: ins?.cost_per_result ?? null,
               cpaTarget: cpaTargets[acc.account_id] ?? null,
+              dailyBudget,
+              ritmo: rowRitmo,
             },
             elapsedDays,
             daysInMonth,

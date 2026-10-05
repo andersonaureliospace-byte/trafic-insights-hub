@@ -2237,8 +2237,11 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     que isso = crítico). 4 ordenações: Mais crítica (CPA crítico + investimento
     fora primeiro, depois só um dos problemas, depois quem está ok), CPA
     elevado (maior diferença pro ideal primeiro), Investimento fora pra cima
-    e Investimento fora pra baixo (maior diferença em R$ primeiro; ninguém é
-    escondido, só desce na lista). Conta sem meta cadastrada vai pro fim.
+    e Investimento fora pra baixo — aqui "fora" é a diferença Invest. diário −
+    Ritmo (a mesma mostrada embaixo de Invest. diário): pra cima, o orçamento
+    diário mais acima do que precisa primeiro; pra baixo, o mais abaixo
+    primeiro (ninguém é escondido, só desce na lista; a primeira versão
+    ordenava pelo investido − ideal em R$ e foi trocada a pedido) Conta sem meta cadastrada vai pro fim.
     **Junto disso o Ritmo de Acompanhamento deixou de fixar o mês
     em 30 dias** e passou a usar os dias reais (28-31, fuso de Brasília) —
     a mesma base da nova aba; isso também vale pro aviso automático de

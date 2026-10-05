@@ -29,6 +29,8 @@ export interface MetasInput {
   monthlyTarget: number | null; // Investimento mensal cadastrado
   cpa: number | null; // CPA do dia 01 até ontem
   cpaTarget: number | null; // CPA ideal cadastrado
+  dailyBudget: number; // orçamento diário atual (Invest. diário)
+  ritmo: number | null; // quanto precisa investir por dia daqui pra frente
 }
 
 export interface MetasRow {
@@ -37,6 +39,9 @@ export interface MetasRow {
   idealUntilToday: number | null; // Investimento mensal ÷ dias do mês × dia de hoje // Investimento mensal ÷ dias do mês × dia de hoje
   pctOfTarget: number | null; // investido ÷ meta mensal (0-1+)
   investDiff: number | null; // investido − ideal (R$; negativo = faltou)
+  // Invest. diário − Ritmo (R$): a diferença mostrada embaixo de Invest. diário.
+  // Negativa = orçamento diário abaixo do que precisa; positiva = acima.
+  dailyDiff: number | null;
   investRatio: number | null; // investido ÷ ideal
   investStatus: InvestStatus | null;
   cpa: number | null;
@@ -59,7 +64,8 @@ export function metasCalendar(now: Date = new Date()): {
 }
 
 export function computeMetas(input: MetasInput, elapsedDays: number, daysInMonth: number): MetasRow {
-  const { invested, monthlyTarget, cpa, cpaTarget } = input;
+  const { invested, monthlyTarget, cpa, cpaTarget, dailyBudget, ritmo } = input;
+  const dailyDiff = ritmo != null ? dailyBudget - ritmo : null;
 
   const hasMonthly = monthlyTarget != null && monthlyTarget > 0;
   const idealUntilToday =
@@ -84,6 +90,7 @@ export function computeMetas(input: MetasInput, elapsedDays: number, daysInMonth
     idealUntilToday,
     pctOfTarget,
     investDiff,
+    dailyDiff,
     investRatio,
     investStatus,
     cpa,
@@ -98,8 +105,8 @@ export type MetasSort = "critical" | "cpa" | "invest_above" | "invest_below";
 export const METAS_SORTS: { id: MetasSort; label: string }[] = [
   { id: "critical", label: "Mais crítica (CPA alto + investimento fora)" },
   { id: "cpa", label: "CPA elevado (maior → menor)" },
-  { id: "invest_above", label: "Investimento fora pra cima (maior diferença)" },
-  { id: "invest_below", label: "Investimento fora pra baixo (maior diferença)" },
+  { id: "invest_above", label: "Investimento fora pra cima (Invest. diário acima do Ritmo)" },
+  { id: "invest_below", label: "Investimento fora pra baixo (Invest. diário abaixo do Ritmo)" },
 ];
 
 // Quem não tem o dado necessário pra ordenação (sem meta/sem CPA) vai sempre
@@ -122,9 +129,11 @@ function criticalScore(r: MetasRow): number {
   return group * 1000 + cpaPart + investPart;
 }
 
-// Chave de ordenação (maior = vem primeiro). Pra "fora pra cima" a maior
-// diferença é investido − ideal em R$ (positiva); pra "fora pra baixo" é
-// ideal − investido em R$. Não filtra ninguém: quem está dentro da meta ou do
+// Chave de ordenação (maior = vem primeiro). "Investimento fora" aqui é a
+// diferença Invest. diário − Ritmo (a mesma mostrada embaixo de Invest.
+// diário): pra "fora pra cima" a maior diferença positiva (orçamento diário
+// acima do que precisa) vem primeiro; pra "fora pra baixo" a mais negativa
+// (orçamento diário abaixo do que precisa). Não filtra ninguém: quem está do
 // outro lado só desce na lista.
 export function metasSortKey(r: MetasRow, sort: MetasSort): number {
   switch (sort) {
@@ -133,8 +142,8 @@ export function metasSortKey(r: MetasRow, sort: MetasSort): number {
     case "cpa":
       return r.cpaDiff ?? MISSING;
     case "invest_above":
-      return r.investDiff ?? MISSING;
+      return r.dailyDiff ?? MISSING;
     case "invest_below":
-      return r.investDiff != null ? -r.investDiff : MISSING;
+      return r.dailyDiff != null ? -r.dailyDiff : MISSING;
   }
 }
