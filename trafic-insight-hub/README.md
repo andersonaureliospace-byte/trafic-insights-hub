@@ -2316,6 +2316,14 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     corrigido o comparador de ordenação da aba de metas (empate entre contas
     sem dado não gera mais NaN).
 
+85. **Invest. diário ignora conjunto/campanha "Concluído" (Etapa 88)** — conjunto
+    com `end_time` (ou campanha com `stop_time`) já passado aparece como
+    Concluído no Gerenciador mesmo com a chavinha ligada, mas o Graph API
+    continua devolvendo `effective_status` ACTIVE; o orçamento dele estava
+    entrando no Invest. diário (ex.: Novo Hamburgo mostrava R$ 120 em vez de
+    R$ 100). Agora, em `lib/meta/insights.ts`, quem já terminou não soma.
+    (Visão Geral/Análise, em `breakdown.ts`, ainda não aplicam essa regra.)
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

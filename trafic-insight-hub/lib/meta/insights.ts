@@ -38,6 +38,14 @@ const ACTIVE_ISH_STATUSES = [
   "WITH_ISSUES",
 ];
 
+// Etapa 88: data de término (end_time de conjunto / stop_time de campanha) já
+// passou? Sem data (ou "0"/inválida) = sem término, nunca concluído.
+function hasEnded(t?: string): boolean {
+  if (!t) return false;
+  const ms = Date.parse(t);
+  return Number.isFinite(ms) && ms < Date.now();
+}
+
 export interface AdAccount {
   id: string;
   account_id: string;
@@ -172,6 +180,9 @@ export async function getAccountInsight(
       if (c.id && c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) excludedIds.add(c.id);
       const isActive = c.effective_status === "ACTIVE" || c.status === "ACTIVE";
       if (!isActive) continue;
+      // Etapa 88: campanha com data de término já passada = "Concluída" no
+      // Gerenciador, mesmo com a chavinha ligada e o effective_status ainda ACTIVE.
+      if (hasEnded(c.stop_time)) continue;
       if (!c.id || !campaignsWithActiveAd.has(c.id)) continue;
       if (c.daily_budget) {
         const v = Number(c.daily_budget) / 100;
@@ -208,6 +219,10 @@ export async function getAccountInsight(
         if (!a.campaign_id) continue;
         if (!activeNoCboIds.has(a.campaign_id)) continue;
         if (!a.id || !adsetsWithActiveAd.has(a.id)) continue;
+        // Etapa 88: conjunto com data de término já passada aparece como
+        // "Concluído" no Gerenciador (chavinha ligada, mas sem entregar) — o
+        // Graph API continua devolvendo effective_status ACTIVE, então checa a data.
+        if (hasEnded(a.end_time)) continue;
         if (a.daily_budget) {
           dailyBudget += Number(a.daily_budget) / 100;
         } else if (a.lifetime_budget) {
