@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
+import { PIN_BLUR, PinCell } from "@/components/painel/pin-cell";
 import { ritmo, ritmoColorClass } from "@/lib/meta/ritmo";
 import {
   METAS_SORTS,
@@ -89,6 +90,8 @@ export function MetasTab({
   onToggleOptimized,
   optimizedFilter,
   onOptimizedFilterChange,
+  pinnedIds,
+  onTogglePin,
 }: {
   accounts: AdAccount[];
   clientNames: Record<string, string>;
@@ -101,6 +104,11 @@ export function MetasTab({
   onToggleOptimized: (accountId: string, next: boolean) => Promise<void> | void;
   optimizedFilter: "all" | "optimized" | "pending";
   onOptimizedFilterChange: (v: "all" | "optimized" | "pending") => void;
+  // Etapa 86: contas fixadas desta aba (separadas as de Acompanhamento) — vão
+  // pro topo, as outras ficam com as métricas embaçadas e o "↻ Atualizar"
+  // busca só as fixadas.
+  pinnedIds: string[];
+  onTogglePin: (accountId: string) => void;
 }) {
   const [insights, setInsights] = useState<
     Record<string, { spend: number; cost_per_result: number | null; daily_budget: number }>
@@ -110,11 +118,24 @@ export function MetasTab({
   const [sort, setSort] = useState<MetasSort>("critical");
   const [search, setSearch] = useState("");
 
-  const load = useCallback(async () => {
+  const pinnedRef = useRef(pinnedIds);
+  useEffect(() => {
+    pinnedRef.current = pinnedIds;
+  }, [pinnedIds]);
+  const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
+  const hasPinned = accounts.some((a) => pinnedSet.has(a.account_id));
+
+  // onlyPinned = true (botão ↻ com conta fixada): busca só as fixadas e mescla
+  // no que já está na tela; as outras ficam como estavam. A busca automática
+  // (ao entrar na aba / trocar a seleção) sempre traz todas.
+  const load = useCallback(async (onlyPinned = false) => {
     if (accounts.length === 0) {
       setInsights({});
       return;
     }
+    const pinned = accounts.filter((a) => pinnedRef.current.includes(a.account_id));
+    const partial = onlyPinned && pinned.length > 0;
+    const targets = partial ? pinned : accounts;
     setLoading(true);
     setError(null);
     try {
@@ -122,13 +143,13 @@ export function MetasTab({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          accountIds: accounts.map((a) => a.account_id),
+          accountIds: targets.map((a) => a.account_id),
           datePreset: "this_month_until_yesterday",
         }),
       });
       const d = await res.json();
       if (d.error) throw new Error(d.error);
-      setInsights(d.insights ?? {});
+      setInsights((prev) => (partial ? { ...prev, ...(d.insights ?? {}) } : (d.insights ?? {})));
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -138,7 +159,7 @@ export function MetasTab({
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca ao entrar na aba ou quando a seleção de contas muda
-    void load();
+    void load(false);
   }, [load]);
 
   // Calendário só é calculado no cliente, no momento do render da aba — dias
@@ -174,8 +195,10 @@ export function MetasTab({
       })
       .filter((r) => !q || r.clientName.toLowerCase().includes(q) || r.accountName.toLowerCase().includes(q))
       .filter((r) => optimizedFilter === "all" || (optimizedFilter === "optimized") === !!optimized[r.accountId]);
-    return built.sort((a, b) => metasSortKey(b.metas, sort) - metasSortKey(a.metas, sort));
-  }, [accounts, insights, clientNames, cpaTargets, monthlyTargets, optimized, optimizedFilter, sort, search, elapsedDays, daysInMonth]);
+    built.sort((a, b) => metasSortKey(b.metas, sort) - metasSortKey(a.metas, sort));
+    // Fixadas sobem pro topo (mantendo a ordem escolhida entre elas); sort é estável.
+    return [...built.filter((r) => pinnedSet.has(r.accountId)), ...built.filter((r) => !pinnedSet.has(r.accountId))];
+  }, [accounts, insights, clientNames, cpaTargets, monthlyTargets, optimized, optimizedFilter, sort, search, elapsedDays, daysInMonth, pinnedSet]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -214,11 +237,11 @@ export function MetasTab({
             ))}
           </select>
           <button
-            onClick={() => void load()}
+            onClick={() => void load(true)}
             disabled={loading}
             className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
           >
-            {loading ? "Atualizando…" : "↻ Atualizar"}
+            {loading ? "Atualizando…" : hasPinned ? "↻ Atualizar fixadas" : "↻ Atualizar"}
           </button>
         </div>
       </div>
@@ -231,6 +254,13 @@ export function MetasTab({
         {elapsedDays === 1 ? "dia" : "dias"} (dia de hoje, contando hoje), igual ao dashboard de referência.
       </p>
 
+      {hasPinned ? (
+        <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+          Modo foco: só as contas fixadas estão em destaque e o Atualizar busca apenas elas. Passe o mouse numa linha
+          embaçada pra ver os números; desafixe pra voltar ao normal.
+        </p>
+      ) : null}
+
       {error ? (
         <div className="border-b border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
           {error}
@@ -241,6 +271,9 @@ export function MetasTab({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
+              <th className="px-4 py-2 font-medium" title="Fixa a conta no topo e foca só nela">
+                Fixar
+              </th>
               <th
                 className="px-4 py-2 font-medium"
                 title="Marcação manual do dia desta aba — reseta sozinha à meia-noite (horário de Brasília), separada da de Acompanhamento"
@@ -279,8 +312,18 @@ export function MetasTab({
               const m = r.metas;
               const investColor = m.investStatus ? INVEST_TEXT[m.investStatus] : "";
               const cpaColor = m.cpaStatus ? CPA_TEXT[m.cpaStatus] : "";
+              const isPinned = pinnedSet.has(r.accountId);
+              const blur = hasPinned && !isPinned ? PIN_BLUR : "";
               return (
-                <tr key={r.accountId} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                <tr
+                  key={r.accountId}
+                  className={`group border-b border-zinc-100 last:border-0 dark:border-zinc-800/60 ${
+                    isPinned ? "bg-amber-50/70 dark:bg-amber-950/30" : ""
+                  }`}
+                >
+                  <td className="px-4 py-2">
+                    <PinCell pinned={isPinned} onToggle={() => onTogglePin(r.accountId)} />
+                  </td>
                   <td className="px-4 py-2">
                     <OptimizedCell
                       optimized={!!optimized[r.accountId]}
@@ -299,20 +342,20 @@ export function MetasTab({
                       {r.accountName}
                     </a>
                   </td>
-                  <td className="px-4 py-2 text-right tabular-nums">
+                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
                     {m.monthlyTarget != null ? fmtCurrency(m.monthlyTarget) : <span className="text-zinc-400">—</span>}
                   </td>
-                  <td className="px-4 py-2 text-right tabular-nums">
+                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
                     <div className={`text-base font-semibold ${investColor}`}>{fmtCurrency(m.invested)}</div>
                     {m.investDiff != null ? (
                       <div className={`text-xs opacity-70 ${investColor}`}>{fmtCurrencySigned(m.investDiff)}</div>
                     ) : null}
                   </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(m.idealUntilToday)}</td>
-                  <td className="px-4 py-2">
+                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>{fmtCurrency(m.idealUntilToday)}</td>
+                  <td className={`px-4 py-2 ${blur}`}>
                     <InvestCell m={m} elapsedDays={elapsedDays} daysInMonth={daysInMonth} />
                   </td>
-                  <td className="px-4 py-2 text-right tabular-nums">
+                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
                     {(() => {
                       const diff = r.ritmo != null ? r.dailyBudget - r.ritmo : null;
                       const color = ritmoColorClass(r.ritmo, r.dailyBudget);
@@ -326,14 +369,14 @@ export function MetasTab({
                       );
                     })()}
                   </td>
-                  <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(r.ritmo)}</td>
-                  <td className="px-4 py-2 text-right tabular-nums">
+                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>{fmtCurrency(r.ritmo)}</td>
+                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
                     <div className={`text-base font-semibold ${cpaColor}`}>{fmtCurrency(m.cpa)}</div>
                     {m.cpaDiff != null ? (
                       <div className={`text-xs opacity-70 ${cpaColor}`}>{fmtCurrencySigned(m.cpaDiff)}</div>
                     ) : null}
                   </td>
-                  <td className="px-4 py-2 text-right tabular-nums">
+                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
                     {m.cpaTarget != null ? fmtCurrency(m.cpaTarget) : <span className="text-zinc-400">—</span>}
                   </td>
                 </tr>
@@ -341,7 +384,7 @@ export function MetasTab({
             })}
             {rows.length === 0 && !loading ? (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-sm text-zinc-500">
+                <td colSpan={11} className="px-4 py-8 text-center text-sm text-zinc-500">
                   Nenhuma conta encontrada.
                 </td>
               </tr>

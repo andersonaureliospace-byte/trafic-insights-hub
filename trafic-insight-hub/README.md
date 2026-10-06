@@ -2296,6 +2296,16 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     exemplo no aviso "Sobre a coluna Ritmo", acima). Antes era (meta − gasto)
     ÷ dias restantes.
 
+83. **Botão Fixar em Acompanhamento e Acompanhamento de metas (Etapa 86)** —
+    coluna "Fixar" no começo de cada tabela. Conta fixada sobe pro topo; as
+    demais ficam com as métricas embaçadas (passar o mouse na linha mostra os
+    números) e o "↻ Atualizar" passa a buscar só as fixadas (mescla no que já
+    está na tela). A busca automática (entrar na aba, trocar período) continua
+    trazendo todas. Pode fixar várias; cada aba tem a sua lista (`pinnedIds` /
+    `metasPinnedIds`, salvas no ui-state do Painel — sem migration) e fica até
+    desafixar. Com conta fixada, o arrastar-e-soltar de Acompanhamento é
+    desabilitado.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
