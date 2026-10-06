@@ -5,6 +5,7 @@ import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, type PresetId } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { ritmo, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
+import { METAS_SORTS, compareMetas, computeMetas, metasCalendar, type MetasSort } from "@/lib/meta/metas";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
 import { ControleSaldo } from "@/components/painel/controle-saldo";
@@ -168,6 +169,10 @@ export default function PainelPage() {
   // Etapa 86: contas fixadas (botão Fixar) — uma lista por aba, salvas no
   // ui-state do Supabase e mantidas até desafixar. Fixada sobe pro topo, as
   // outras ficam embaçadas e o "↻ Atualizar" busca só as fixadas.
+  // Etapa 87: mesmo seletor de ordenação de Acompanhamento de metas. "manual" =
+  // a ordem personalizada de antes (arrastar e soltar), continua sendo o padrão.
+  const [sortMode, setSortMode] = useState<"manual" | MetasSort>("manual");
+  const metasCal = useMemo(() => metasCalendar(), []);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [metasPinnedIds, setMetasPinnedIds] = useState<string[]>([]);
   const pinnedRef = useRef<string[]>([]);
@@ -260,6 +265,7 @@ export default function PainelPage() {
     if (a.metasOptimizedFilter === "all" || a.metasOptimizedFilter === "optimized" || a.metasOptimizedFilter === "pending")
       setMetasOptimizedFilter(a.metasOptimizedFilter);
     const strList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+    if (a.sortMode === "manual" || METAS_SORTS.some((s) => s.id === a.sortMode)) setSortMode(a.sortMode as "manual" | MetasSort);
     setPinnedIds(strList(a.pinnedIds));
     setMetasPinnedIds(strList(a.metasPinnedIds));
     if (typeof a.preset === "string") setPreset(a.preset as PresetId);
@@ -283,6 +289,7 @@ export default function PainelPage() {
         metasOptimizedFilter,
         pinnedIds,
         metasPinnedIds,
+        sortMode,
         preset,
         activeFocusGroupId,
       },
@@ -297,6 +304,7 @@ export default function PainelPage() {
     metasOptimizedFilter,
     pinnedIds,
     metasPinnedIds,
+    sortMode,
     preset,
     activeFocusGroupId,
     patchUiState,
@@ -567,9 +575,29 @@ export default function PainelPage() {
         const isOptimized = !!r.binding?.optimized;
         return optimizedFilter === "optimized" ? isOptimized : !isOptimized;
       })
-      .sort((a, b) => rowSortKey(a) - rowSortKey(b))
+      .sort((a, b) => {
+        if (sortMode === "manual") return rowSortKey(a) - rowSortKey(b);
+        // Mesmos critérios da aba de metas, calculados com o que Acompanhamento
+        // mostra: CPA do período escolhido vs CPA ideal; Invest. diário − Ritmo.
+        const metas = (r: typeof a) =>
+          computeMetas(
+            {
+              invested: monthlyInsights[r.acc.account_id]?.spend ?? 0,
+              monthlyTarget: r.binding?.monthly_investment ?? null,
+              cpa: r.insight?.cost_per_result ?? null,
+              cpaTarget: r.binding?.cpa_target ?? null,
+              dailyBudget: r.insight?.daily_budget ?? 0,
+              ritmo: ritmo(r.binding?.monthly_investment, monthlyInsights[r.acc.account_id]?.spend),
+            },
+            metasCal.elapsedDays,
+            metasCal.daysInMonth,
+          );
+        return compareMetas(metas(a), metas(b), sortMode);
+      })
       .sort((a, b) => Number(pinnedIds.includes(b.acc.account_id)) - Number(pinnedIds.includes(a.acc.account_id)));
   }, [
+    sortMode,
+    metasCal,
     pinnedIds,
     focusFilteredRows,
     search,
@@ -587,6 +615,7 @@ export default function PainelPage() {
   const hasPinned = selectedAccounts.some((a) => pinnedIds.includes(a.account_id));
   const reorderEnabled =
     !hasPinned &&
+    sortMode === "manual" &&
     search.trim() === "" &&
     activeFocusGroupId === null &&
     priorityFilter === "all" &&
@@ -692,6 +721,18 @@ export default function PainelPage() {
                       className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
                     />
                     <select
+                      value={sortMode}
+                      onChange={(e) => setSortMode(e.target.value as "manual" | MetasSort)}
+                      className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
+                    >
+                      <option value="manual">Ordem personalizada (arrastar)</option>
+                      {METAS_SORTS.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
                       value={preset}
                       onChange={(e) => setPreset(e.target.value as PresetId)}
                       className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
@@ -784,7 +825,7 @@ export default function PainelPage() {
 
                 {!reorderEnabled ? (
                   <p className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-                    Para arrastar e reordenar os clientes, limpe a busca, o grupo de foco, as contas fixadas e os filtros de Status/CPA/
+                    Para arrastar e reordenar os clientes, limpe a busca, o grupo de foco, as contas fixadas, volte a ordenação pra Ordem personalizada e limpe os filtros de Status/CPA/
                     Investimento/Otimizado — a reordenação vale para a lista completa.
                   </p>
                 ) : null}

@@ -11,7 +11,7 @@ import {
   METAS_SORTS,
   computeMetas,
   metasCalendar,
-  metasSortKey,
+  compareMetas,
   type CpaStatus,
   type InvestStatus,
   type MetasRow,
@@ -195,7 +195,7 @@ export function MetasTab({
       })
       .filter((r) => !q || r.clientName.toLowerCase().includes(q) || r.accountName.toLowerCase().includes(q))
       .filter((r) => optimizedFilter === "all" || (optimizedFilter === "optimized") === !!optimized[r.accountId]);
-    built.sort((a, b) => metasSortKey(b.metas, sort) - metasSortKey(a.metas, sort));
+    built.sort((a, b) => compareMetas(a.metas, b.metas, sort));
     // Fixadas sobem pro topo (mantendo a ordem escolhida entre elas); sort é estável.
     return [...built.filter((r) => pinnedSet.has(r.accountId)), ...built.filter((r) => !pinnedSet.has(r.accountId))];
   }, [accounts, insights, clientNames, cpaTargets, monthlyTargets, optimized, optimizedFilter, sort, search, elapsedDays, daysInMonth, pinnedSet]);

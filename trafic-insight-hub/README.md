@@ -2306,6 +2306,16 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     desafixar. Com conta fixada, o arrastar-e-soltar de Acompanhamento é
     desabilitado.
 
+84. **Ordenação de Acompanhamento de metas replicada em Acompanhamento (Etapa
+    87)** — novo seletor ao lado do período com "Ordem personalizada
+    (arrastar)" (padrão, a de antes) + os mesmos 4 modos da aba de metas
+    (Mais crítica / CPA elevado / Investimento fora pra cima / pra baixo).
+    CPA = o da coluna CPA (período escolhido) vs CPA ideal; investimento
+    fora = Invest. diário − Ritmo. Contas fixadas continuam no topo. Arrastar
+    só funciona em "Ordem personalizada". Escolha salva no ui-state. Também
+    corrigido o comparador de ordenação da aba de metas (empate entre contas
+    sem dado não gera mais NaN).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

@@ -135,6 +135,15 @@ function criticalScore(r: MetasRow): number {
 // acima do que precisa) vem primeiro; pra "fora pra baixo" a mais negativa
 // (orçamento diário abaixo do que precisa). Não filtra ninguém: quem está do
 // outro lado só desce na lista.
+// Comparador "maior primeiro" seguro com -Infinity (sem dado): dois -Infinity
+// dão empate (0) em vez de NaN, que deixaria a ordenação inconsistente.
+export function compareMetas(a: MetasRow, b: MetasRow, sort: MetasSort): number {
+  const ka = metasSortKey(a, sort);
+  const kb = metasSortKey(b, sort);
+  if (ka === kb) return 0;
+  return kb > ka ? 1 : -1;
+}
+
 export function metasSortKey(r: MetasRow, sort: MetasSort): number {
   switch (sort) {
     case "critical":
