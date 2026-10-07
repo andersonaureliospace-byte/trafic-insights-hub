@@ -26,35 +26,43 @@ export function monthCalendarSP(now: Date = new Date()): { year: number; month: 
   return { year, month, day, daysInMonth };
 }
 
-// Etapa 85: o Ritmo deixou de ser "(meta − gasto) ÷ dias restantes" e virou um
-// ritmo de ALCANCE do ideal: o investimento diário normal (Investimento mensal
-// ÷ dias do mês) mais/menos a diferença pro "Ideal até hoje" (mesmo da aba
-// Acompanhamento de metas: normal × dia de hoje), com o ajuste limitado a ±50%
-// do normal. Ex.: meta 3.000 em mês de 30 dias → normal 100; dia 5, ideal 500,
-// gasto até ontem 300 → falta 200 → ajuste de +50 (teto) → Ritmo 150, e daria
-// 150, 150, 150, 150, 100 nos dias seguintes até zerar a diferença (com falta de
-// 115: 150, 150, 115, 100). Adiantado (gasto acima do ideal) desacelera na
-// mesma proporção, até −50% do normal (nunca abaixo de zero).
-// `spentUntilYesterday` = gasto do dia 01 até ONTEM (dias fechados) — compara
-// com o ideal que já conta hoje, igual à Speed. No dia 01 não há dia fechado,
-// então o gasto considerado é 0. Sem Investimento mensal, não dá pra calcular.
+// Etapa 85/91: Ritmo de ALCANCE do ideal. Base = investimento diário normal
+// (Investimento mensal ÷ dias do mês). Ideal até hoje = normal × dia de hoje (mesmo
+// da aba Acompanhamento de metas). `spentSoFar` = gasto do dia 01 ATÉ AGORA, contando
+// o que já foi gasto hoje (o mesmo "Valor usado" de "Mês atual").
+// - Dentro da faixa de 80%–120% do ideal ("dentro da meta"): Ritmo = normal, sem ajuste.
+// - Atrasado (abaixo de 80%): acelera = normal + diferença pro ideal, limitada a +50%
+//   do normal. Ex.: meta 3.000 em mês de 30 dias → normal 100; dia 5, ideal 500,
+//   gasto 300 → falta 200 → ajuste de +50 (teto) → Ritmo 150 (e 150, 150, 150, 150, 100
+//   nos dias seguintes até a diferença zerar).
+// - Adiantado (acima de 120%): desacelera na mesma proporção, até −50% do normal.
+// (Etapa 91: antes usava o gasto só até ontem e não tinha faixa — uma conta que
+// já tinha gasto bastante hoje aparecia como atrasada e com Ritmo no teto.)
+// Sem Investimento mensal, não dá pra calcular.
 export const RITMO_MAX_ADJUST = 0.5;
+// Mesma faixa de "dentro da meta" de lib/meta/metas.ts (INVEST_LOW_RATIO/HIGH_RATIO).
+export const RITMO_OK_LOW = 0.8;
+export const RITMO_OK_HIGH = 1.2;
 export function ritmo(
   monthlyInvestment: number | null | undefined,
-  spentUntilYesterday: number | undefined,
+  spentSoFar: number | undefined,
   now: Date = new Date(),
 ): number | null {
   if (monthlyInvestment == null) return null;
   const { day, daysInMonth } = monthCalendarSP(now);
   const normal = monthlyInvestment / daysInMonth;
   const idealUntilToday = normal * day;
-  const spent = day === 1 ? 0 : (spentUntilYesterday ?? 0);
+  const spent = spentSoFar ?? 0;
+  if (idealUntilToday > 0) {
+    const ratio = spent / idealUntilToday;
+    if (ratio >= RITMO_OK_LOW && ratio <= RITMO_OK_HIGH) return normal;
+  }
   const gap = idealUntilToday - spent; // positivo = atrasado; negativo = adiantado
   const cap = normal * RITMO_MAX_ADJUST;
   return normal + Math.max(-cap, Math.min(gap, cap));
 }
 
-// Etapa 89: Ritmo a partir do insight do mês (até ontem) da conta. Se o insight
+// Etapa 89: Ritmo a partir do insight do mês (até agora, com hoje) da conta. Se o insight
 // não chegou ou a busca falhou, NÃO assume gasto zero (isso inflava o Ritmo pro
 // teto de +50%, ex.: R$ 145 numa conta que estava na meta) — devolve null.
 export function ritmoFromInsight(
@@ -80,13 +88,18 @@ export function ritmoTooltip(
   const { day, daysInMonth } = monthCalendarSP(now);
   const normal = monthlyInvestment / daysInMonth;
   const ideal = normal * day;
-  const spent = day === 1 ? 0 : insight.spend;
+  const spent = insight.spend;
   const r = ritmo(monthlyInvestment, insight.spend, now) ?? 0;
+  const ratio = ideal > 0 ? spent / ideal : 0;
+  const faixa =
+    ratio >= RITMO_OK_LOW && ratio <= RITMO_OK_HIGH
+      ? `Dentro da meta (${Math.round(ratio * 100)}% do ideal, faixa 80%–120%) → Ritmo = normal`
+      : `Fora da faixa (${Math.round(ratio * 100)}% do ideal) → diferença ${brl(ideal - spent)}, ajuste limitado a ±${brl(normal * RITMO_MAX_ADJUST)}`;
   return (
     `Investimento mensal: ${brl(monthlyInvestment)} ÷ ${daysInMonth} dias = ${brl(normal)} por dia\n` +
     `Ideal até hoje (dia ${day}): ${brl(ideal)}\n` +
-    `Gasto de 01 até ontem: ${brl(spent)}\n` +
-    `Diferença: ${brl(ideal - spent)} → ajuste limitado a ±${brl(normal * RITMO_MAX_ADJUST)}\n` +
+    `Gasto de 01 até agora (com hoje): ${brl(spent)}\n` +
+    `${faixa}\n` +
     `Ritmo: ${brl(r)}`
   );
 }

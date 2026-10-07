@@ -35,7 +35,12 @@ interface MetasInsight {
 // Etapa 90: trocar de aba desmonta este componente — sem cache, voltar pra cá refazia
 // a busca completa na Meta toda vez. Guarda a última busca completa (5 min).
 const METAS_CACHE_MS = 5 * 60 * 1000;
-let metasCache: { key: string; at: number; insights: Record<string, MetasInsight> } | null = null;
+let metasCache: {
+  key: string;
+  at: number;
+  insights: Record<string, MetasInsight>;
+  nowSpend: Record<string, MetasInsight>;
+} | null = null;
 
 interface Row {
   accountId: string;
@@ -126,11 +131,17 @@ export function MetasTab({
   const [insights, setInsights] = useState<
     Record<string, MetasInsight>
   >({});
+  // Etapa 91: gasto do mês ATÉ AGORA (com hoje), só pro Ritmo — o resto da aba segue
+  // "até ontem" (padrão da Speed).
+  const [nowSpend, setNowSpend] = useState<Record<string, MetasInsight>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<MetasSort>("critical");
   const [search, setSearch] = useState("");
 
+  // Espelho do estado (pra mesclar a busca só das fixadas sem depender do closure).
+  const insightsRef = useRef<Record<string, MetasInsight>>({});
+  const nowSpendRef = useRef<Record<string, MetasInsight>>({});
   const pinnedRef = useRef(pinnedIds);
   useEffect(() => {
     pinnedRef.current = pinnedIds;
@@ -169,11 +180,26 @@ export function MetasTab({
       const d = await res.json();
       if (d.error) throw new Error(d.error);
       const fresh = (d.insights ?? {}) as Record<string, MetasInsight>;
-      setInsights((prev) => {
-        const merged = partial ? { ...prev, ...fresh } : fresh;
-        metasCache = { key: accountsKey, at: Date.now(), insights: merged };
-        return merged;
+      // Gasto até agora (só spend, bem leve) — usado só no Ritmo.
+      const res2 = await fetch("/api/meta/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountIds: targets.map((a) => a.account_id),
+          datePreset: "this_month",
+          spendOnly: true,
+        }),
       });
+      const d2 = await res2.json();
+      if (d2.error) throw new Error(d2.error);
+      const fresh2 = (d2.insights ?? {}) as Record<string, MetasInsight>;
+      const merged1 = partial ? { ...insightsRef.current, ...fresh } : fresh;
+      const merged2 = partial ? { ...nowSpendRef.current, ...fresh2 } : fresh2;
+      insightsRef.current = merged1;
+      nowSpendRef.current = merged2;
+      setInsights(merged1);
+      setNowSpend(merged2);
+      metasCache = { key: accountsKey, at: Date.now(), insights: merged1, nowSpend: merged2 };
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -184,8 +210,12 @@ export function MetasTab({
   useEffect(() => {
     const key = accounts.map((a) => a.account_id).join(",");
     if (metasCache && metasCache.key === key && Date.now() - metasCache.at < METAS_CACHE_MS) {
+       
+      insightsRef.current = metasCache.insights;
+      nowSpendRef.current = metasCache.nowSpend;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reaproveita a última busca (menos de 5 min) ao voltar pra aba
       setInsights(metasCache.insights);
+      setNowSpend(metasCache.nowSpend);
       return;
     }
      
@@ -202,7 +232,7 @@ export function MetasTab({
       .map<Row>((acc) => {
         const ins = insights[acc.account_id];
         const dailyBudget = ins?.daily_budget ?? 0;
-        const rowRitmo = ritmoFromInsight(monthlyTargets[acc.account_id] ?? null, ins);
+        const rowRitmo = ritmoFromInsight(monthlyTargets[acc.account_id] ?? null, nowSpend[acc.account_id]);
         return {
           accountId: acc.account_id,
           dailyBudget,
@@ -228,7 +258,7 @@ export function MetasTab({
     built.sort((a, b) => compareMetas(a.metas, b.metas, sort));
     // Fixadas sobem pro topo (mantendo a ordem escolhida entre elas); sort é estável.
     return [...built.filter((r) => pinnedSet.has(r.accountId)), ...built.filter((r) => !pinnedSet.has(r.accountId))];
-  }, [accounts, insights, clientNames, cpaTargets, monthlyTargets, optimized, optimizedFilter, sort, search, elapsedDays, daysInMonth, pinnedSet]);
+  }, [accounts, insights, nowSpend, clientNames, cpaTargets, monthlyTargets, optimized, optimizedFilter, sort, search, elapsedDays, daysInMonth, pinnedSet]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -335,7 +365,7 @@ export function MetasTab({
               </th>
               <th
                 className="px-4 py-2 text-right font-medium"
-                title="Quanto investir por dia pra alcançar o Ideal até hoje: investimento diário normal (Investimento mensal ÷ dias do mês) ± a diferença pro ideal, limitada a ±50% do normal"
+                title="Quanto investir por dia pra alcançar o Ideal até hoje, contando o que já foi gasto hoje: dentro de 80%–120% do ideal = investimento diário normal (Investimento mensal ÷ dias do mês); fora da faixa, ajusta pela diferença pro ideal, limitada a ±50% do normal"
               >
                 Ritmo
               </th>
@@ -409,7 +439,7 @@ export function MetasTab({
                   </td>
                   <td
                     className={`px-4 py-2 text-right tabular-nums ${blur}`}
-                    title={ritmoTooltip(monthlyTargets[r.accountId] ?? null, insights[r.accountId])}
+                    title={ritmoTooltip(monthlyTargets[r.accountId] ?? null, nowSpend[r.accountId])}
                   >
                     {fmtCurrency(r.ritmo)}
                   </td>

@@ -2349,6 +2349,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Ritmo ganhou dica (passar o mouse) com mensal ÷ dias, ideal até hoje, gasto
     até ontem, diferença e ajuste usados na conta.
 
+88. **Ritmo passa a contar o gasto de hoje + faixa "dentro da meta" (Etapa 91)** —
+    achado olhando o painel real: IVS Muriaé gastou R$ 156 só hoje (Valor usado
+    R$ 680 em "Mês atual"), mas o Ritmo comparava só o gasto até ONTEM (R$ 524)
+    com o ideal que já inclui hoje (R$ 581) → "atrasada" → Ritmo no teto (R$ 145).
+    Agora o gasto é do dia 01 até AGORA (preset `this_month`, só `spend`), e se
+    ele estiver entre 80% e 120% do Ideal até hoje, o Ritmo é o normal (mensal ÷
+    dias do mês; Muriaé = R$ 96,77); fora da faixa acelera/desacelera pela
+    diferença, limitada a ±50% do normal (igual antes). Vale em Acompanhamento,
+    Acompanhamento de metas (busca extra só-gasto; o resto da aba segue "até
+    ontem") e no aviso de investimento baixo. A dica da coluna Ritmo mostra a conta.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

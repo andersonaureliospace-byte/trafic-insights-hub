@@ -444,7 +444,7 @@ export default function PainelPage() {
   // Ritmo (coluna de Acompanhamento) precisa do gasto do mês corrente ATÉ ONTEM
   // (Etapa 85: é comparado com o "Ideal até hoje") sempre, independente do
   // período escolhido no filtro da tabela acima — por isso é uma busca à
-  // parte, presa em "this_month_until_yesterday" e não em `preset`.
+  // parte, presa em "this_month" (dia 01 até agora, com hoje) e não em `preset`.
   // Só depende da seleção de contas, não do período, pra não duplicar
   // chamada toda vez que o filtro de data da tabela mudar.
   const loadMonthlyInsights = useCallback(
@@ -460,7 +460,7 @@ export default function PainelPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             accountIds: (pinned ?? selectedAccounts).map((a) => a.account_id),
-            datePreset: "this_month_until_yesterday",
+            datePreset: "this_month",
             // Só o gasto (Ritmo) — o orçamento diário já vem da busca principal.
             spendOnly: true,
           }),
@@ -931,7 +931,7 @@ export default function PainelPage() {
                         </th>
                         <th
                           className="px-4 py-2 text-right font-medium"
-                          title="Quanto investir por dia pra alcançar o Ideal até hoje: investimento diário normal (Investimento mensal ÷ dias do mês) ± a diferença pro ideal, limitada a ±50% do normal"
+                          title="Quanto investir por dia pra alcançar o Ideal até hoje, contando o que já foi gasto hoje: dentro de 80%–120% do ideal = investimento diário normal (Investimento mensal ÷ dias do mês); fora da faixa, ajusta pela diferença pro ideal, limitada a ±50% do normal"
                         >
                           Ritmo
                         </th>
