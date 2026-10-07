@@ -5,7 +5,7 @@ import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, type PresetId } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
-import { METAS_SORTS, compareMetas, computeMetas, metasCalendar, type MetasSort } from "@/lib/meta/metas";
+import { CPA_ACCEPTABLE_BAND, METAS_SORTS, compareMetas, computeMetas, metasCalendar, type MetasSort } from "@/lib/meta/metas";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
 import { ControleSaldo } from "@/components/painel/controle-saldo";
@@ -114,9 +114,10 @@ function rowSortKey(row: { binding?: AccountBinding; insight?: AccountInsight })
 // Cor da coluna CPA (Acompanhamento): compara o CPA real com o CPA ideal
 // cadastrado do cliente — diferença = CPA − CPA ideal.
 // - diferença negativa (CPA abaixo do ideal) → verde
-// - diferença de 0 até R$1,40 acima do ideal → laranja
-// - diferença acima de R$1,40 do ideal → vermelho
-const CPA_ORANGE_BAND = 1.4;
+// - diferença de 0 até R$2,50 acima do ideal → laranja (atenção)
+// - diferença acima de R$2,50 do ideal → vermelho
+// Etapa 94: mesma banda de Acompanhamento de metas (CPA_ACCEPTABLE_BAND, R$2,50).
+const CPA_ORANGE_BAND = CPA_ACCEPTABLE_BAND;
 function cpaDiffColorClass(diff: number | null): string {
   if (diff == null) return "";
   if (diff < 0) return "text-emerald-600 dark:text-emerald-400";

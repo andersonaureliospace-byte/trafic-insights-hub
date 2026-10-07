@@ -2374,7 +2374,9 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
 90. **CPA atual de Acompanhamento de metas: atenção até R$ 2,50 (Etapa 93)** — nessa
     aba, o CPA fica verde quando está no ideal ou abaixo, amarelo (atenção) até
     R$ 2,50 acima do CPA ideal, e vermelho acima disso (antes o corte era R$ 1,40).
-    Acompanhamento continua com R$ 1,40.
+    Etapa 94: Acompanhamento passou a usar o mesmo corte de R$ 2,50 (constante única
+    `CPA_ACCEPTABLE_BAND`). Os avisos automáticos de CPA no WhatsApp seguem com a
+    regra própria deles (acima de R$ 2,00).
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
