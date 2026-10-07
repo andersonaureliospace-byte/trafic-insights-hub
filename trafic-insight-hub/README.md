@@ -2378,6 +2378,13 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     `CPA_ACCEPTABLE_BAND`). Os avisos automáticos de CPA no WhatsApp seguem com a
     regra própria deles (acima de R$ 2,00).
 
+91. **Aviso de saldo baixo usa o Saldo por fundos quando ligado (Etapa 95)** — IVS
+    Teresina 2 (Híbrida) aparecia em Pendências com "Saldo baixo (R$ 50,08 < R$
+    250,00)" mesmo com R$ 1.002,43 de fundos. A coluna Saldo já mostrava os fundos,
+    mas o aviso (Pendências, WhatsApp e alerta de sexta) usava o `balance` bruto da
+    Meta (valor a pagar). Agora, em conta com "Saldo por fundos" ligado, os avisos
+    comparam o limite com esse saldo; sem fundos ligados, nada muda.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
