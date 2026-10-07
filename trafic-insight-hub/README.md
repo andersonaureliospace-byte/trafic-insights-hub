@@ -2385,6 +2385,18 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Meta (valor a pagar). Agora, em conta com "Saldo por fundos" ligado, os avisos
     comparam o limite com esse saldo; sem fundos ligados, nada muda.
 
+92. **Pix e boleto enviados resolvem o aviso + aviso no WhatsApp + boleto só com contas
+    Tipo Boleto (Etapa 96)** — (a) ao enviar um Pix (imediato) ou um boleto, o app
+    manda uma mensagem no grupo de avisos ("📲 Pix enviado — Cliente" / "📄 Boleto
+    enviado ao financeiro — Cliente (vencimento …)"); se a mensagem falhar, o envio
+    em si continua valendo e a tela mostra o motivo. (b) Por 24h depois do envio, a
+    conta some de Pendências (Saldo baixo e alerta de sexta, pra Pix ou boleto; Erro
+    no pagamento, só pra boleto) e o WhatsApp automático não reavisa; passou disso e
+    o problema persiste, o aviso volta. Pix agendado só conta quando é de fato
+    enviado. Em Mensagens > Avisos a linha mostra "Enviado (24h)". (c) O formulário
+    "Enviar boleto por e-mail" lista só contas com Tipo = Boleto. Helper novo:
+    `lib/alerts/recent-sends.ts`. Sem migration.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

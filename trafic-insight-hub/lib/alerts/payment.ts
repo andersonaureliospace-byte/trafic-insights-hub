@@ -7,6 +7,7 @@
 
 import type { createClient } from "@/lib/supabase/server";
 import { getAdAccounts, type AdAccount } from "@/lib/meta/insights";
+import { getRecentSends } from "@/lib/alerts/recent-sends";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 
@@ -40,6 +41,8 @@ export interface PaymentStatus {
   client_name: string;
   reason: string | null;
   hasError: boolean;
+  // Etapa 96: boleto enviado nas últimas 24h — o erro fica oculto (hasError = false).
+  handled: boolean;
   alerted: boolean;
 }
 
@@ -64,6 +67,7 @@ export async function checkPaymentErrors(
   const accounts = await getAdAccounts(token);
   const accountById = new Map(accounts.map((a) => [a.account_id, a]));
 
+  const recent = await getRecentSends(db, userId);
   const statuses: PaymentStatus[] = [];
   const toAlert: PaymentStatus[] = [];
   const toReset: string[] = [];
@@ -72,7 +76,8 @@ export async function checkPaymentErrors(
     const acc = accountById.get(b.ad_account_id);
     if (!acc) continue;
     const reason = paymentReason(acc);
-    const hasError = reason != null;
+    const handled = reason != null && recent.boleto.has(b.ad_account_id);
+    const hasError = reason != null && !handled;
     const clientName = (b.client_name as string) || acc.name;
     const withinCooldown =
       !opts.bypassCooldown &&
@@ -84,13 +89,14 @@ export async function checkPaymentErrors(
       client_name: clientName,
       reason,
       hasError,
+      handled,
       alerted: false,
     };
     statuses.push(status);
 
     if (hasError && !withinCooldown) {
       toAlert.push(status);
-    } else if (!hasError && b.payment_alert_sent_at) {
+    } else if (!hasError && !handled && b.payment_alert_sent_at) {
       toReset.push(b.ad_account_id);
     }
   }

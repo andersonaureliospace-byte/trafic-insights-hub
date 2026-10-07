@@ -413,11 +413,17 @@ export function ControleSaldo({
       if (d.error) {
         setBoletoMsg({ ok: false, text: d.error });
       } else {
-        setBoletoMsg({ ok: true, text: "E-mail disparado — pode conferir no financeiro." });
+        setBoletoMsg({
+          ok: true,
+          text: d.noticeError
+            ? `E-mail disparado — pode conferir no financeiro. (O aviso no grupo de avisos não saiu: ${d.noticeError})`
+            : "E-mail disparado — pode conferir no financeiro. Aviso mandado no grupo de avisos.",
+        });
         setBoletoFile(null);
         setBoletoDueDate("");
         if (boletoFileInputRef.current) boletoFileInputRef.current.value = "";
         if (boletoHistoryOpen) void loadBoletoHistory();
+        void loadStatuses();
       }
     } catch {
       setBoletoMsg({ ok: false, text: "Falha ao disparar o e-mail." });
@@ -432,7 +438,10 @@ export function ControleSaldo({
 
   const statusesLoaded = balanceStatuses !== null && fridayStatuses !== null && paymentStatuses !== null && manualStatuses !== null;
 
-  const sortedAccountsForBoleto = [...accounts].sort((a, b) =>
+  // Etapa 96: o formulário de boleto só lista contas com Tipo = Boleto.
+  const sortedAccountsForBoleto = accounts
+    .filter((a) => pixByAccount[a.account_id]?.payment_type === "boleto")
+    .sort((a, b) =>
     (clientNames[a.account_id] ?? a.name).localeCompare(clientNames[b.account_id] ?? b.name, "pt-BR"),
   );
 
@@ -814,6 +823,7 @@ export function ControleSaldo({
         pixRow={pixDialogAccount ? pixByAccount[pixDialogAccount.id] : undefined}
         onSent={() => {
           if (pixHistoryOpen) void loadPixHistory();
+          void loadStatuses();
         }}
       />
     </div>
