@@ -168,7 +168,6 @@ export default function PainelPage() {
   const [optimizedFilter, setOptimizedFilter] = useState<"all" | "optimized" | "pending">("all");
   // Etapa 83: Acompanhamento de metas tem a própria coluna Otimizado e o próprio
   // filtro Otimizado/Pendente — não compartilha nada com os de Acompanhamento.
-  const [metasOptimizedFilter, setMetasOptimizedFilter] = useState<"all" | "optimized" | "pending">("all");
   // Etapa 86: contas fixadas (botão Fixar) — uma lista por aba, salvas no
   // ui-state do Supabase e mantidas até desafixar. Fixada sobe pro topo, as
   // outras ficam embaçadas e o "↻ Atualizar" busca só as fixadas.
@@ -184,7 +183,6 @@ export default function PainelPage() {
     alerts: number | null;
   }>({ insights: null, monthly: null, alerts: null });
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
-  const [metasPinnedIds, setMetasPinnedIds] = useState<string[]>([]);
   const pinnedRef = useRef<string[]>([]);
   useEffect(() => {
     pinnedRef.current = pinnedIds;
@@ -272,12 +270,9 @@ export default function PainelPage() {
     if (a.investFilter === "all" || a.investFilter === "low" || a.investFilter === "high") setInvestFilter(a.investFilter);
     if (a.optimizedFilter === "all" || a.optimizedFilter === "optimized" || a.optimizedFilter === "pending")
       setOptimizedFilter(a.optimizedFilter);
-    if (a.metasOptimizedFilter === "all" || a.metasOptimizedFilter === "optimized" || a.metasOptimizedFilter === "pending")
-      setMetasOptimizedFilter(a.metasOptimizedFilter);
     const strList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
     if (a.sortMode === "manual" || METAS_SORTS.some((s) => s.id === a.sortMode)) setSortMode(a.sortMode as "manual" | MetasSort);
     setPinnedIds(strList(a.pinnedIds));
-    setMetasPinnedIds(strList(a.metasPinnedIds));
     if (typeof a.preset === "string") setPreset(a.preset as PresetId);
     if (typeof a.activeFocusGroupId === "string" || a.activeFocusGroupId === null)
       setActiveFocusGroupId((a.activeFocusGroupId as string | null) ?? null);
@@ -296,9 +291,7 @@ export default function PainelPage() {
         cpaFilter,
         investFilter,
         optimizedFilter,
-        metasOptimizedFilter,
         pinnedIds,
-        metasPinnedIds,
         sortMode,
         preset,
         activeFocusGroupId,
@@ -311,9 +304,7 @@ export default function PainelPage() {
     cpaFilter,
     investFilter,
     optimizedFilter,
-    metasOptimizedFilter,
     pinnedIds,
-    metasPinnedIds,
     sortMode,
     preset,
     activeFocusGroupId,
@@ -677,9 +668,6 @@ export default function PainelPage() {
 
   function togglePin(id: string) {
     setPinnedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
-  function toggleMetasPin(id: string) {
-    setMetasPinnedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   }
 
   function handleRowDrop(targetAccountId: string) {
@@ -1120,12 +1108,6 @@ export default function PainelPage() {
                 monthlyTargets={Object.fromEntries(
                   allRows.map((r) => [r.acc.account_id, r.binding?.monthly_investment ?? null]),
                 )}
-                optimized={Object.fromEntries(allRows.map((r) => [r.acc.account_id, !!r.binding?.tab_optimized]))}
-                onToggleOptimized={(accountId, next) => patchBinding(accountId, { tab_optimized: next })}
-                optimizedFilter={metasOptimizedFilter}
-                onOptimizedFilterChange={setMetasOptimizedFilter}
-                pinnedIds={metasPinnedIds}
-                onTogglePin={toggleMetasPin}
               />
             ) : null}
 

@@ -2360,6 +2360,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Acompanhamento de metas (busca extra só-gasto; o resto da aba segue "até
     ontem") e no aviso de investimento baixo. A dica da coluna Ritmo mostra a conta.
 
+89. **Acompanhamento de metas: "Investimento atual" no lugar de "até ontem" (Etapa 92)** —
+    a coluna "Investimento até ontem" não fazia sentido ao lado do "Ideal até hoje"
+    (que conta hoje). Agora a coluna se chama "Investimento atual" e mostra o gasto
+    do dia 01 até AGORA (preset `this_month`, com hoje); a diferença, a cor, a barra
+    de % e a ordenação "Mais crítica" usam esse mesmo valor. A aba passa a fazer uma
+    busca só (antes eram duas): o CPA atual também passa a ser do mês até agora, e o
+    Ritmo usa o mesmo gasto. Também saem desta aba as colunas Fixar e Otimizado, o
+    filtro de Otimizado e o modo foco (↻ só das fixadas): Acompanhamento de metas
+    fica só pra análise; Fixar e Otimizado continuam apenas em Acompanhamento.
+    (A migration 0026 e o campo `tab_optimized` ficaram sem uso — são inofensivos.)
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
@@ -2441,7 +2452,7 @@ pagamento manual menos cobrança a partir de um saldo inicial informado
 dias reais do mês (Etapa 82) e a coluna Otimizado própria de Acompanhamento de
 metas, separada da de Acompanhamento (Etapa 83) e reconhecimento/tráfego
 contando só no investimento, nunca no CPA (Etapa 84) e o Ritmo passando a
-alcançar o Ideal até hoje (Etapa 85))
+alcançar o Ideal até hoje (Etapa 85) e a coluna Investimento atual em Acompanhamento de metas (Etapa 92))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

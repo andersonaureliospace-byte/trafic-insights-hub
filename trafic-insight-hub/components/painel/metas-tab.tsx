@@ -1,11 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
-import { OptimizedCell } from "@/components/painel/optimized-cell";
-import { PIN_BLUR, PinCell } from "@/components/painel/pin-cell";
 import { ritmoFromInsight, ritmoTooltip, ritmoColorClass } from "@/lib/meta/ritmo";
 import {
   METAS_SORTS,
@@ -19,9 +17,9 @@ import {
 } from "@/lib/meta/metas";
 
 // Acompanhamento de metas (Etapa 82) — modelado no dashboard da Speed:
-// investimento e CPA do dia 01 até ontem (preset this_month_until_yesterday,
-// dias já fechados) comparados com o ideal até HOJE (dia do mês, contando
-// hoje — igual à Speed). Meta de investimento = Investimento mensal
+// investimento e CPA do dia 01 até AGORA (preset this_month, contando o gasto
+// de hoje — Etapa 92) comparados com o ideal até HOJE (dia do mês, contando
+// hoje). Meta de investimento = Investimento mensal
 // cadastrado; meta de CPA = CPA ideal cadastrado (Clientes/Acompanhamento).
 
 interface MetasInsight {
@@ -39,7 +37,6 @@ let metasCache: {
   key: string;
   at: number;
   insights: Record<string, MetasInsight>;
-  nowSpend: Record<string, MetasInsight>;
 } | null = null;
 
 interface Row {
@@ -104,102 +101,51 @@ export function MetasTab({
   clientNames,
   cpaTargets,
   monthlyTargets,
-  optimized,
-  onToggleOptimized,
-  optimizedFilter,
-  onOptimizedFilterChange,
-  pinnedIds,
-  onTogglePin,
 }: {
   accounts: AdAccount[];
   clientNames: Record<string, string>;
   cpaTargets: Record<string, number | null>;
   monthlyTargets: Record<string, number | null>;
-  // Etapa 83: coluna Otimizado própria desta aba (separada da de
-  // Acompanhamento) — mesmo comportamento: marca/desmarca, filtro
-  // Otimizado/Pendente e reset à meia-noite (horário de Brasília).
-  optimized: Record<string, boolean>;
-  onToggleOptimized: (accountId: string, next: boolean) => Promise<void> | void;
-  optimizedFilter: "all" | "optimized" | "pending";
-  onOptimizedFilterChange: (v: "all" | "optimized" | "pending") => void;
-  // Etapa 86: contas fixadas desta aba (separadas as de Acompanhamento) — vão
-  // pro topo, as outras ficam com as métricas embaçadas e o "↻ Atualizar"
-  // busca só as fixadas.
-  pinnedIds: string[];
-  onTogglePin: (accountId: string) => void;
 }) {
   const [insights, setInsights] = useState<
     Record<string, MetasInsight>
   >({});
-  // Etapa 91: gasto do mês ATÉ AGORA (com hoje), só pro Ritmo — o resto da aba segue
-  // "até ontem" (padrão da Speed).
-  const [nowSpend, setNowSpend] = useState<Record<string, MetasInsight>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sort, setSort] = useState<MetasSort>("critical");
   const [search, setSearch] = useState("");
 
   // Espelho do estado (pra mesclar a busca só das fixadas sem depender do closure).
-  const insightsRef = useRef<Record<string, MetasInsight>>({});
-  const nowSpendRef = useRef<Record<string, MetasInsight>>({});
-  const pinnedRef = useRef(pinnedIds);
-  useEffect(() => {
-    pinnedRef.current = pinnedIds;
-  }, [pinnedIds]);
-  const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
-  const hasPinned = accounts.some((a) => pinnedSet.has(a.account_id));
   const firstFailError = Object.values(insights).find((i) => i.insights_error)?.insights_error;
   const failedCount =
     Object.keys(insights).length === 0
       ? 0
       : accounts.filter((a) => !insights[a.account_id] || insights[a.account_id]?.insights_failed).length;
 
-  // onlyPinned = true (botão ↻ com conta fixada): busca só as fixadas e mescla
-  // no que já está na tela; as outras ficam como estavam. A busca automática
-  // (ao entrar na aba / trocar a seleção) sempre traz todas.
-  const load = useCallback(async (onlyPinned = false) => {
+  const load = useCallback(async () => {
     if (accounts.length === 0) {
       setInsights({});
       return;
     }
-    const pinned = accounts.filter((a) => pinnedRef.current.includes(a.account_id));
-    const partial = onlyPinned && pinned.length > 0;
     const accountsKey = accounts.map((a) => a.account_id).join(",");
-    const targets = partial ? pinned : accounts;
+    const targets = accounts;
     setLoading(true);
     setError(null);
     try {
+      // Etapa 92: uma busca só — mês até agora (com hoje), com CPA e orçamento diário.
       const res = await fetch("/api/meta/insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           accountIds: targets.map((a) => a.account_id),
-          datePreset: "this_month_until_yesterday",
+          datePreset: "this_month",
         }),
       });
       const d = await res.json();
       if (d.error) throw new Error(d.error);
       const fresh = (d.insights ?? {}) as Record<string, MetasInsight>;
-      // Gasto até agora (só spend, bem leve) — usado só no Ritmo.
-      const res2 = await fetch("/api/meta/insights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountIds: targets.map((a) => a.account_id),
-          datePreset: "this_month",
-          spendOnly: true,
-        }),
-      });
-      const d2 = await res2.json();
-      if (d2.error) throw new Error(d2.error);
-      const fresh2 = (d2.insights ?? {}) as Record<string, MetasInsight>;
-      const merged1 = partial ? { ...insightsRef.current, ...fresh } : fresh;
-      const merged2 = partial ? { ...nowSpendRef.current, ...fresh2 } : fresh2;
-      insightsRef.current = merged1;
-      nowSpendRef.current = merged2;
-      setInsights(merged1);
-      setNowSpend(merged2);
-      metasCache = { key: accountsKey, at: Date.now(), insights: merged1, nowSpend: merged2 };
+      setInsights(fresh);
+      metasCache = { key: accountsKey, at: Date.now(), insights: fresh };
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -211,20 +157,17 @@ export function MetasTab({
     const key = accounts.map((a) => a.account_id).join(",");
     if (metasCache && metasCache.key === key && Date.now() - metasCache.at < METAS_CACHE_MS) {
        
-      insightsRef.current = metasCache.insights;
-      nowSpendRef.current = metasCache.nowSpend;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- reaproveita a última busca (menos de 5 min) ao voltar pra aba
       setInsights(metasCache.insights);
-      setNowSpend(metasCache.nowSpend);
       return;
     }
      
-    void load(false);
+    void load();
   }, [load, accounts]);
 
   // Calendário só é calculado no cliente, no momento do render da aba — dias
   // decorridos do mês (contando hoje) e dias reais do mês, mesma base do Ritmo.
-  const { elapsedDays, daysInMonth, untilLabel } = useMemo(() => metasCalendar(), []);
+  const { elapsedDays, daysInMonth } = useMemo(() => metasCalendar(), []);
 
   const rows = useMemo<Row[]>(() => {
     const q = search.trim().toLowerCase();
@@ -232,7 +175,7 @@ export function MetasTab({
       .map<Row>((acc) => {
         const ins = insights[acc.account_id];
         const dailyBudget = ins?.daily_budget ?? 0;
-        const rowRitmo = ritmoFromInsight(monthlyTargets[acc.account_id] ?? null, nowSpend[acc.account_id]);
+        const rowRitmo = ritmoFromInsight(monthlyTargets[acc.account_id] ?? null, ins);
         return {
           accountId: acc.account_id,
           dailyBudget,
@@ -253,12 +196,10 @@ export function MetasTab({
           ),
         };
       })
-      .filter((r) => !q || r.clientName.toLowerCase().includes(q) || r.accountName.toLowerCase().includes(q))
-      .filter((r) => optimizedFilter === "all" || (optimizedFilter === "optimized") === !!optimized[r.accountId]);
+      .filter((r) => !q || r.clientName.toLowerCase().includes(q) || r.accountName.toLowerCase().includes(q));
     built.sort((a, b) => compareMetas(a.metas, b.metas, sort));
-    // Fixadas sobem pro topo (mantendo a ordem escolhida entre elas); sort é estável.
-    return [...built.filter((r) => pinnedSet.has(r.accountId)), ...built.filter((r) => !pinnedSet.has(r.accountId))];
-  }, [accounts, insights, nowSpend, clientNames, cpaTargets, monthlyTargets, optimized, optimizedFilter, sort, search, elapsedDays, daysInMonth, pinnedSet]);
+    return built;
+  }, [accounts, insights, clientNames, cpaTargets, monthlyTargets, sort, search, elapsedDays, daysInMonth]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -273,18 +214,6 @@ export function MetasTab({
             placeholder="Buscar cliente ou conta…"
             className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
           />
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Otimizado</span>
-            <select
-              value={optimizedFilter}
-              onChange={(e) => onOptimizedFilterChange(e.target.value as "all" | "optimized" | "pending")}
-              className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
-            >
-              <option value="all">Todos</option>
-              <option value="optimized">Otimizado</option>
-              <option value="pending">Pendente</option>
-            </select>
-          </div>
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as MetasSort)}
@@ -297,19 +226,17 @@ export function MetasTab({
             ))}
           </select>
           <button
-            onClick={() => void load(true)}
+            onClick={() => void load()}
             disabled={loading}
             className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
           >
-            {loading ? "Atualizando…" : hasPinned ? "↻ Atualizar fixadas" : "↻ Atualizar"}
+            {loading ? "Atualizando…" : "↻ Atualizar"}
           </button>
         </div>
       </div>
 
       <p className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-        {untilLabel
-          ? `Investimento e CPA atualizados até ontem (${untilLabel}) — dia 01 a ${untilLabel}. `
-          : "Hoje é dia 01 — o investimento e o CPA só passam a ter dado fechado a partir de amanhã. "}
+        Investimento atual e CPA = dia 01 até agora, contando o que já foi gasto hoje (atualiza ao clicar em Atualizar).{" "}
         Ideal até hoje = Investimento mensal ÷ {daysInMonth} dias do mês × {elapsedDays}{" "}
         {elapsedDays === 1 ? "dia" : "dias"} (dia de hoje, contando hoje), igual ao dashboard de referência.
       </p>
@@ -319,13 +246,6 @@ export function MetasTab({
           {failedCount} conta(s) não carregaram o gasto do mês (provável limite de requisições da Meta). Os números delas
           estão incompletos e o Ritmo fica em —. Clique em Atualizar pra tentar de novo.
           {firstFailError ? ` Motivo da Meta: ${firstFailError}` : ""}
-        </p>
-      ) : null}
-
-      {hasPinned ? (
-        <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-          Modo foco: só as contas fixadas estão em destaque e o Atualizar busca apenas elas. Passe o mouse numa linha
-          embaçada pra ver os números; desafixe pra voltar ao normal.
         </p>
       ) : null}
 
@@ -339,22 +259,13 @@ export function MetasTab({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
-              <th className="px-4 py-2 font-medium" title="Fixa a conta no topo e foca só nela">
-                Fixar
-              </th>
-              <th
-                className="px-4 py-2 font-medium"
-                title="Marcação manual do dia desta aba — reseta sozinha à meia-noite (horário de Brasília), separada da de Acompanhamento"
-              >
-                Otimizado
-              </th>
               <th className="px-4 py-2 font-medium">Cliente</th>
               <th className="px-4 py-2 text-right font-medium" title="Investimento mensal cadastrado (meta do mês)">
                 Invest. mensal
               </th>
-              <th className="px-4 py-2 text-right font-medium">Investimento até ontem</th>
+              <th className="px-4 py-2 text-right font-medium">Investimento atual</th>
               <th className="px-4 py-2 text-right font-medium">Ideal até hoje</th>
-              <th className="px-4 py-2 font-medium" title="Investimento até ontem ÷ Investimento mensal cadastrado; o tracinho marca o ideal até hoje">
+              <th className="px-4 py-2 font-medium" title="Investimento atual ÷ Investimento mensal cadastrado; o tracinho marca o ideal até hoje">
                 % de investimento
               </th>
               <th
@@ -380,24 +291,11 @@ export function MetasTab({
               const m = r.metas;
               const investColor = m.investStatus ? INVEST_TEXT[m.investStatus] : "";
               const cpaColor = m.cpaStatus ? CPA_TEXT[m.cpaStatus] : "";
-              const isPinned = pinnedSet.has(r.accountId);
-              const blur = hasPinned && !isPinned ? PIN_BLUR : "";
               return (
                 <tr
                   key={r.accountId}
-                  className={`group border-b border-zinc-100 last:border-0 dark:border-zinc-800/60 ${
-                    isPinned ? "bg-amber-50/70 dark:bg-amber-950/30" : ""
-                  }`}
+                  className="group border-b border-zinc-100 last:border-0 dark:border-zinc-800/60"
                 >
-                  <td className="px-4 py-2">
-                    <PinCell pinned={isPinned} onToggle={() => onTogglePin(r.accountId)} />
-                  </td>
-                  <td className="px-4 py-2">
-                    <OptimizedCell
-                      optimized={!!optimized[r.accountId]}
-                      onToggle={(next) => onToggleOptimized(r.accountId, next)}
-                    />
-                  </td>
                   <td className="px-4 py-2">
                     <div className="font-medium text-zinc-900 dark:text-zinc-50">{r.clientName}</div>
                     <a
@@ -410,20 +308,20 @@ export function MetasTab({
                       {r.accountName}
                     </a>
                   </td>
-                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
+                  <td className={"px-4 py-2 text-right tabular-nums"}>
                     {m.monthlyTarget != null ? fmtCurrency(m.monthlyTarget) : <span className="text-zinc-400">—</span>}
                   </td>
-                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
+                  <td className={"px-4 py-2 text-right tabular-nums"}>
                     <div className={`text-base font-semibold ${investColor}`}>{fmtCurrency(m.invested)}</div>
                     {m.investDiff != null ? (
                       <div className={`text-xs opacity-70 ${investColor}`}>{fmtCurrencySigned(m.investDiff)}</div>
                     ) : null}
                   </td>
-                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>{fmtCurrency(m.idealUntilToday)}</td>
-                  <td className={`px-4 py-2 ${blur}`}>
+                  <td className={"px-4 py-2 text-right tabular-nums"}>{fmtCurrency(m.idealUntilToday)}</td>
+                  <td className={"px-4 py-2"}>
                     <InvestCell m={m} elapsedDays={elapsedDays} daysInMonth={daysInMonth} />
                   </td>
-                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
+                  <td className={"px-4 py-2 text-right tabular-nums"}>
                     {(() => {
                       const diff = r.ritmo != null ? r.dailyBudget - r.ritmo : null;
                       const color = ritmoColorClass(r.ritmo, r.dailyBudget);
@@ -438,18 +336,18 @@ export function MetasTab({
                     })()}
                   </td>
                   <td
-                    className={`px-4 py-2 text-right tabular-nums ${blur}`}
-                    title={ritmoTooltip(monthlyTargets[r.accountId] ?? null, nowSpend[r.accountId])}
+                    className={"px-4 py-2 text-right tabular-nums"}
+                    title={ritmoTooltip(monthlyTargets[r.accountId] ?? null, insights[r.accountId])}
                   >
                     {fmtCurrency(r.ritmo)}
                   </td>
-                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
+                  <td className={"px-4 py-2 text-right tabular-nums"}>
                     <div className={`text-base font-semibold ${cpaColor}`}>{fmtCurrency(m.cpa)}</div>
                     {m.cpaDiff != null ? (
                       <div className={`text-xs opacity-70 ${cpaColor}`}>{fmtCurrencySigned(m.cpaDiff)}</div>
                     ) : null}
                   </td>
-                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
+                  <td className={"px-4 py-2 text-right tabular-nums"}>
                     {m.cpaTarget != null ? fmtCurrency(m.cpaTarget) : <span className="text-zinc-400">—</span>}
                   </td>
                 </tr>

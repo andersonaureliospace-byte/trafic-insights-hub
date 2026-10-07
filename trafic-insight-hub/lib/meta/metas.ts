@@ -1,6 +1,6 @@
 // Acompanhamento de metas (Etapa 82) — cálculo puro (sem React, sem Meta),
 // modelado no dashboard de referência da Speed. O investimento e o CPA vêm do
-// preset this_month_until_yesterday (dia 01 até ontem, dias já fechados). O
+// preset this_month (dia 01 até agora, contando hoje — Etapa 92). O
 // IDEAL, igual à Speed ("Ideal até hoje" na dica deles), é proporcional aos
 // dias do mês ATÉ HOJE (dia do mês, contando hoje): Investimento mensal ÷ dias
 // do mês × dia de hoje. Conferido na Speed: dia 04 de outubro, meta R$ 3.000
@@ -25,9 +25,9 @@ export type InvestStatus = "below" | "ok" | "above";
 export type CpaStatus = "good" | "acceptable" | "high";
 
 export interface MetasInput {
-  invested: number; // gasto do dia 01 até ontem
+  invested: number; // gasto do dia 01 até agora (com hoje)
   monthlyTarget: number | null; // Investimento mensal cadastrado
-  cpa: number | null; // CPA do dia 01 até ontem
+  cpa: number | null; // CPA do dia 01 até agora (com hoje)
   cpaTarget: number | null; // CPA ideal cadastrado
   dailyBudget: number; // orçamento diário atual (Invest. diário)
   ritmo: number | null; // quanto precisa investir por dia daqui pra frente
