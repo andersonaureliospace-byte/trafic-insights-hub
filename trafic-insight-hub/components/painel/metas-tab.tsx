@@ -6,7 +6,7 @@ import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
 import { PIN_BLUR, PinCell } from "@/components/painel/pin-cell";
-import { ritmo, ritmoColorClass } from "@/lib/meta/ritmo";
+import { ritmoFromInsight, ritmoColorClass } from "@/lib/meta/ritmo";
 import {
   METAS_SORTS,
   computeMetas,
@@ -111,7 +111,7 @@ export function MetasTab({
   onTogglePin: (accountId: string) => void;
 }) {
   const [insights, setInsights] = useState<
-    Record<string, { spend: number; cost_per_result: number | null; daily_budget: number }>
+    Record<string, { spend: number; cost_per_result: number | null; daily_budget: number; insights_failed?: boolean }>
   >({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +124,10 @@ export function MetasTab({
   }, [pinnedIds]);
   const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
   const hasPinned = accounts.some((a) => pinnedSet.has(a.account_id));
+  const failedCount =
+    Object.keys(insights).length === 0
+      ? 0
+      : accounts.filter((a) => !insights[a.account_id] || insights[a.account_id]?.insights_failed).length;
 
   // onlyPinned = true (botão ↻ com conta fixada): busca só as fixadas e mescla
   // no que já está na tela; as outras ficam como estavam. A busca automática
@@ -172,7 +176,7 @@ export function MetasTab({
       .map<Row>((acc) => {
         const ins = insights[acc.account_id];
         const dailyBudget = ins?.daily_budget ?? 0;
-        const rowRitmo = ritmo(monthlyTargets[acc.account_id] ?? null, ins?.spend);
+        const rowRitmo = ritmoFromInsight(monthlyTargets[acc.account_id] ?? null, ins);
         return {
           accountId: acc.account_id,
           dailyBudget,
@@ -253,6 +257,13 @@ export function MetasTab({
         Ideal até hoje = Investimento mensal ÷ {daysInMonth} dias do mês × {elapsedDays}{" "}
         {elapsedDays === 1 ? "dia" : "dias"} (dia de hoje, contando hoje), igual ao dashboard de referência.
       </p>
+
+      {failedCount > 0 ? (
+        <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+          {failedCount} conta(s) não carregaram o gasto do mês (provável limite de requisições da Meta). Os números delas
+          estão incompletos e o Ritmo fica em —. Clique em Atualizar pra tentar de novo.
+        </p>
+      ) : null}
 
       {hasPinned ? (
         <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">

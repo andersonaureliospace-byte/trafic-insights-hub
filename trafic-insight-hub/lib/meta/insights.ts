@@ -70,6 +70,11 @@ export interface AccountInsight {
   cbo_budget: number;
   result_type: string | null;
   result_types_count: number;
+  // Etapa 89: true quando a busca de gasto/resultado (insights) da conta falhou
+  // (ex.: limite de requisições da Meta) — nesse caso spend/CPA vieram zerados
+  // por falta de dado, não porque a conta não gastou. Quem usa o spend (Ritmo,
+  // aviso de investimento baixo) precisa tratar como "sem dado".
+  insights_failed?: boolean;
 }
 
 export async function getAdAccounts(token: string): Promise<AdAccount[]> {
@@ -236,6 +241,7 @@ export async function getAccountInsight(
 
   const resultTypesSet = new Set<string>();
   let lastResultType: string | null = null;
+  let insightsFailed = false;
   try {
     const ins = await metaGet<{
       data: Array<{
@@ -285,6 +291,7 @@ export async function getAccountInsight(
     }
   } catch (e) {
     console.error("insights err", id, e);
+    insightsFailed = true;
   }
 
   return {
@@ -296,6 +303,7 @@ export async function getAccountInsight(
     cbo_budget: cboBudget,
     result_type: lastResultType,
     result_types_count: resultTypesSet.size,
+    insights_failed: insightsFailed || undefined,
   };
 }
 
@@ -310,5 +318,16 @@ export async function getAccountsInsights(
       out[actId] = await getAccountInsight(token, actId, datePreset);
     }),
   );
+  // Etapa 89: contas cuja busca falhou (tipicamente limite de requisições da
+  // Meta com muitas contas em paralelo) são tentadas de novo, uma de cada vez e
+  // com uma pausa, até 2 rodadas — em vez de ficarem com gasto zerado.
+  for (let round = 0; round < 2; round++) {
+    const failed = accountIds.filter((id) => out[id]?.insights_failed);
+    if (failed.length === 0) break;
+    await new Promise((r) => setTimeout(r, 1500));
+    for (const actId of failed) {
+      out[actId] = await getAccountInsight(token, actId, datePreset);
+    }
+  }
   return out;
 }

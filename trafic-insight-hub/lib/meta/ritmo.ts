@@ -54,6 +54,18 @@ export function ritmo(
   return normal + Math.max(-cap, Math.min(gap, cap));
 }
 
+// Etapa 89: Ritmo a partir do insight do mês (até ontem) da conta. Se o insight
+// não chegou ou a busca falhou, NÃO assume gasto zero (isso inflava o Ritmo pro
+// teto de +50%, ex.: R$ 145 numa conta que estava na meta) — devolve null.
+export function ritmoFromInsight(
+  monthlyInvestment: number | null | undefined,
+  insight: { spend: number; insights_failed?: boolean } | undefined,
+  now: Date = new Date(),
+): number | null {
+  if (!insight || insight.insights_failed) return null;
+  return ritmo(monthlyInvestment, insight.spend, now);
+}
+
 // Compara o quanto precisa investir por dia daqui pra frente (Ritmo) com o
 // orçamento diário JÁ configurado na conta — mesma banda usada pra colorir
 // a coluna Ritmo e pro filtro Investimento Baixo/Alto de Acompanhamento.

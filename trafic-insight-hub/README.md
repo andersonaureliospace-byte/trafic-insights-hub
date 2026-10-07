@@ -2324,6 +2324,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     R$ 100). Agora, em `lib/meta/insights.ts`, quem já terminou não soma.
     (Visão Geral/Análise, em `breakdown.ts`, ainda não aplicam essa regra.)
 
+86. **Ritmo não usa mais "gasto zero" quando a busca do mês falha (Etapa 89)** —
+    caso IVS Muriaé: gasto real de R$ 680,42 (Ritmo certo ≈ R$ 94), mas a tela
+    mostrava R$ 145,16, que é exatamente o Ritmo com gasto 0 (teto de +50%). A
+    busca de insights de uma conta falhava em silêncio (provável limite de
+    requisições da Meta com muitas contas em paralelo) e virava spend 0.
+    Agora: `AccountInsight.insights_failed`; `getAccountsInsights` tenta de
+    novo as contas que falharam (2 rodadas, pausa de 1,5 s); `ritmoFromInsight`
+    devolve null (— na tela) sem dado; Acompanhamento e Acompanhamento de metas
+    mostram um aviso vermelho com quantas contas não carregaram; o aviso de
+    investimento baixo (WhatsApp) ignora conta sem dado em vez de disparar alerta falso.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

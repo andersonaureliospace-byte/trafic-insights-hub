@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, type PresetId } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
-import { ritmo, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
+import { ritmoFromInsight, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
 import { METAS_SORTS, compareMetas, computeMetas, metasCalendar, type MetasSort } from "@/lib/meta/metas";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
@@ -564,7 +564,7 @@ export default function PainelPage() {
       })
       .filter((r) => {
         if (investFilter === "all") return true;
-        const rowRitmo = ritmo(r.binding?.monthly_investment, monthlyInsights[r.acc.account_id]?.spend);
+        const rowRitmo = ritmoFromInsight(r.binding?.monthly_investment, monthlyInsights[r.acc.account_id]);
         if (rowRitmo == null) return false;
         const diff = rowRitmo - (r.insight?.daily_budget ?? 0);
         if (investFilter === "low") return diff > RITMO_BAND;
@@ -587,7 +587,7 @@ export default function PainelPage() {
               cpa: r.insight?.cost_per_result ?? null,
               cpaTarget: r.binding?.cpa_target ?? null,
               dailyBudget: r.insight?.daily_budget ?? 0,
-              ritmo: ritmo(r.binding?.monthly_investment, monthlyInsights[r.acc.account_id]?.spend),
+              ritmo: ritmoFromInsight(r.binding?.monthly_investment, monthlyInsights[r.acc.account_id]),
             },
             metasCal.elapsedDays,
             metasCal.daysInMonth,
@@ -613,6 +613,13 @@ export default function PainelPage() {
   // Investimento/Otimizado) ativos, a posição de um item na tela não bate com sua
   // posição "de verdade" entre todas as contas, então desabilita.
   const hasPinned = selectedAccounts.some((a) => pinnedIds.includes(a.account_id));
+  // Só conta depois que o gasto do mês chegou pelo menos uma vez (senão piscaria
+  // o aviso enquanto a primeira busca ainda está rodando).
+  const failedAccounts =
+    Object.keys(monthlyInsights).length === 0
+      ? 0
+      : selectedAccounts.filter((a) => !monthlyInsights[a.account_id] || monthlyInsights[a.account_id]?.insights_failed)
+          .length;
   const reorderEnabled =
     !hasPinned &&
     sortMode === "manual" &&
@@ -816,6 +823,13 @@ export default function PainelPage() {
                   </div>
                 </div>
 
+                {failedAccounts > 0 ? (
+                  <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+                    {failedAccounts} conta(s) não carregaram o gasto do mês (provável limite de requisições da Meta).
+                    Ritmo fica em — nelas. Clique em Atualizar pra tentar de novo.
+                  </p>
+                ) : null}
+
                 {hasPinned ? (
                   <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
                     Modo foco: só as contas fixadas estão em destaque e o Atualizar busca apenas elas. Passe o mouse
@@ -879,7 +893,7 @@ export default function PainelPage() {
                     <tbody>
                       {rows.map(({ acc, binding, insight }) => {
                         const priorityOption = priorityOptions.find((p) => p.id === binding?.priority);
-                        const rowRitmo = ritmo(binding?.monthly_investment, monthlyInsights[acc.account_id]?.spend);
+                        const rowRitmo = ritmoFromInsight(binding?.monthly_investment, monthlyInsights[acc.account_id]);
                         const isPinned = pinnedIds.includes(acc.account_id);
                         const blur = hasPinned && !isPinned ? PIN_BLUR : "";
                         return (
