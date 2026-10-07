@@ -6,7 +6,7 @@ import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
 import { PIN_BLUR, PinCell } from "@/components/painel/pin-cell";
-import { ritmoFromInsight, ritmoColorClass } from "@/lib/meta/ritmo";
+import { ritmoFromInsight, ritmoTooltip, ritmoColorClass } from "@/lib/meta/ritmo";
 import {
   METAS_SORTS,
   computeMetas,
@@ -23,6 +23,19 @@ import {
 // dias já fechados) comparados com o ideal até HOJE (dia do mês, contando
 // hoje — igual à Speed). Meta de investimento = Investimento mensal
 // cadastrado; meta de CPA = CPA ideal cadastrado (Clientes/Acompanhamento).
+
+interface MetasInsight {
+  spend: number;
+  cost_per_result: number | null;
+  daily_budget: number;
+  insights_failed?: boolean;
+  insights_error?: string;
+}
+
+// Etapa 90: trocar de aba desmonta este componente — sem cache, voltar pra cá refazia
+// a busca completa na Meta toda vez. Guarda a última busca completa (5 min).
+const METAS_CACHE_MS = 5 * 60 * 1000;
+let metasCache: { key: string; at: number; insights: Record<string, MetasInsight> } | null = null;
 
 interface Row {
   accountId: string;
@@ -111,7 +124,7 @@ export function MetasTab({
   onTogglePin: (accountId: string) => void;
 }) {
   const [insights, setInsights] = useState<
-    Record<string, { spend: number; cost_per_result: number | null; daily_budget: number; insights_failed?: boolean }>
+    Record<string, MetasInsight>
   >({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +137,7 @@ export function MetasTab({
   }, [pinnedIds]);
   const pinnedSet = useMemo(() => new Set(pinnedIds), [pinnedIds]);
   const hasPinned = accounts.some((a) => pinnedSet.has(a.account_id));
+  const firstFailError = Object.values(insights).find((i) => i.insights_error)?.insights_error;
   const failedCount =
     Object.keys(insights).length === 0
       ? 0
@@ -139,6 +153,7 @@ export function MetasTab({
     }
     const pinned = accounts.filter((a) => pinnedRef.current.includes(a.account_id));
     const partial = onlyPinned && pinned.length > 0;
+    const accountsKey = accounts.map((a) => a.account_id).join(",");
     const targets = partial ? pinned : accounts;
     setLoading(true);
     setError(null);
@@ -153,7 +168,12 @@ export function MetasTab({
       });
       const d = await res.json();
       if (d.error) throw new Error(d.error);
-      setInsights((prev) => (partial ? { ...prev, ...(d.insights ?? {}) } : (d.insights ?? {})));
+      const fresh = (d.insights ?? {}) as Record<string, MetasInsight>;
+      setInsights((prev) => {
+        const merged = partial ? { ...prev, ...fresh } : fresh;
+        metasCache = { key: accountsKey, at: Date.now(), insights: merged };
+        return merged;
+      });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -162,9 +182,15 @@ export function MetasTab({
   }, [accounts]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca ao entrar na aba ou quando a seleção de contas muda
+    const key = accounts.map((a) => a.account_id).join(",");
+    if (metasCache && metasCache.key === key && Date.now() - metasCache.at < METAS_CACHE_MS) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reaproveita a última busca (menos de 5 min) ao voltar pra aba
+      setInsights(metasCache.insights);
+      return;
+    }
+     
     void load(false);
-  }, [load]);
+  }, [load, accounts]);
 
   // Calendário só é calculado no cliente, no momento do render da aba — dias
   // decorridos do mês (contando hoje) e dias reais do mês, mesma base do Ritmo.
@@ -262,6 +288,7 @@ export function MetasTab({
         <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
           {failedCount} conta(s) não carregaram o gasto do mês (provável limite de requisições da Meta). Os números delas
           estão incompletos e o Ritmo fica em —. Clique em Atualizar pra tentar de novo.
+          {firstFailError ? ` Motivo da Meta: ${firstFailError}` : ""}
         </p>
       ) : null}
 
@@ -380,7 +407,12 @@ export function MetasTab({
                       );
                     })()}
                   </td>
-                  <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>{fmtCurrency(r.ritmo)}</td>
+                  <td
+                    className={`px-4 py-2 text-right tabular-nums ${blur}`}
+                    title={ritmoTooltip(monthlyTargets[r.accountId] ?? null, insights[r.accountId])}
+                  >
+                    {fmtCurrency(r.ritmo)}
+                  </td>
                   <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
                     <div className={`text-base font-semibold ${cpaColor}`}>{fmtCurrency(m.cpa)}</div>
                     {m.cpaDiff != null ? (

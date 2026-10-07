@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, type PresetId } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
-import { ritmoFromInsight, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
+import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
 import { METAS_SORTS, compareMetas, computeMetas, metasCalendar, type MetasSort } from "@/lib/meta/metas";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
@@ -97,6 +97,9 @@ type PixPatch = Partial<Omit<PixRow, "ad_account_id">>;
 // final, ordenado por gasto (maior gasto primeiro) — igual ao comportamento
 // antigo. Função pura fora do componente + comparador de uma expressão só
 // pro React Compiler conseguir preservar a memoização do useMemo abaixo.
+// Etapa 90: busca automática (entrar na aba) só repete depois disso; ↻ sempre busca.
+const AUTO_RELOAD_MS = 5 * 60 * 1000;
+
 function rowSortKey(row: { binding?: AccountBinding; insight?: AccountInsight }): number {
   return row.binding?.sort_order ?? (1_000_000_000 - (row.insight?.spend ?? 0));
 }
@@ -173,6 +176,13 @@ export default function PainelPage() {
   // a ordem personalizada de antes (arrastar e soltar), continua sendo o padrão.
   const [sortMode, setSortMode] = useState<"manual" | MetasSort>("manual");
   const metasCal = useMemo(() => metasCalendar(), []);
+  // Última busca automática (por aba/período/contas) — evita rebuscar tudo toda vez que o
+  // usuário volta pra aba (Etapa 90).
+  const autoLoadRef = useRef<{
+    insights: { key: string; at: number } | null;
+    monthly: { key: string; at: number } | null;
+    alerts: number | null;
+  }>({ insights: null, monthly: null, alerts: null });
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [metasPinnedIds, setMetasPinnedIds] = useState<string[]>([]);
   const pinnedRef = useRef<string[]>([]);
@@ -351,7 +361,10 @@ export default function PainelPage() {
 
   useEffect(() => {
     if (tab !== "acompanhamento") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca o status de saldo/pagamento ao entrar na aba, só pra colorir o nome da conta
+    const at = autoLoadRef.current.alerts;
+    if (at && Date.now() - at < AUTO_RELOAD_MS) return;
+    autoLoadRef.current.alerts = Date.now();
+     
     void loadAlertStatuses();
   }, [loadAlertStatuses, tab]);
 
@@ -382,21 +395,29 @@ export default function PainelPage() {
     async (onlyPinned = false) => {
       if (selectedAccounts.length === 0) {
         setInsights({});
-        return;
+        return true;
       }
       const pinned = onlyPinned ? pinnedTargets() : null;
       setLoadingInsights(true);
-      const res = await fetch("/api/meta/insights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountIds: (pinned ?? selectedAccounts).map((a) => a.account_id),
-          datePreset: preset,
-        }),
-      });
-      const d = await res.json();
-      setInsights((prev) => (pinned ? { ...prev, ...(d.insights ?? {}) } : (d.insights ?? {})));
-      setLoadingInsights(false);
+      try {
+        const res = await fetch("/api/meta/insights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accountIds: (pinned ?? selectedAccounts).map((a) => a.account_id),
+            datePreset: preset,
+          }),
+        });
+        const d = await res.json();
+        // Erro geral da chamada: mantém o que já estava na tela em vez de zerar tudo.
+        if (!d.insights) return false;
+        setInsights((prev) => (pinned ? { ...prev, ...d.insights } : d.insights));
+        return true;
+      } catch {
+        return false;
+      } finally {
+        setLoadingInsights(false);
+      }
     },
     [selectedAccounts, preset, pinnedTargets],
   );
@@ -407,9 +428,18 @@ export default function PainelPage() {
     // Etapa 75, também Controle de Saldo (coluna "Invest. diário" usa
     // insight.daily_budget). Nas outras abas, essa chamada não roda.
     if (tab !== "acompanhamento" && tab !== "saldo") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca os insights ao entrar na aba, ou quando seleção/período mudam com a aba já ativa
-    void loadInsights();
-  }, [loadInsights, tab]);
+    // Etapa 90: trocar de aba e voltar NÃO busca de novo (era uma busca completa a
+    // cada volta — queimava requisições da Meta). Só busca se mudou período/contas
+    // ou se a última busca automática tem mais de 5 minutos; o ↻ sempre busca.
+    const key = `${preset}|${selectedAccounts.map((a) => a.account_id).join(",")}`;
+    const last = autoLoadRef.current.insights;
+    if (last && last.key === key && Date.now() - last.at < AUTO_RELOAD_MS) return;
+    autoLoadRef.current.insights = { key, at: Date.now() };
+     
+    void loadInsights().then((ok) => {
+      if (!ok) autoLoadRef.current.insights = null;
+    });
+  }, [loadInsights, tab, preset, selectedAccounts]);
 
   // Ritmo (coluna de Acompanhamento) precisa do gasto do mês corrente ATÉ ONTEM
   // (Etapa 85: é comparado com o "Ideal até hoje") sempre, independente do
@@ -421,28 +451,42 @@ export default function PainelPage() {
     async (onlyPinned = false) => {
       if (selectedAccounts.length === 0) {
         setMonthlyInsights({});
-        return;
+        return true;
       }
       const pinned = onlyPinned ? pinnedTargets() : null;
-      const res = await fetch("/api/meta/insights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          accountIds: (pinned ?? selectedAccounts).map((a) => a.account_id),
-          datePreset: "this_month_until_yesterday",
-        }),
-      });
-      const d = await res.json();
-      setMonthlyInsights((prev) => (pinned ? { ...prev, ...(d.insights ?? {}) } : (d.insights ?? {})));
+      try {
+        const res = await fetch("/api/meta/insights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accountIds: (pinned ?? selectedAccounts).map((a) => a.account_id),
+            datePreset: "this_month_until_yesterday",
+            // Só o gasto (Ritmo) — o orçamento diário já vem da busca principal.
+            spendOnly: true,
+          }),
+        });
+        const d = await res.json();
+        if (!d.insights) return false;
+        setMonthlyInsights((prev) => (pinned ? { ...prev, ...d.insights } : d.insights));
+        return true;
+      } catch {
+        return false;
+      }
     },
     [selectedAccounts, pinnedTargets],
   );
 
   useEffect(() => {
     if (tab !== "acompanhamento") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca o gasto do mês (fixo, pro Ritmo) ao entrar na aba ou trocar a seleção de contas
-    void loadMonthlyInsights();
-  }, [loadMonthlyInsights, tab]);
+    const key = selectedAccounts.map((a) => a.account_id).join(",");
+    const last = autoLoadRef.current.monthly;
+    if (last && last.key === key && Date.now() - last.at < AUTO_RELOAD_MS) return;
+    autoLoadRef.current.monthly = { key, at: Date.now() };
+     
+    void loadMonthlyInsights().then((ok) => {
+      if (!ok) autoLoadRef.current.monthly = null;
+    });
+  }, [loadMonthlyInsights, tab, selectedAccounts]);
 
   async function saveSelectedAccounts(ids: string[]) {
     setSelectedIds(ids);
@@ -615,6 +659,7 @@ export default function PainelPage() {
   const hasPinned = selectedAccounts.some((a) => pinnedIds.includes(a.account_id));
   // Só conta depois que o gasto do mês chegou pelo menos uma vez (senão piscaria
   // o aviso enquanto a primeira busca ainda está rodando).
+  const firstFailError = Object.values(monthlyInsights).find((i) => i.insights_error)?.insights_error;
   const failedAccounts =
     Object.keys(monthlyInsights).length === 0
       ? 0
@@ -754,7 +799,9 @@ export default function PainelPage() {
                       onClick={() => {
                         void loadInsights(true);
                         void loadMonthlyInsights(true);
-                        void loadAlertStatuses();
+                        // Com conta fixada, NÃO refaz o status de saldo/pagamento (isso consulta a
+                        // Meta pra todas as contas) — fica só no que já foi carregado ao entrar na aba.
+                        if (!hasPinned) void loadAlertStatuses();
                       }}
                       disabled={loadingInsights}
                       className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
@@ -827,6 +874,7 @@ export default function PainelPage() {
                   <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
                     {failedAccounts} conta(s) não carregaram o gasto do mês (provável limite de requisições da Meta).
                     Ritmo fica em — nelas. Clique em Atualizar pra tentar de novo.
+                    {firstFailError ? ` Motivo da Meta: ${firstFailError}` : ""}
                   </p>
                 ) : null}
 
@@ -1033,7 +1081,12 @@ export default function PainelPage() {
                                 );
                               })()}
                             </td>
-                            <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>{fmtCurrency(rowRitmo)}</td>
+                            <td
+                              className={`px-4 py-2 text-right tabular-nums ${blur}`}
+                              title={ritmoTooltip(binding?.monthly_investment, monthlyInsights[acc.account_id])}
+                            >
+                              {fmtCurrency(rowRitmo)}
+                            </td>
                             <td className="px-4 py-2 text-right">
                               <button
                                 onClick={() => setEditingAccountId(acc.account_id)}

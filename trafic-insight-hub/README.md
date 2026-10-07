@@ -2335,6 +2335,20 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     mostram um aviso vermelho com quantas contas não carregaram; o aviso de
     investimento baixo (WhatsApp) ignora conta sem dado em vez de disparar alerta falso.
 
+87. **Menos requisições à Meta + transparência do Ritmo (Etapa 90)** — (a) o ↻ com
+    conta fixada atualiza SÓ as fixadas, inclusive sem refazer o status de
+    saldo/pagamento (que consultava todas as contas); (b) a busca automática ao
+    entrar na aba só repete se mudou período/contas ou passou de 5 min (antes
+    refazia tudo a cada volta de aba; metas-tab usa cache de módulo); (c) no
+    Acompanhamento, o gasto do mês (Ritmo) é pedido em modo `spendOnly` (só
+    `campaign_id,campaign_name,spend`, sem as 3 chamadas de orçamento — que não
+    mudam com o período) e repete 1x se a Meta devolver lista vazia; (d) no
+    máximo 5 contas em paralelo (antes todas, ≈100 chamadas de uma vez),
+    `maxDuration = 60` na rota; (e) falha de busca guarda o motivo
+    (`insights_error`) e o aviso vermelho mostra o texto da Meta; (f) a coluna
+    Ritmo ganhou dica (passar o mouse) com mensal ÷ dias, ideal até hoje, gasto
+    até ontem, diferença e ajuste usados na conta.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

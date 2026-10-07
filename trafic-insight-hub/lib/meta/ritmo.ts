@@ -66,6 +66,31 @@ export function ritmoFromInsight(
   return ritmo(monthlyInvestment, insight.spend, now);
 }
 
+// Etapa 90: texto da dica da coluna Ritmo — mostra os números que entraram na conta
+// (pra conferir de onde veio o valor sem precisar adivinhar).
+export function ritmoTooltip(
+  monthlyInvestment: number | null | undefined,
+  insight: { spend: number; insights_failed?: boolean } | undefined,
+  now: Date = new Date(),
+): string {
+  const brl = (n: number) => `R$ ${n.toFixed(2).replace(".", ",")}`;
+  if (monthlyInvestment == null) return "Sem Investimento mensal cadastrado — não dá pra calcular o Ritmo.";
+  if (!insight) return "Gasto do mês ainda não carregado — clique em Atualizar.";
+  if (insight.insights_failed) return "A Meta não devolveu o gasto do mês desta conta — clique em Atualizar pra tentar de novo.";
+  const { day, daysInMonth } = monthCalendarSP(now);
+  const normal = monthlyInvestment / daysInMonth;
+  const ideal = normal * day;
+  const spent = day === 1 ? 0 : insight.spend;
+  const r = ritmo(monthlyInvestment, insight.spend, now) ?? 0;
+  return (
+    `Investimento mensal: ${brl(monthlyInvestment)} ÷ ${daysInMonth} dias = ${brl(normal)} por dia\n` +
+    `Ideal até hoje (dia ${day}): ${brl(ideal)}\n` +
+    `Gasto de 01 até ontem: ${brl(spent)}\n` +
+    `Diferença: ${brl(ideal - spent)} → ajuste limitado a ±${brl(normal * RITMO_MAX_ADJUST)}\n` +
+    `Ritmo: ${brl(r)}`
+  );
+}
+
 // Compara o quanto precisa investir por dia daqui pra frente (Ritmo) com o
 // orçamento diário JÁ configurado na conta — mesma banda usada pra colorir
 // a coluna Ritmo e pro filtro Investimento Baixo/Alto de Acompanhamento.

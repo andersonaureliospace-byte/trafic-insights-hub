@@ -75,6 +75,9 @@ export interface AccountInsight {
   // por falta de dado, não porque a conta não gastou. Quem usa o spend (Ritmo,
   // aviso de investimento baixo) precisa tratar como "sem dado".
   insights_failed?: boolean;
+  // Etapa 90: texto do erro da Meta (cortado) quando insights_failed — pra tela
+  // mostrar o motivo real (limite de requisições, timeout, token, etc.).
+  insights_error?: string;
 }
 
 export async function getAdAccounts(token: string): Promise<AdAccount[]> {
@@ -126,11 +129,22 @@ interface CampaignRow {
   created_time?: string;
 }
 
+// Etapa 90: spendOnly = só o gasto (spend) — pula as 3 chamadas de orçamento
+// diário (anúncios ativos, campanhas, conjuntos). O orçamento não muda com o
+// período, então quem já busca ele em outra chamada (o gasto do mês até ontem,
+// usado só no Ritmo) não precisa repetir. Nesse modo cost_per_result/daily_budget
+// NÃO são confiáveis — só spend.
+export interface InsightOptions {
+  spendOnly?: boolean;
+}
+
 export async function getAccountInsight(
   token: string,
   actId: string,
   datePreset: DateRangeInput,
+  opts: InsightOptions = {},
 ): Promise<AccountInsight> {
+  const spendOnly = opts.spendOnly === true;
   const id = actId.startsWith("act_") ? actId : `act_${actId}`;
 
   let spend = 0; // investimento total: tudo, menos [VAGA] (inclui reconhecimento/tráfego)
@@ -148,7 +162,7 @@ export async function getAccountInsight(
 
   const campaignsWithActiveAd = new Set<string>();
   const adsetsWithActiveAd = new Set<string>();
-  try {
+  if (!spendOnly) try {
     const activeAds = await metaGetAll<{ campaign_id?: string; adset_id?: string }>(
       token,
       `/${id}/ads`,
@@ -166,7 +180,7 @@ export async function getAccountInsight(
     console.error("active ads err", id, e);
   }
 
-  try {
+  if (!spendOnly) try {
     const camps = await metaGet<{ data: CampaignRow[] }>(token, `/${id}/campaigns`, {
       fields:
         "id,name,objective,daily_budget,lifetime_budget,status,effective_status,start_time,stop_time,created_time",
@@ -242,8 +256,9 @@ export async function getAccountInsight(
   const resultTypesSet = new Set<string>();
   let lastResultType: string | null = null;
   let insightsFailed = false;
+  let insightsError: string | undefined;
   try {
-    const ins = await metaGet<{
+    type InsRes = {
       data: Array<{
         campaign_id?: string;
         campaign_name?: string;
@@ -251,13 +266,26 @@ export async function getAccountInsight(
         results?: Array<{ indicator?: string; values?: Array<{ value?: string }> }>;
         cost_per_result?: Array<{ values?: Array<{ value?: string }> }>;
       }>;
-    }>(token, `/${id}/insights`, {
-      fields: "campaign_id,campaign_name,spend,actions,cost_per_action_type,results,cost_per_result",
-      ...presetParams(datePreset),
-      level: "campaign",
-      limit: "500",
-      use_unified_attribution_setting: "true",
-    });
+    };
+    // Etapa 90: no modo só-gasto, pede só o necessário (mais leve = menos chance de
+    // estourar limite/timeout da Meta) e, se vier vazio, tenta mais uma vez — a Meta
+    // às vezes devolve lista vazia sem erro quando está sobrecarregada, o que virava
+    // "gasto zero" e inflava o Ritmo.
+    const fetchIns = () =>
+      metaGet<InsRes>(token, `/${id}/insights`, {
+        fields: spendOnly
+          ? "campaign_id,campaign_name,spend"
+          : "campaign_id,campaign_name,spend,actions,cost_per_action_type,results,cost_per_result",
+        ...presetParams(datePreset),
+        level: "campaign",
+        limit: "500",
+        ...(spendOnly ? {} : { use_unified_attribution_setting: "true" }),
+      });
+    let ins = await fetchIns();
+    if (spendOnly && (ins.data ?? []).length === 0) {
+      await new Promise((r) => setTimeout(r, 800));
+      ins = await fetchIns();
+    }
     let totalResults = 0;
     let hasResults = false;
     for (const row of ins.data ?? []) {
@@ -292,6 +320,7 @@ export async function getAccountInsight(
   } catch (e) {
     console.error("insights err", id, e);
     insightsFailed = true;
+    insightsError = (e as Error).message.slice(0, 220);
   }
 
   return {
@@ -304,20 +333,30 @@ export async function getAccountInsight(
     result_type: lastResultType,
     result_types_count: resultTypesSet.size,
     insights_failed: insightsFailed || undefined,
+    insights_error: insightsError,
   };
 }
+
+// Etapa 90: no máximo INSIGHTS_CONCURRENCY contas ao mesmo tempo (cada conta faz
+// de 1 a 4 chamadas) — antes eram todas em paralelo (25 contas ≈ 100 chamadas de
+// uma vez), o que estourava o limite de requisições da Meta.
+const INSIGHTS_CONCURRENCY = 5;
 
 export async function getAccountsInsights(
   token: string,
   accountIds: string[],
   datePreset: DateRangeInput,
+  opts: InsightOptions = {},
 ): Promise<Record<string, AccountInsight>> {
   const out: Record<string, AccountInsight> = {};
-  await Promise.all(
-    accountIds.map(async (actId) => {
-      out[actId] = await getAccountInsight(token, actId, datePreset);
-    }),
-  );
+  let next = 0;
+  const worker = async () => {
+    while (next < accountIds.length) {
+      const actId = accountIds[next++];
+      out[actId] = await getAccountInsight(token, actId, datePreset, opts);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(INSIGHTS_CONCURRENCY, accountIds.length) }, worker));
   // Etapa 89: contas cuja busca falhou (tipicamente limite de requisições da
   // Meta com muitas contas em paralelo) são tentadas de novo, uma de cada vez e
   // com uma pausa, até 2 rodadas — em vez de ficarem com gasto zerado.
@@ -326,7 +365,7 @@ export async function getAccountsInsights(
     if (failed.length === 0) break;
     await new Promise((r) => setTimeout(r, 1500));
     for (const actId of failed) {
-      out[actId] = await getAccountInsight(token, actId, datePreset);
+      out[actId] = await getAccountInsight(token, actId, datePreset, opts);
     }
   }
   return out;
