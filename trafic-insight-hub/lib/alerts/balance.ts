@@ -38,7 +38,7 @@ export interface BalanceStatus {
   currency: string;
   threshold: number;
   low: boolean;
-  // Etapa 96: Pix/boleto enviado nas últimas 24h — o aviso fica oculto (low = false).
+  // Etapa 96: Pix/boleto enviado nos últimos 30 min — o aviso fica oculto (low = false).
   handled: boolean;
   alerted: boolean;
 }

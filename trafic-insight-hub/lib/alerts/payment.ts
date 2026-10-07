@@ -41,7 +41,7 @@ export interface PaymentStatus {
   client_name: string;
   reason: string | null;
   hasError: boolean;
-  // Etapa 96: boleto enviado nas últimas 24h — o erro fica oculto (hasError = false).
+  // Etapa 96: boleto enviado nos últimos 30 min — o erro fica oculto (hasError = false).
   handled: boolean;
   alerted: boolean;
 }

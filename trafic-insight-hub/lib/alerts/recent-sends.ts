@@ -1,7 +1,7 @@
 // Etapa 96: Pix/boleto já enviados "resolvem" o aviso da conta. Depois de um envio
 // com sucesso (status 'sent'), os avisos daquela conta somem de Pendências (e não
-// disparam WhatsApp) por 24h — igual ao cooldown dos avisos. Passou disso e o saldo/
-// pagamento continua com problema, o aviso volta sozinho.
+// disparam WhatsApp) por 30 minutos. Passou disso e o saldo/pagamento continua com
+// problema, o aviso volta sozinho.
 //   - Pix ou boleto enviado → some o "Saldo baixo" e o alerta de sexta.
 //   - Boleto enviado → some também o "Erro no pagamento" (conta de boleto só trava por isso).
 // Pix agendado (status 'scheduled') ainda não conta — só quando de fato foi enviado.
@@ -12,7 +12,7 @@ import { sendText } from "@/lib/whatsapp/client";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
-export const SEND_HANDLED_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const SEND_HANDLED_WINDOW_MS = 30 * 60 * 1000; // 30 minutos
 
 export interface RecentSends {
   pix: Set<string>;

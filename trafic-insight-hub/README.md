@@ -2389,11 +2389,11 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Tipo Boleto (Etapa 96)** — (a) ao enviar um Pix (imediato) ou um boleto, o app
     manda uma mensagem no grupo de avisos ("📲 Pix enviado — Cliente" / "📄 Boleto
     enviado ao financeiro — Cliente (vencimento …)"); se a mensagem falhar, o envio
-    em si continua valendo e a tela mostra o motivo. (b) Por 24h depois do envio, a
+    em si continua valendo e a tela mostra o motivo. (b) Por 30 minutos depois do envio, a
     conta some de Pendências (Saldo baixo e alerta de sexta, pra Pix ou boleto; Erro
     no pagamento, só pra boleto) e o WhatsApp automático não reavisa; passou disso e
     o problema persiste, o aviso volta. Pix agendado só conta quando é de fato
-    enviado. Em Mensagens > Avisos a linha mostra "Enviado (24h)". (c) O formulário
+    enviado. Em Mensagens > Avisos a linha mostra "Enviado (30 min)". (c) O formulário
     "Enviar boleto por e-mail" lista só contas com Tipo = Boleto. Helper novo:
     `lib/alerts/recent-sends.ts`. Sem migration.
 

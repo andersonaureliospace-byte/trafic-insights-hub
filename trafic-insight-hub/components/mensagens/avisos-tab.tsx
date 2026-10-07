@@ -408,7 +408,7 @@ export function AvisosTab() {
                               : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                           }`}
                         >
-                          {s.low ? "Saldo baixo" : s.handled ? "Enviado (24h)" : "OK"}
+                          {s.low ? "Saldo baixo" : s.handled ? "Enviado (30 min)" : "OK"}
                         </span>
                       </td>
                       <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(s.balance, s.currency)}</td>
