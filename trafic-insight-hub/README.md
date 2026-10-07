@@ -2371,6 +2371,11 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     fica só pra análise; Fixar e Otimizado continuam apenas em Acompanhamento.
     (A migration 0026 e o campo `tab_optimized` ficaram sem uso — são inofensivos.)
 
+90. **CPA atual de Acompanhamento de metas: atenção até R$ 2,50 (Etapa 93)** — nessa
+    aba, o CPA fica verde quando está no ideal ou abaixo, amarelo (atenção) até
+    R$ 2,50 acima do CPA ideal, e vermelho acima disso (antes o corte era R$ 1,40).
+    Acompanhamento continua com R$ 1,40.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

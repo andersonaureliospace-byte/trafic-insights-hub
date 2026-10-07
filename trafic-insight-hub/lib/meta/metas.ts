@@ -8,11 +8,11 @@
 
 import { monthCalendarSP } from "./ritmo";
 
-// CPA: diferença (CPA − CPA ideal) até R$1,40 acima do ideal = aceitável
-// (laranja); acima disso = crítico (vermelho); abaixo/igual ao ideal = verde.
-// Mesma banda de cpaDiffColorClass (Acompanhamento) — e bate com a Speed
-// ("Dentro do aceitável" em +R$1,32, "Acima da meta" em +R$1,62).
-export const CPA_ACCEPTABLE_BAND = 1.4;
+// CPA: diferença (CPA − CPA ideal) até R$2,50 acima do ideal = atenção
+// (amarelo/laranja); acima disso = crítico (vermelho); abaixo/igual ao ideal =
+// verde. Etapa 93: banda própria de Acompanhamento de metas (R$2,50, a pedido);
+// Acompanhamento segue com R$1,40.
+export const CPA_ACCEPTABLE_BAND = 2.5;
 
 // Investimento: dentro de 80%–120% do ideal até hoje = "dentro da meta".
 // O limite de baixo (80%) foi deduzido da Speed (conta com 83% do ideal já
