@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
-import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, type PresetId } from "@/lib/format";
+import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, priorityRank, type PresetId } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
 import { CPA_ACCEPTABLE_BAND, METAS_SORTS, compareMetas, computeMetas, metasCalendar, type MetasSort } from "@/lib/meta/metas";
@@ -92,6 +92,11 @@ interface PixRow {
 type BindingPatch = Partial<Omit<AccountBinding, "ad_account_id">>;
 type PixPatch = Partial<Omit<PixRow, "ad_account_id">>;
 
+// Etapa 98: ordenação extra de Acompanhamento (fora de METAS_SORTS, que é compartilhada
+// com a aba de metas, onde não existe prioridade).
+const PRIORITY_CPA_SORT = "priority_cpa" as const;
+type SortMode = "manual" | MetasSort | typeof PRIORITY_CPA_SORT;
+
 // Chave de ordenação da tabela de Acompanhamento: quem já foi arrastado
 // manualmente usa sort_order (crescente); quem nunca foi mexido cai pro
 // final, ordenado por gasto (maior gasto primeiro) — igual ao comportamento
@@ -174,7 +179,7 @@ export default function PainelPage() {
   // outras ficam embaçadas e o "↻ Atualizar" busca só as fixadas.
   // Etapa 87: mesmo seletor de ordenação de Acompanhamento de metas. "manual" =
   // a ordem personalizada de antes (arrastar e soltar), continua sendo o padrão.
-  const [sortMode, setSortMode] = useState<"manual" | MetasSort>("manual");
+  const [sortMode, setSortMode] = useState<SortMode>("manual");
   const metasCal = useMemo(() => metasCalendar(), []);
   // Última busca automática (por aba/período/contas) — evita rebuscar tudo toda vez que o
   // usuário volta pra aba (Etapa 90).
@@ -272,7 +277,7 @@ export default function PainelPage() {
     if (a.optimizedFilter === "all" || a.optimizedFilter === "optimized" || a.optimizedFilter === "pending")
       setOptimizedFilter(a.optimizedFilter);
     const strList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
-    if (a.sortMode === "manual" || METAS_SORTS.some((s) => s.id === a.sortMode)) setSortMode(a.sortMode as "manual" | MetasSort);
+    if (a.sortMode === "manual" || a.sortMode === PRIORITY_CPA_SORT || METAS_SORTS.some((s) => s.id === a.sortMode)) setSortMode(a.sortMode as SortMode);
     setPinnedIds(strList(a.pinnedIds));
     if (typeof a.preset === "string") setPreset(a.preset as PresetId);
     if (typeof a.activeFocusGroupId === "string" || a.activeFocusGroupId === null)
@@ -613,6 +618,24 @@ export default function PainelPage() {
       })
       .sort((a, b) => {
         if (sortMode === "manual") return rowSortKey(a) - rowSortKey(b);
+        if (sortMode === PRIORITY_CPA_SORT) {
+          // Etapa 98: agrupa por prioridade (Inauguração, Crítica, Alta, Média, Baixa, sem
+          // prioridade) e, dentro de cada grupo, ordena pela mesma diferença que aparece
+          // embaixo do CPA (CPA do período − CPA ideal), da maior pra menor. Sem diferença
+          // calculável (sem CPA ou sem CPA ideal) vai pro fim do grupo.
+          const rankDiff = priorityRank(a.binding?.priority) - priorityRank(b.binding?.priority);
+          if (rankDiff !== 0) return rankDiff;
+          const diffOf = (r: typeof a) =>
+            r.insight?.cost_per_result != null && r.binding?.cpa_target != null
+              ? r.insight.cost_per_result - r.binding.cpa_target
+              : null;
+          const da = diffOf(a);
+          const db = diffOf(b);
+          if (da == null && db == null) return a.clientName.localeCompare(b.clientName, "pt-BR");
+          if (da == null) return 1;
+          if (db == null) return -1;
+          return db - da;
+        }
         // Mesmos critérios da aba de metas, calculados com o que Acompanhamento
         // mostra: CPA do período escolhido vs CPA ideal; Invest. diário − Ritmo.
         const metas = (r: typeof a) =>
@@ -763,10 +786,11 @@ export default function PainelPage() {
                     />
                     <select
                       value={sortMode}
-                      onChange={(e) => setSortMode(e.target.value as "manual" | MetasSort)}
+                      onChange={(e) => setSortMode(e.target.value as SortMode)}
                       className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
                     >
                       <option value="manual">Ordem personalizada (arrastar)</option>
+                      <option value={PRIORITY_CPA_SORT}>Prioridade + maior diferença do CPA (maior → menor)</option>
                       {METAS_SORTS.map((s) => (
                         <option key={s.id} value={s.id}>
                           {s.label}
@@ -1188,6 +1212,7 @@ export default function PainelPage() {
           priority: r.binding?.priority ?? null,
         }))}
         reorderEnabled={reorderEnabled}
+        onDone={() => setSortMode(PRIORITY_CPA_SORT)}
         onApply={(accountId, priority) => patchBinding(accountId, { priority })}
         onReorder={persistOrder}
       />

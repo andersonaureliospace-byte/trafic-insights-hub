@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { isInauguracao } from "@/lib/format";
+import { isInauguracao, priorityRank } from "@/lib/format";
 import { usePriorityOptions } from "@/lib/priority-context";
 
 interface Candidate {
@@ -32,17 +32,7 @@ function classify(cpa: number, target: number): string {
 // é DIFERENTE da automação agendada (lib/alerts/bulk-status-update.ts), que
 // deixa Inauguração por último. Aqui foi pedido Inauguração primeiro.
 // Quem não tem status nenhum (nunca classificado) fica por último de todos.
-const GROUP_RANK: Record<string, number> = {
-  inauguracao: 0,
-  critica: 1,
-  alta: 2,
-  media: 3,
-  baixa: 4,
-};
-function groupRank(priority: string | null): number {
-  if (priority == null) return 5;
-  return GROUP_RANK[priority] ?? 5;
-}
+const groupRank = priorityRank;
 
 interface ComputedEntry {
   accountId: string;
@@ -79,6 +69,7 @@ export function BulkStatusDialog({
   reorderEnabled,
   onApply,
   onReorder,
+  onDone,
 }: {
   open: boolean;
   onClose: () => void;
@@ -89,6 +80,9 @@ export function BulkStatusDialog({
   reorderEnabled: boolean;
   onApply: (accountId: string, priority: string) => Promise<void>;
   onReorder: (accountIds: string[]) => Promise<void>;
+  // Etapa 98: chamado quando a atualização termina (a tela passa a ordenar por
+  // Prioridade + maior diferença do CPA).
+  onDone?: () => void;
 }) {
   const { options: priorityOptions } = usePriorityOptions();
   const [phase, setPhase] = useState<"confirm" | "running" | "done">("confirm");
@@ -161,6 +155,7 @@ export function BulkStatusDialog({
       await onReorder(reorderedAccountIds(computed));
     }
     setPhase("done");
+    onDone?.();
   }
 
   function handleClose() {
@@ -211,6 +206,8 @@ export function BulkStatusDialog({
                 <p className="text-xs text-zinc-500">
                   Ao final, a lista também é reordenada: Inauguração no topo, depois Crítica, Alta, Média e Baixa —
                   dentro de cada grupo, de quem tem a maior diferença pro próprio CPA ideal pra quem tem a menor.
+                  A ordenação da tela passa para &quot;Prioridade + maior diferença do CPA&quot; (usa a diferença que aparece
+                  embaixo do CPA).
                 </p>
               ) : (
                 <p className="text-xs text-amber-600 dark:text-amber-400">

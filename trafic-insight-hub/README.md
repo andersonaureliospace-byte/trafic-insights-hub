@@ -2397,6 +2397,19 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     "Enviar boleto por e-mail" lista só contas com Tipo = Boleto. Helper novo:
     `lib/alerts/recent-sends.ts`. Sem migration.
 
+93. **Aviso volta 30 min depois do envio (Etapa 97)** — a janela em que o Pix/boleto
+    enviado esconde o aviso da conta passou de 24h pra 30 minutos.
+
+94. **Ordenação "Prioridade + maior diferença do CPA" em Acompanhamento (Etapa 98)** —
+    nova opção no seletor de ordem: agrupa por Prioridade (Inauguração, Crítica,
+    Alta, Média, Baixa, sem prioridade) e, dentro de cada grupo, ordena pela mesma
+    diferença que aparece embaixo da coluna CPA (CPA do período − CPA ideal), da
+    maior pra menor; sem CPA ou sem CPA ideal vai pro fim do grupo. Ao terminar o
+    "Atualizar status em massa", a tela passa sozinha pra essa ordenação (antes só
+    ficava a ordem por status, e a diferença usada dentro do grupo era a dos
+    últimos 3 dias, que não batia com a mostrada na tela). O filtro de Prioridade
+    continua sendo o seletor "Status" da linha de filtros.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
