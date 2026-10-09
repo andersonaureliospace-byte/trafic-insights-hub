@@ -15,7 +15,7 @@
 
 import type { createClient } from "@/lib/supabase/server";
 import { getAccountsInsights } from "@/lib/meta/insights";
-import { ritmo, RITMO_BAND } from "@/lib/meta/ritmo";
+import { ritmoFromInsight, RITMO_BAND } from "@/lib/meta/ritmo";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { fmtCurrency } from "@/lib/format";
@@ -51,8 +51,9 @@ export async function checkLowInvestment(
   if (!bindings || bindings.length === 0) return { statuses: [], sendError: null };
 
   const accountIds = bindings.map((b) => b.ad_account_id as string);
-  // "this_month" dá, na mesma chamada, o gasto do mês corrente (pro Ritmo) e
-  // o orçamento diário atual (daily_budget não muda com o preset escolhido).
+  // "this_month" dá, na mesma chamada, o gasto do mês até agora (com hoje)
+  // (pro Ritmo, que desde a Etapa 85 compara com o Ideal até hoje) e o
+  // orçamento diário atual (daily_budget não muda com o preset escolhido).
   const insights = await getAccountsInsights(token, accountIds, "this_month");
 
   const statuses: LowInvestmentStatus[] = bindings.map((b) => {
@@ -60,8 +61,11 @@ export async function checkLowInvestment(
     const clientName = (b.client_name as string | null) || accountId;
     const insight = insights[accountId];
     const dailyBudget = insight?.daily_budget ?? 0;
-    const rowRitmo = ritmo(b.monthly_investment as number, insight?.spend) ?? 0;
-    const diff = rowRitmo - dailyBudget;
+    // Etapa 89: sem dado do mês (busca falhou) não dá pra saber o Ritmo — não
+    // entra no aviso, pra não mandar alerta falso no WhatsApp.
+    const rowRitmo = ritmoFromInsight(b.monthly_investment as number, insight) ?? 0;
+    const unknown = insight == null || insight.insights_failed === true;
+    const diff = unknown ? 0 : rowRitmo - dailyBudget;
     return {
       ad_account_id: accountId,
       client_name: clientName,
@@ -70,7 +74,7 @@ export async function checkLowInvestment(
       diff,
       // Etapa 56: de volta à banda de R$10 (era diff > 0 desde a Etapa 54) —
       // só entra no aviso quem está passando de R$10 de diferença.
-      low: diff > RITMO_BAND,
+      low: !unknown && diff > RITMO_BAND,
     };
   });
 

@@ -52,9 +52,8 @@ abre igual em qualquer computador/navegador que você use; a reordenação só
 fica disponível com a busca e o grupo de foco desligados (com filtro ativo,
 a posição na tela não bate com a posição real entre todas as contas). Em
 Acompanhamento também tem a coluna Ritmo: quanto falta investir por dia
-(dos dias que restam no mês, contando hoje, mês sempre considerado com 30
-dias) pra bater o Investimento mensal cadastrado — (Investimento mensal −
-Valor usado no mês corrente) ÷ dias restantes; a cor compara o Ritmo com o
+(até a Etapa 84: (Investimento mensal − Valor usado) ÷ dias restantes; desde a
+Etapa 85 é o ritmo pra alcançar o Ideal até hoje, ver abaixo); a cor compara o Ritmo com o
 Invest. diário já configurado na conta: verde quando a diferença é de até
 R$ 10 pra mais ou pra menos (orçamento diário já está no ritmo certo),
 laranja quando o Ritmo está mais de R$ 10 acima do orçamento diário atual
@@ -849,13 +848,24 @@ Evolução, Controle de Saldo e Clientes não têm filtro nenhum pra lembrar
 acesso totalmente novo (sem nada salvo ainda), o Painel continua abrindo em
 Visão Geral, sem filtro nenhum ativo, do jeito que já era.
 
-⚠️ **Sobre a coluna Ritmo (Acompanhamento)**: o cálculo é (Investimento
-mensal − Valor usado no mês corrente) ÷ dias restantes do mês, sempre
-considerando o mês com 30 dias (não os 28-31 reais do calendário) e contando
-hoje como um dos dias restantes (ex.: dia 20, restam 11 dias — 30 − 20 + 1).
-"Valor usado no mês corrente" é sempre o gasto de `this_month` da Meta,
-independente do período escolhido no filtro da tabela (Hoje/Últimos 7
-dias/etc. são pra CPA e Valor usado, não pro Ritmo). Sem Investimento
+⚠️ **Sobre a coluna Ritmo (Acompanhamento) — regra da Etapa 85**: o Ritmo
+é o investimento diário pra ALCANÇAR o Ideal até hoje, não mais "o que falta
+÷ dias restantes". Investimento diário normal = Investimento mensal ÷ dias
+reais do mês (28-31, fuso de Brasília); Ideal até hoje = normal × dia de hoje;
+diferença = Ideal até hoje − gasto do dia 01 até ONTEM (dias fechados,
+preset `this_month_until_yesterday`, igual à Speed). Ritmo = normal + a
+diferença, com o ajuste limitado a ±50% do normal. Ex.: meta 3.000 em mês de
+30 dias → normal 100; dia 5, ideal 500, gasto 300 → falta 200 → Ritmo 150
+(teto de +50 por dia: 150, 150, 150, 150 e volta a 100); se faltar 115 →
+150, 150, 115, 100. Conta adiantada (gasto acima do ideal) desacelera na
+mesma proporção, até −50% do normal (nunca abaixo de zero). No dia 01 o gasto
+considerado é 0. A conta vale também pro aviso automático de investimento
+baixo (`lib/alerts/low-investment.ts`, que passou a buscar
+`this_month_until_yesterday`) e pra cor/filtro Investimento (Baixo/Alto), que
+continuam comparando o Ritmo com o Invest. diário (banda de R$ 10). O gasto
+usado é sempre o do mês até ontem, independente do período escolhido no
+filtro da tabela (Hoje/Últimos 7 dias/etc. são pra CPA e Valor usado, não pro
+Ritmo). Sem Investimento
 mensal cadastrado (Painel > Clientes ou no modal Editar), a coluna fica em
 branco — não dá pra calcular ritmo sem meta.
 
@@ -1580,8 +1590,8 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     criativo (global, todas as contas), botão Atualizar (sem precisar dar
     F5), o nome da conta virou link direto pro Gerenciador de Anúncios, e
     um filtro de status Ativos (padrão) / Todos. Acompanhamento
-    ganhou a coluna Ritmo: quanto investir por dia até o fim do mês (sempre
-    considerado com 30 dias) pra bater o Investimento mensal cadastrado
+    ganhou a coluna Ritmo: quanto investir por dia até o fim do mês (dias
+    reais do mês desde a Etapa 82; antes fixo em 30) pra bater o Investimento mensal cadastrado
 15. ~~Filtro de status da Análise: Ativos/Todos (Etapa 20)~~ ✅ — o filtro de
     status da Análise trocou de "Ativos + checkbox Incluir pausados" para
     duas opções fixas, Ativos (padrão) e Todos (ativos + pausados)
@@ -2190,6 +2200,215 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     é o que vai ser cobrado, não sobra nenhuma). Agora cada linha mostra um
     selo "disponível" ou "a pagar" do lado do valor, com o detalhe (teto −
     gasto, ou aviso de que é valor acumulado) explicado ao passar o mouse.
+78. **"Saldo por fundos", independente do Tipo de conta (Etapa 81)** — a
+    Meta não expõe pela API o "Fundos" que aparece no Ads Manager (testado
+    direto: nem o campo `balance`, nem `funding_source_details` trazem
+    esse número — só o valor acumulado a pagar e o método de pagamento).
+    Pra conta cujo saldo real não bate com o cálculo padrão de Pix/Híbrida/
+    Boleto/Cartão (ex.: uma conta classificada como Boleto que na prática
+    também recebe pagamento manual), dá pra ligar em Configurações um
+    cálculo à parte, conta por conta: você informa o saldo atual real (que
+    já vê no Ads Manager) uma vez, e dali em diante o app soma todo
+    pagamento manual/PIX e subtrai toda cobrança da Meta que acontecer
+    (reconstruído do histórico de atividades da conta, que a própria Meta
+    só guarda por ~90 dias — por isso não dá pra reconstruir "desde
+    sempre", só rastrear pra frente a partir do saldo informado). Atualiza
+    via um novo hook (`/api/public/hooks/funds-balance-tick`, mesmo padrão
+    dos outros — precisa ser chamado periodicamente pelo n8n) e aparece na
+    coluna Saldo de Controle de Saldo com o selo "fundos" no lugar do
+    cálculo padrão, só nas contas em que foi ligado.
+
+79. **Aba "Acompanhamento de metas" + Ritmo com dias reais do mês (Etapa 82)** —
+    nova aba na lateral do Painel, modelada no dashboard de referência da
+    Speed (Gerenciamento de Contas). Investimento e CPA vêm do dia 01 até
+    ontem (preset `this_month_until_yesterday`, já existente, sem rota nova
+    nem migração), comparados com o **Ideal até hoje** = Investimento
+    mensal ÷ dias reais do mês × dia de hoje (contando hoje) — igual à
+    Speed, que chama de "Ideal até hoje" (ex.: dia 04 de outubro, meta
+    R$ 3.000 → 3.000 ÷ 31 × 4 = R$ 387,10; conferido contra as contas da
+    Speed, todas batendo com 31 dias e nenhuma com 30). ⚠️ A primeira versão
+    usava só os dias já fechados (dia − 1) no ideal e a conta IVS Teresina
+    aparecia "Acima do ideal" enquanto na Speed estava "Dentro da meta" —
+    corrigido pra contar hoje, como a Speed faz (o investimento continua até
+    ontem, só o ideal conta o dia de hoje). Colunas: Invest. mensal, Investimento até ontem (com a
+    diferença em R$ pro ideal), Ideal até hoje, % de investimento (barra com o
+    tracinho do ideal e dica com atual/meta/ideal), Invest. diário e Ritmo
+    (iguais aos de Acompanhamento — o Ritmo usa o gasto do mês inteiro, contando
+    hoje, numa busca à parte; a cor da diferença `ritmoColorClass` passou a
+    morar em `lib/meta/ritmo.ts`), CPA atual (com a
+    diferença pro CPA ideal) e CPA ideal. Status de investimento: abaixo de
+    80% do ideal = laranja "Faltam"; de 80% a 120% = verde "Dentro da
+    meta"; acima de 120% = vermelho "Acima do ideal" (o limite de 80% foi
+    deduzido da Speed; o de 120% é palpite, a Speed não mostra esse caso —
+    `INVEST_LOW_RATIO`/`INVEST_HIGH_RATIO` em `lib/meta/metas.ts`). CPA: mesma
+    banda do Acompanhamento (até R$ 1,40 acima do ideal = aceitável, mais
+    que isso = crítico). 4 ordenações: Mais crítica (CPA crítico + investimento
+    fora primeiro, depois só um dos problemas, depois quem está ok), CPA
+    elevado (maior diferença pro ideal primeiro), Investimento fora pra cima
+    e Investimento fora pra baixo — aqui "fora" é a diferença Invest. diário −
+    Ritmo (a mesma mostrada embaixo de Invest. diário): pra cima, o orçamento
+    diário mais acima do que precisa primeiro; pra baixo, o mais abaixo
+    primeiro (ninguém é escondido, só desce na lista; a primeira versão
+    ordenava pelo investido − ideal em R$ e foi trocada a pedido) Conta sem meta cadastrada vai pro fim.
+    **Junto disso o Ritmo de Acompanhamento deixou de fixar o mês
+    em 30 dias** e passou a usar os dias reais (28-31, fuso de Brasília) —
+    a mesma base da nova aba; isso também vale pro aviso automático de
+    investimento baixo, que reaproveita a mesma conta (`monthCalendarSP` em
+    `lib/meta/ritmo.ts`).
+
+80. **Coluna "Otimizado" em Acompanhamento de metas (Etapa 83)** — a aba
+    Acompanhamento de metas ganhou a sua própria coluna Otimizado (primeira
+    coluna), com o mesmo comportamento da de Acompanhamento: um clique
+    alterna entre "Não otimizado" e "Otimizado", filtro Otimizado/Pendente na
+    barra da aba e reset à meia-noite (horário de Brasília) — a marcação só
+    vale se a data gravada (`tab_optimized_date`) for hoje. Cada aba tem a
+    sua: marcar na de Acompanhamento não muda nada na de metas e vice-versa,
+    e os filtros Otimizado/Pendente também são separados. (Uma primeira
+    versão criou por engano uma aba "Otimizado" à parte; foi removida e a
+    coluna foi pra aba de metas.) Colunas novas em `account_bindings`
+    (`tab_optimized`, `tab_optimized_date`) — **precisa rodar a migração
+    `supabase/migrations/0026_otimizado_tab.sql`** no SQL Editor do Supabase.
+
+81. **Reconhecimento/tráfego/visitas ao perfil contam no investimento, não no CPA (Etapa 84)** —
+    campanhas de objetivo Reconhecimento, Alcance, Tráfego/cliques no link
+    (inclui visitas ao perfil), vídeo, engajamento e curtidas de página
+    (`EXCLUDED_OBJECTIVES` em `lib/meta/shared.ts`) eram ignoradas por
+    completo nos totais por conta. Agora o **investimento** delas entra
+    (Valor usado em Acompanhamento, Investimento até ontem em Acompanhamento
+    de metas, o gasto do mês que alimenta o Ritmo, o aviso de investimento
+    baixo e o "investido" dos relatórios) e o **orçamento diário** ativo
+    delas entra em Invest. diário (pra não comparar um Ritmo que já conta o
+    gasto delas com um orçamento que não conta). Resultado, CPA e custo por
+    resultado continuam **só das demais campanhas** (o custo por resultado
+    usa o gasto sem elas, `cpaSpend` em `lib/meta/insights.ts`). **Só campanha
+    com [VAGA] no nome fica fora de tudo** (`isJobCampaign` em
+    `lib/meta/shared.ts`). Campanha com [TRÁFEGO] ou [SEGUIDORES] no nome
+    (tags que `isVaga` também pegava) agora conta no investimento e no
+    orçamento diário, mas continua fora de resultado/CPA, igual aos objetivos
+    acima. Não mudou: telas por campanha/conjunto/
+    anúncio (Visão Geral, Análise), Evolução, Monitor de CPA e a classificação
+    de status em massa, que são de CPA e seguem sem essas campanhas.
+
+82. **Ritmo agora acelera/desacelera pra alcançar o Ideal até hoje (Etapa 85)** —
+    em Acompanhamento, Acompanhamento de metas e no aviso de investimento
+    baixo, o Ritmo = investimento diário normal (meta ÷ dias do mês) + a
+    diferença pro Ideal até hoje, limitada a ±50% do normal (detalhes e
+    exemplo no aviso "Sobre a coluna Ritmo", acima). Antes era (meta − gasto)
+    ÷ dias restantes.
+
+83. **Botão Fixar em Acompanhamento e Acompanhamento de metas (Etapa 86)** —
+    coluna "Fixar" no começo de cada tabela. Conta fixada sobe pro topo; as
+    demais ficam com as métricas embaçadas (passar o mouse na linha mostra os
+    números) e o "↻ Atualizar" passa a buscar só as fixadas (mescla no que já
+    está na tela). A busca automática (entrar na aba, trocar período) continua
+    trazendo todas. Pode fixar várias; cada aba tem a sua lista (`pinnedIds` /
+    `metasPinnedIds`, salvas no ui-state do Painel — sem migration) e fica até
+    desafixar. Com conta fixada, o arrastar-e-soltar de Acompanhamento é
+    desabilitado.
+
+84. **Ordenação de Acompanhamento de metas replicada em Acompanhamento (Etapa
+    87)** — novo seletor ao lado do período com "Ordem personalizada
+    (arrastar)" (padrão, a de antes) + os mesmos 4 modos da aba de metas
+    (Mais crítica / CPA elevado / Investimento fora pra cima / pra baixo).
+    CPA = o da coluna CPA (período escolhido) vs CPA ideal; investimento
+    fora = Invest. diário − Ritmo. Contas fixadas continuam no topo. Arrastar
+    só funciona em "Ordem personalizada". Escolha salva no ui-state. Também
+    corrigido o comparador de ordenação da aba de metas (empate entre contas
+    sem dado não gera mais NaN).
+
+85. **Invest. diário ignora conjunto/campanha "Concluído" (Etapa 88)** — conjunto
+    com `end_time` (ou campanha com `stop_time`) já passado aparece como
+    Concluído no Gerenciador mesmo com a chavinha ligada, mas o Graph API
+    continua devolvendo `effective_status` ACTIVE; o orçamento dele estava
+    entrando no Invest. diário (ex.: Novo Hamburgo mostrava R$ 120 em vez de
+    R$ 100). Agora, em `lib/meta/insights.ts`, quem já terminou não soma.
+    (Visão Geral/Análise, em `breakdown.ts`, ainda não aplicam essa regra.)
+
+86. **Ritmo não usa mais "gasto zero" quando a busca do mês falha (Etapa 89)** —
+    caso IVS Muriaé: gasto real de R$ 680,42 (Ritmo certo ≈ R$ 94), mas a tela
+    mostrava R$ 145,16, que é exatamente o Ritmo com gasto 0 (teto de +50%). A
+    busca de insights de uma conta falhava em silêncio (provável limite de
+    requisições da Meta com muitas contas em paralelo) e virava spend 0.
+    Agora: `AccountInsight.insights_failed`; `getAccountsInsights` tenta de
+    novo as contas que falharam (2 rodadas, pausa de 1,5 s); `ritmoFromInsight`
+    devolve null (— na tela) sem dado; Acompanhamento e Acompanhamento de metas
+    mostram um aviso vermelho com quantas contas não carregaram; o aviso de
+    investimento baixo (WhatsApp) ignora conta sem dado em vez de disparar alerta falso.
+
+87. **Menos requisições à Meta + transparência do Ritmo (Etapa 90)** — (a) o ↻ com
+    conta fixada atualiza SÓ as fixadas, inclusive sem refazer o status de
+    saldo/pagamento (que consultava todas as contas); (b) a busca automática ao
+    entrar na aba só repete se mudou período/contas ou passou de 5 min (antes
+    refazia tudo a cada volta de aba; metas-tab usa cache de módulo); (c) no
+    Acompanhamento, o gasto do mês (Ritmo) é pedido em modo `spendOnly` (só
+    `campaign_id,campaign_name,spend`, sem as 3 chamadas de orçamento — que não
+    mudam com o período) e repete 1x se a Meta devolver lista vazia; (d) no
+    máximo 5 contas em paralelo (antes todas, ≈100 chamadas de uma vez),
+    `maxDuration = 60` na rota; (e) falha de busca guarda o motivo
+    (`insights_error`) e o aviso vermelho mostra o texto da Meta; (f) a coluna
+    Ritmo ganhou dica (passar o mouse) com mensal ÷ dias, ideal até hoje, gasto
+    até ontem, diferença e ajuste usados na conta.
+
+88. **Ritmo passa a contar o gasto de hoje + faixa "dentro da meta" (Etapa 91)** —
+    achado olhando o painel real: IVS Muriaé gastou R$ 156 só hoje (Valor usado
+    R$ 680 em "Mês atual"), mas o Ritmo comparava só o gasto até ONTEM (R$ 524)
+    com o ideal que já inclui hoje (R$ 581) → "atrasada" → Ritmo no teto (R$ 145).
+    Agora o gasto é do dia 01 até AGORA (preset `this_month`, só `spend`), e se
+    ele estiver entre 80% e 120% do Ideal até hoje, o Ritmo é o normal (mensal ÷
+    dias do mês; Muriaé = R$ 96,77); fora da faixa acelera/desacelera pela
+    diferença, limitada a ±50% do normal (igual antes). Vale em Acompanhamento,
+    Acompanhamento de metas (busca extra só-gasto; o resto da aba segue "até
+    ontem") e no aviso de investimento baixo. A dica da coluna Ritmo mostra a conta.
+
+89. **Acompanhamento de metas: "Investimento atual" no lugar de "até ontem" (Etapa 92)** —
+    a coluna "Investimento até ontem" não fazia sentido ao lado do "Ideal até hoje"
+    (que conta hoje). Agora a coluna se chama "Investimento atual" e mostra o gasto
+    do dia 01 até AGORA (preset `this_month`, com hoje); a diferença, a cor, a barra
+    de % e a ordenação "Mais crítica" usam esse mesmo valor. A aba passa a fazer uma
+    busca só (antes eram duas): o CPA atual também passa a ser do mês até agora, e o
+    Ritmo usa o mesmo gasto. Também saem desta aba as colunas Fixar e Otimizado, o
+    filtro de Otimizado e o modo foco (↻ só das fixadas): Acompanhamento de metas
+    fica só pra análise; Fixar e Otimizado continuam apenas em Acompanhamento.
+    (A migration 0026 e o campo `tab_optimized` ficaram sem uso — são inofensivos.)
+
+90. **CPA atual de Acompanhamento de metas: atenção até R$ 2,50 (Etapa 93)** — nessa
+    aba, o CPA fica verde quando está no ideal ou abaixo, amarelo (atenção) até
+    R$ 2,50 acima do CPA ideal, e vermelho acima disso (antes o corte era R$ 1,40).
+    Etapa 94: Acompanhamento passou a usar o mesmo corte de R$ 2,50 (constante única
+    `CPA_ACCEPTABLE_BAND`). Os avisos automáticos de CPA no WhatsApp seguem com a
+    regra própria deles (acima de R$ 2,00).
+
+91. **Aviso de saldo baixo usa o Saldo por fundos quando ligado (Etapa 95)** — IVS
+    Teresina 2 (Híbrida) aparecia em Pendências com "Saldo baixo (R$ 50,08 < R$
+    250,00)" mesmo com R$ 1.002,43 de fundos. A coluna Saldo já mostrava os fundos,
+    mas o aviso (Pendências, WhatsApp e alerta de sexta) usava o `balance` bruto da
+    Meta (valor a pagar). Agora, em conta com "Saldo por fundos" ligado, os avisos
+    comparam o limite com esse saldo; sem fundos ligados, nada muda.
+
+92. **Pix e boleto enviados resolvem o aviso + aviso no WhatsApp + boleto só com contas
+    Tipo Boleto (Etapa 96)** — (a) ao enviar um Pix (imediato) ou um boleto, o app
+    manda uma mensagem no grupo de avisos ("📲 Pix enviado — Cliente" / "📄 Boleto
+    enviado ao financeiro — Cliente (vencimento …)"); se a mensagem falhar, o envio
+    em si continua valendo e a tela mostra o motivo. (b) Por 30 minutos depois do envio, a
+    conta some de Pendências (Saldo baixo e alerta de sexta, pra Pix ou boleto; Erro
+    no pagamento, só pra boleto) e o WhatsApp automático não reavisa; passou disso e
+    o problema persiste, o aviso volta. Pix agendado só conta quando é de fato
+    enviado. Em Mensagens > Avisos a linha mostra "Enviado (30 min)". (c) O formulário
+    "Enviar boleto por e-mail" lista só contas com Tipo = Boleto. Helper novo:
+    `lib/alerts/recent-sends.ts`. Sem migration.
+
+93. **Aviso volta 30 min depois do envio (Etapa 97)** — a janela em que o Pix/boleto
+    enviado esconde o aviso da conta passou de 24h pra 30 minutos.
+
+94. **Ordenação "Prioridade + maior diferença do CPA" em Acompanhamento (Etapa 98)** —
+    nova opção no seletor de ordem: agrupa por Prioridade (Inauguração, Crítica,
+    Alta, Média, Baixa, sem prioridade) e, dentro de cada grupo, ordena pela mesma
+    diferença que aparece embaixo da coluna CPA (CPA do período − CPA ideal), da
+    maior pra menor; sem CPA ou sem CPA ideal vai pro fim do grupo. Ao terminar o
+    "Atualizar status em massa", a tela passa sozinha pra essa ordenação (antes só
+    ficava a ordem por status, e a diferença usada dentro do grupo era a dos
+    últimos 3 dias, que não batia com a mostrada na tela). O filtro de Prioridade
+    continua sendo o seletor "Status" da linha de filtros.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
@@ -2264,8 +2483,15 @@ em conta fora do Painel (Etapa 76), o Monitor de CPA sempre abrindo em
 demais em Análise → Conjuntos, com filtro pra ver só esses (Etapa 78) e o
 Controle de Saldo reorganizado em sub-abas Pendências/Pix/Híbrida/Boleto/
 Cartão/Configurações, com Tipo de conta agora preenchido manualmente
-(Etapa 79), e a coluna Saldo dessa mesma tela deixando claro se o valor é
-disponível (Pix/Híbrida) ou a pagar (Boleto/Cartão) (Etapa 80))
+(Etapa 79), a coluna Saldo dessa mesma tela deixando claro se o valor é
+disponível (Pix/Híbrida) ou a pagar (Boleto/Cartão) (Etapa 80) e o "Saldo
+por fundos" opcional por conta, independente do Tipo de conta, rastreando
+pagamento manual menos cobrança a partir de um saldo inicial informado
+(Etapa 81) e a aba Acompanhamento de metas, com o Ritmo passando a usar os
+dias reais do mês (Etapa 82) e a coluna Otimizado própria de Acompanhamento de
+metas, separada da de Acompanhamento (Etapa 83) e reconhecimento/tráfego
+contando só no investimento, nunca no CPA (Etapa 84) e o Ritmo passando a
+alcançar o Ideal até hoje (Etapa 85) e a coluna Investimento atual em Acompanhamento de metas (Etapa 92))
 estão
 100%
 concluídos. Não há mais nenhum item pendente do escopo combinado —

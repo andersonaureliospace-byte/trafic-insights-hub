@@ -7,6 +7,11 @@
 // nenhuma métrica/tela do Painel, igual [VAGA] já não aparecia.
 export const isVaga = (name?: string) => !!name && /(vaga|seguidores|tr[aá]fego)/i.test(name);
 
+// Etapa 84: só "vaga" fica fora do INVESTIMENTO por nome. Seguidores e
+// [TRÁFEGO] (que isVaga também pega) contam no investimento — só não entram em
+// resultado/CPA (aí continua valendo isVaga, como sempre).
+export const isJobCampaign = (name?: string) => !!name && /vaga/i.test(name);
+
 export const EXCLUDED_OBJECTIVES = new Set([
   "OUTCOME_AWARENESS",
   "BRAND_AWARENESS",

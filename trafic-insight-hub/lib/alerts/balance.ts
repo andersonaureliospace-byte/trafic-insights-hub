@@ -10,11 +10,24 @@
 import type { createClient } from "@/lib/supabase/server";
 import { getAdAccounts } from "@/lib/meta/insights";
 import { availableFunds } from "@/lib/meta/funds";
+import { getRecentSends } from "@/lib/alerts/recent-sends";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { fmtCurrency } from "@/lib/format";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
+
+// Etapa 95: saldo usado nos avisos. Conta com "Saldo por fundos" ligado (Etapa 81, ex.:
+// Híbrida) usa esse valor — o mesmo que aparece na coluna Saldo da tela — e não o
+// `balance` bruto da Meta (valor a pagar), que nessas contas é baixo mesmo com fundos
+// de sobra (ex.: R$ 50,08 de "a pagar" contra R$ 1.002,43 de fundos).
+function effectiveBalance(
+  acc: Parameters<typeof availableFunds>[0],
+  p: { funds_balance_enabled?: boolean | null; funds_balance_amount?: number | null },
+): number {
+  if (p.funds_balance_enabled && p.funds_balance_amount != null) return Number(p.funds_balance_amount);
+  return availableFunds(acc).amount;
+}
 
 const COOLDOWN_MS = 24 * 60 * 60 * 1000; // não reavisa a mesma conta antes de 24h
 
@@ -25,6 +38,8 @@ export interface BalanceStatus {
   currency: string;
   threshold: number;
   low: boolean;
+  // Etapa 96: Pix/boleto enviado nos últimos 30 min — o aviso fica oculto (low = false).
+  handled: boolean;
   alerted: boolean;
 }
 
@@ -46,7 +61,9 @@ export async function checkLowBalances(
 ): Promise<CheckLowBalancesResult> {
   const { data: pixRows, error: pixErr } = await db
     .from("pix_accounts")
-    .select("ad_account_id, payment_type, base_amount, alert_threshold, last_alert_sent_at")
+    .select(
+      "ad_account_id, payment_type, base_amount, alert_threshold, last_alert_sent_at, funds_balance_enabled, funds_balance_amount",
+    )
     .eq("user_id", userId)
     .in("payment_type", ["pix", "hybrid"]);
   if (pixErr) throw pixErr;
@@ -64,6 +81,7 @@ export async function checkLowBalances(
   const accounts = await getAdAccounts(token);
   const accountById = new Map(accounts.map((a) => [a.account_id, a]));
 
+  const recent = await getRecentSends(db, userId);
   const statuses: BalanceStatus[] = [];
   const toAlert: BalanceStatus[] = [];
   const toReset: string[] = [];
@@ -72,8 +90,9 @@ export async function checkLowBalances(
     const acc = accountById.get(p.ad_account_id);
     if (!acc) continue;
     const threshold = (p.alert_threshold as number | null) ?? Number(p.base_amount) * 0.2;
-    const balance = availableFunds(acc).amount;
-    const low = balance < threshold;
+    const balance = effectiveBalance(acc, p);
+    const handled = recent.pix.has(p.ad_account_id) || recent.boleto.has(p.ad_account_id);
+    const low = balance < threshold && !handled;
     const clientName = clientNameById.get(p.ad_account_id) || acc.name;
     const withinCooldown =
       !opts.bypassCooldown &&
@@ -87,13 +106,14 @@ export async function checkLowBalances(
       currency: acc.currency,
       threshold,
       low,
+      handled,
       alerted: false,
     };
     statuses.push(status);
 
     if (low && !withinCooldown) {
       toAlert.push(status);
-    } else if (!low && p.last_alert_sent_at) {
+    } else if (!low && !handled && p.last_alert_sent_at) {
       toReset.push(p.ad_account_id);
     }
   }
@@ -155,6 +175,7 @@ export interface FridayBalanceStatus {
   fridayThreshold: number;
   applicable: boolean;
   low: boolean;
+  handled: boolean;
   alerted: boolean;
 }
 
@@ -173,7 +194,9 @@ export async function checkFridayLowBalances(
 
   const { data: pixRows, error: pixErr } = await db
     .from("pix_accounts")
-    .select("ad_account_id, payment_type, base_amount, alert_threshold, friday_multiplier, friday_alert_sent_at")
+    .select(
+      "ad_account_id, payment_type, base_amount, alert_threshold, friday_multiplier, friday_alert_sent_at, funds_balance_enabled, funds_balance_amount",
+    )
     .eq("user_id", userId)
     .in("payment_type", ["pix", "hybrid"])
     .not("friday_multiplier", "is", null);
@@ -189,6 +212,7 @@ export async function checkFridayLowBalances(
   const accounts = await getAdAccounts(token);
   const accountById = new Map(accounts.map((a) => [a.account_id, a]));
 
+  const recent = await getRecentSends(db, userId);
   const statuses: FridayBalanceStatus[] = [];
   const toAlert: FridayBalanceStatus[] = [];
   const toReset: string[] = [];
@@ -199,8 +223,9 @@ export async function checkFridayLowBalances(
     const threshold = (p.alert_threshold as number | null) ?? (p.base_amount != null ? Number(p.base_amount) * 0.2 : 0);
     const multiplier = Number(p.friday_multiplier);
     const fridayThreshold = threshold * multiplier;
-    const balance = availableFunds(acc).amount;
-    const low = applicable && fridayThreshold > 0 && balance < fridayThreshold;
+    const balance = effectiveBalance(acc, p);
+    const handled = recent.pix.has(p.ad_account_id) || recent.boleto.has(p.ad_account_id);
+    const low = applicable && fridayThreshold > 0 && balance < fridayThreshold && !handled;
     const clientName = clientNameById.get(p.ad_account_id) || acc.name;
     const withinCooldown =
       !opts.bypassCooldown &&
@@ -217,13 +242,14 @@ export async function checkFridayLowBalances(
       fridayThreshold,
       applicable,
       low,
+      handled,
       alerted: false,
     };
     statuses.push(status);
 
     if (low && !withinCooldown) {
       toAlert.push(status);
-    } else if (!low && p.friday_alert_sent_at) {
+    } else if (!low && !handled && p.friday_alert_sent_at) {
       toReset.push(p.ad_account_id);
     }
   }

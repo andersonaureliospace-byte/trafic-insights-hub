@@ -70,6 +70,15 @@ export const DEFAULT_PRIORITY_OPTIONS: PriorityOption[] = [
 // classificação automática, que sempre raciocina em cima dos IDs fixos).
 export const PRIORITY_OPTIONS = DEFAULT_PRIORITY_OPTIONS;
 
+// Etapa 98: ordem de prioridade usada na ordenação de Acompanhamento e no reordenar do
+// "Atualizar status em massa": Inauguração, Crítica, Alta, Média, Baixa; quem ainda não
+// tem prioridade fica por último.
+const PRIORITY_RANK: Record<string, number> = { inauguracao: 0, critica: 1, alta: 2, media: 3, baixa: 4 };
+export function priorityRank(priority: string | null | undefined): number {
+  if (priority == null) return 5;
+  return PRIORITY_RANK[priority] ?? 5;
+}
+
 export function isInauguracao(priority: string | null | undefined): boolean {
   return priority === "inauguracao";
 }

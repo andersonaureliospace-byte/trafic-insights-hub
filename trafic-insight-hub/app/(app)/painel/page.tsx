@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
-import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, type PresetId } from "@/lib/format";
+import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, priorityRank, type PresetId } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
-import { ritmo, RITMO_BAND } from "@/lib/meta/ritmo";
+import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
+import { CPA_ACCEPTABLE_BAND, METAS_SORTS, compareMetas, computeMetas, metasCalendar, type MetasSort } from "@/lib/meta/metas";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
 import { ControleSaldo } from "@/components/painel/controle-saldo";
@@ -15,6 +16,8 @@ import { CopyTab } from "@/components/painel/copy-tab";
 import { DemandasTab } from "@/components/painel/demandas-tab";
 import { EvolucaoTab } from "@/components/painel/evolucao-tab";
 import { MonitorCpaTab } from "@/components/painel/monitor-cpa-tab";
+import { PIN_BLUR, PinCell } from "@/components/painel/pin-cell";
+import { MetasTab } from "@/components/painel/metas-tab";
 import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
 import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { EditClientDialog } from "@/components/painel/edit-client-dialog";
@@ -36,6 +39,8 @@ interface AccountBinding {
   address: string | null;
   sort_order: number | null;
   optimized: boolean | null;
+  // Etapa 83: marcação própria da aba "Otimizado", separada de `optimized`.
+  tab_optimized: boolean | null;
 }
 
 // Base usada tanto no patch otimista de um campo quanto na reordenação em
@@ -55,6 +60,7 @@ function defaultBinding(accountId: string): AccountBinding {
     address: null,
     sort_order: null,
     optimized: false,
+    tab_optimized: false,
   };
 }
 
@@ -74,16 +80,31 @@ interface PixRow {
   // components/painel/personalizar-alertas-dialog.tsx.
   pix_target_type: "grupo" | "numero" | null;
   pix_target_number: string | null;
+  // Etapa 81: "Saldo por fundos" — ver
+  // components/painel/personalizar-alertas-dialog.tsx.
+  funds_balance_enabled: boolean | null;
+  funds_balance_amount: number | null;
+  funds_balance_currency: string | null;
+  funds_balance_watermark: string | null;
+  funds_balance_updated_at: string | null;
 }
 
 type BindingPatch = Partial<Omit<AccountBinding, "ad_account_id">>;
 type PixPatch = Partial<Omit<PixRow, "ad_account_id">>;
+
+// Etapa 98: ordenação extra de Acompanhamento (fora de METAS_SORTS, que é compartilhada
+// com a aba de metas, onde não existe prioridade).
+const PRIORITY_CPA_SORT = "priority_cpa" as const;
+type SortMode = "manual" | MetasSort | typeof PRIORITY_CPA_SORT;
 
 // Chave de ordenação da tabela de Acompanhamento: quem já foi arrastado
 // manualmente usa sort_order (crescente); quem nunca foi mexido cai pro
 // final, ordenado por gasto (maior gasto primeiro) — igual ao comportamento
 // antigo. Função pura fora do componente + comparador de uma expressão só
 // pro React Compiler conseguir preservar a memoização do useMemo abaixo.
+// Etapa 90: busca automática (entrar na aba) só repete depois disso; ↻ sempre busca.
+const AUTO_RELOAD_MS = 5 * 60 * 1000;
+
 function rowSortKey(row: { binding?: AccountBinding; insight?: AccountInsight }): number {
   return row.binding?.sort_order ?? (1_000_000_000 - (row.insight?.spend ?? 0));
 }
@@ -92,37 +113,16 @@ function rowSortKey(row: { binding?: AccountBinding; insight?: AccountInsight })
 // pra serem reaproveitados também pelo aviso automático de investimento
 // baixo (lib/alerts/low-investment.ts), com a mesma conta exata.
 //
-// Cor da diferença mostrada embaixo do valor de "Invest. diário" (Etapa 69:
-// mudou de lugar — antes era só uma dica ao passar o mouse em cima do Ritmo,
-// agora fica sempre visível embaixo do orçamento diário, igual ao padrão da
-// coluna CPA). Compara o quanto precisa investir por dia daqui pra frente
-// (Ritmo) com o orçamento diário JÁ configurado na conta (orçamento atual
-// dos conjuntos/campanhas ativos, não muda com o período escolhido no
-// filtro). ⚠️ Suposição: "10 reais para cima/para baixo" do pedido original
-// foi interpretado como a diferença entre Ritmo e esse orçamento diário
-// atual (não Ritmo comparado a zero) — é a leitura que faz sentido pra
-// sinalizar se o orçamento diário já configurado está acima/abaixo do
-// necessário pra bater a meta do mês. Ajustável se não for essa a leitura
-// certa.
-// - diferença dentro de ±10: orçamento diário já está no ritmo certo → verde
-// - Ritmo mais de 10 reais ACIMA do orçamento diário atual ("pra cima"):
-//   precisaria investir mais do que está configurado → laranja
-// - Ritmo mais de 10 reais ABAIXO do orçamento diário atual ("pra baixo"):
-//   o orçamento atual está investindo mais rápido do que precisa → vermelho
-function ritmoColorClass(rowRitmo: number | null, dailyBudget: number | undefined): string {
-  if (rowRitmo == null) return "";
-  const diff = rowRitmo - (dailyBudget ?? 0);
-  if (diff > RITMO_BAND) return "text-orange-600 dark:text-orange-400";
-  if (diff < -RITMO_BAND) return "text-red-600 dark:text-red-400";
-  return "text-emerald-600 dark:text-emerald-400";
-}
+// ritmoColorClass (cor da diferença embaixo de "Invest. diário") agora mora em
+// lib/meta/ritmo.ts (Etapa 82) — compartilhada com Acompanhamento de metas.
 
 // Cor da coluna CPA (Acompanhamento): compara o CPA real com o CPA ideal
 // cadastrado do cliente — diferença = CPA − CPA ideal.
 // - diferença negativa (CPA abaixo do ideal) → verde
-// - diferença de 0 até R$1,40 acima do ideal → laranja
-// - diferença acima de R$1,40 do ideal → vermelho
-const CPA_ORANGE_BAND = 1.4;
+// - diferença de 0 até R$2,50 acima do ideal → laranja (atenção)
+// - diferença acima de R$2,50 do ideal → vermelho
+// Etapa 94: mesma banda de Acompanhamento de metas (CPA_ACCEPTABLE_BAND, R$2,50).
+const CPA_ORANGE_BAND = CPA_ACCEPTABLE_BAND;
 function cpaDiffColorClass(diff: number | null): string {
   if (diff == null) return "";
   if (diff < 0) return "text-emerald-600 dark:text-emerald-400";
@@ -138,6 +138,7 @@ function cpaDiffColorClass(diff: number | null): string {
 // é "Visão Geral". Ordem da lateral a pedido (Etapa 39).
 const TABS = [
   { id: "acompanhamento", label: "Acompanhamento" },
+  { id: "metas", label: "Acompanhamento de metas" },
   { id: "analise", label: "Análise" },
   { id: "evolucao", label: "Evolução" },
   { id: "monitor-cpa", label: "Monitor de CPA" },
@@ -171,6 +172,27 @@ export default function PainelPage() {
   // Filtro da coluna "Otimizado" (Etapa 36) — mesmo padrão dos outros 3:
   // começa fixo em "Todos".
   const [optimizedFilter, setOptimizedFilter] = useState<"all" | "optimized" | "pending">("all");
+  // Etapa 83: Acompanhamento de metas tem a própria coluna Otimizado e o próprio
+  // filtro Otimizado/Pendente — não compartilha nada com os de Acompanhamento.
+  // Etapa 86: contas fixadas (botão Fixar) — uma lista por aba, salvas no
+  // ui-state do Supabase e mantidas até desafixar. Fixada sobe pro topo, as
+  // outras ficam embaçadas e o "↻ Atualizar" busca só as fixadas.
+  // Etapa 87: mesmo seletor de ordenação de Acompanhamento de metas. "manual" =
+  // a ordem personalizada de antes (arrastar e soltar), continua sendo o padrão.
+  const [sortMode, setSortMode] = useState<SortMode>("manual");
+  const metasCal = useMemo(() => metasCalendar(), []);
+  // Última busca automática (por aba/período/contas) — evita rebuscar tudo toda vez que o
+  // usuário volta pra aba (Etapa 90).
+  const autoLoadRef = useRef<{
+    insights: { key: string; at: number } | null;
+    monthly: { key: string; at: number } | null;
+    alerts: number | null;
+  }>({ insights: null, monthly: null, alerts: null });
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+  const pinnedRef = useRef<string[]>([]);
+  useEffect(() => {
+    pinnedRef.current = pinnedIds;
+  }, [pinnedIds]);
   const [focusGroups, setFocusGroups] = useState<FocusGroup[]>([]);
   const [activeFocusGroupId, setActiveFocusGroupId] = useState<string | null>(null);
   const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
@@ -254,6 +276,9 @@ export default function PainelPage() {
     if (a.investFilter === "all" || a.investFilter === "low" || a.investFilter === "high") setInvestFilter(a.investFilter);
     if (a.optimizedFilter === "all" || a.optimizedFilter === "optimized" || a.optimizedFilter === "pending")
       setOptimizedFilter(a.optimizedFilter);
+    const strList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+    if (a.sortMode === "manual" || a.sortMode === PRIORITY_CPA_SORT || METAS_SORTS.some((s) => s.id === a.sortMode)) setSortMode(a.sortMode as SortMode);
+    setPinnedIds(strList(a.pinnedIds));
     if (typeof a.preset === "string") setPreset(a.preset as PresetId);
     if (typeof a.activeFocusGroupId === "string" || a.activeFocusGroupId === null)
       setActiveFocusGroupId((a.activeFocusGroupId as string | null) ?? null);
@@ -266,9 +291,31 @@ export default function PainelPage() {
     if (!uiHydrated.current) return;
     patchUiState({
       tab,
-      acompanhamento: { search, priorityFilter, cpaFilter, investFilter, optimizedFilter, preset, activeFocusGroupId },
+      acompanhamento: {
+        search,
+        priorityFilter,
+        cpaFilter,
+        investFilter,
+        optimizedFilter,
+        pinnedIds,
+        sortMode,
+        preset,
+        activeFocusGroupId,
+      },
     });
-  }, [tab, search, priorityFilter, cpaFilter, investFilter, optimizedFilter, preset, activeFocusGroupId, patchUiState]);
+  }, [
+    tab,
+    search,
+    priorityFilter,
+    cpaFilter,
+    investFilter,
+    optimizedFilter,
+    pinnedIds,
+    sortMode,
+    preset,
+    activeFocusGroupId,
+    patchUiState,
+  ]);
 
   const handleAnaliseFiltersChange = useCallback(
     (filters: { mode: string; subPanel: string; preset: string; search: string }) => {
@@ -311,7 +358,10 @@ export default function PainelPage() {
 
   useEffect(() => {
     if (tab !== "acompanhamento") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca o status de saldo/pagamento ao entrar na aba, só pra colorir o nome da conta
+    const at = autoLoadRef.current.alerts;
+    if (at && Date.now() - at < AUTO_RELOAD_MS) return;
+    autoLoadRef.current.alerts = Date.now();
+     
     void loadAlertStatuses();
   }, [loadAlertStatuses, tab]);
 
@@ -330,21 +380,44 @@ export default function PainelPage() {
     return allAccounts.filter((a) => set.has(a.account_id));
   }, [allAccounts, selectedIds]);
 
-  const loadInsights = useCallback(async () => {
-    if (selectedAccounts.length === 0) {
-      setInsights({});
-      return;
-    }
-    setLoadingInsights(true);
-    const res = await fetch("/api/meta/insights", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountIds: selectedAccounts.map((a) => a.account_id), datePreset: preset }),
-    });
-    const d = await res.json();
-    setInsights(d.insights ?? {});
-    setLoadingInsights(false);
-  }, [selectedAccounts, preset]);
+  // Contas que o "↻ Atualizar" deve buscar: só as fixadas (se houver alguma
+  // fixada entre as selecionadas), senão todas. A busca automática (entrar na
+  // aba / trocar período) continua trazendo todas.
+  const pinnedTargets = useCallback(() => {
+    const pinned = selectedAccounts.filter((a) => pinnedRef.current.includes(a.account_id));
+    return pinned.length > 0 ? pinned : null;
+  }, [selectedAccounts]);
+
+  const loadInsights = useCallback(
+    async (onlyPinned = false) => {
+      if (selectedAccounts.length === 0) {
+        setInsights({});
+        return true;
+      }
+      const pinned = onlyPinned ? pinnedTargets() : null;
+      setLoadingInsights(true);
+      try {
+        const res = await fetch("/api/meta/insights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accountIds: (pinned ?? selectedAccounts).map((a) => a.account_id),
+            datePreset: preset,
+          }),
+        });
+        const d = await res.json();
+        // Erro geral da chamada: mantém o que já estava na tela em vez de zerar tudo.
+        if (!d.insights) return false;
+        setInsights((prev) => (pinned ? { ...prev, ...d.insights } : d.insights));
+        return true;
+      } catch {
+        return false;
+      } finally {
+        setLoadingInsights(false);
+      }
+    },
+    [selectedAccounts, preset, pinnedTargets],
+  );
 
   useEffect(() => {
     // Só busca no Meta (o que consome requisição de verdade) quando a aba
@@ -352,34 +425,65 @@ export default function PainelPage() {
     // Etapa 75, também Controle de Saldo (coluna "Invest. diário" usa
     // insight.daily_budget). Nas outras abas, essa chamada não roda.
     if (tab !== "acompanhamento" && tab !== "saldo") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca os insights ao entrar na aba, ou quando seleção/período mudam com a aba já ativa
-    void loadInsights();
-  }, [loadInsights, tab]);
+    // Etapa 90: trocar de aba e voltar NÃO busca de novo (era uma busca completa a
+    // cada volta — queimava requisições da Meta). Só busca se mudou período/contas
+    // ou se a última busca automática tem mais de 5 minutos; o ↻ sempre busca.
+    const key = `${preset}|${selectedAccounts.map((a) => a.account_id).join(",")}`;
+    const last = autoLoadRef.current.insights;
+    if (last && last.key === key && Date.now() - last.at < AUTO_RELOAD_MS) return;
+    autoLoadRef.current.insights = { key, at: Date.now() };
+     
+    void loadInsights().then((ok) => {
+      if (!ok) autoLoadRef.current.insights = null;
+    });
+  }, [loadInsights, tab, preset, selectedAccounts]);
 
-  // Ritmo (coluna de Acompanhamento) precisa do gasto do MÊS CORRENTE
-  // sempre, independente do período escolhido no filtro da tabela acima —
-  // por isso é uma busca à parte, presa em "this_month" e não em `preset`.
+  // Ritmo (coluna de Acompanhamento) precisa do gasto do mês corrente ATÉ ONTEM
+  // (Etapa 85: é comparado com o "Ideal até hoje") sempre, independente do
+  // período escolhido no filtro da tabela acima — por isso é uma busca à
+  // parte, presa em "this_month" (dia 01 até agora, com hoje) e não em `preset`.
   // Só depende da seleção de contas, não do período, pra não duplicar
   // chamada toda vez que o filtro de data da tabela mudar.
-  const loadMonthlyInsights = useCallback(async () => {
-    if (selectedAccounts.length === 0) {
-      setMonthlyInsights({});
-      return;
-    }
-    const res = await fetch("/api/meta/insights", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountIds: selectedAccounts.map((a) => a.account_id), datePreset: "this_month" }),
-    });
-    const d = await res.json();
-    setMonthlyInsights(d.insights ?? {});
-  }, [selectedAccounts]);
+  const loadMonthlyInsights = useCallback(
+    async (onlyPinned = false) => {
+      if (selectedAccounts.length === 0) {
+        setMonthlyInsights({});
+        return true;
+      }
+      const pinned = onlyPinned ? pinnedTargets() : null;
+      try {
+        const res = await fetch("/api/meta/insights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            accountIds: (pinned ?? selectedAccounts).map((a) => a.account_id),
+            datePreset: "this_month",
+            // Só o gasto (Ritmo) — o orçamento diário já vem da busca principal.
+            spendOnly: true,
+          }),
+        });
+        const d = await res.json();
+        if (!d.insights) return false;
+        setMonthlyInsights((prev) => (pinned ? { ...prev, ...d.insights } : d.insights));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [selectedAccounts, pinnedTargets],
+  );
 
   useEffect(() => {
     if (tab !== "acompanhamento") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca o gasto do mês (fixo, pro Ritmo) ao entrar na aba ou trocar a seleção de contas
-    void loadMonthlyInsights();
-  }, [loadMonthlyInsights, tab]);
+    const key = selectedAccounts.map((a) => a.account_id).join(",");
+    const last = autoLoadRef.current.monthly;
+    if (last && last.key === key && Date.now() - last.at < AUTO_RELOAD_MS) return;
+    autoLoadRef.current.monthly = { key, at: Date.now() };
+     
+    void loadMonthlyInsights().then((ok) => {
+      if (!ok) autoLoadRef.current.monthly = null;
+    });
+  }, [loadMonthlyInsights, tab, selectedAccounts]);
 
   async function saveSelectedAccounts(ids: string[]) {
     setSelectedIds(ids);
@@ -446,6 +550,11 @@ export default function PainelPage() {
       manual_check_next_at: null,
       pix_target_type: "grupo" as const,
       pix_target_number: null,
+      funds_balance_enabled: false,
+      funds_balance_amount: null,
+      funds_balance_currency: null,
+      funds_balance_watermark: null,
+      funds_balance_updated_at: null,
     };
     const next = { ...current, ...patch };
     setPixAccounts((prev) => ({ ...prev, [accountId]: next }));
@@ -496,7 +605,7 @@ export default function PainelPage() {
       })
       .filter((r) => {
         if (investFilter === "all") return true;
-        const rowRitmo = ritmo(r.binding?.monthly_investment, monthlyInsights[r.acc.account_id]?.spend);
+        const rowRitmo = ritmoFromInsight(r.binding?.monthly_investment, monthlyInsights[r.acc.account_id]);
         if (rowRitmo == null) return false;
         const diff = rowRitmo - (r.insight?.daily_budget ?? 0);
         if (investFilter === "low") return diff > RITMO_BAND;
@@ -507,20 +616,83 @@ export default function PainelPage() {
         const isOptimized = !!r.binding?.optimized;
         return optimizedFilter === "optimized" ? isOptimized : !isOptimized;
       })
-      .sort((a, b) => rowSortKey(a) - rowSortKey(b));
-  }, [focusFilteredRows, search, priorityFilter, cpaFilter, investFilter, optimizedFilter, monthlyInsights]);
+      .sort((a, b) => {
+        if (sortMode === "manual") return rowSortKey(a) - rowSortKey(b);
+        if (sortMode === PRIORITY_CPA_SORT) {
+          // Etapa 98: agrupa por prioridade (Inauguração, Crítica, Alta, Média, Baixa, sem
+          // prioridade) e, dentro de cada grupo, ordena pela mesma diferença que aparece
+          // embaixo do CPA (CPA do período − CPA ideal), da maior pra menor. Sem diferença
+          // calculável (sem CPA ou sem CPA ideal) vai pro fim do grupo.
+          const rankDiff = priorityRank(a.binding?.priority) - priorityRank(b.binding?.priority);
+          if (rankDiff !== 0) return rankDiff;
+          const diffOf = (r: typeof a) =>
+            r.insight?.cost_per_result != null && r.binding?.cpa_target != null
+              ? r.insight.cost_per_result - r.binding.cpa_target
+              : null;
+          const da = diffOf(a);
+          const db = diffOf(b);
+          if (da == null && db == null) return a.clientName.localeCompare(b.clientName, "pt-BR");
+          if (da == null) return 1;
+          if (db == null) return -1;
+          return db - da;
+        }
+        // Mesmos critérios da aba de metas, calculados com o que Acompanhamento
+        // mostra: CPA do período escolhido vs CPA ideal; Invest. diário − Ritmo.
+        const metas = (r: typeof a) =>
+          computeMetas(
+            {
+              invested: monthlyInsights[r.acc.account_id]?.spend ?? 0,
+              monthlyTarget: r.binding?.monthly_investment ?? null,
+              cpa: r.insight?.cost_per_result ?? null,
+              cpaTarget: r.binding?.cpa_target ?? null,
+              dailyBudget: r.insight?.daily_budget ?? 0,
+              ritmo: ritmoFromInsight(r.binding?.monthly_investment, monthlyInsights[r.acc.account_id]),
+            },
+            metasCal.elapsedDays,
+            metasCal.daysInMonth,
+          );
+        return compareMetas(metas(a), metas(b), sortMode);
+      })
+      .sort((a, b) => Number(pinnedIds.includes(b.acc.account_id)) - Number(pinnedIds.includes(a.acc.account_id)));
+  }, [
+    sortMode,
+    metasCal,
+    pinnedIds,
+    focusFilteredRows,
+    search,
+    priorityFilter,
+    cpaFilter,
+    investFilter,
+    optimizedFilter,
+    monthlyInsights,
+  ]);
 
   // Arrastar só faz sentido reordenando a lista completa e visível — com
   // busca, grupo de foco ou qualquer um dos 4 filtros (Status/CPA/
   // Investimento/Otimizado) ativos, a posição de um item na tela não bate com sua
   // posição "de verdade" entre todas as contas, então desabilita.
+  const hasPinned = selectedAccounts.some((a) => pinnedIds.includes(a.account_id));
+  // Só conta depois que o gasto do mês chegou pelo menos uma vez (senão piscaria
+  // o aviso enquanto a primeira busca ainda está rodando).
+  const firstFailError = Object.values(monthlyInsights).find((i) => i.insights_error)?.insights_error;
+  const failedAccounts =
+    Object.keys(monthlyInsights).length === 0
+      ? 0
+      : selectedAccounts.filter((a) => !monthlyInsights[a.account_id] || monthlyInsights[a.account_id]?.insights_failed)
+          .length;
   const reorderEnabled =
+    !hasPinned &&
+    sortMode === "manual" &&
     search.trim() === "" &&
     activeFocusGroupId === null &&
     priorityFilter === "all" &&
     cpaFilter === "all" &&
     investFilter === "all" &&
     optimizedFilter === "all";
+
+  function togglePin(id: string) {
+    setPinnedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
 
   function handleRowDrop(targetAccountId: string) {
     if (!draggedAccountId || draggedAccountId === targetAccountId) return;
@@ -613,6 +785,19 @@ export default function PainelPage() {
                       className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
                     />
                     <select
+                      value={sortMode}
+                      onChange={(e) => setSortMode(e.target.value as SortMode)}
+                      className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
+                    >
+                      <option value="manual">Ordem personalizada (arrastar)</option>
+                      <option value={PRIORITY_CPA_SORT}>Prioridade + maior diferença do CPA (maior → menor)</option>
+                      {METAS_SORTS.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
                       value={preset}
                       onChange={(e) => setPreset(e.target.value as PresetId)}
                       className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
@@ -625,14 +810,16 @@ export default function PainelPage() {
                     </select>
                     <button
                       onClick={() => {
-                        void loadInsights();
-                        void loadMonthlyInsights();
-                        void loadAlertStatuses();
+                        void loadInsights(true);
+                        void loadMonthlyInsights(true);
+                        // Com conta fixada, NÃO refaz o status de saldo/pagamento (isso consulta a
+                        // Meta pra todas as contas) — fica só no que já foi carregado ao entrar na aba.
+                        if (!hasPinned) void loadAlertStatuses();
                       }}
                       disabled={loadingInsights}
                       className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
                     >
-                      {loadingInsights ? "Atualizando…" : "↻ Atualizar"}
+                      {loadingInsights ? "Atualizando…" : hasPinned ? "↻ Atualizar fixadas" : "↻ Atualizar"}
                     </button>
                     <button
                       onClick={() => setBulkStatusOpen(true)}
@@ -696,9 +883,24 @@ export default function PainelPage() {
                   </div>
                 </div>
 
+                {failedAccounts > 0 ? (
+                  <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+                    {failedAccounts} conta(s) não carregaram o gasto do mês (provável limite de requisições da Meta).
+                    Ritmo fica em — nelas. Clique em Atualizar pra tentar de novo.
+                    {firstFailError ? ` Motivo da Meta: ${firstFailError}` : ""}
+                  </p>
+                ) : null}
+
+                {hasPinned ? (
+                  <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+                    Modo foco: só as contas fixadas estão em destaque e o Atualizar busca apenas elas. Passe o mouse
+                    numa linha embaçada pra ver os números; desafixe pra voltar ao normal.
+                  </p>
+                ) : null}
+
                 {!reorderEnabled ? (
                   <p className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-                    Para arrastar e reordenar os clientes, limpe a busca, o grupo de foco e os filtros de Status/CPA/
+                    Para arrastar e reordenar os clientes, limpe a busca, o grupo de foco, as contas fixadas, volte a ordenação pra Ordem personalizada e limpe os filtros de Status/CPA/
                     Investimento/Otimizado — a reordenação vale para a lista completa.
                   </p>
                 ) : null}
@@ -708,6 +910,9 @@ export default function PainelPage() {
                     <thead>
                       <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
                         <th className="w-6 px-2 py-2 font-medium"></th>
+                        <th className="px-4 py-2 font-medium" title="Fixa a conta no topo e foca só nela">
+                          Fixar
+                        </th>
                         <th
                           className="px-4 py-2 font-medium"
                           title="Marcação manual do dia — reseta sozinha à meia-noite (horário de Brasília)"
@@ -739,7 +944,7 @@ export default function PainelPage() {
                         </th>
                         <th
                           className="px-4 py-2 text-right font-medium"
-                          title="(Investimento mensal − Valor usado nesse mês) ÷ dias restantes do mês (mês sempre considerado com 30 dias, incluindo hoje como 1 dos dias restantes)"
+                          title="Quanto investir por dia pra alcançar o Ideal até hoje, contando o que já foi gasto hoje: dentro de 80%–120% do ideal = investimento diário normal (Investimento mensal ÷ dias do mês); fora da faixa, ajusta pela diferença pro ideal, limitada a ±50% do normal"
                         >
                           Ritmo
                         </th>
@@ -749,7 +954,9 @@ export default function PainelPage() {
                     <tbody>
                       {rows.map(({ acc, binding, insight }) => {
                         const priorityOption = priorityOptions.find((p) => p.id === binding?.priority);
-                        const rowRitmo = ritmo(binding?.monthly_investment, monthlyInsights[acc.account_id]?.spend);
+                        const rowRitmo = ritmoFromInsight(binding?.monthly_investment, monthlyInsights[acc.account_id]);
+                        const isPinned = pinnedIds.includes(acc.account_id);
+                        const blur = hasPinned && !isPinned ? PIN_BLUR : "";
                         return (
                           <tr
                             key={acc.id}
@@ -764,9 +971,9 @@ export default function PainelPage() {
                               setDraggedAccountId(null);
                             }}
                             onDragEnd={() => setDraggedAccountId(null)}
-                            className={`border-b border-zinc-100 last:border-0 dark:border-zinc-800/60 ${
+                            className={`group border-b border-zinc-100 last:border-0 dark:border-zinc-800/60 ${
                               draggedAccountId === acc.account_id ? "opacity-40" : ""
-                            }`}
+                            } ${isPinned ? "bg-amber-50/70 dark:bg-amber-950/30" : ""}`}
                           >
                             <td
                               className={`px-2 py-2 text-zinc-300 dark:text-zinc-600 ${
@@ -775,6 +982,9 @@ export default function PainelPage() {
                               title={reorderEnabled ? "Arraste para reordenar" : undefined}
                             >
                               {reorderEnabled ? "⠿" : ""}
+                            </td>
+                            <td className="px-4 py-2">
+                              <PinCell pinned={isPinned} onToggle={() => togglePin(acc.account_id)} />
                             </td>
                             <td className="px-4 py-2">
                               <OptimizedCell
@@ -839,9 +1049,9 @@ export default function PainelPage() {
                                 ))}
                               </select>
                             </td>
-                            <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(insight?.spend ?? 0)}</td>
-                            <td className="px-4 py-2 text-right tabular-nums">{insight?.results ?? "—"}</td>
-                            <td className="px-4 py-2 text-right tabular-nums">
+                            <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>{fmtCurrency(insight?.spend ?? 0)}</td>
+                            <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>{insight?.results ?? "—"}</td>
+                            <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
                               {(() => {
                                 const cpaActual = insight?.cost_per_result;
                                 const cpaTarget = binding?.cpa_target;
@@ -868,7 +1078,7 @@ export default function PainelPage() {
                                 />
                               </div>
                             </td>
-                            <td className="px-4 py-2 text-right tabular-nums">
+                            <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
                               {(() => {
                                 const diff = rowRitmo != null ? (insight?.daily_budget ?? 0) - rowRitmo : null;
                                 const colorClass = ritmoColorClass(rowRitmo, insight?.daily_budget);
@@ -884,7 +1094,12 @@ export default function PainelPage() {
                                 );
                               })()}
                             </td>
-                            <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(rowRitmo)}</td>
+                            <td
+                              className={`px-4 py-2 text-right tabular-nums ${blur}`}
+                              title={ritmoTooltip(binding?.monthly_investment, monthlyInsights[acc.account_id])}
+                            >
+                              {fmtCurrency(rowRitmo)}
+                            </td>
                             <td className="px-4 py-2 text-right">
                               <button
                                 onClick={() => setEditingAccountId(acc.account_id)}
@@ -907,6 +1122,17 @@ export default function PainelPage() {
                 accounts={selectedAccounts}
                 clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
                 cpaTargets={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.binding?.cpa_target ?? null]))}
+              />
+            ) : null}
+
+            {tab === "metas" ? (
+              <MetasTab
+                accounts={selectedAccounts}
+                clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
+                cpaTargets={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.binding?.cpa_target ?? null]))}
+                monthlyTargets={Object.fromEntries(
+                  allRows.map((r) => [r.acc.account_id, r.binding?.monthly_investment ?? null]),
+                )}
               />
             ) : null}
 
@@ -986,6 +1212,7 @@ export default function PainelPage() {
           priority: r.binding?.priority ?? null,
         }))}
         reorderEnabled={reorderEnabled}
+        onDone={() => setSortMode(PRIORITY_CPA_SORT)}
         onApply={(accountId, priority) => patchBinding(accountId, { priority })}
         onReorder={persistOrder}
       />

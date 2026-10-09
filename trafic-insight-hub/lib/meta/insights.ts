@@ -1,8 +1,12 @@
 // Contas e métricas — portado do app anterior (getAdAccounts / getAccountsInsights
 // em src/lib/meta.functions.ts), mesma regra de negócio:
 //  - ignora campanhas "[VAGA]"/"[SEGUIDORES]" (vagas de emprego disfarçadas de campanha)
-//  - ignora campanhas de objetivo de reconhecimento/tráfego/engajamento (não é o
-//    tipo de resultado que o gestor acompanha aqui)
+//  - campanhas de objetivo de reconhecimento/tráfego/visitas ao perfil/
+//    engajamento (EXCLUDED_OBJECTIVES) entram SÓ no investimento (spend e
+//    orçamento diário) — nunca em resultado, CPA nem custo por resultado (desde
+//    a Etapa 84, a pedido; antes eram ignoradas por completo). O mesmo vale
+//    pra campanha com [SEGUIDORES]/[TRÁFEGO] no nome (isVaga): investimento
+//    conta, resultado/CPA não. SÓ [VAGA] (isJobCampaign) fica fora de tudo.
 //  - só soma campanha/conjunto que tenha ao menos um anúncio "ligado" (ver
 //    ATIVE_ISH_STATUSES abaixo — inclui "Programado", que também conta pro
 //    Invest. diário mesmo sem estar entregando ainda)
@@ -13,7 +17,7 @@
 //    dos conjuntos ativos, convertendo lifetime_budget pro equivalente diário
 
 import { metaGet, metaGetAll, presetParams, type DateRangeInput } from "./client";
-import { isVaga, EXCLUDED_OBJECTIVES, pickFirstNumeric, lifetimeToDailyEquivalent } from "./shared";
+import { isVaga, isJobCampaign, EXCLUDED_OBJECTIVES, pickFirstNumeric, lifetimeToDailyEquivalent } from "./shared";
 
 // Ajuste pedido pelo usuário: um conjunto "Programado" (Meta Ads mostra o
 // círculo vazado "○ Programado" em vez da bolinha verde "● Ativo") tem o
@@ -33,6 +37,14 @@ const ACTIVE_ISH_STATUSES = [
   "IN_PROCESS",
   "WITH_ISSUES",
 ];
+
+// Etapa 88: data de término (end_time de conjunto / stop_time de campanha) já
+// passou? Sem data (ou "0"/inválida) = sem término, nunca concluído.
+function hasEnded(t?: string): boolean {
+  if (!t) return false;
+  const ms = Date.parse(t);
+  return Number.isFinite(ms) && ms < Date.now();
+}
 
 export interface AdAccount {
   id: string;
@@ -58,6 +70,14 @@ export interface AccountInsight {
   cbo_budget: number;
   result_type: string | null;
   result_types_count: number;
+  // Etapa 89: true quando a busca de gasto/resultado (insights) da conta falhou
+  // (ex.: limite de requisições da Meta) — nesse caso spend/CPA vieram zerados
+  // por falta de dado, não porque a conta não gastou. Quem usa o spend (Ritmo,
+  // aviso de investimento baixo) precisa tratar como "sem dado".
+  insights_failed?: boolean;
+  // Etapa 90: texto do erro da Meta (cortado) quando insights_failed — pra tela
+  // mostrar o motivo real (limite de requisições, timeout, token, etc.).
+  insights_error?: string;
 }
 
 export async function getAdAccounts(token: string): Promise<AdAccount[]> {
@@ -109,14 +129,28 @@ interface CampaignRow {
   created_time?: string;
 }
 
+// Etapa 90: spendOnly = só o gasto (spend) — pula as 3 chamadas de orçamento
+// diário (anúncios ativos, campanhas, conjuntos). O orçamento não muda com o
+// período, então quem já busca ele em outra chamada (o gasto do mês até ontem,
+// usado só no Ritmo) não precisa repetir. Nesse modo cost_per_result/daily_budget
+// NÃO são confiáveis — só spend.
+export interface InsightOptions {
+  spendOnly?: boolean;
+}
+
 export async function getAccountInsight(
   token: string,
   actId: string,
   datePreset: DateRangeInput,
+  opts: InsightOptions = {},
 ): Promise<AccountInsight> {
+  const spendOnly = opts.spendOnly === true;
   const id = actId.startsWith("act_") ? actId : `act_${actId}`;
 
-  let spend = 0;
+  let spend = 0; // investimento total: tudo, menos [VAGA] (inclui reconhecimento/tráfego)
+  // Gasto só das campanhas que contam pra resultado/CPA (fora os objetivos de
+  // EXCLUDED_OBJECTIVES) — é o numerador do custo por resultado.
+  let cpaSpend = 0;
   let costPerResult: number | null = null;
   let results: number | null = null;
 
@@ -128,7 +162,7 @@ export async function getAccountInsight(
 
   const campaignsWithActiveAd = new Set<string>();
   const adsetsWithActiveAd = new Set<string>();
-  try {
+  if (!spendOnly) try {
     const activeAds = await metaGetAll<{ campaign_id?: string; adset_id?: string }>(
       token,
       `/${id}/ads`,
@@ -146,23 +180,28 @@ export async function getAccountInsight(
     console.error("active ads err", id, e);
   }
 
-  try {
+  if (!spendOnly) try {
     const camps = await metaGet<{ data: CampaignRow[] }>(token, `/${id}/campaigns`, {
       fields:
         "id,name,objective,daily_budget,lifetime_budget,status,effective_status,start_time,stop_time,created_time",
       limit: "500",
     });
     for (const c of camps.data ?? []) {
-      if (isVaga(c.name)) {
+      if (isJobCampaign(c.name)) {
         if (c.id) vagaIds.add(c.id);
         continue;
       }
-      if (c.id && c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) {
-        excludedIds.add(c.id);
-        continue;
-      }
+      // Etapa 84: [SEGUIDORES]/[TRÁFEGO] no nome conta no investimento (gasto e
+      // orçamento diário), só fica fora de resultado/CPA — igual aos objetivos.
+      if (c.id && isVaga(c.name)) excludedIds.add(c.id);
+      // Etapa 84: objetivo "fora do CPA" não pula mais a conta de orçamento
+      // diário — o investimento delas conta (só o resultado/CPA não).
+      if (c.id && c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) excludedIds.add(c.id);
       const isActive = c.effective_status === "ACTIVE" || c.status === "ACTIVE";
       if (!isActive) continue;
+      // Etapa 88: campanha com data de término já passada = "Concluída" no
+      // Gerenciador, mesmo com a chavinha ligada e o effective_status ainda ACTIVE.
+      if (hasEnded(c.stop_time)) continue;
       if (!c.id || !campaignsWithActiveAd.has(c.id)) continue;
       if (c.daily_budget) {
         const v = Number(c.daily_budget) / 100;
@@ -197,9 +236,12 @@ export async function getAccountInsight(
       });
       for (const a of adsets) {
         if (!a.campaign_id) continue;
-        if (excludedIds.has(a.campaign_id)) continue;
         if (!activeNoCboIds.has(a.campaign_id)) continue;
         if (!a.id || !adsetsWithActiveAd.has(a.id)) continue;
+        // Etapa 88: conjunto com data de término já passada aparece como
+        // "Concluído" no Gerenciador (chavinha ligada, mas sem entregar) — o
+        // Graph API continua devolvendo effective_status ACTIVE, então checa a data.
+        if (hasEnded(a.end_time)) continue;
         if (a.daily_budget) {
           dailyBudget += Number(a.daily_budget) / 100;
         } else if (a.lifetime_budget) {
@@ -213,8 +255,10 @@ export async function getAccountInsight(
 
   const resultTypesSet = new Set<string>();
   let lastResultType: string | null = null;
+  let insightsFailed = false;
+  let insightsError: string | undefined;
   try {
-    const ins = await metaGet<{
+    type InsRes = {
       data: Array<{
         campaign_id?: string;
         campaign_name?: string;
@@ -222,21 +266,38 @@ export async function getAccountInsight(
         results?: Array<{ indicator?: string; values?: Array<{ value?: string }> }>;
         cost_per_result?: Array<{ values?: Array<{ value?: string }> }>;
       }>;
-    }>(token, `/${id}/insights`, {
-      fields: "campaign_id,campaign_name,spend,actions,cost_per_action_type,results,cost_per_result",
-      ...presetParams(datePreset),
-      level: "campaign",
-      limit: "500",
-      use_unified_attribution_setting: "true",
-    });
+    };
+    // Etapa 90: no modo só-gasto, pede só o necessário (mais leve = menos chance de
+    // estourar limite/timeout da Meta) e, se vier vazio, tenta mais uma vez — a Meta
+    // às vezes devolve lista vazia sem erro quando está sobrecarregada, o que virava
+    // "gasto zero" e inflava o Ritmo.
+    const fetchIns = () =>
+      metaGet<InsRes>(token, `/${id}/insights`, {
+        fields: spendOnly
+          ? "campaign_id,campaign_name,spend"
+          : "campaign_id,campaign_name,spend,actions,cost_per_action_type,results,cost_per_result",
+        ...presetParams(datePreset),
+        level: "campaign",
+        limit: "500",
+        ...(spendOnly ? {} : { use_unified_attribution_setting: "true" }),
+      });
+    let ins = await fetchIns();
+    if (spendOnly && (ins.data ?? []).length === 0) {
+      await new Promise((r) => setTimeout(r, 800));
+      ins = await fetchIns();
+    }
     let totalResults = 0;
     let hasResults = false;
     for (const row of ins.data ?? []) {
-      if (isVaga(row.campaign_name)) continue;
+      if (isJobCampaign(row.campaign_name)) continue;
       if (row.campaign_id && vagaIds.has(row.campaign_id)) continue;
-      if (row.campaign_id && excludedIds.has(row.campaign_id)) continue;
       const rowSpend = row.spend ? Number(row.spend) : 0;
+      // Etapa 84: campanha de objetivo excluído soma no investimento e para aqui
+      // — não entra em cpaSpend, resultado nem tipo de resultado.
       spend += rowSpend;
+      if (isVaga(row.campaign_name)) continue; // tag de nome (seguidores/tráfego): fora do CPA
+      if (row.campaign_id && excludedIds.has(row.campaign_id)) continue;
+      cpaSpend += rowSpend;
       const rowResults = pickFirstNumeric(row.results);
       let rowType: string | null = null;
       if (rowResults != null && rowResults > 0) {
@@ -254,10 +315,12 @@ export async function getAccountInsight(
     }
     if (hasResults) {
       results = totalResults;
-      if (spend > 0) costPerResult = spend / totalResults;
+      if (cpaSpend > 0) costPerResult = cpaSpend / totalResults;
     }
   } catch (e) {
     console.error("insights err", id, e);
+    insightsFailed = true;
+    insightsError = (e as Error).message.slice(0, 220);
   }
 
   return {
@@ -269,19 +332,41 @@ export async function getAccountInsight(
     cbo_budget: cboBudget,
     result_type: lastResultType,
     result_types_count: resultTypesSet.size,
+    insights_failed: insightsFailed || undefined,
+    insights_error: insightsError,
   };
 }
+
+// Etapa 90: no máximo INSIGHTS_CONCURRENCY contas ao mesmo tempo (cada conta faz
+// de 1 a 4 chamadas) — antes eram todas em paralelo (25 contas ≈ 100 chamadas de
+// uma vez), o que estourava o limite de requisições da Meta.
+const INSIGHTS_CONCURRENCY = 5;
 
 export async function getAccountsInsights(
   token: string,
   accountIds: string[],
   datePreset: DateRangeInput,
+  opts: InsightOptions = {},
 ): Promise<Record<string, AccountInsight>> {
   const out: Record<string, AccountInsight> = {};
-  await Promise.all(
-    accountIds.map(async (actId) => {
-      out[actId] = await getAccountInsight(token, actId, datePreset);
-    }),
-  );
+  let next = 0;
+  const worker = async () => {
+    while (next < accountIds.length) {
+      const actId = accountIds[next++];
+      out[actId] = await getAccountInsight(token, actId, datePreset, opts);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(INSIGHTS_CONCURRENCY, accountIds.length) }, worker));
+  // Etapa 89: contas cuja busca falhou (tipicamente limite de requisições da
+  // Meta com muitas contas em paralelo) são tentadas de novo, uma de cada vez e
+  // com uma pausa, até 2 rodadas — em vez de ficarem com gasto zerado.
+  for (let round = 0; round < 2; round++) {
+    const failed = accountIds.filter((id) => out[id]?.insights_failed);
+    if (failed.length === 0) break;
+    await new Promise((r) => setTimeout(r, 1500));
+    for (const actId of failed) {
+      out[actId] = await getAccountInsight(token, actId, datePreset, opts);
+    }
+  }
   return out;
 }

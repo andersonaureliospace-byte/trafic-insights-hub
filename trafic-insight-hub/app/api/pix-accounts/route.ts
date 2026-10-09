@@ -35,6 +35,14 @@ export async function PATCH(request: Request) {
       // aqui (raramente muda), ver supabase/migrations/0022_*.
       "pix_target_type",
       "pix_target_number",
+      // Etapa 81: "Saldo por fundos" — independente do Tipo de conta (ver
+      // supabase/migrations/0025_*). funds_balance_watermark só é escrito
+      // pelo próprio app (nunca editado manualmente), sempre junto de
+      // funds_balance_amount, pra resetar o ponto de partida do cálculo.
+      "funds_balance_enabled",
+      "funds_balance_amount",
+      "funds_balance_currency",
+      "funds_balance_watermark",
     ];
     for (const key of WHITELIST) {
       if (key in body) patch[key] = body[key];
