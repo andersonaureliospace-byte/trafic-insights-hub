@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
-import { ritmoFromInsight, ritmoTooltip, ritmoColorClass } from "@/lib/meta/ritmo";
+import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, ritmoGap } from "@/lib/meta/ritmo";
 import {
   METAS_SORTS,
   computeMetas,
@@ -339,7 +339,22 @@ export function MetasTab({
                     className={"px-4 py-2 text-right tabular-nums"}
                     title={ritmoTooltip(monthlyTargets[r.accountId] ?? null, insights[r.accountId])}
                   >
-                    {fmtCurrency(r.ritmo)}
+                    {(() => {
+                      const monthly = monthlyTargets[r.accountId] ?? null;
+                      const ins = insights[r.accountId];
+                      const g =
+                        monthly != null && ins && !ins.insights_failed ? ritmoGap(monthly, ins.spend) : null;
+                      return g?.catchingUp ? (
+                        <>
+                          <div className="font-semibold text-orange-600 dark:text-orange-400">{fmtCurrency(r.ritmo)}</div>
+                          <div className="text-xs text-orange-600 opacity-80 dark:text-orange-400">
+                            dobrar · {g.daysToCatchUp} {g.daysToCatchUp === 1 ? "dia" : "dias"}
+                          </div>
+                        </>
+                      ) : (
+                        fmtCurrency(r.ritmo)
+                      );
+                    })()}
                   </td>
                   <td className={"px-4 py-2 text-right tabular-nums"}>
                     <div className={`text-base font-semibold ${cpaColor}`}>{fmtCurrency(m.cpa)}</div>

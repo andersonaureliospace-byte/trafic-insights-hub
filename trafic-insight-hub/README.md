@@ -2442,6 +2442,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     as datas são calculadas só no calendário (YYYY-MM-DD), igual em qualquer
     servidor. Vale também pra atualização automática e pra aba Evolução.
 
+97. **Ritmo acelera quando a conta atrasa mais de 3% da meta (Etapa 101)** — a tolerância de
+    atraso passou a ser de 3 pontos da META MENSAL (ideal 38% e investido 33% = 5 pontos
+    atrás). Passou disso: (a) a barra e o valor de Investimento atual ficam laranja (antes
+    só mudavam abaixo de 80% do ideal); (b) o Ritmo DOBRA (2× o investimento diário
+    normal) até igualar o ideal até hoje, e em Acompanhamento de metas aparece embaixo
+    "dobrar · N dias" (N = atraso ÷ investimento diário normal, arredondado pra cima).
+    Ex.: meta 4.400, normal 141,94, 250,87 atrás → Ritmo 283,87 por 2 dias. Dentro dos 3
+    pontos o Ritmo é o normal; acima de 120% do ideal continua desacelerando como antes.
+    Vale também pra coluna Ritmo de Acompanhamento e pro aviso de investimento baixo.
+    Código: `ritmoGap()` e constantes novas em `lib/meta/ritmo.ts`.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
