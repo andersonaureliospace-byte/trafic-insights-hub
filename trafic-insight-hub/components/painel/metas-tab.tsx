@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
-import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, ritmoGap } from "@/lib/meta/ritmo";
+import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, ritmoAcceleratedDays } from "@/lib/meta/ritmo";
 import {
   METAS_SORTS,
   computeMetas,
@@ -342,13 +342,13 @@ export function MetasTab({
                     {(() => {
                       const monthly = monthlyTargets[r.accountId] ?? null;
                       const ins = insights[r.accountId];
-                      const g =
-                        monthly != null && ins && !ins.insights_failed ? ritmoGap(monthly, ins.spend) : null;
-                      return g?.catchingUp ? (
+                      const days =
+                        monthly != null && ins && !ins.insights_failed ? ritmoAcceleratedDays(monthly, ins.spend) : 0;
+                      return days > 0 ? (
                         <>
                           <div className="font-semibold text-orange-600 dark:text-orange-400">{fmtCurrency(r.ritmo)}</div>
                           <div className="text-xs text-orange-600 opacity-80 dark:text-orange-400">
-                            dobrar · {g.daysToCatchUp} {g.daysToCatchUp === 1 ? "dia" : "dias"}
+                            acelerar · {days} {days === 1 ? "dia" : "dias"}
                           </div>
                         </>
                       ) : (

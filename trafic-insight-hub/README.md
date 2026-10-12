@@ -2442,16 +2442,18 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     as datas são calculadas só no calendário (YYYY-MM-DD), igual em qualquer
     servidor. Vale também pra atualização automática e pra aba Evolução.
 
-97. **Ritmo acelera quando a conta atrasa mais de 3% da meta (Etapa 101)** — a tolerância de
-    atraso passou a ser de 3 pontos da META MENSAL (ideal 38% e investido 33% = 5 pontos
-    atrás). Passou disso: (a) a barra e o valor de Investimento atual ficam laranja (antes
-    só mudavam abaixo de 80% do ideal); (b) o Ritmo DOBRA (2× o investimento diário
-    normal) até igualar o ideal até hoje, e em Acompanhamento de metas aparece embaixo
-    "dobrar · N dias" (N = atraso ÷ investimento diário normal, arredondado pra cima).
-    Ex.: meta 4.400, normal 141,94, 250,87 atrás → Ritmo 283,87 por 2 dias. Dentro dos 3
-    pontos o Ritmo é o normal; acima de 120% do ideal continua desacelerando como antes.
-    Vale também pra coluna Ritmo de Acompanhamento e pro aviso de investimento baixo.
-    Código: `ritmoGap()` e constantes novas em `lib/meta/ritmo.ts`.
+97. **Ritmo = o que falta pro ideal (2× no máximo, 50% no mínimo) + cores com tolerância de 2% (Etapas 101/102)** —
+    Ritmo = Ideal até hoje − Investido atual, limitado a no mínimo 50% e no máximo 2× o
+    investimento diário normal (Investimento mensal ÷ dias do mês). Ex.: normal 100, ideal
+    1.200, investido 1.050 → 150; ideal 1.200/1.300/1.400 e investido 950/1.150/1.300 →
+    200/150/100; já 100 acima do ideal (normal 96,77) → 48,39 até regularizar. Embaixo do
+    Ritmo, em Acompanhamento de metas, aparece "acelerar · N dias" (quantos dias seguidos o
+    Ritmo fica acima do normal até igualar). Cor do Investimento atual / barra: tolerância de
+    2 pontos da META MENSAL pros dois lados — mais de 2 pontos atrás = laranja; mais de 2
+    pontos acima do ideal = vermelho; senão verde. Ex.: ideal 38%, investido 33% → laranja;
+    41% → vermelho. Vale também pra coluna Ritmo de Acompanhamento e pro aviso de
+    investimento baixo. Código: `ritmoParts()`, `ritmoAcceleratedDays()` e
+    `INVEST_TOLERANCE` em `lib/meta/ritmo.ts`.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

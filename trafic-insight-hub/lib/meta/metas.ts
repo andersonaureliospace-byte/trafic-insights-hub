@@ -6,18 +6,18 @@
 // do mês × dia de hoje. Conferido na Speed: dia 04 de outubro, meta R$ 3.000
 // → 3.000 ÷ 31 × 4 = R$ 387,10.
 
-import { monthCalendarSP, RITMO_BEHIND_TOLERANCE, RITMO_OK_HIGH } from "./ritmo";
+import { monthCalendarSP, INVEST_TOLERANCE } from "./ritmo";
 
 // CPA: diferença (CPA − CPA ideal) até R$2,50 acima do ideal = atenção
 // (amarelo/laranja); acima disso = crítico (vermelho); abaixo/igual ao ideal =
 // verde. Etapa 93/94: R$2,50, a pedido — mesma banda de Acompanhamento.
 export const CPA_ACCEPTABLE_BAND = 2.5;
 
-// Investimento (Etapa 101): "abaixo" quando está mais de 3 pontos da META MENSAL
-// atrás do ideal até hoje (ex.: ideal 38%, investido 33% = 5 pontos → laranja);
-// "acima" quando passa de 120% do ideal; entre os dois = dentro da meta.
-export const INVEST_BEHIND_TOLERANCE = RITMO_BEHIND_TOLERANCE;
-export const INVEST_HIGH_RATIO = RITMO_OK_HIGH;
+// Investimento (Etapa 102): tolerância de 2 pontos da META MENSAL pros dois lados
+// do ideal até hoje. Mais de 2 pontos ATRÁS = "abaixo" (laranja); mais de 2 pontos
+// ACIMA = "acima" (vermelho); entre os dois = dentro da meta (verde). Ex.: ideal 38%,
+// investido 33% → laranja; investido 41% → vermelho; 37,8% → verde.
+// Investido = dia 01 até agora (com o gasto de hoje).
 
 export type InvestStatus = "below" | "ok" | "above";
 export type CpaStatus = "good" | "acceptable" | "high";
@@ -73,9 +73,8 @@ export function computeMetas(input: MetasInput, elapsedDays: number, daysInMonth
   const investRatio = idealUntilToday != null && idealUntilToday > 0 ? invested / idealUntilToday : null;
   let investStatus: InvestStatus | null = null;
   if (investRatio != null) {
-    const behindPoints = hasMonthly && idealUntilToday != null ? (idealUntilToday - invested) / monthlyTarget : 0;
-    investStatus =
-      behindPoints > INVEST_BEHIND_TOLERANCE ? "below" : investRatio > INVEST_HIGH_RATIO ? "above" : "ok";
+    const diffPoints = hasMonthly && idealUntilToday != null ? (invested - idealUntilToday) / monthlyTarget : 0;
+    investStatus = diffPoints < -INVEST_TOLERANCE ? "below" : diffPoints > INVEST_TOLERANCE ? "above" : "ok";
   }
 
   const cpaDiff = cpa != null && cpaTarget != null ? cpa - cpaTarget : null;

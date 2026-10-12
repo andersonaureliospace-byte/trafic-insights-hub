@@ -26,42 +26,36 @@ export function monthCalendarSP(now: Date = new Date()): { year: number; month: 
   return { year, month, day, daysInMonth };
 }
 
-// Etapa 85/91/101: Ritmo de ALCANCE do ideal. Base = investimento diário normal
+// Etapa 85/91/101/102: Ritmo de ALCANCE do ideal. Base = investimento diário normal
 // (Investimento mensal ÷ dias do mês). Ideal até hoje = normal × dia de hoje (mesmo
 // da aba Acompanhamento de metas). `spentSoFar` = gasto do dia 01 ATÉ AGORA, contando
 // o que já foi gasto hoje (o mesmo "Valor usado" de "Mês atual").
-// Etapa 101 (regra nova, a pedido): a tolerância de atraso é de 3 pontos da META
-// MENSAL (ex.: ideal 38% e investido 33% = 5 pontos atrás). Passou disso, o Ritmo
-// DOBRA (2× o normal) até a conta alcançar o ideal. Ex.: meta 4.400 (normal 141,94),
-// 250,87 atrás → Ritmo 283,88 por 2 dias seguidos.
-// - Atrasado até 3 pontos da meta (ou em dia, até 120% do ideal): Ritmo = normal.
-// - Atrasado mais de 3 pontos: Ritmo = 2× o normal.
-// - Adiantado (acima de 120% do ideal): desacelera na mesma proporção da diferença,
-//   até −50% do normal.
+// Etapa 102 (regra do Anderson): Ritmo = quanto ainda falta investir pra IGUALAR o
+// ideal até hoje (ideal − investido), no mínimo 50% e no máximo 2× o normal.
+//   Ex.: normal 100, dia 12, ideal 1.200, investido 1.050 → Ritmo 150.
+//   Ex.: ideal 1.200/1.300/1.400 e investido 950/1.150/1.300 → Ritmo 200 (teto 2×)/150/100.
+//   Ex.: já 100 acima do ideal, normal 96,77 → Ritmo 48,39 (piso 50%) até regularizar.
+// A cor do Investimento (barra/valor) usa a tolerância de 2 pontos da meta mensal:
+// mais de 2 pontos ATRÁS = laranja; mais de 2 pontos ACIMA do ideal = vermelho.
 // Sem Investimento mensal, não dá pra calcular.
-export const RITMO_MAX_ADJUST = 0.5;
-// Etapa 101: tolerância de atraso, em fração da meta mensal (0,03 = 3 pontos).
-export const RITMO_BEHIND_TOLERANCE = 0.03;
-// Etapa 101: quanto o Ritmo multiplica o normal quando a conta está atrasada além da tolerância.
-export const RITMO_CATCHUP_MULTIPLIER = 2;
-export const RITMO_OK_HIGH = 1.2;
+export const RITMO_MAX_MULT = 2; // teto: no máximo 2× o investimento diário normal
+export const RITMO_MIN_MULT = 0.5; // piso: no mínimo 50% do normal (quando já está adiantado)
+// Etapa 102: tolerância do Investimento, em fração da meta mensal (0,02 = 2 pontos),
+// pros dois lados (atrás = laranja, acima = vermelho).
+export const INVEST_TOLERANCE = 0.02;
 
-// Atraso da conta em relação ao ideal até hoje (R$, positivo = atrasado) e se
-// ele passou da tolerância de 3 pontos da meta mensal.
-export function ritmoGap(
+export function ritmoParts(
   monthlyInvestment: number,
   spentSoFar: number,
   now: Date = new Date(),
-): { normal: number; ideal: number; gap: number; behindPoints: number; catchingUp: boolean; daysToCatchUp: number } {
+): { normal: number; ideal: number; gap: number; behindPoints: number; ritmo: number } {
   const { day, daysInMonth } = monthCalendarSP(now);
   const normal = monthlyInvestment / daysInMonth;
   const ideal = normal * day;
-  const gap = ideal - spentSoFar;
+  const gap = ideal - spentSoFar; // positivo = atrasado; negativo = adiantado
   const behindPoints = monthlyInvestment > 0 ? gap / monthlyInvestment : 0;
-  const catchingUp = monthlyInvestment > 0 && behindPoints > RITMO_BEHIND_TOLERANCE;
-  // Quantos dias no dobro até zerar o atraso: cada dia no dobro recupera 1× o normal.
-  const daysToCatchUp = catchingUp && normal > 0 ? Math.ceil(gap / normal) : 0;
-  return { normal, ideal, gap, behindPoints, catchingUp, daysToCatchUp };
+  const r = Math.max(normal * RITMO_MIN_MULT, Math.min(gap, normal * RITMO_MAX_MULT));
+  return { normal, ideal, gap, behindPoints, ritmo: r };
 }
 
 export function ritmo(
@@ -70,12 +64,28 @@ export function ritmo(
   now: Date = new Date(),
 ): number | null {
   if (monthlyInvestment == null) return null;
-  const { normal, ideal, gap, catchingUp } = ritmoGap(monthlyInvestment, spentSoFar ?? 0, now);
-  if (catchingUp) return normal * RITMO_CATCHUP_MULTIPLIER;
-  if (gap >= 0) return normal; // atrasado dentro da tolerância
-  if (ideal > 0 && (spentSoFar ?? 0) / ideal <= RITMO_OK_HIGH) return normal; // em dia
-  const cap = normal * RITMO_MAX_ADJUST;
-  return normal + Math.max(-cap, gap); // adiantado demais: desacelera
+  return ritmoParts(monthlyInvestment, spentSoFar ?? 0, now).ritmo;
+}
+
+// Quantos dias seguidos o Ritmo fica acima do normal até a conta igualar o ideal.
+// Cada dia acelerado investe o Ritmo do dia e o ideal sobe 1× o normal, então o
+// atraso do dia seguinte = atraso de hoje − Ritmo de hoje + normal.
+export function ritmoAcceleratedDays(
+  monthlyInvestment: number,
+  spentSoFar: number,
+  now: Date = new Date(),
+): number {
+  const { normal, gap } = ritmoParts(monthlyInvestment, spentSoFar, now);
+  if (!(normal > 0)) return 0;
+  let g = gap;
+  let days = 0;
+  while (days < 31) {
+    const r = Math.max(normal * RITMO_MIN_MULT, Math.min(g, normal * RITMO_MAX_MULT));
+    if (r <= normal + 0.005) break;
+    days += 1;
+    g = g - r + normal;
+  }
+  return days;
 }
 
 // Etapa 89: Ritmo a partir do insight do mês (até agora, com hoje) da conta. Se o insight
@@ -103,22 +113,24 @@ export function ritmoTooltip(
   if (insight.insights_failed) return "A Meta não devolveu o gasto do mês desta conta — clique em Atualizar pra tentar de novo.";
   const { day, daysInMonth } = monthCalendarSP(now);
   const spent = insight.spend;
-  const g = ritmoGap(monthlyInvestment, spent, now);
-  const r = ritmo(monthlyInvestment, spent, now) ?? 0;
-  const pts = (n: number) => `${(n * 100).toFixed(1).replace(".", ",")}%`;
-  const faixa = g.catchingUp
-    ? `Atrasado ${brl(g.gap)} (${pts(g.behindPoints)} da meta, tolerância 3%) → dobrar o investimento: Ritmo = 2× o normal, por ${g.daysToCatchUp} dia(s) seguidos até igualar o ideal`
-    : g.gap >= 0
-      ? `Atrasado ${brl(g.gap)} (${pts(g.behindPoints)} da meta) — dentro da tolerância de 3% → Ritmo = normal`
-      : spent / g.ideal <= RITMO_OK_HIGH
-        ? `Em dia (${Math.round((spent / g.ideal) * 100)}% do ideal) → Ritmo = normal`
-        : `Adiantado (${Math.round((spent / g.ideal) * 100)}% do ideal) → diferença ${brl(spent - g.ideal)}, ajuste limitado a ±${brl(g.normal * RITMO_MAX_ADJUST)}`;
+  const g = ritmoParts(monthlyInvestment, spent, now);
+  const pts = (n: number) => `${(Math.abs(n) * 100).toFixed(1).replace(".", ",")}%`;
+  let faixa: string;
+  if (g.gap > 0) {
+    const d = ritmoAcceleratedDays(monthlyInvestment, spent, now);
+    faixa =
+      `Faltam ${brl(g.gap)} pro ideal (${pts(g.behindPoints)} da meta${g.behindPoints > INVEST_TOLERANCE ? ", acima da tolerância de 2%" : ", dentro da tolerância de 2%"}) → ` +
+      `Ritmo = o que falta, entre ${brl(g.normal * RITMO_MIN_MULT)} (50%) e ${brl(g.normal * RITMO_MAX_MULT)} (2×)` +
+      (d > 0 ? `; acelerado por ${d} dia(s)` : "");
+  } else {
+    faixa = `Já ${brl(-g.gap)} acima do ideal (${pts(g.behindPoints)} da meta) → Ritmo no piso de 50% do normal até regularizar`;
+  }
   return (
     `Investimento mensal: ${brl(monthlyInvestment)} ÷ ${daysInMonth} dias = ${brl(g.normal)} por dia\n` +
     `Ideal até hoje (dia ${day}): ${brl(g.ideal)}\n` +
     `Gasto de 01 até agora (com hoje): ${brl(spent)}\n` +
     `${faixa}\n` +
-    `Ritmo: ${brl(r)}`
+    `Ritmo: ${brl(g.ritmo)}`
   );
 }
 
