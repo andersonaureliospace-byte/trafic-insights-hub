@@ -2434,6 +2434,14 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Arquivos novos: `lib/alerts/adset-decision.ts` (regras puras),
     `lib/alerts/adset-quarantine.ts`; `lib/meta/budget.ts` ganhou o corte.
 
+96. **Atualizar status em massa: janela dos 3 dias corrigida (Etapa 100)** — a conta que o
+    servidor fazia dos "últimos 3 dias" (lib/meta/daily-cpa.ts) usava horário local e,
+    no servidor (UTC), recuava 1 dia: ontem ficava FORA da soma e entrava um dia
+    a mais lá de trás (ex.: em 12/10 somava 08, 09 e 10 em vez de 09, 10 e 11). Por
+    isso o status em massa divergia do CPA da tela (que é calculado pela Meta). Agora
+    as datas são calculadas só no calendário (YYYY-MM-DD), igual em qualquer
+    servidor. Vale também pra atualização automática e pra aba Evolução.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

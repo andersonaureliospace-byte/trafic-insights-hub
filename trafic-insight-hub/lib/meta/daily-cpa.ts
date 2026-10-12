@@ -6,6 +6,13 @@
 import { metaGet, metaGetAll, spDate } from "./client";
 import { isVaga, EXCLUDED_OBJECTIVES, pickFirstNumeric } from "./shared";
 
+// Soma/subtrai dias de uma data YYYY-MM-DD só no calendário (UTC puro, sem
+// fuso nem horário de verão), então dá o mesmo resultado em qualquer servidor.
+function addDaysYmd(ymd: string, n: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
 export interface DailyCpaPoint {
   date: string;
   spend: number;
@@ -80,10 +87,10 @@ async function getAccountDailyCpa(
   }
 
   const points: DailyCpaPoint[] = [];
-  const sinceMs = new Date(`${since}T00:00:00`).getTime();
-  const untilMs = new Date(`${until}T00:00:00`).getTime();
-  for (let t = sinceMs; t <= untilMs; t += 86_400_000) {
-    const d = spDate(new Date(t));
+  // Etapa 100: percorre as datas como texto (YYYY-MM-DD), sem passar por fuso.
+  // Antes convertia "meia-noite" pra Date e depois pra fuso de Brasília — no
+  // servidor (UTC) isso recuava 1 dia e o dia de ontem ficava de fora.
+  for (let d = since; d <= until; d = addDaysYmd(d, 1)) {
     const v = byDate.get(d) ?? { spend: 0, results: 0 };
     points.push({
       date: d,
@@ -185,8 +192,7 @@ export async function getAccountsDailyCpa(
   const now = new Date();
   const todayDate = spDate(now);
   const until = spDate(includeToday ? now : new Date(now.getTime() - 86_400_000));
-  const untilMs = new Date(`${until}T00:00:00`).getTime();
-  const since = spDate(new Date(untilMs - (clampedDays - 1) * 86_400_000));
+  const since = addDaysYmd(until, -(clampedDays - 1));
 
   const out: Record<string, DailyCpaPoint[]> = {};
   await Promise.all(
