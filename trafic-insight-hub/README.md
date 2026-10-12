@@ -2410,6 +2410,30 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     últimos 3 dias, que não batia com a mostrada na tela). O filtro de Prioridade
     continua sendo o seletor "Status" da linha de filtros.
 
+95. **Pausa automática de Conjuntos com histórico de 7 dias + quarentena (Etapa 99)** —
+    ⚠️ rodar `supabase/migrations/0027_adset_quarantine.sql` no Supabase antes do
+    deploy (sem a tabela a verificação para com uma mensagem avisando, de propósito,
+    pra não cortar orçamento sem ter onde registrar a quarentena). Nova regra, no
+    mesmo gatilho de sempre (conjunto ativo com CPA dos últimos 3 dias + hoje no
+    dobro da Meta CPA + R$1): (a) se o CPA dos últimos 7 dias do conjunto está
+    ABAIXO do ideal — a "linha verde" de Análise — ele NÃO é pausado: o orçamento
+    diário cai R$10 (no conjunto, ABO, ou na campanha, CBO; piso de R$6, nunca
+    abaixo) e ele entra em quarentena de 24h; (b) em quarentena é ignorado (não
+    pausa, não corta de novo; numa campanha CBO, outro conjunto da mesma campanha
+    também não corta o orçamento dela de novo dentro das 24h); (c) passadas as 24h,
+    se nos 3 dias o CPA continua acima do ideal e nos 7 dias ainda abaixo → corta
+    mais R$10 e volta pra quarentena; (d) passadas as 24h, acima do ideal nos 3 e nos
+    7 dias → pausa; (e) passadas as 24h e o CPA de 3 dias voltou pra dentro do
+    ideal → sai da quarentena sem fazer nada. Conjunto sem CPA de 7 dias (sem
+    conversa) ou com CPA de 7 dias igual/acima do ideal é pausado como antes.
+    Conjunto ativo sem nenhum anúncio ativo continua sendo pausado direto, mesmo em
+    quarentena. Orçamento vitalício ou sem orçamento diário: não corta, mas entra em
+    quarentena de 24h (pra não repetir o aviso). A lógica de Criativos não mudou. O
+    aviso do WhatsApp ganhou a seção "📉 Orçamento reduzido em R$10" (e ⚠️ quando não
+    deu pra cortar), e a tela Mensagens > Avisos lista os cortes junto das pausas.
+    Arquivos novos: `lib/alerts/adset-decision.ts` (regras puras),
+    `lib/alerts/adset-quarantine.ts`; `lib/meta/budget.ts` ganhou o corte.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

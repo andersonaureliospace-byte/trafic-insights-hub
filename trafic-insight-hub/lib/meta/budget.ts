@@ -55,3 +55,75 @@ export async function increaseAdSetDailyBudget(token: string, adsetId: string): 
     return { ok: false, error: (e as Error).message };
   }
 }
+
+// Etapa 99: corte de orçamento da pausa automática de Conjuntos (lib/alerts/adsets-pause.ts).
+// Conjunto acima da meta nos últimos 3 dias mas com CPA de 7 dias abaixo do ideal não é
+// pausado: o orçamento diário cai R$10, ABO (orçamento no conjunto) ou CBO (orçamento na
+// campanha — corta o da campanha). Piso de R$6: nunca deixa o orçamento abaixo disso (o
+// mínimo da Meta é perto disso; abaixo ela recusa) — se já está no piso, não corta.
+export const DECREASE_CENTS = 1000; // R$10 fixo (valor de cada corte)
+export const DECREASE_FLOOR_CENTS = 600; // R$6,00 — piso do orçamento diário
+
+export interface AdSetBudgetInfo {
+  scope: "adset" | "campaign";
+  targetId: string; // id do conjunto (ABO) ou da campanha (CBO) — quem de fato leva o corte
+  campaignId: string | null;
+  currentCents: number;
+}
+
+export type BudgetInfoResult = { ok: true; info: AdSetBudgetInfo } | { ok: false; reason: "lifetime" | "none" | "error"; error: string; campaignId?: string | null };
+
+interface AdSetBudgetWithCampaign {
+  id: string;
+  daily_budget?: string;
+  lifetime_budget?: string;
+  campaign?: { id?: string; daily_budget?: string; lifetime_budget?: string };
+}
+
+export async function getAdSetBudgetInfo(token: string, adsetId: string): Promise<BudgetInfoResult> {
+  try {
+    const r = await metaGet<AdSetBudgetWithCampaign>(token, `/${adsetId}`, {
+      fields: "id,daily_budget,lifetime_budget,campaign{id,daily_budget,lifetime_budget}",
+    });
+    const campaignId = r.campaign?.id ?? null;
+    if (r.daily_budget && Number(r.daily_budget) > 0) {
+      return { ok: true, info: { scope: "adset", targetId: adsetId, campaignId, currentCents: Number(r.daily_budget) } };
+    }
+    if (r.lifetime_budget && Number(r.lifetime_budget) > 0) {
+      return { ok: false, reason: "lifetime", error: "O conjunto usa orçamento vitalício — não dá pra cortar o diário.", campaignId };
+    }
+    if (campaignId && r.campaign?.daily_budget && Number(r.campaign.daily_budget) > 0) {
+      return { ok: true, info: { scope: "campaign", targetId: campaignId, campaignId, currentCents: Number(r.campaign.daily_budget) } };
+    }
+    if (r.campaign?.lifetime_budget && Number(r.campaign.lifetime_budget) > 0) {
+      return { ok: false, reason: "lifetime", error: "A campanha usa orçamento vitalício — não dá pra cortar o diário.", campaignId };
+    }
+    return { ok: false, reason: "none", error: "Não achei orçamento diário no conjunto nem na campanha.", campaignId };
+  } catch (e) {
+    return { ok: false, reason: "error", error: (e as Error).message };
+  }
+}
+
+// Novo orçamento (centavos) depois do corte de R$10, respeitando o piso. null = já está no
+// piso (ou abaixo), não há o que cortar.
+export function budgetAfterCut(currentCents: number): number | null {
+  if (currentCents <= DECREASE_FLOOR_CENTS) return null;
+  return Math.max(currentCents - DECREASE_CENTS, DECREASE_FLOOR_CENTS);
+}
+
+export type ApplyCutResult =
+  | { ok: true; fromCents: number; toCents: number }
+  | { ok: false; floor?: boolean; error: string };
+
+export async function applyBudgetCut(token: string, info: AdSetBudgetInfo): Promise<ApplyCutResult> {
+  const next = budgetAfterCut(info.currentCents);
+  if (next == null) {
+    return { ok: false, floor: true, error: "Orçamento diário já está no piso (R$6) — não dá pra cortar mais." };
+  }
+  try {
+    await metaPost(token, `/${info.targetId}`, { daily_budget: String(next) });
+    return { ok: true, fromCents: info.currentCents, toCents: next };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}

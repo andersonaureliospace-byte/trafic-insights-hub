@@ -55,6 +55,25 @@ interface PausedAdSet {
   error?: string;
 }
 
+// Etapa 99: conjunto que NÃO foi pausado (7 dias abaixo do ideal) — orçamento cortado em R$10
+// e quarentena de 24h. Ver lib/alerts/adsets-pause.ts.
+interface ReducedAdSet {
+  ad_account_id: string;
+  client_name: string;
+  adset_id: string;
+  adset_name: string;
+  spend: number;
+  cost_per_conversation: number | null;
+  cost_7d: number | null;
+  scope: "adset" | "campaign" | null;
+  from: number | null;
+  to: number | null;
+  kind: "cut" | "floor" | "lifetime" | "shared" | "error";
+  repeat: boolean;
+  ok: boolean;
+  error?: string;
+}
+
 interface LowInvestmentStatus {
   ad_account_id: string;
   client_name: string;
@@ -105,6 +124,7 @@ export function AvisosTab() {
   const [runningCreativesPause, setRunningCreativesPause] = useState(false);
 
   const [pausedAdSets, setPausedAdSets] = useState<PausedAdSet[] | null>(null);
+  const [reducedAdSets, setReducedAdSets] = useState<ReducedAdSet[]>([]);
   const [adsetsPauseError, setAdsetsPauseError] = useState<string | null>(null);
   const [adsetsSendError, setAdsetsSendError] = useState<string | null>(null);
   const [runningAdSetsPause, setRunningAdSetsPause] = useState(false);
@@ -284,13 +304,21 @@ export function AvisosTab() {
     setAdsetsPauseError(null);
     setAdsetsSendError(d.sendError ?? null);
     setPausedAdSets(d.paused ?? []);
+    setReducedAdSets(d.reduced ?? []);
     const ok = (d.paused ?? []).filter((p: PausedAdSet) => p.ok).length;
+    const cut = (d.reduced ?? []).filter((r: ReducedAdSet) => r.kind === "cut").length;
+    const summary = [
+      ok > 0 ? `${ok} conjunto(s) pausado(s)` : null,
+      cut > 0 ? `${cut} com orçamento reduzido em R$10 (quarentena 24h)` : null,
+    ]
+      .filter(Boolean)
+      .join(" e ");
     if (d.sendError) {
-      alert(`${ok} conjunto(s) pausado(s), mas não deu pra enviar o aviso: ${d.sendError}`);
-    } else if (ok > 0) {
-      alert(`${ok} conjunto(s) pausado(s) automaticamente — aviso enviado pro grupo.`);
+      alert(`${summary || "Nada alterado"}, mas não deu pra enviar o aviso: ${d.sendError}`);
+    } else if (summary) {
+      alert(`${summary} — aviso enviado pro grupo.`);
     } else {
-      alert("Nenhum conjunto acima da meta agora.");
+      alert("Nenhum conjunto acima da meta agora (fora da quarentena).");
     }
   }
 
@@ -636,8 +664,12 @@ export function AvisosTab() {
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
           Considera toda conta com CPA ideal cadastrado, período fixo &quot;últimos 3 dias + hoje&quot;. Ao
-          clicar, já PAUSA de verdade (mesmo limite de Análise → Conjuntos: dobro da meta + R$1, com ou
-          sem conversa, ou sem anúncio ativo dentro) e manda o aviso — não é só uma prévia. As pausas na
+          clicar, já age de verdade (mesmo limite de Análise → Conjuntos: dobro da meta + R$1, com ou
+          sem conversa, ou sem anúncio ativo dentro) e manda o aviso — não é só uma prévia. Se o CPA dos
+          últimos 7 dias do conjunto está ABAIXO do ideal (a linha verde de Análise), ele não é pausado:
+          o orçamento diário cai R$10 (conjunto ou campanha, ABO ou CBO) e ele fica 24h em quarentena
+          (ignorado). Passada a quarentena: 3 dias ainda acima e 7 dias abaixo → corta mais R$10 e volta
+          pra quarentena; 3 e 7 dias acima do ideal → pausa. As pausas na
           Meta saem uma de cada vez, com 3s de intervalo entre elas (mesma cautela dos botões de ação em
           massa de Análise), não todas juntas. Pensado pra rodar automaticamente várias vezes ao dia via
           n8n, 5 minutos depois do check de Criativos acima (veja o ⚠️ no README).
@@ -665,7 +697,7 @@ export function AvisosTab() {
             <p className="px-4 py-6 text-sm text-red-600">{adsetsPauseError}</p>
           ) : !pausedAdSets ? (
             <p className="px-4 py-6 text-sm text-zinc-500">Clique em &quot;Verificar e pausar agora&quot; pra rodar.</p>
-          ) : pausedAdSets.length === 0 ? (
+          ) : pausedAdSets.length === 0 && reducedAdSets.length === 0 ? (
             <p className="px-4 py-6 text-sm text-zinc-500">Nenhum conjunto acima da meta na última verificação.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -679,6 +711,36 @@ export function AvisosTab() {
                   </tr>
                 </thead>
                 <tbody>
+                  {reducedAdSets.map((r) => (
+                    <tr key={`r-${r.adset_id}`} className="border-t border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                      <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">{r.client_name}</td>
+                      <td className="max-w-[260px] truncate px-4 py-2" title={r.adset_name}>{r.adset_name}</td>
+                      <td className="px-4 py-2 text-right tabular-nums">
+                        {r.cost_per_conversation == null ? `gasto ${fmtCurrency(r.spend)}` : fmtCurrency(r.cost_per_conversation)}
+                        <div className="text-xs text-zinc-400">7 dias: {r.cost_7d != null ? fmtCurrency(r.cost_7d) : "—"}</div>
+                      </td>
+                      <td className="px-4 py-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                            r.kind === "cut"
+                              ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                              : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                          }`}
+                          title={r.error}
+                        >
+                          {r.kind === "cut"
+                            ? `Orçamento ${fmtCurrency(r.from ?? 0)} → ${fmtCurrency(r.to ?? 0)}${r.scope === "campaign" ? " (campanha)" : ""} · quarentena 24h${r.repeat ? " · 2º corte" : ""}`
+                            : r.kind === "shared"
+                              ? "Campanha já cortada · quarentena"
+                              : r.kind === "floor"
+                                ? "Sem corte (orçamento no piso)"
+                                : r.kind === "lifetime"
+                                  ? "Sem corte (orçamento vitalício)"
+                                  : "Falha ao cortar"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
                   {pausedAdSets.map((p) => (
                     <tr key={p.adset_id} className="border-t border-zinc-100 last:border-0 dark:border-zinc-800/60">
                       <td className="px-4 py-2 font-medium text-zinc-900 dark:text-zinc-50">{p.client_name}</td>

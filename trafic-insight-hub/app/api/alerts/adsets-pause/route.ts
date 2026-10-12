@@ -8,8 +8,8 @@ export async function POST() {
   try {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
-    const { paused, sendError } = await checkAndPauseAdSets(supabase, user.id, token, { send: true });
-    return NextResponse.json({ paused, sendError });
+    const { paused, reduced, sendError } = await checkAndPauseAdSets(supabase, user.id, token, { send: true });
+    return NextResponse.json({ paused, reduced, sendError });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }
