@@ -2568,6 +2568,11 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     mês, saldo e pagamento), verde = tudo carregado. As buscas à Meta ganharam limite de 90s pra não prender a
     fila, e a aba Alertas abre mesmo sem as contas carregadas.
 
+108. **Botão "Enviar boleto" da linha abre o PDF e avisa o que falta (Etapa 120)** — o botão da linha só
+    selecionava o cliente no formulário de cima e parecia não fazer nada (o "Enviar e-mail" fica apagado até
+    ter cliente + PDF + vencimento). Agora ele seleciona o cliente, rola até o formulário, já abre a escolha do
+    PDF e mostra um aviso; ao lado do "Enviar e-mail" aparece o que ainda falta.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

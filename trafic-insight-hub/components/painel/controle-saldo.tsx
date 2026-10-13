@@ -319,6 +319,7 @@ export function ControleSaldo({
   const [boletoSending, setBoletoSending] = useState(false);
   const [boletoMsg, setBoletoMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const boletoFileInputRef = useRef<HTMLInputElement>(null);
+  const boletoFormRef = useRef<HTMLDivElement>(null);
   const [boletoHistory, setBoletoHistory] = useState<BoletoSend[] | null>(null);
   const [boletoHistoryOpen, setBoletoHistoryOpen] = useState(false);
 
@@ -492,9 +493,20 @@ export function ControleSaldo({
     setPixDialogAccount({ id: acc.account_id, clientName: clientNames[acc.account_id] ?? acc.name });
   }
 
+  // Etapa 120: o botão "Enviar boleto" da linha seleciona o cliente, leva até o formulário e já abre a
+  // escolha do PDF (antes só trocava o cliente do formulário e parecia que não fazia nada).
   function openBoletoForm(accountId: string) {
     setTab("boleto");
     setBoletoAccountId(accountId);
+    const nome = clientNames[accountId] ?? accounts.find((a) => a.account_id === accountId)?.name ?? "cliente";
+    setBoletoMsg({
+      ok: true,
+      text: `Cliente selecionado: ${nome}. Agora anexe o PDF e escolha o vencimento — depois clique em "Enviar e-mail".`,
+    });
+    setTimeout(() => {
+      boletoFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (!boletoFile) boletoFileInputRef.current?.click();
+    }, 60);
   }
 
   const contasTableProps = {
@@ -663,7 +675,7 @@ export function ControleSaldo({
               Etapa 79: mudou pra dentro da sub-aba Boleto; o botão "Enviar
               boleto" de cada linha da tabela abaixo só seleciona a conta
               aqui, quem sobe o PDF e dispara é esse formulário mesmo. */}
-          <div className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+          <div ref={boletoFormRef} className="border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
             <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">📧 Enviar boleto por e-mail</h3>
             <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
               Sobe o boleto em PDF e dispara o e-mail padrão pro financeiro — só troca a loja e o vencimento.
@@ -745,6 +757,15 @@ export function ControleSaldo({
                 {boletoHistoryOpen ? "Ocultar histórico" : "Ver histórico"}
               </button>
             </div>
+            {!boletoMsg && (!boletoAccountId || !boletoDueDate || !boletoFile) ? (
+              <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-400">
+                Pra liberar o "Enviar e-mail", falta:{" "}
+                {[!boletoAccountId && "escolher o cliente", !boletoFile && "anexar o PDF", !boletoDueDate && "escolher o vencimento"]
+                  .filter(Boolean)
+                  .join(", ")}
+                .
+              </p>
+            ) : null}
             {boletoMsg ? (
               <p
                 className={`mt-2 text-xs font-medium ${
