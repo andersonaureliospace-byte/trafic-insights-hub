@@ -2454,6 +2454,12 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     41% → vermelho. Vale também pra coluna Ritmo de Acompanhamento e pro aviso de
     investimento baixo. Código: `ritmoParts()`, `ritmoAcceleratedDays()` e
     `INVEST_TOLERANCE` em `lib/meta/ritmo.ts`.
+    Etapa 103: depois das 16h (Brasília) o Ritmo ANTECIPA o dia seguinte — mira o ideal de
+    amanhã (normal × (dia + 1)) em vez do de hoje, já que a otimização é feita à noite. Ex.:
+    meta 3.000, dia 12, 20h, investido 1.000 → falta 258 pro ideal de amanhã → Ritmo 193,55
+    (2×). Depois da meia-noite volta ao cálculo normal do novo dia. A coluna "Ideal até hoje"
+    e as cores do Investimento seguem sempre o ideal de hoje. Código: `hourSP()` e
+    `RITMO_ANTICIPATE_HOUR` em `lib/meta/ritmo.ts`.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

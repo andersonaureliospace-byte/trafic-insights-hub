@@ -35,27 +35,57 @@ export function monthCalendarSP(now: Date = new Date()): { year: number; month: 
 //   Ex.: normal 100, dia 12, ideal 1.200, investido 1.050 → Ritmo 150.
 //   Ex.: ideal 1.200/1.300/1.400 e investido 950/1.150/1.300 → Ritmo 200 (teto 2×)/150/100.
 //   Ex.: já 100 acima do ideal, normal 96,77 → Ritmo 48,39 (piso 50%) até regularizar.
+// Etapa 103 (regra do Anderson): DEPOIS DAS 16H (Brasília) o Ritmo ANTECIPA o dia
+// seguinte — ele passa a mirar o ideal de AMANHÃ (normal × (dia + 1)) em vez do de hoje,
+// porque a otimização costuma ser feita à noite, programando o dia seguinte. Antes das
+// 16h (e depois da meia-noite, quando "amanhã" vira "hoje") a conta é a de sempre.
+//   Ex.: Luis Eduardo, meta 3.000 (normal 96,77), dia 12, investido ~1.000 às 20h →
+//   ideal de amanhã 1.258,06 − 1.000 = 258 → Ritmo no teto de 2× = 193,55.
+// A coluna "Ideal até hoje" e as cores do Investimento continuam sempre pelo ideal DE HOJE.
 // A cor do Investimento (barra/valor) usa a tolerância de 2 pontos da meta mensal:
 // mais de 2 pontos ATRÁS = laranja; mais de 2 pontos ACIMA do ideal = vermelho.
 // Sem Investimento mensal, não dá pra calcular.
 export const RITMO_MAX_MULT = 2; // teto: no máximo 2× o investimento diário normal
 export const RITMO_MIN_MULT = 0.5; // piso: no mínimo 50% do normal (quando já está adiantado)
+// Etapa 103: a partir desta hora (Brasília, 0-23) o Ritmo passa a mirar o dia seguinte.
+export const RITMO_ANTICIPATE_HOUR = 16;
 // Etapa 102: tolerância do Investimento, em fração da meta mensal (0,02 = 2 pontos),
 // pros dois lados (atrás = laranja, acima = vermelho).
 export const INVEST_TOLERANCE = 0.02;
 
-export function ritmoParts(
-  monthlyInvestment: number,
-  spentSoFar: number,
-  now: Date = new Date(),
-): { normal: number; ideal: number; gap: number; behindPoints: number; ritmo: number } {
+// Hora cheia (0-23) em Brasília.
+export function hourSP(now: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(now);
+  return Number(parts.find((p) => p.type === "hour")?.value ?? 0);
+}
+
+export interface RitmoParts {
+  normal: number;
+  ideal: number; // ideal até HOJE (sempre o de hoje)
+  gap: number; // ideal de hoje − investido (positivo = atrasado)
+  behindPoints: number; // gap ÷ meta mensal (cor/tolerância)
+  anticipated: boolean; // depois das 16h: o Ritmo mira o ideal de amanhã
+  targetIdeal: number; // ideal que o Ritmo está mirando (hoje, ou amanhã depois das 16h)
+  ritmoGap: number; // targetIdeal − investido
+  ritmo: number;
+}
+
+export function ritmoParts(monthlyInvestment: number, spentSoFar: number, now: Date = new Date()): RitmoParts {
   const { day, daysInMonth } = monthCalendarSP(now);
   const normal = monthlyInvestment / daysInMonth;
   const ideal = normal * day;
   const gap = ideal - spentSoFar; // positivo = atrasado; negativo = adiantado
   const behindPoints = monthlyInvestment > 0 ? gap / monthlyInvestment : 0;
-  const r = Math.max(normal * RITMO_MIN_MULT, Math.min(gap, normal * RITMO_MAX_MULT));
-  return { normal, ideal, gap, behindPoints, ritmo: r };
+  const anticipated = hourSP(now) >= RITMO_ANTICIPATE_HOUR;
+  // Último dia do mês: "amanhã" já é outro mês, então não passa da meta mensal.
+  const targetIdeal = anticipated ? normal * Math.min(day + 1, daysInMonth) : ideal;
+  const ritmoGap = targetIdeal - spentSoFar;
+  const r = Math.max(normal * RITMO_MIN_MULT, Math.min(ritmoGap, normal * RITMO_MAX_MULT));
+  return { normal, ideal, gap, behindPoints, anticipated, targetIdeal, ritmoGap, ritmo: r };
 }
 
 export function ritmo(
@@ -67,7 +97,8 @@ export function ritmo(
   return ritmoParts(monthlyInvestment, spentSoFar ?? 0, now).ritmo;
 }
 
-// Quantos dias seguidos o Ritmo fica acima do normal até a conta igualar o ideal.
+// Quantos dias seguidos o Ritmo fica acima do normal até a conta igualar o ideal
+// (a partir do alvo atual do Ritmo: hoje, ou amanhã depois das 16h).
 // Cada dia acelerado investe o Ritmo do dia e o ideal sobe 1× o normal, então o
 // atraso do dia seguinte = atraso de hoje − Ritmo de hoje + normal.
 export function ritmoAcceleratedDays(
@@ -75,9 +106,9 @@ export function ritmoAcceleratedDays(
   spentSoFar: number,
   now: Date = new Date(),
 ): number {
-  const { normal, gap } = ritmoParts(monthlyInvestment, spentSoFar, now);
+  const { normal, ritmoGap: gap0 } = ritmoParts(monthlyInvestment, spentSoFar, now);
   if (!(normal > 0)) return 0;
-  let g = gap;
+  let g = gap0;
   let days = 0;
   while (days < 31) {
     const r = Math.max(normal * RITMO_MIN_MULT, Math.min(g, normal * RITMO_MAX_MULT));
@@ -116,14 +147,18 @@ export function ritmoTooltip(
   const g = ritmoParts(monthlyInvestment, spent, now);
   const pts = (n: number) => `${(Math.abs(n) * 100).toFixed(1).replace(".", ",")}%`;
   let faixa: string;
-  if (g.gap > 0) {
+  const alvo = g.anticipated
+    ? `Depois das ${RITMO_ANTICIPATE_HOUR}h o Ritmo antecipa o dia seguinte: ideal de amanhã ${brl(g.targetIdeal)}\n`
+    : "";
+  if (g.ritmoGap > 0) {
     const d = ritmoAcceleratedDays(monthlyInvestment, spent, now);
     faixa =
-      `Faltam ${brl(g.gap)} pro ideal (${pts(g.behindPoints)} da meta${g.behindPoints > INVEST_TOLERANCE ? ", acima da tolerância de 2%" : ", dentro da tolerância de 2%"}) → ` +
+      alvo +
+      `Faltam ${brl(g.ritmoGap)} pra igualar${g.anticipated ? " o ideal de amanhã" : " o ideal"} (${pts(g.behindPoints)} da meta hoje${g.behindPoints > INVEST_TOLERANCE ? ", acima da tolerância de 2%" : ", dentro da tolerância de 2%"}) → ` +
       `Ritmo = o que falta, entre ${brl(g.normal * RITMO_MIN_MULT)} (50%) e ${brl(g.normal * RITMO_MAX_MULT)} (2×)` +
       (d > 0 ? `; acelerado por ${d} dia(s)` : "");
   } else {
-    faixa = `Já ${brl(-g.gap)} acima do ideal (${pts(g.behindPoints)} da meta) → Ritmo no piso de 50% do normal até regularizar`;
+    faixa = alvo + `Já ${brl(-g.ritmoGap)} acima do ideal${g.anticipated ? " de amanhã" : ""} → Ritmo no piso de 50% do normal até regularizar`;
   }
   return (
     `Investimento mensal: ${brl(monthlyInvestment)} ÷ ${daysInMonth} dias = ${brl(g.normal)} por dia\n` +
