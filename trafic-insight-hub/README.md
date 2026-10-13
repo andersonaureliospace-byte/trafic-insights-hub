@@ -2560,6 +2560,14 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     metaGet e metaGetAll (antes falhava na hora). Se a busca de saldo/pagamento falhar, as cores já na tela
     são mantidas.
 
+107. **Menu lateral fixo + indicador de carregando/erro (Etapa 119)** — antes, enquanto as contas da Meta
+    carregavam (ou davam erro), o Painel inteiro virava "Carregando…" e o menu sumia — não dava nem pra abrir
+    Clientes. Agora o menu fica sempre na tela e acompanha a rolagem; só a área de conteúdo mostra
+    "Carregando contas…" ou o erro (com "Tentar de novo"). Embaixo do menu há um quadro de estado:
+    amarelo = carregando (com quantas buscas na fila), vermelho = erro (diz onde: contas, insights, gasto do
+    mês, saldo e pagamento), verde = tudo carregado. As buscas à Meta ganharam limite de 90s pra não prender a
+    fila, e a aba Alertas abre mesmo sem as contas carregadas.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

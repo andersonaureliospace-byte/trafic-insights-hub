@@ -228,10 +228,24 @@ export default function PainelPage() {
   // rodam UMA DE CADA VEZ, em fila. Antes, ao abrir o Acompanhamento, as quatro disparavam juntas
   // (~15 chamadas simultâneas à Meta) e estouravam o limite de requisições — a tela travava/dava erro.
   const metaQueueRef = useRef<Promise<unknown>>(Promise.resolve());
-  const queueMeta = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
+  // Etapa 119: quantas buscas estão na fila/rodando e quais falharam — alimenta o indicador fixo
+  // de "Carregando…/Erro" embaixo do menu lateral.
+  const [metaPending, setMetaPending] = useState(0);
+  const [metaFailed, setMetaFailed] = useState<Record<string, boolean>>({});
+  const queueMeta = useCallback(<T,>(label: string, fn: () => Promise<T>): Promise<T> => {
+    setMetaPending((n) => n + 1);
     const run = metaQueueRef.current.then(fn, fn);
     metaQueueRef.current = run.catch(() => undefined);
-    return run;
+    return run
+      .then((r) => {
+        setMetaFailed((f) => (f[label] === (r === false) ? f : { ...f, [label]: r === false }));
+        return r;
+      })
+      .catch((e) => {
+        setMetaFailed((f) => (f[label] ? f : { ...f, [label]: true }));
+        throw e;
+      })
+      .finally(() => setMetaPending((n) => Math.max(0, n - 1)));
   }, []);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const pinnedRef = useRef<string[]>([]);
@@ -263,13 +277,20 @@ export default function PainelPage() {
   // pra dar pra chamar de novo pelo botão "Atualizar" sem precisar dar F5.
   const loadAccounts = useCallback(async () => {
     setLoadingAccounts(true);
-    const res = await fetch("/api/meta/accounts");
-    const d = await res.json();
-    setLoadingAccounts(false);
-    if (d.error) setAccountsError(d.error);
-    else {
-      setAccountsError(null);
-      setAllAccounts(d.accounts ?? []);
+    try {
+      const res = await fetch("/api/meta/accounts", { signal: AbortSignal.timeout(90_000) });
+      const d = await res.json();
+      if (d.error) setAccountsError(d.error);
+      else {
+        setAccountsError(null);
+        setAllAccounts(d.accounts ?? []);
+      }
+    } catch {
+      // Sem resposta (limite da Meta, queda de rede, tempo esgotado): mostra o erro com botão de tentar de novo
+      // em vez de deixar a tela inteira presa em "Carregando…".
+      setAccountsError("Não consegui carregar as contas da Meta (sem resposta do servidor).");
+    } finally {
+      setLoadingAccounts(false);
     }
   }, []);
 
@@ -408,9 +429,9 @@ export default function PainelPage() {
   // conta em Acompanhamento (mesma checagem de Mensagens > Avisos, em modo
   // leitura). Só busca com a aba ativa, mesmo critério das outras chamadas
   // "pesadas" do Meta.
-  const loadAlertStatuses = useCallback(() => queueMeta(async () => {
-    const balanceRes = await fetch("/api/alerts/balance").then((r) => r.json()).catch(() => ({}));
-    const paymentRes = await fetch("/api/alerts/payment").then((r) => r.json()).catch(() => ({}));
+  const loadAlertStatuses = useCallback(() => queueMeta("saldo e pagamento", async () => {
+    const balanceRes = await fetch("/api/alerts/balance", { signal: AbortSignal.timeout(90_000) }).then((r) => r.json()).catch(() => ({}));
+    const paymentRes = await fetch("/api/alerts/payment", { signal: AbortSignal.timeout(90_000) }).then((r) => r.json()).catch(() => ({}));
     // Se a Meta falhou (limite de requisições), mantém o que já estava na tela em vez de apagar as cores.
     if (balanceRes.statuses) setLowBalanceIds(
       new Set(
@@ -426,6 +447,7 @@ export default function PainelPage() {
           .map((s) => s.ad_account_id),
       ),
     );
+    return !!(balanceRes.statuses && paymentRes.statuses);
   }), [queueMeta]);
 
   useEffect(() => {
@@ -461,7 +483,7 @@ export default function PainelPage() {
   }, [selectedAccounts]);
 
   const loadInsights = useCallback(
-    (onlyPinned = false) => queueMeta(async () => {
+    (onlyPinned = false) => queueMeta("insights do período", async () => {
       if (selectedAccounts.length === 0) {
         setInsights({});
         return true;
@@ -472,6 +494,7 @@ export default function PainelPage() {
         const res = await fetch("/api/meta/insights", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(90_000),
           body: JSON.stringify({
             accountIds: (pinned ?? selectedAccounts).map((a) => a.account_id),
             datePreset: preset,
@@ -517,7 +540,7 @@ export default function PainelPage() {
   // Só depende da seleção de contas, não do período, pra não duplicar
   // chamada toda vez que o filtro de data da tabela mudar.
   const loadMonthlyInsights = useCallback(
-    (onlyPinned = false) => queueMeta(async () => {
+    (onlyPinned = false) => queueMeta("gasto do mês", async () => {
       if (selectedAccounts.length === 0) {
         setMonthlyInsights({});
         return true;
@@ -527,6 +550,7 @@ export default function PainelPage() {
         const res = await fetch("/api/meta/insights", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(90_000),
           body: JSON.stringify({
             accountIds: (pinned ?? selectedAccounts).map((a) => a.account_id),
             datePreset: "this_month",
@@ -780,9 +804,17 @@ export default function PainelPage() {
 
   const editingRow = editingAccountId ? allRows.find((r) => r.acc.account_id === editingAccountId) : undefined;
 
-  if (selectedIds === null || allAccounts === null) {
-    return <div className="p-8 text-sm text-zinc-500">Carregando…</div>;
-  }
+  // Etapa 119: não bloqueia mais a tela inteira enquanto as contas carregam — o menu lateral fica
+  // sempre visível e só a área de conteúdo mostra "Carregando…" ou o erro.
+  const accountsReady = selectedIds !== null && allAccounts !== null;
+  const needsAccounts = tab !== "alertas";
+  const statusLoading = loadingAccounts || metaPending > 0 || selectedIds === null;
+  const failedLabels = Object.entries(metaFailed).filter(([, v]) => v).map(([k]) => k);
+  const statusErrors = [
+    ...(accountsError ? ["contas"] : []),
+    ...failedLabels,
+    ...(failedAccounts > 0 ? [`${failedAccounts} conta(s) sem gasto do mês`] : []),
+  ];
 
   return (
     <div className="w-full px-4 py-6 md:px-8">
@@ -794,32 +826,21 @@ export default function PainelPage() {
               Visão geral das suas contas
             </h1>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              Mostrando {selectedAccounts.length} conta(s) selecionada(s).
+              {accountsReady ? `Mostrando ${selectedAccounts.length} conta(s) selecionada(s).` : "Carregando contas…"}
             </p>
           </div>
           <button
             onClick={() => setPickerOpen(true)}
             className="h-9 shrink-0 rounded-md border border-zinc-300 bg-white px-3 text-sm font-medium dark:border-zinc-700 dark:bg-zinc-950"
           >
-            Contas exibidas{selectedIds.length > 0 ? ` (${selectedIds.length})` : ""}
+            Contas exibidas{selectedIds && selectedIds.length > 0 ? ` (${selectedIds.length})` : ""}
           </button>
         </div>
       </header>
 
-      {accountsError ? (
-        <div className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          {accountsError}
-        </div>
-      ) : selectedAccounts.length === 0 ? (
-        <div className="mt-6 rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
-          Nenhuma conta selecionada.{" "}
-          <button onClick={() => setPickerOpen(true)} className="font-medium text-zinc-900 underline dark:text-zinc-100">
-            Escolher contas
-          </button>
-        </div>
-      ) : (
-        <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr] md:gap-6">
-          <aside className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
+      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr] md:gap-6">
+          {/* Etapa 119: menu fixo ao rolar (no PC) e sempre visível — mesmo carregando ou com erro. */}
+          <aside className="sticky top-14 z-20 -mx-4 flex gap-1 overflow-x-auto bg-zinc-50/95 px-4 py-1 backdrop-blur dark:bg-zinc-950/95 md:top-20 md:mx-0 md:max-h-[calc(100vh-6rem)] md:flex-col md:self-start md:overflow-x-visible md:overflow-y-auto md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none">
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -838,9 +859,66 @@ export default function PainelPage() {
                 ) : null}
               </button>
             ))}
+            {/* Indicador de estado: carregando / erro / tudo certo */}
+            <div
+              className={`hidden shrink-0 rounded-md border px-3 py-2 text-xs md:block ${
+                statusErrors.length > 0
+                  ? "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+                  : statusLoading
+                    ? "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200"
+                    : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
+              }`}
+              title={statusErrors.length > 0 ? `Erro em: ${statusErrors.join(", ")}` : undefined}
+            >
+              {statusErrors.length > 0 ? (
+                <>
+                  <p className="font-semibold">⚠ Erro: {statusErrors.join(", ")}</p>
+                  {statusLoading ? <p className="mt-0.5">Tentando de novo…</p> : null}
+                  <button
+                    onClick={() => {
+                      void loadAccounts();
+                      void loadInsights();
+                      void loadMonthlyInsights();
+                      void loadAlertStatuses();
+                    }}
+                    className="mt-1 font-medium underline"
+                  >
+                    Tentar de novo
+                  </button>
+                </>
+              ) : statusLoading ? (
+                <p className="font-semibold">
+                  <span className="mr-1 inline-block animate-pulse">●</span>Carregando…
+                  {metaPending > 1 ? ` (${metaPending} buscas na fila)` : ""}
+                </p>
+              ) : (
+                <p className="font-semibold">✓ Tudo carregado</p>
+              )}
+            </div>
           </aside>
 
           <div className="min-w-0">
+            {accountsError ? (
+              <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                {accountsError}{" "}
+                <button onClick={() => void loadAccounts()} className="font-medium underline">
+                  Tentar de novo
+                </button>
+              </div>
+            ) : null}
+            {needsAccounts && !accountsReady ? (
+              <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
+                {accountsError ? "As contas não carregaram." : "Carregando contas…"} O menu ao lado continua funcionando.
+              </div>
+            ) : needsAccounts && selectedAccounts.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
+                Nenhuma conta selecionada.{" "}
+                <button onClick={() => setPickerOpen(true)} className="font-medium text-zinc-900 underline dark:text-zinc-100">
+                  Escolher contas
+                </button>
+              </div>
+            ) : (
+            <>
             {tab === "acompanhamento" ? (
               <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
                 <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
@@ -1277,14 +1355,15 @@ export default function PainelPage() {
             ) : null}
 
             {tab === "copy" ? <CopyTab accounts={selectedAccounts} bindings={bindings} /> : null}
+            </>
+            )}
           </div>
-        </div>
-      )}
+      </div>
 
       <ContasExibidasDialog
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        selectedIds={selectedIds}
+        selectedIds={selectedIds ?? []}
         onSave={saveSelectedAccounts}
       />
 
