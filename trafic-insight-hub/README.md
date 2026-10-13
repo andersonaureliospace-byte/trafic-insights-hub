@@ -2525,6 +2525,21 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     em `lib/alerts/low-budget.ts` passou de 0,5 para 0,8: agora entra no aviso (aba Alertas + grupo)
     toda conta com Invest. diário igual ou abaixo de 80% do Ritmo. Mensagem: "🔴 Invest. diário em
     80% ou menos do Ritmo". Agenda do n8n inalterada (a regra mora no app, não precisa reimportar).
+103. **Aba Descrição — descrição dos clientes espelhada do Asana (Etapa 115)** — nova aba do Painel com
+    um quadro: Cliente | Descrição (Asana) | Ofertas ativas (em breve, virá da Meta). **Asana → Traffic:**
+    automático a cada 30 min em horário comercial (seg-sex, 08h-18h, minutos 17 e 47, hook
+    `POST /api/public/hooks/asana-descriptions-tick`) ou pelo botão "Atualizar do Asana": descrição igual =
+    não faz nada; divergente = o Traffic passa a ter a do Asana. **Traffic → Asana:** só pelo botão
+    "Enviar ao Asana" de cada cliente, que SUBSTITUI a descrição (não acrescenta). O texto editado fica
+    como rascunho (`draft`, salvo ao sair da caixa) e a sincronização nunca sobrescreve um rascunho não
+    enviado. Antes de enviar, confere o Asana agora: se a descrição mudou lá desde a última sincronização,
+    ou se tem formatação (negrito/lista/link, que o texto simples perde), pede confirmação. A ligação
+    cliente ↔ tarefa usa a mesma regra tolerante de nomes da prioridade (sem acento/pontuação); cliente
+    sem tarefa ou com mais de uma parecida aparece avisado na linha. ⚠️ rodar
+    `supabase/migrations/0029_client_descriptions.sql` no Supabase e ter `ASANA_ACCESS_TOKEN` na Vercel;
+    adicionar o fluxo "Descrições do Asana" ao workflow do n8n (já no
+    `n8n-workflows/pausas-e-avisos-automaticos.json`, agora com 11 agendas). Código:
+    `lib/asana/descriptions.ts`, `app/api/asana/descriptions/route.ts`, `components/painel/descricao-tab.tsx`.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

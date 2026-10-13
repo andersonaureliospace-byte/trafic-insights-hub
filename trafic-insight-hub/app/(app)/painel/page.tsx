@@ -15,6 +15,7 @@ import { AnaliseTab } from "@/components/painel/analise-tab";
 import { ClientesTab } from "@/components/painel/clientes-tab";
 import { CopyTab } from "@/components/painel/copy-tab";
 import { DemandasTab } from "@/components/painel/demandas-tab";
+import { DescricaoTab } from "@/components/painel/descricao-tab";
 import { EvolucaoTab } from "@/components/painel/evolucao-tab";
 import { MonitorCpaTab } from "@/components/painel/monitor-cpa-tab";
 import { PIN_BLUR, PinCell } from "@/components/painel/pin-cell";
@@ -148,6 +149,7 @@ const TABS = [
   { id: "saldo", label: "Controle de Saldo" },
   { id: "clientes", label: "Clientes" },
   { id: "demandas", label: "Demandas" },
+  { id: "descricao", label: "Descrição" },
   { id: "copy", label: "Copy" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
@@ -1218,6 +1220,13 @@ export default function PainelPage() {
             ) : null}
 
             {tab === "alertas" ? <AlertasTab onCountChange={setAlertCount} /> : null}
+
+            {tab === "descricao" ? (
+              <DescricaoTab
+                accounts={selectedAccounts}
+                clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
+              />
+            ) : null}
 
             {tab === "copy" ? <CopyTab accounts={selectedAccounts} bindings={bindings} /> : null}
           </div>

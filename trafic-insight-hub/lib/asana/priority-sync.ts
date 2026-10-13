@@ -52,13 +52,15 @@ export function normName(s: string): string {
     .trim();
 }
 
-interface AsanaTask {
+export interface AsanaTask {
   gid: string;
   name: string;
+  notes?: string;
+  html_notes?: string;
   custom_fields?: Array<{ gid: string; enum_value?: { gid: string } | null }>;
 }
 
-async function asanaFetch(path: string, init?: RequestInit): Promise<unknown> {
+export async function asanaFetch(path: string, init?: RequestInit): Promise<unknown> {
   const res = await fetch(`${ASANA_API}${path}`, {
     ...init,
     headers: {
@@ -73,13 +75,15 @@ async function asanaFetch(path: string, init?: RequestInit): Promise<unknown> {
   return json;
 }
 
-async function listSectionTasks(): Promise<AsanaTask[]> {
+export async function listSectionTasks(
+  optFields = "name,custom_fields.gid,custom_fields.enum_value.gid",
+): Promise<AsanaTask[]> {
   const tasks: AsanaTask[] = [];
   let offset: string | null = null;
   for (let page = 0; page < 20; page++) {
     const qs = new URLSearchParams({
       limit: "100",
-      opt_fields: "name,custom_fields.gid,custom_fields.enum_value.gid",
+      opt_fields: optFields,
     });
     if (offset) qs.set("offset", offset);
     const json = (await asanaFetch(`/sections/${ASANA_SECTION_GID}/tasks?${qs}`)) as {

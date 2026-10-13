@@ -14,7 +14,7 @@
         -620,
         -80
       ],
-      "id": "8c900cb8-41c1-41da-ad94-d700ee724c46",
+      "id": "7bdf7317-a79c-44fc-be4e-f02c59f9a094",
       "name": "Nota - Leia antes de ativar"
     },
     {
@@ -30,7 +30,7 @@
         0,
         -80
       ],
-      "id": "99ac63d0-d72b-4480-8cee-61ba468d8fbe",
+      "id": "09dae232-8d9b-4a73-8adc-bc63b010353a",
       "name": "Nota - 1. Pausas automáticas (de 3 em 3 horas)"
     },
     {
@@ -50,7 +50,7 @@
         0,
         40
       ],
-      "id": "e4f3dddd-c97d-4903-8bc2-3d399ef517dc",
+      "id": "585ec3cf-91ed-43e9-b87e-fce7f2f1c722",
       "name": "Agenda - Criativos acima da meta (3h)",
       "notes": "Pausa criativo ativo R$4+ acima da meta ontem + hoje (histórico bom nos 7 dias só pausa se também estiver acima nos 2 dias + hoje)."
     },
@@ -77,7 +77,7 @@
         300,
         40
       ],
-      "id": "e5b74074-7841-432f-9b01-04ec064e135b",
+      "id": "a97f2953-b605-4d4e-bc62-a317f83f55af",
       "name": "Pausar criativos acima da meta",
       "retryOnFail": true,
       "maxTries": 2,
@@ -100,7 +100,7 @@
         0,
         180
       ],
-      "id": "6345c256-1d71-44c8-99ed-170e37981706",
+      "id": "abac813f-8faa-4284-a6d0-58a261c1b5ef",
       "name": "Agenda - Conjuntos (3h)",
       "notes": "Pausa conjunto sem anúncio ativo (menos os em análise/processando) e conjunto acima da meta; com 7 dias bom corta R$10 e fica 24h em quarentena."
     },
@@ -127,7 +127,7 @@
         300,
         180
       ],
-      "id": "3596a1db-7ab9-478d-8a5d-9d547a28371a",
+      "id": "137fd60f-9f06-4d71-a2bb-e6776aede7ed",
       "name": "Pausar conjuntos",
       "retryOnFail": true,
       "maxTries": 2,
@@ -146,7 +146,7 @@
         0,
         340
       ],
-      "id": "a8d55f0b-6b87-4055-b96a-365f945ccc01",
+      "id": "87fcab1d-33cf-43c4-895c-07a72f0adfb3",
       "name": "Nota - 2. Criativos sem resultado (de hora em hora)"
     },
     {
@@ -166,7 +166,7 @@
         0,
         460
       ],
-      "id": "f4841487-3e15-4fc1-ba7c-23c9c839ca6a",
+      "id": "c8474ed7-c3ca-4257-b24d-ab8f36441c87",
       "name": "Agenda - Criativos sem resultado (1h)",
       "notes": "Roda mais vezes que a verificação de 3 em 3 horas porque o criativo sem nenhuma conversa não tem o que reverter."
     },
@@ -193,7 +193,7 @@
         300,
         460
       ],
-      "id": "0e12ea84-d9ce-486d-a103-d3fed6601350",
+      "id": "dcd19576-cb57-4f8f-918e-05e742323a90",
       "name": "Pausar criativos sem resultado",
       "retryOnFail": true,
       "maxTries": 2,
@@ -212,7 +212,7 @@
         0,
         620
       ],
-      "id": "dd56f4f1-741f-4a77-8fb8-614278176b59",
+      "id": "d103de64-a4e4-42ed-8e33-dce03d9de442",
       "name": "Nota - 3. Avisos no WhatsApp (só avisam, não mudam nada)"
     },
     {
@@ -232,7 +232,7 @@
         0,
         750
       ],
-      "id": "873c002d-7c95-4b56-80ac-1c34fe11206b",
+      "id": "8f6dbb3a-a551-41c9-bb29-38afbcfeb7fc",
       "name": "Agenda - Invest. diário em 80% do Ritmo (3h)"
     },
     {
@@ -258,7 +258,7 @@
         300,
         750
       ],
-      "id": "f58c9549-f29b-4432-b722-d86b36462fe6",
+      "id": "dc492db4-74dc-453f-9ea0-9c17998de690",
       "name": "Avisar Invest. diário em 80% do Ritmo",
       "retryOnFail": true,
       "maxTries": 2,
@@ -289,7 +289,7 @@
         0,
         890
       ],
-      "id": "7024e9e9-915f-407d-9781-c092659d599f",
+      "id": "bef47541-df46-455f-a242-d66f1d2f3b61",
       "name": "Agenda - Investimento baixo (seg-sex 07h, 09h15, 13h)",
       "notes": "Um único gatilho com 3 horários (antes eram 3 gatilhos separados, todos sem ligação)."
     },
@@ -316,7 +316,7 @@
         300,
         890
       ],
-      "id": "120fda0f-56dc-4a5a-89d4-42254c7e97b9",
+      "id": "038977a5-18ae-40ef-9cd8-3c5ea8edde96",
       "name": "Avisar investimento baixo",
       "retryOnFail": true,
       "maxTries": 2,
@@ -335,7 +335,7 @@
         0,
         1050
       ],
-      "id": "b80e30ab-ad66-4405-8c40-bb242b7c178f",
+      "id": "a6fbebe4-3f6d-4d3a-a076-5c29dea42a82",
       "name": "Nota - 4. Status em massa (segunda e quinta, 01h)"
     },
     {
@@ -355,7 +355,7 @@
         0,
         1170
       ],
-      "id": "7bd42786-e176-4fa1-81db-549b79c144ef",
+      "id": "7e4a274e-e6b3-413c-8914-f3ee7ec6d001",
       "name": "Agenda - Status em massa (seg/qui 01h)"
     },
     {
@@ -381,7 +381,7 @@
         300,
         1170
       ],
-      "id": "b25bdf44-fb25-4547-bf97-b80a760ec4b6",
+      "id": "937c47b2-c2f4-420a-afc6-ee017329df79",
       "name": "Atualizar status em massa",
       "retryOnFail": true,
       "maxTries": 2,
@@ -400,7 +400,7 @@
         0,
         1330
       ],
-      "id": "4875e307-be53-4b04-80fb-ef64401a86d7",
+      "id": "0f7ea530-b4cf-4a88-a29b-2a6bed3ad2fd",
       "name": "Nota - 5. Saldo e CPA (avisos e atualização de saldo)"
     },
     {
@@ -420,7 +420,7 @@
         0,
         1470
       ],
-      "id": "a5d2f7f7-9b5a-44c8-b52e-ae935d246f98",
+      "id": "3562a7ff-6b96-495c-8639-bdfc610ae813",
       "name": "Agenda - Saldo e pagamento (seg-sáb 07h15, 10h15, 14h15, 18h15)",
       "notes": "Veio do workflow antigo 'A cada 4 horas' (07h, 10h, 14h, 18h, seg-sáb). Só o minuto mudou, de :00 pra :15."
     },
@@ -447,7 +447,7 @@
         300,
         1470
       ],
-      "id": "f36391e6-6d49-4d03-b4e1-704f28edb723",
+      "id": "7247619a-ddba-4467-b405-7b53f8d205a9",
       "name": "Checar saldo baixo e pagamento",
       "retryOnFail": true,
       "maxTries": 2,
@@ -470,7 +470,7 @@
         0,
         1610
       ],
-      "id": "e9c809c1-53ce-4ca2-8f5a-c3bc8b6431d3",
+      "id": "8c20f783-d5b3-425c-a50d-7a806023d905",
       "name": "Agenda - Saldo por fundos (2h)",
       "notes": "Veio do workflow antigo 'A cada 4 horas1', que na verdade rodava de 2 em 2 horas."
     },
@@ -497,7 +497,7 @@
         300,
         1610
       ],
-      "id": "aa91556e-def4-4383-ae01-c5c772ec1130",
+      "id": "40cc85b5-540f-4b86-a34a-7b8fdcb4c179",
       "name": "Atualizar saldo por fundos",
       "retryOnFail": true,
       "maxTries": 2,
@@ -520,7 +520,7 @@
         0,
         1750
       ],
-      "id": "953ab77e-7e6d-464f-9700-20515b2e57b2",
+      "id": "77255495-f614-4889-aee8-721d106b1898",
       "name": "Agenda - CPA acima da meta ontem (07h08)",
       "notes": "Todo dia às 07h08: lista as contas com CPA de ontem R$2+ acima do ideal."
     },
@@ -547,7 +547,7 @@
         300,
         1750
       ],
-      "id": "2c1c41ae-0ed7-4848-989f-0730e215eeca",
+      "id": "d4b3e50a-6075-49a8-9590-9df58f70b268",
       "name": "Avisar CPA acima da meta",
       "retryOnFail": true,
       "maxTries": 2,
@@ -566,7 +566,7 @@
         0,
         1910
       ],
-      "id": "6eff822c-fa21-4406-954b-19e0674c87d9",
+      "id": "1ef44af6-85dc-482b-8e29-f2c077ea036e",
       "name": "Nota - 6. Auditoria (a cada 30 minutos)"
     },
     {
@@ -586,7 +586,7 @@
         0,
         2030
       ],
-      "id": "53f77e89-2bb0-4751-9262-6a86600a8a8a",
+      "id": "3702223a-9ae1-4a22-b184-63f14aa88240",
       "name": "Agenda - Auditoria (30 min)",
       "notes": "Veio do workflow antigo 'A cada 30 minutos' (estava correto e ligado)."
     },
@@ -613,8 +613,74 @@
         300,
         2030
       ],
-      "id": "2ce60594-2cd7-468b-a461-41b417bd1f8e",
+      "id": "ed5dd882-8721-481d-88aa-e68a32ad51eb",
       "name": "Rodar auditoria (localização + erros)",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 7. Descrições do Asana (horário comercial)\n\nA cada 30 minutos, de segunda a sexta, das 08h às 18h (minutos 17 e 47): traz a descrição das tarefas do Asana pra aba Descrição. Igual = não faz nada; diferente = o Traffic passa a ter a do Asana.",
+        "height": 100,
+        "width": 640,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        2190
+      ],
+      "id": "6072c4de-c26f-4eda-b0d8-4ffada12eb7d",
+      "name": "Nota - 7. Descrições do Asana (horário comercial)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "17,47 8-18 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2310
+      ],
+      "id": "10af31fd-eb32-4e8c-9d9f-9332af3b87c9",
+      "name": "Agenda - Descrições do Asana (30 min, seg-sex 08h-18h)",
+      "notes": "Só leitura do Asana. Pra mandar uma descrição editada pro Asana, use o botão por cliente na aba Descrição do Painel."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/asana-descriptions-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        2310
+      ],
+      "id": "d7481127-364b-45b5-9bc2-e3560936f366",
+      "name": "Sincronizar descrições do Asana",
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
@@ -726,6 +792,17 @@
         [
           {
             "node": "Rodar auditoria (localização + erros)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Descrições do Asana (30 min, seg-sex 08h-18h)": {
+      "main": [
+        [
+          {
+            "node": "Sincronizar descrições do Asana",
             "type": "main",
             "index": 0
           }
