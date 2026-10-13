@@ -14,7 +14,7 @@
         -620,
         -80
       ],
-      "id": "d5b0d5e6-a5b3-4e77-97fe-0e6a7bd93438",
+      "id": "e1d4bb06-90d7-49f8-9694-4e597fe2082a",
       "name": "Nota - Leia antes de ativar"
     },
     {
@@ -30,7 +30,7 @@
         0,
         -80
       ],
-      "id": "71262020-59ae-4496-a730-c1ef549a1912",
+      "id": "5e9c3239-f94e-4473-8263-d46294827ab5",
       "name": "Nota - 1. Pausas automáticas (de 3 em 3 horas)"
     },
     {
@@ -50,7 +50,7 @@
         0,
         40
       ],
-      "id": "e92a30b3-92be-4040-8fba-be23e1d3b7ca",
+      "id": "7c09cc22-83e4-4dee-ab65-20fa789c10d4",
       "name": "Agenda - Criativos acima da meta (3h)",
       "notes": "Pausa criativo ativo R$4+ acima da meta ontem + hoje (histórico bom nos 7 dias só pausa se também estiver acima nos 2 dias + hoje)."
     },
@@ -77,7 +77,7 @@
         300,
         40
       ],
-      "id": "333efab1-1d88-4ef8-a3e5-526d2ae57731",
+      "id": "85617dfe-129e-4d28-b946-f151b58ef995",
       "name": "Pausar criativos acima da meta",
       "retryOnFail": true,
       "maxTries": 2,
@@ -100,7 +100,7 @@
         0,
         180
       ],
-      "id": "715c62e0-f441-4259-9adb-b38249e2d9a1",
+      "id": "458a550e-2b02-42ad-944d-89d26ab5e3fb",
       "name": "Agenda - Conjuntos (3h)",
       "notes": "Pausa conjunto sem anúncio ativo (menos os em análise/processando) e conjunto acima da meta; com 7 dias bom corta R$10 e fica 24h em quarentena."
     },
@@ -127,7 +127,7 @@
         300,
         180
       ],
-      "id": "d3b0346f-1426-401f-b267-a4316ae91e9e",
+      "id": "31cb1210-1d54-4cdf-bf39-de30b03fa487",
       "name": "Pausar conjuntos",
       "retryOnFail": true,
       "maxTries": 2,
@@ -135,7 +135,7 @@
     },
     {
       "parameters": {
-        "content": "## 2. Criativos sem resultado (de hora em hora)\n\nTodo dia, no minuto 30 de cada hora. Pausa só criativo que gastou R$4+ acima da meta ontem + hoje SEM nenhuma conversa.",
+        "content": "## 2. Criativos sem resultado (de hora em hora)\n\nTodo dia, no minuto 40 de cada hora. Pausa só criativo que gastou R$4+ acima da meta ontem + hoje SEM nenhuma conversa.",
         "height": 100,
         "width": 640,
         "color": 3
@@ -146,7 +146,7 @@
         0,
         340
       ],
-      "id": "b3739abb-1e06-4e2c-9daf-86878d1fa928",
+      "id": "872e5dbf-25d9-494e-b7a8-1343cf6caee0",
       "name": "Nota - 2. Criativos sem resultado (de hora em hora)"
     },
     {
@@ -155,7 +155,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "30 * * * *"
+              "expression": "40 * * * *"
             }
           ]
         }
@@ -166,7 +166,7 @@
         0,
         460
       ],
-      "id": "4362d65f-4cc2-43ea-a524-fa1e0ffc1c38",
+      "id": "8d3344f4-d728-4ff8-ab53-31366145f167",
       "name": "Agenda - Criativos sem resultado (1h)",
       "notes": "Roda mais vezes que a verificação de 3 em 3 horas porque o criativo sem nenhuma conversa não tem o que reverter."
     },
@@ -193,7 +193,7 @@
         300,
         460
       ],
-      "id": "3a10f939-5eb3-444a-8af1-01b822a422a4",
+      "id": "bce34100-6f2f-4654-b407-12558b4e7172",
       "name": "Pausar criativos sem resultado",
       "retryOnFail": true,
       "maxTries": 2,
@@ -212,7 +212,7 @@
         0,
         620
       ],
-      "id": "23ebdbac-77da-4a50-96cf-933c09d030c4",
+      "id": "b9d4a413-9041-440b-a5d3-6f0900cdc2ec",
       "name": "Nota - 3. Avisos no WhatsApp (só avisam, não mudam nada)"
     },
     {
@@ -232,7 +232,7 @@
         0,
         750
       ],
-      "id": "6cd2313b-2e7f-426d-934e-481f9d02b928",
+      "id": "8cc9b6cc-245b-495e-8f06-bbcae15bfefc",
       "name": "Agenda - Invest. diário em 50% do Ritmo (3h)"
     },
     {
@@ -258,7 +258,7 @@
         300,
         750
       ],
-      "id": "1b94edab-32da-4d7a-8006-dc1ca2cfa91c",
+      "id": "2cf1419f-a95c-4399-b7e6-c24aea4bab89",
       "name": "Avisar Invest. diário em 50% do Ritmo",
       "retryOnFail": true,
       "maxTries": 2,
@@ -289,7 +289,7 @@
         0,
         890
       ],
-      "id": "9cab8825-47ff-4164-805d-6b6067e21f8e",
+      "id": "802c07e8-f514-49c7-8bad-ca77ab2a43e2",
       "name": "Agenda - Investimento baixo (seg-sex 07h, 09h15, 13h)",
       "notes": "Um único gatilho com 3 horários (antes eram 3 gatilhos separados, todos sem ligação)."
     },
@@ -316,7 +316,7 @@
         300,
         890
       ],
-      "id": "dce7a65a-6f37-441e-9255-2559a69a4cf5",
+      "id": "2705c0e1-0247-4a35-8e74-de762de9b6a7",
       "name": "Avisar investimento baixo",
       "retryOnFail": true,
       "maxTries": 2,
@@ -335,7 +335,7 @@
         0,
         1050
       ],
-      "id": "c81cab0c-f13b-455e-bfc9-015c80faebbf",
+      "id": "ee7e7d21-cef4-4007-8585-818f168296d8",
       "name": "Nota - 4. Status em massa (segunda e quinta, 01h)"
     },
     {
@@ -355,7 +355,7 @@
         0,
         1170
       ],
-      "id": "efd56489-4e89-4725-8a86-12be84f595a2",
+      "id": "b6a9b83d-a7ac-496f-9643-73e5bfda7367",
       "name": "Agenda - Status em massa (seg/qui 01h)"
     },
     {
@@ -381,7 +381,7 @@
         300,
         1170
       ],
-      "id": "aa20942b-70fc-43bb-a12c-ccbfb0a32148",
+      "id": "29b7a47d-3c98-4d5b-90a7-6776eadfbada",
       "name": "Atualizar status em massa",
       "retryOnFail": true,
       "maxTries": 2,
@@ -389,7 +389,7 @@
     },
     {
       "parameters": {
-        "content": "## 5. Saldo e CPA (avisos e atualização de saldo)\n\n• Saldo baixo / erro no pagamento / saldo de sexta / verificação manual: seg a sáb, 07h15, 10h15, 14h15 e 18h15.\n• Saldo por fundos: atualiza de 2 em 2 horas (minuto 20).\n• CPA acima da meta ontem: todo dia às 07h.\nOs minutos foram espalhados (15, 20) pra não bater junto com as pausas e não sobrecarregar a Meta.",
+        "content": "## 5. Saldo e CPA (avisos e atualização de saldo)\n\n• Saldo baixo / erro no pagamento / saldo de sexta / verificação manual: seg a sáb, 07h15, 10h15, 14h15 e 18h15.\n• Saldo por fundos: atualiza de 2 em 2 horas (minuto 20).\n• CPA acima da meta ontem: todo dia às 07h08.\nNenhum fluxo dispara no mesmo minuto de outro (mínimo de 5 minutos entre dois disparos), pra não sobrecarregar a Meta nem o servidor.",
         "height": 130,
         "width": 640,
         "color": 2
@@ -400,7 +400,7 @@
         0,
         1330
       ],
-      "id": "6360764d-c3ce-43e3-bb52-e6ff87f76a3e",
+      "id": "e19b183e-8673-48c8-a753-d6d83a74bfb3",
       "name": "Nota - 5. Saldo e CPA (avisos e atualização de saldo)"
     },
     {
@@ -420,7 +420,7 @@
         0,
         1470
       ],
-      "id": "654ccaf6-a0c3-45f5-a0d7-5842c6ed692a",
+      "id": "0fbe4f57-e66a-4d93-932f-4566ebe71b44",
       "name": "Agenda - Saldo e pagamento (seg-sáb 07h15, 10h15, 14h15, 18h15)",
       "notes": "Veio do workflow antigo 'A cada 4 horas' (07h, 10h, 14h, 18h, seg-sáb). Só o minuto mudou, de :00 pra :15."
     },
@@ -447,7 +447,7 @@
         300,
         1470
       ],
-      "id": "286e2d90-28cb-49bf-b4ae-3db3147647d3",
+      "id": "430029ef-0a58-4188-9a8a-9cff07332524",
       "name": "Checar saldo baixo e pagamento",
       "retryOnFail": true,
       "maxTries": 2,
@@ -470,7 +470,7 @@
         0,
         1610
       ],
-      "id": "bfbd7bd4-63e4-40a2-b73a-f248382a9a8b",
+      "id": "80384b55-205e-4fbc-8890-d11d838dca0c",
       "name": "Agenda - Saldo por fundos (2h)",
       "notes": "Veio do workflow antigo 'A cada 4 horas1', que na verdade rodava de 2 em 2 horas."
     },
@@ -497,7 +497,7 @@
         300,
         1610
       ],
-      "id": "a449666f-79f9-48ea-9b6d-5e549c045f51",
+      "id": "bbab8bfd-f3d5-4978-ac28-4536af3923ea",
       "name": "Atualizar saldo por fundos",
       "retryOnFail": true,
       "maxTries": 2,
@@ -509,7 +509,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 7 * * *"
+              "expression": "8 7 * * *"
             }
           ]
         }
@@ -520,9 +520,9 @@
         0,
         1750
       ],
-      "id": "e4aa9fab-48fc-4a51-bcf3-643d6735e22e",
-      "name": "Agenda - CPA acima da meta ontem (07h)",
-      "notes": "Todo dia às 07h: lista as contas com CPA de ontem R$2+ acima do ideal."
+      "id": "43fdb67c-1d00-4c16-83ee-29ee33b24b67",
+      "name": "Agenda - CPA acima da meta ontem (07h08)",
+      "notes": "Todo dia às 07h08: lista as contas com CPA de ontem R$2+ acima do ideal."
     },
     {
       "parameters": {
@@ -547,7 +547,7 @@
         300,
         1750
       ],
-      "id": "2ed07a12-07d3-435e-8de3-246d10609177",
+      "id": "f15544b4-a65a-40f8-8f88-9c8e8f448962",
       "name": "Avisar CPA acima da meta",
       "retryOnFail": true,
       "maxTries": 2,
@@ -566,7 +566,7 @@
         0,
         1910
       ],
-      "id": "ce3b619b-9c31-4c4c-89b7-88addef65648",
+      "id": "360f3235-54a7-464a-9c8f-195163e81d95",
       "name": "Nota - 6. Auditoria (a cada 30 minutos)"
     },
     {
@@ -586,7 +586,7 @@
         0,
         2030
       ],
-      "id": "9857c077-35c5-4d29-bc8e-a56ed96b0b16",
+      "id": "ac21af56-df7d-4907-9558-a207958fa3d7",
       "name": "Agenda - Auditoria (30 min)",
       "notes": "Veio do workflow antigo 'A cada 30 minutos' (estava correto e ligado)."
     },
@@ -613,7 +613,7 @@
         300,
         2030
       ],
-      "id": "80d1b0c6-8fd3-4014-bce8-95d88f976415",
+      "id": "f74e95a0-5079-4f45-abb0-872e7bb47f0a",
       "name": "Rodar auditoria (localização + erros)",
       "retryOnFail": true,
       "maxTries": 2,
@@ -710,7 +710,7 @@
         ]
       ]
     },
-    "Agenda - CPA acima da meta ontem (07h)": {
+    "Agenda - CPA acima da meta ontem (07h08)": {
       "main": [
         [
           {
