@@ -2480,6 +2480,16 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     gasto R$4+ acima da meta ontem + hoje) — o criativo ruim, com conversa mas caro, ainda pode
     reverter e continua só na verificação de 3 em 3 horas (que também pega os sem resultado).
 
+99. **Aviso de Invest. diário em 50% ou menos do Ritmo (Etapa 106)** — novo aviso no WhatsApp
+    (só notifica, não muda nada): conta com Investimento mensal cadastrado cujo Invest. diário
+    atual (orçamento diário dos anúncios ativos) é igual ou menor que METADE do Ritmo. Mesmo
+    Ritmo da tela (depois das 16h já antecipa o dia seguinte). Universo: Contas exibidas. Conta
+    cuja busca na Meta falhou não entra. Mensagem: "🔴 Invest. diário em 50% ou menos do Ritmo"
+    com cliente, Invest. diário, Ritmo e % do Ritmo (mais grave primeiro). Sem cooldown: reenvia
+    a cada rodada enquanto durar. Agenda no n8n: `POST /api/public/hooks/low-budget-tick`
+    (header `x-webhook-secret`), de 3 em 3 horas (`0 2,5,8,11,14,17,20,23 * * *`). Código:
+    `lib/alerts/low-budget.ts`. O aviso de Investimento baixo (banda de R$10) continua como estava.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
