@@ -21,7 +21,7 @@ const KIND_LABELS: Record<string, string> = {
   "adsets-paused": "Conjuntos pausados",
   "adsets-cut": "Orçamento reduzido",
   "adsets-cut-failed": "Corte não aplicado",
-  "low-budget": "Invest. diário ≤ 50% do Ritmo",
+  "low-budget": "Invest. diário ≤ 80% do Ritmo",
   "low-investment": "Investimento baixo",
   "cpa-yesterday": "CPA acima da meta",
   "bulk-status": "Status em massa",
@@ -139,7 +139,7 @@ export function AlertasTab({ onCountChange }: { onCountChange?: (n: number) => v
 
       <p className="border-b border-zinc-100 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800/60 dark:text-zinc-400">
         Aqui aparecem todas as notificações das verificações automáticas. No grupo do WhatsApp vão só as urgentes
-        (CPA acima da meta, Invest. diário em 50% do Ritmo, saldo baixo, saldo de sexta e erro no pagamento). Cada
+        (CPA acima da meta, Invest. diário em 80% do Ritmo, saldo baixo, saldo de sexta e erro no pagamento). Cada
         alerta some sozinho em 72 horas ou quando você clica em OK.
       </p>
 

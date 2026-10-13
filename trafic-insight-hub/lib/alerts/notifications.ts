@@ -19,7 +19,7 @@ export type AlertKind =
   | "adsets-paused" // conjuntos pausados
   | "adsets-cut" // orçamento do conjunto reduzido em R$10
   | "adsets-cut-failed" // conjunto que pedia corte, mas não deu pra cortar
-  | "low-budget" // Invest. diário em 50% ou menos do Ritmo
+  | "low-budget" // Invest. diário em 80% ou menos do Ritmo
   | "low-investment" // Investimento baixo (banda de R$10)
   | "cpa-yesterday" // CPA acima da meta ontem
   | "bulk-status" // Status em massa

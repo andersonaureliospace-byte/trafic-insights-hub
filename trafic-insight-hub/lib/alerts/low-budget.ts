@@ -1,4 +1,4 @@
-// Aviso de orçamento diário em 50% (ou menos) do Ritmo (Etapa 106) — só notifica, nunca mexe
+// Aviso de orçamento diário em 80% (ou menos) do Ritmo (Etapa 106; limite subiu de 50% pra 80% na Etapa 114) — só notifica, nunca mexe
 // em nada. Pensado pra rodar de 3 em 3 horas no n8n (02h/05h/08h/11h/14h/17h/20h/23h), a mesma
 // frequência da pausa automática. Avisa as contas cujo Invest. diário atual (orçamento diário
 // somado das campanhas/conjuntos ativos) é igual ou menor que METADE do Ritmo — ou seja, o
@@ -17,11 +17,11 @@ import { fmtCurrency } from "@/lib/format";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
-// Orçamento diário igual ou menor que esta fração do Ritmo entra no aviso (0,5 = 50%).
-export const LOW_BUDGET_RATIO = 0.5;
+// Orçamento diário igual ou menor que esta fração do Ritmo entra no aviso (0,8 = 80%).
+export const LOW_BUDGET_RATIO = 0.8;
 
-// Regra pura: o Ritmo precisa ser positivo; orçamento igual ou abaixo de 50% dele avisa.
-export function isBudgetAtMostHalfOfRitmo(dailyBudget: number, ritmo: number): boolean {
+// Regra pura: o Ritmo precisa ser positivo; orçamento igual ou abaixo de 80% dele avisa.
+export function isBudgetAtMostRatioOfRitmo(dailyBudget: number, ritmo: number): boolean {
   return ritmo > 0 && dailyBudget <= ritmo * LOW_BUDGET_RATIO;
 }
 
@@ -83,7 +83,7 @@ export async function checkLowBudget(
       daily_budget: dailyBudget,
       ritmo,
       pct_of_ritmo: ritmo > 0 ? dailyBudget / ritmo : 0,
-      low: isBudgetAtMostHalfOfRitmo(dailyBudget, ritmo),
+      low: isBudgetAtMostRatioOfRitmo(dailyBudget, ritmo),
     });
   }
 
@@ -101,7 +101,7 @@ export async function checkLowBudget(
       );
       await publishAlert(db, userId, {
         kind: "low-budget",
-        title: `🔴 Invest. diário em 50% ou menos do Ritmo (${low.length} conta${low.length > 1 ? "s" : ""})`,
+        title: `🔴 Invest. diário em 80% ou menos do Ritmo (${low.length} conta${low.length > 1 ? "s" : ""})`,
         body: lines.join("\n"),
         count: low.length,
       });
