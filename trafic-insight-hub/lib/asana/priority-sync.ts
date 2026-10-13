@@ -40,13 +40,15 @@ export function asanaConfigured(): boolean {
   return Boolean(process.env.ASANA_ACCESS_TOKEN);
 }
 
-// Sem maiúsculas, sem acento e sem espaços sobrando (o Asana tem nomes com espaço no fim).
+// Sem maiúsculas, sem acento, sem pontuação (hífen, parênteses, colchetes) e sem espaços sobrando
+// (o Asana tem nomes com espaço no fim). Assim "IVS BLUMENAU(P)" = "IVS BLUMENAU - P" e
+// "IVS - ITAPETININGA" = "IVS ITAPETININGA".
 export function normName(s: string): string {
   return s
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/\s+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
     .trim();
 }
 
