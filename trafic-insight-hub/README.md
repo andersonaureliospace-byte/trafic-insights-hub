@@ -2472,9 +2472,13 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     ativo SEM anúncio ativo, mas agora NÃO pausa se ele tem anúncio em análise, processando,
     pré-aprovado, com problemas ou aguardando cobrança (campo `has_pending_ad` em
     `adset-cost-analysis.ts`; se a busca desses anúncios falhar, na dúvida não pausa). (c)
-    Agenda no n8n: Criativos às 01h, 04h, 07h, 10h, 13h, 16h, 19h e 22h (`0 1,4,7,10,13,16,19,22
-    * * *`) e Conjuntos 5 minutos depois (`5 1,4,7,10,13,16,19,22 * * *`), horário de Brasília,
-    ambos com `POST` + header `x-webhook-secret`.
+    Agenda no n8n (horário de Brasília, todos com `POST` + header `x-webhook-secret`): Criativos
+    (`/api/public/hooks/creatives-pause-tick`) às 02h, 05h, 08h, 11h, 14h, 17h, 20h e 23h (`0
+    2,5,8,11,14,17,20,23 * * *`); Conjuntos (`adsets-pause-tick`) 5 minutos depois (`5
+    2,5,8,11,14,17,20,23 * * *`). Etapa 105: URL NOVA `/api/public/hooks/creatives-no-result-tick`,
+    de hora em hora (`30 * * * *`), que pausa só os criativos SEM RESULTADO (zero conversas,
+    gasto R$4+ acima da meta ontem + hoje) — o criativo ruim, com conversa mas caro, ainda pode
+    reverter e continua só na verificação de 3 em 3 horas (que também pega os sem resultado).
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

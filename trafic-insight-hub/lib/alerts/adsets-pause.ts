@@ -1,5 +1,5 @@
 // Pausa automática de Conjuntos acima da meta (Etapa 53) — pensada pra
-// rodar de 3 em 3 horas (01h05/04h05/07h05/10h05/13h05/16h05/19h05/22h05 no n8n, 5
+// rodar de 3 em 3 horas (02h05/05h05/08h05/11h05/14h05/17h05/20h05/23h05 no n8n, 5
 // minutos depois do check de Criativos; Etapa 104), pausando sozinho todo conjunto
 // ATIVO com custo por conversa (ou gasto, sem conversa) no DOBRO da Meta
 // CPA + R$1 (ou mais) — MESMA lógica/limite de Painel > Análise > Conjuntos

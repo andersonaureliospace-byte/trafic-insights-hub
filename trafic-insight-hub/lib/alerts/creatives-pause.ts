@@ -1,5 +1,5 @@
 // Pausa automática de Criativos acima da meta (Etapa 53) — pensada pra
-// rodar de 3 em 3 horas (01h/04h/07h/10h/13h/16h/19h/22h, n8n; Etapa 104),
+// rodar de 3 em 3 horas (02h/05h/08h/11h/14h/17h/20h/23h, n8n; Etapa 104/105),
 // pausando sozinho todo criativo ATIVO com custo por conversa (ou gasto, sem
 // conversa) R$4+ acima da Meta CPA — e avisando no grupo de WhatsApp quais
 // criativos foram pausados.
@@ -7,6 +7,8 @@
 // + hoje). Criativo com histórico bom nos últimos 7 dias (CPA de 7 dias abaixo do
 // ideal, a "linha verde" de Análise) só é pausado se também estiver R$4+ acima nos
 // últimos dois dias + hoje. Regras puras em lib/alerts/creative-decision.ts.
+// Etapa 105: existe também uma versão só dos criativos SEM resultado (opts.onlyNoResult),
+// chamada de hora em hora por outro endpoint (creatives-no-result-tick).
 // Sem cooldown: como o critério é "ainda ATIVO e acima do limite", um criativo já
 // pausado nessa rodada simplesmente não aparece mais nas rodadas seguintes
 // (deixou de ser ATIVO), então não tem re-pausa nem re-aviso do mesmo criativo.
@@ -63,7 +65,10 @@ export async function checkAndPauseCreatives(
   db: Db,
   userId: string,
   token: string,
-  opts: { send: boolean } = { send: false },
+  // onlyNoResult (Etapa 105): só criativo SEM nenhuma conversa no período (gastou e não trouxe
+  // resultado). Roda com mais frequência (de hora em hora) que a verificação completa, já que o
+  // criativo ruim (com conversa, só caro) ainda pode reverter.
+  opts: { send: boolean; onlyNoResult?: boolean } = { send: false },
 ): Promise<CheckCreativesPauseResult> {
   const { data: selected, error: selectedErr } = await db
     .from("user_selected_accounts")
@@ -91,7 +96,11 @@ export async function checkAndPauseCreatives(
       const clientName = (b.client_name as string | null) || accountId;
       try {
         const rows = await getCreativeCostAnalysis(token, accountId, DATE_PRESET);
-        const active = rows.filter((r) => STATUSES.includes((r.status ?? "").toUpperCase()));
+        const active = rows.filter(
+          (r) =>
+            STATUSES.includes((r.status ?? "").toUpperCase()) &&
+            (!opts.onlyNoResult || !r.conversations || r.conversations <= 0),
+        );
         // Só busca 7 dias / 2 dias + hoje se a conta tiver algum criativo acima do limite.
         const first = active.filter(
           (r) =>
@@ -180,7 +189,9 @@ export async function checkAndPauseCreatives(
               : `gasto ${fmtCurrency(p.spend)} sem conversa`
           }${p.good_history ? " · 7 dias bom, mas acima nos 2 dias + hoje" : ""}`,
       );
-      const message = `⏸️ Criativos pausados automaticamente (CPA acima da meta ontem + hoje) — ${pausedOk.length} anúncio${
+      const message = `⏸️ ${
+        opts.onlyNoResult ? "Criativos sem resultado pausados automaticamente (gasto acima da meta sem nenhuma conversa, ontem + hoje)" : "Criativos pausados automaticamente (CPA acima da meta ontem + hoje)"
+      } — ${pausedOk.length} anúncio${
         pausedOk.length > 1 ? "s" : ""
       }\n\n${lines.join("\n")}`;
       await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, message);
