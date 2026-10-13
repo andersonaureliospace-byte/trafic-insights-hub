@@ -2553,6 +2553,13 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     do normal continua pra quem está adiantado. "Acelerar" passa a mostrar 1 dia. Mais contas vão cair no aviso
     de Invest. diário em 80% do Ritmo e no Investimento baixo.
 
+106. **Menos requisições juntas na Meta (Etapa 118)** — ao abrir o Acompanhamento o Painel disparava 4 buscas
+    pesadas ao mesmo tempo (insights do período, gasto do mês, saldo e pagamento ≈ 15 chamadas simultâneas) e
+    estourava o limite da Meta (tela travando/erro). Agora elas rodam em fila, uma de cada vez. Além disso, o
+    limite de requisições da Meta (HTTP 400, códigos 4/17/32/613/80004) agora espera e tenta de novo em
+    metaGet e metaGetAll (antes falhava na hora). Se a busca de saldo/pagamento falhar, as cores já na tela
+    são mantidas.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

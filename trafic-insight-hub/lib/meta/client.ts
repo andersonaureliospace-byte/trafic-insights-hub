@@ -57,6 +57,11 @@ export function presetParams(preset: DateRangeInput): Record<string, string> {
   return { date_preset: preset };
 }
 
+// Códigos de limite de requisições da Graph API (app/conta/usuário).
+function isRateLimitCode(code: unknown): boolean {
+  return code === 4 || code === 17 || code === 32 || code === 613 || code === 80004;
+}
+
 export async function metaGet<T>(
   token: string,
   path: string,
@@ -72,16 +77,23 @@ export async function metaGet<T>(
       if (res.ok) return (await res.json()) as T;
       const text = await res.text();
       let transient = res.status >= 500 || res.status === 429;
+      let limited = false;
       if (!transient) {
         try {
           const j = JSON.parse(text);
           if (j?.error?.is_transient) transient = true;
+          // Etapa 118: limite de requisições da Meta volta como HTTP 400 (códigos 4, 17, 32, 613,
+          // 80004) — antes não era tentado de novo e a conta ficava com erro na hora.
+          if (isRateLimitCode(j?.error?.code)) {
+            transient = true;
+            limited = true;
+          }
         } catch {
           /* not json */
         }
       }
       if (transient && attempt < maxAttempts) {
-        await new Promise((r) => setTimeout(r, 400 * attempt));
+        await new Promise((r) => setTimeout(r, (limited ? 2500 : 400) * attempt));
         continue;
       }
       throw new Error(`Meta API ${res.status}: ${text}`);
@@ -104,7 +116,26 @@ export async function metaGetAll<T>(
   const qs = new URLSearchParams({ ...params, access_token: token });
   let url = `${GRAPH}${path}?${qs.toString()}`;
   for (let i = 0; i < maxPages; i++) {
-    const res = await fetch(url);
+    let res = await fetch(url);
+    // Etapa 118: até 2 novas tentativas (com espera) em 5xx/429 ou limite de requisições.
+    for (let attempt = 1; !res.ok && attempt <= 2; attempt++) {
+      const text = await res.clone().text();
+      let retry = res.status >= 500 || res.status === 429;
+      let limited = false;
+      try {
+        const j = JSON.parse(text);
+        if (j?.error?.is_transient) retry = true;
+        if (isRateLimitCode(j?.error?.code)) {
+          retry = true;
+          limited = true;
+        }
+      } catch {
+        /* não é JSON */
+      }
+      if (!retry) break;
+      await new Promise((r) => setTimeout(r, (limited ? 2500 : 400) * attempt));
+      res = await fetch(url);
+    }
     if (!res.ok) {
       const text = await res.text();
       throw new Error(`Meta API ${res.status}: ${text}`);

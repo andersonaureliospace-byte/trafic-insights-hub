@@ -224,6 +224,15 @@ export default function PainelPage() {
     monthly: { key: string; at: number } | null;
     alerts: number | null;
   }>({ insights: null, monthly: null, alerts: null });
+  // Etapa 118: as buscas pesadas na Meta (insights do período, gasto do mês, saldo, pagamento)
+  // rodam UMA DE CADA VEZ, em fila. Antes, ao abrir o Acompanhamento, as quatro disparavam juntas
+  // (~15 chamadas simultâneas à Meta) e estouravam o limite de requisições — a tela travava/dava erro.
+  const metaQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const queueMeta = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
+    const run = metaQueueRef.current.then(fn, fn);
+    metaQueueRef.current = run.catch(() => undefined);
+    return run;
+  }, []);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const pinnedRef = useRef<string[]>([]);
   useEffect(() => {
@@ -399,26 +408,25 @@ export default function PainelPage() {
   // conta em Acompanhamento (mesma checagem de Mensagens > Avisos, em modo
   // leitura). Só busca com a aba ativa, mesmo critério das outras chamadas
   // "pesadas" do Meta.
-  const loadAlertStatuses = useCallback(async () => {
-    const [balanceRes, paymentRes] = await Promise.all([
-      fetch("/api/alerts/balance").then((r) => r.json()),
-      fetch("/api/alerts/payment").then((r) => r.json()),
-    ]);
-    setLowBalanceIds(
+  const loadAlertStatuses = useCallback(() => queueMeta(async () => {
+    const balanceRes = await fetch("/api/alerts/balance").then((r) => r.json()).catch(() => ({}));
+    const paymentRes = await fetch("/api/alerts/payment").then((r) => r.json()).catch(() => ({}));
+    // Se a Meta falhou (limite de requisições), mantém o que já estava na tela em vez de apagar as cores.
+    if (balanceRes.statuses) setLowBalanceIds(
       new Set(
         ((balanceRes.statuses ?? []) as Array<{ ad_account_id: string; low: boolean }>)
           .filter((s) => s.low)
           .map((s) => s.ad_account_id),
       ),
     );
-    setPaymentErrorIds(
+    if (paymentRes.statuses) setPaymentErrorIds(
       new Set(
         ((paymentRes.statuses ?? []) as Array<{ ad_account_id: string; hasError: boolean }>)
           .filter((s) => s.hasError)
           .map((s) => s.ad_account_id),
       ),
     );
-  }, []);
+  }), [queueMeta]);
 
   useEffect(() => {
     if (tab !== "acompanhamento") return;
@@ -453,7 +461,7 @@ export default function PainelPage() {
   }, [selectedAccounts]);
 
   const loadInsights = useCallback(
-    async (onlyPinned = false) => {
+    (onlyPinned = false) => queueMeta(async () => {
       if (selectedAccounts.length === 0) {
         setInsights({});
         return true;
@@ -479,8 +487,8 @@ export default function PainelPage() {
       } finally {
         setLoadingInsights(false);
       }
-    },
-    [selectedAccounts, preset, pinnedTargets],
+    }),
+    [selectedAccounts, preset, pinnedTargets, queueMeta],
   );
 
   useEffect(() => {
@@ -509,7 +517,7 @@ export default function PainelPage() {
   // Só depende da seleção de contas, não do período, pra não duplicar
   // chamada toda vez que o filtro de data da tabela mudar.
   const loadMonthlyInsights = useCallback(
-    async (onlyPinned = false) => {
+    (onlyPinned = false) => queueMeta(async () => {
       if (selectedAccounts.length === 0) {
         setMonthlyInsights({});
         return true;
@@ -533,8 +541,8 @@ export default function PainelPage() {
       } catch {
         return false;
       }
-    },
-    [selectedAccounts, pinnedTargets],
+    }),
+    [selectedAccounts, pinnedTargets, queueMeta],
   );
 
   useEffect(() => {
