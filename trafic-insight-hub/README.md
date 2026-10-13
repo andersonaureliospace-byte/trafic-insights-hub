@@ -2546,6 +2546,13 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     de Brasília a cada minuto e ao voltar pra aba (focus/visibilitychange) e, se virou, relê as marcações
     (vale pro Otimizado de Acompanhamento e de Acompanhamento de metas).
 
+105. **Ritmo = investimento normal + o que falta (Etapa 117)** — o Ritmo agora soma o investimento diário
+    normal ao que está faltando pra chegar no ideal, sem o teto de 2× e sem a regra das 16h. Ex.: Itatiba,
+    meta 3.000 (normal 96,77), dia 13, investido 1.084,04 (ideal 1.258,06 → faltam 174,02) → Ritmo 270,79.
+    Na prática é o que falta pro ideal de AMANHÃ, em qualquer hora; no último dia mira a meta mensal. O piso de 50%
+    do normal continua pra quem está adiantado. "Acelerar" passa a mostrar 1 dia. Mais contas vão cair no aviso
+    de Invest. diário em 80% do Ritmo e no Investimento baixo.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

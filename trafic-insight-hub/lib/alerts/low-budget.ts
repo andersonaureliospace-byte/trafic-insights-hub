@@ -4,7 +4,7 @@
 // somado das campanhas/conjuntos ativos) é igual ou menor que METADE do Ritmo — ou seja, o
 // orçamento configurado nem chega perto do que precisa ser investido por dia. É um aviso mais
 // grave que o de "Investimento baixo" (lib/alerts/low-investment.ts, banda de R$10), que
-// continua existindo. O Ritmo é o mesmo da tela (lib/meta/ritmo.ts) — depois das 16h ele já
+// continua existindo. O Ritmo é o mesmo da tela (lib/meta/ritmo.ts) — normal + o que falta pro ideal, sem teto; antes (até a Etapa 116) ele limitava a 2× e só depois das 16h já
 // antecipa o dia seguinte. Universo: contas de "Contas exibidas" (user_selected_accounts) com
 // Investimento mensal cadastrado. Sem cooldown: cada rodada reenvia enquanto o problema durar,
 // de propósito (quem controla a frequência é o n8n).
