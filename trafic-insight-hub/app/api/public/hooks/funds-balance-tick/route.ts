@@ -8,6 +8,9 @@ import { refreshFundsBalance } from "@/lib/meta/funds-balance";
 // desde o funds_balance_watermark salvo (ver lib/meta/funds-balance.ts) —
 // nunca reprocessa o histórico inteiro, só o que é novo desde a última
 // rodada ou desde que o usuário definiu/corrigiu o saldo inicial.
+// Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {

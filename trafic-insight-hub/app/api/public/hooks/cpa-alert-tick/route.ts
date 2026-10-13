@@ -8,6 +8,9 @@ import { checkCpaAlerts } from "@/lib/alerts/cpa";
 // da mais crítica pra menos crítica. Conta com CPA na média ou abaixo não
 // entra na mensagem. Protegido pelo mesmo segredo compartilhado dos outros
 // hooks internos (WHATSAPP_DISPATCH_SECRET).
+// Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {

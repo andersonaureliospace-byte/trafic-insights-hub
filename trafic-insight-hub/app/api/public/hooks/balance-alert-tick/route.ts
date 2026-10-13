@@ -14,6 +14,9 @@ import { checkManualReviews } from "@/lib/alerts/manual-check";
 // não exigir um segundo workflow no n8n. Etapa 63: entram mais duas — saldo
 // de sexta-feira (2x/3x o limite, Pix/Híbrida) e verificação manual
 // pendente (qualquer tipo de conta) — pelo mesmo motivo.
+// Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
