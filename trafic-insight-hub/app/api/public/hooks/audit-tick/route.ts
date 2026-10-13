@@ -6,6 +6,9 @@ import { runLocationAudit, runErrorAudit } from "@/lib/audit/run";
 // duas auditorias automaticamente, sem precisar clicar em "Verificar agora".
 // Protegido pelo mesmo segredo compartilhado do disparo de WhatsApp — é o
 // segredo geral dos hooks internos do sistema, não só do WhatsApp.
+// Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {

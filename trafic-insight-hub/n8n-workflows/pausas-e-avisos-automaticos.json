@@ -14,7 +14,7 @@
         -620,
         -80
       ],
-      "id": "aa3d681b-22c0-4aeb-9bcd-66ab59795583",
+      "id": "d5b0d5e6-a5b3-4e77-97fe-0e6a7bd93438",
       "name": "Nota - Leia antes de ativar"
     },
     {
@@ -30,7 +30,7 @@
         0,
         -80
       ],
-      "id": "c7bdc046-2dc1-42f7-b729-3225e0868d65",
+      "id": "71262020-59ae-4496-a730-c1ef549a1912",
       "name": "Nota - 1. Pausas automáticas (de 3 em 3 horas)"
     },
     {
@@ -50,7 +50,7 @@
         0,
         40
       ],
-      "id": "f5f167c1-3ddf-4466-bef4-c2b7963f26ae",
+      "id": "e92a30b3-92be-4040-8fba-be23e1d3b7ca",
       "name": "Agenda - Criativos acima da meta (3h)",
       "notes": "Pausa criativo ativo R$4+ acima da meta ontem + hoje (histórico bom nos 7 dias só pausa se também estiver acima nos 2 dias + hoje)."
     },
@@ -77,7 +77,7 @@
         300,
         40
       ],
-      "id": "5262f915-01db-406f-acc4-ddc2124952b2",
+      "id": "333efab1-1d88-4ef8-a3e5-526d2ae57731",
       "name": "Pausar criativos acima da meta",
       "retryOnFail": true,
       "maxTries": 2,
@@ -100,7 +100,7 @@
         0,
         180
       ],
-      "id": "2013dba7-8f44-4318-83cb-1a2fb39d743f",
+      "id": "715c62e0-f441-4259-9adb-b38249e2d9a1",
       "name": "Agenda - Conjuntos (3h)",
       "notes": "Pausa conjunto sem anúncio ativo (menos os em análise/processando) e conjunto acima da meta; com 7 dias bom corta R$10 e fica 24h em quarentena."
     },
@@ -127,7 +127,7 @@
         300,
         180
       ],
-      "id": "d62c040e-9741-4ed4-ab32-677c20585e99",
+      "id": "d3b0346f-1426-401f-b267-a4316ae91e9e",
       "name": "Pausar conjuntos",
       "retryOnFail": true,
       "maxTries": 2,
@@ -146,7 +146,7 @@
         0,
         340
       ],
-      "id": "91eef590-fb7c-47d1-b126-aef182553880",
+      "id": "b3739abb-1e06-4e2c-9daf-86878d1fa928",
       "name": "Nota - 2. Criativos sem resultado (de hora em hora)"
     },
     {
@@ -166,7 +166,7 @@
         0,
         460
       ],
-      "id": "36021b62-d66f-4e97-b20e-8110cbdfa29a",
+      "id": "4362d65f-4cc2-43ea-a524-fa1e0ffc1c38",
       "name": "Agenda - Criativos sem resultado (1h)",
       "notes": "Roda mais vezes que a verificação de 3 em 3 horas porque o criativo sem nenhuma conversa não tem o que reverter."
     },
@@ -193,7 +193,7 @@
         300,
         460
       ],
-      "id": "dca2d946-02d0-4aa4-90bf-003e20fa42b9",
+      "id": "3a10f939-5eb3-444a-8af1-01b822a422a4",
       "name": "Pausar criativos sem resultado",
       "retryOnFail": true,
       "maxTries": 2,
@@ -212,7 +212,7 @@
         0,
         620
       ],
-      "id": "abb4ea8c-daff-4023-a5de-952624c454a4",
+      "id": "23ebdbac-77da-4a50-96cf-933c09d030c4",
       "name": "Nota - 3. Avisos no WhatsApp (só avisam, não mudam nada)"
     },
     {
@@ -232,7 +232,7 @@
         0,
         750
       ],
-      "id": "e06aa786-0b69-4e4d-a30f-b8000cc5db13",
+      "id": "6cd2313b-2e7f-426d-934e-481f9d02b928",
       "name": "Agenda - Invest. diário em 50% do Ritmo (3h)"
     },
     {
@@ -258,7 +258,7 @@
         300,
         750
       ],
-      "id": "f67db2cb-af62-4be7-b828-e0f33cce3910",
+      "id": "1b94edab-32da-4d7a-8006-dc1ca2cfa91c",
       "name": "Avisar Invest. diário em 50% do Ritmo",
       "retryOnFail": true,
       "maxTries": 2,
@@ -289,7 +289,7 @@
         0,
         890
       ],
-      "id": "a5dd43c1-c7ec-44c1-b690-f7de80389287",
+      "id": "9cab8825-47ff-4164-805d-6b6067e21f8e",
       "name": "Agenda - Investimento baixo (seg-sex 07h, 09h15, 13h)",
       "notes": "Um único gatilho com 3 horários (antes eram 3 gatilhos separados, todos sem ligação)."
     },
@@ -316,7 +316,7 @@
         300,
         890
       ],
-      "id": "677585d9-dbc4-475e-92c1-fbf20efdee7b",
+      "id": "dce7a65a-6f37-441e-9255-2559a69a4cf5",
       "name": "Avisar investimento baixo",
       "retryOnFail": true,
       "maxTries": 2,
@@ -335,7 +335,7 @@
         0,
         1050
       ],
-      "id": "d62373d8-bea0-4cb5-a0de-35064a6f9076",
+      "id": "c81cab0c-f13b-455e-bfc9-015c80faebbf",
       "name": "Nota - 4. Status em massa (segunda e quinta, 01h)"
     },
     {
@@ -355,7 +355,7 @@
         0,
         1170
       ],
-      "id": "8b3102a9-222a-4064-89ae-04aef2014b00",
+      "id": "efd56489-4e89-4725-8a86-12be84f595a2",
       "name": "Agenda - Status em massa (seg/qui 01h)"
     },
     {
@@ -381,7 +381,7 @@
         300,
         1170
       ],
-      "id": "2f493978-b69f-4e00-afea-4b59e38f8069",
+      "id": "aa20942b-70fc-43bb-a12c-ccbfb0a32148",
       "name": "Atualizar status em massa",
       "retryOnFail": true,
       "maxTries": 2,
@@ -400,7 +400,7 @@
         0,
         1330
       ],
-      "id": "1644a4fd-67c2-4032-9b9d-f8c0b19ab9d1",
+      "id": "6360764d-c3ce-43e3-bb52-e6ff87f76a3e",
       "name": "Nota - 5. Saldo e CPA (avisos e atualização de saldo)"
     },
     {
@@ -420,7 +420,7 @@
         0,
         1470
       ],
-      "id": "7798595b-55fa-443f-ab1d-1e2569fdf12d",
+      "id": "654ccaf6-a0c3-45f5-a0d7-5842c6ed692a",
       "name": "Agenda - Saldo e pagamento (seg-sáb 07h15, 10h15, 14h15, 18h15)",
       "notes": "Veio do workflow antigo 'A cada 4 horas' (07h, 10h, 14h, 18h, seg-sáb). Só o minuto mudou, de :00 pra :15."
     },
@@ -447,7 +447,7 @@
         300,
         1470
       ],
-      "id": "97abc6b9-3aa1-4c92-91ae-30b2c567fbc1",
+      "id": "286e2d90-28cb-49bf-b4ae-3db3147647d3",
       "name": "Checar saldo baixo e pagamento",
       "retryOnFail": true,
       "maxTries": 2,
@@ -470,7 +470,7 @@
         0,
         1610
       ],
-      "id": "fb5b8236-c392-44bc-9b4e-31d443ad4671",
+      "id": "bfbd7bd4-63e4-40a2-b73a-f248382a9a8b",
       "name": "Agenda - Saldo por fundos (2h)",
       "notes": "Veio do workflow antigo 'A cada 4 horas1', que na verdade rodava de 2 em 2 horas."
     },
@@ -497,7 +497,7 @@
         300,
         1610
       ],
-      "id": "a8fa5f32-e92e-4634-9fa5-46e8c3afd5d7",
+      "id": "a449666f-79f9-48ea-9b6d-5e549c045f51",
       "name": "Atualizar saldo por fundos",
       "retryOnFail": true,
       "maxTries": 2,
@@ -520,7 +520,7 @@
         0,
         1750
       ],
-      "id": "ca8648a5-4adb-4d37-9bf0-78331c128114",
+      "id": "e4aa9fab-48fc-4a51-bcf3-643d6735e22e",
       "name": "Agenda - CPA acima da meta ontem (07h)",
       "notes": "Todo dia às 07h: lista as contas com CPA de ontem R$2+ acima do ideal."
     },
@@ -547,8 +547,74 @@
         300,
         1750
       ],
-      "id": "abb50f62-b828-4a9f-8e05-4343db0850b2",
+      "id": "2ed07a12-07d3-435e-8de3-246d10609177",
       "name": "Avisar CPA acima da meta",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 6. Auditoria (a cada 30 minutos)\n\nRoda as duas auditorias (localização do Brasil inteiro / expansão de localização e anúncios com erro) e pausa o que encontrar. Minutos 25 e 55, longe das outras agendas.",
+        "height": 100,
+        "width": 640,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1910
+      ],
+      "id": "ce3b619b-9c31-4c4c-89b7-88addef65648",
+      "name": "Nota - 6. Auditoria (a cada 30 minutos)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "25,55 * * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2030
+      ],
+      "id": "9857c077-35c5-4d29-bc8e-a56ed96b0b16",
+      "name": "Agenda - Auditoria (30 min)",
+      "notes": "Veio do workflow antigo 'A cada 30 minutos' (estava correto e ligado)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/audit-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        2030
+      ],
+      "id": "80d1b0c6-8fd3-4014-bce8-95d88f976415",
+      "name": "Rodar auditoria (localização + erros)",
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
@@ -649,6 +715,17 @@
         [
           {
             "node": "Avisar CPA acima da meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Auditoria (30 min)": {
+      "main": [
+        [
+          {
+            "node": "Rodar auditoria (localização + erros)",
             "type": "main",
             "index": 0
           }
