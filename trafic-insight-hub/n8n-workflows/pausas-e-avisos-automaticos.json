@@ -1,0 +1,269 @@
+{
+  "name": "Pausas e avisos automáticos (Trafic Insight Hub)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Antes de ativar\n\n1. Troque `SEU_DOMINIO` (nos 4 nós HTTP Request) pelo domínio real do seu app na Vercel (ex.: meuapp.vercel.app, sem https:// — ele já está na URL).\n2. Troque `COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET` (nos mesmos 4 nós) pelo mesmo valor da variável de ambiente `WHATSAPP_DISPATCH_SECRET`.\n3. Fuso do workflow: America/Sao_Paulo (já configurado em Settings). Horários: Criativos 02h/05h/08h/11h/14h/17h/20h/23h; Conjuntos 5 min depois; Aviso do Ritmo 10 min depois; Criativos sem resultado de hora em hora no minuto 30.\n4. Se você já tem workflows antigos chamando `creatives-pause-tick` e `adsets-pause-tick`, DESATIVE-OS pra não rodar em dobro.\n5. Rode o SQL `supabase/migrations/0027_adset_quarantine.sql` no Supabase antes de ativar (a pausa de conjuntos precisa dessa tabela).\n6. Ative o workflow.",
+        "height": 380,
+        "width": 560
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        -180
+      ],
+      "id": "af07c853-89e2-4e21-b598-8f2bd9235c17",
+      "name": "Leia antes de ativar"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 2,5,8,11,14,17,20,23 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "f42b5a95-9f31-4a11-a136-fd1a0f8f233b",
+      "name": "Agenda - Criativos acima da meta (3 em 3 horas)",
+      "notes": "Pausa criativo ativo R$4+ acima da meta ontem + hoje (histórico bom nos 7 dias só pausa se também estiver acima nos 2 dias + hoje). Avisa o grupo de WhatsApp.",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/creatives-pause-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        0
+      ],
+      "id": "98a855dc-7d58-4c09-b257-221b6dd4a34c",
+      "name": "Chamar creatives-pause-tick",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5 2,5,8,11,14,17,20,23 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        260
+      ],
+      "id": "ad7d469f-4660-4aec-97ab-cf1012dd1a45",
+      "name": "Agenda - Conjuntos (3 em 3 horas)",
+      "notes": "Pausa conjunto sem anúncio ativo (menos os em análise/processando) e conjunto acima da meta; com 7 dias bom corta R$10 e entra em quarentena de 24h.",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/adsets-pause-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        260
+      ],
+      "id": "e676e7c1-1cc9-4f3b-9bab-5cac5b8484ec",
+      "name": "Chamar adsets-pause-tick",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 * * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        520
+      ],
+      "id": "be3cf90b-e239-4f5d-9918-d585c293e927",
+      "name": "Agenda - Criativos sem resultado (de hora em hora)",
+      "notes": "Pausa só criativo ativo que gastou R$4+ acima da meta ontem + hoje SEM nenhuma conversa. O criativo ruim (com conversa) fica só na verificação de 3 em 3 horas.",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/creatives-no-result-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        520
+      ],
+      "id": "253c8f70-7277-408e-a239-d9bf2b490e83",
+      "name": "Chamar creatives-no-result-tick",
+      "retryOnFail": false
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "10 2,5,8,11,14,17,20,23 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        780
+      ],
+      "id": "6452982a-579b-42ec-b5b9-d5eb1c14cb03",
+      "name": "Agenda - Aviso: Invest. diário em 50% ou menos do Ritmo (3 em 3 horas)",
+      "notes": "Só avisa no WhatsApp as contas cujo Invest. diário está em 50% ou menos do Ritmo. Não muda nada.",
+      "notesInFlow": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/low-budget-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        320,
+        780
+      ],
+      "id": "d6b09870-e444-4163-9a2c-54e52d435343",
+      "name": "Chamar low-budget-tick",
+      "retryOnFail": false
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Agenda - Criativos acima da meta (3 em 3 horas)": {
+      "main": [
+        [
+          {
+            "node": "Chamar creatives-pause-tick",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Conjuntos (3 em 3 horas)": {
+      "main": [
+        [
+          {
+            "node": "Chamar adsets-pause-tick",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Criativos sem resultado (de hora em hora)": {
+      "main": [
+        [
+          {
+            "node": "Chamar creatives-no-result-tick",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Aviso: Invest. diário em 50% ou menos do Ritmo (3 em 3 horas)": {
+      "main": [
+        [
+          {
+            "node": "Chamar low-budget-tick",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "tags": []
+}
