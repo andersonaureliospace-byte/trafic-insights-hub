@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
-import { notifyAlertsGroup } from "@/lib/alerts/recent-sends";
 
 const WEEKDAYS_PT = ["DOMINGO", "SEGUNDA", "TERÇA", "QUARTA", "QUINTA", "SEXTA", "SÁBADO"];
 
@@ -91,14 +90,8 @@ export async function POST(request: Request) {
       throw new Error(errMsg ?? "Falha ao disparar o e-mail (webhook do n8n). Confira BOLETO_WEBHOOK_URL e o workflow no n8n.");
     }
 
-    // Etapa 96: aviso no grupo de avisos (best-effort — não derruba o envio).
-    const noticeError = await notifyAlertsGroup(
-      supabase,
-      user.id,
-      `📄 Boleto enviado ao financeiro — ${client_name} (vencimento ${ddmmyy.replace(/-/g, "/")}, ${weekday.toLowerCase()})`,
-    );
-
-    return NextResponse.json({ ok: true, noticeError });
+    // Etapa 113: não avisa mais o grupo de avisos quando o boleto é enviado (só o e-mail ao financeiro).
+    return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

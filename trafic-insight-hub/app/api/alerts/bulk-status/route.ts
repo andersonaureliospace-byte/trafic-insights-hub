@@ -13,8 +13,8 @@ export async function POST() {
   try {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
-    const { results, sendError } = await checkAndUpdateBulkStatus(supabase, user.id, token, { send: true });
-    return NextResponse.json({ results, sendError });
+    const { results, sendError, asana } = await checkAndUpdateBulkStatus(supabase, user.id, token, { send: true });
+    return NextResponse.json({ results, sendError, asana });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

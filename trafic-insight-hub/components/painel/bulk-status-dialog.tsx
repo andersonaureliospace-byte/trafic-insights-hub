@@ -87,6 +87,7 @@ export function BulkStatusDialog({
   const { options: priorityOptions } = usePriorityOptions();
   const [phase, setPhase] = useState<"confirm" | "running" | "done">("confirm");
   const [results, setResults] = useState<ResultRow[]>([]);
+  const [asanaMsg, setAsanaMsg] = useState<string | null>(null);
 
   function labelFor(id?: string | null) {
     return priorityOptions.find((p) => p.id === id)?.label ?? "—";
@@ -154,6 +155,24 @@ export function BulkStatusDialog({
     if (reorderEnabled) {
       await onReorder(reorderedAccountIds(computed));
     }
+    // Etapa 113: manda os status calculados direto pro Asana (se o token estiver configurado).
+    setAsanaMsg(null);
+    const toAsana = res
+      .filter((r) => (r.outcome === "updated" || r.outcome === "unchanged") && r.to)
+      .map((r) => ({ clientName: r.clientName, priority: r.to as string }));
+    if (toAsana.length > 0) {
+      try {
+        const asanaRes = await fetch("/api/asana/sync-priorities", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: toAsana }),
+        });
+        const asanaJson = await asanaRes.json();
+        setAsanaMsg(asanaJson.error ? `Asana: ${asanaJson.error}` : (asanaJson.text as string));
+      } catch (e) {
+        setAsanaMsg(`Asana: ${(e as Error).message}`);
+      }
+    }
     setPhase("done");
     onDone?.();
   }
@@ -161,6 +180,7 @@ export function BulkStatusDialog({
   function handleClose() {
     setPhase("confirm");
     setResults([]);
+    setAsanaMsg(null);
     onClose();
   }
 
@@ -224,6 +244,7 @@ export function BulkStatusDialog({
                 <strong>{updated}</strong> atualizada(s) · <strong>{unchanged}</strong> já correta(s) ·{" "}
                 <strong>{skipped}</strong> pulada(s)
               </p>
+              {asanaMsg ? <p className="text-xs text-zinc-500 dark:text-zinc-400">{asanaMsg}</p> : null}
               <div className="max-h-64 overflow-y-auto rounded-md border border-zinc-200 dark:border-zinc-800">
                 <table className="w-full text-xs">
                   <tbody>

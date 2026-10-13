@@ -415,9 +415,7 @@ export function ControleSaldo({
       } else {
         setBoletoMsg({
           ok: true,
-          text: d.noticeError
-            ? `E-mail disparado — pode conferir no financeiro. (O aviso no grupo de avisos não saiu: ${d.noticeError})`
-            : "E-mail disparado — pode conferir no financeiro. Aviso mandado no grupo de avisos.",
+          text: "E-mail disparado — pode conferir no financeiro.",
         });
         setBoletoFile(null);
         setBoletoDueDate("");

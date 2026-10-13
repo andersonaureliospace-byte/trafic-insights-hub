@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText, sendMedia, mediaTypeFromMime } from "@/lib/whatsapp/client";
-import { notifyAlertsGroup } from "@/lib/alerts/recent-sends";
 import { buildPixParts, greetingNow, PIX_FIXED_TEXT } from "@/lib/whatsapp/pix-message";
 
 function sleep(ms: number) {
@@ -108,14 +107,8 @@ export async function POST(request: Request) {
         .eq("id", record.id);
       if (errMsg) throw new Error(errMsg);
 
-      // Etapa 96: aviso no grupo de avisos (best-effort — não derruba o envio).
-      const noticeError = await notifyAlertsGroup(
-        supabase,
-        user.id,
-        `📲 Pix enviado — ${client_name}${targetLabel ? ` (para: ${targetLabel})` : ""}`,
-      );
-
-      return NextResponse.json({ ok: true, noticeError });
+      // Etapa 113: não avisa mais o grupo de avisos quando o Pix é enviado (a mensagem vai só pro cliente).
+      return NextResponse.json({ ok: true });
     }
 
     // Agendado: insere no mesmo sistema de agendamento de Mensagens > Envio

@@ -167,9 +167,7 @@ export function EnviarPixDialog({
           text:
             mode === "schedule"
               ? `Pix programado para ${new Date(scheduleAt).toLocaleString("pt-BR")}.`
-              : d.noticeError
-                ? `Pix enviado! (o aviso no grupo de avisos não saiu: ${d.noticeError})`
-                : "Pix enviado! Aviso mandado no grupo de avisos.",
+              : "Pix enviado!",
         });
         setPixText("");
         setImage(null);

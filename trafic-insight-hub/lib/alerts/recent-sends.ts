@@ -7,8 +7,6 @@
 // Pix agendado (status 'scheduled') ainda não conta — só quando de fato foi enviado.
 
 import type { createClient } from "@/lib/supabase/server";
-import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
-import { sendText } from "@/lib/whatsapp/client";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -29,19 +27,4 @@ export async function getRecentSends(db: Db, userId: string): Promise<RecentSend
     pix: new Set((pixRes.data ?? []).map((r) => r.ad_account_id as string)),
     boleto: new Set((boletoRes.data ?? []).map((r) => r.ad_account_id as string)),
   };
-}
-
-// Aviso no grupo de avisos do WhatsApp (o mesmo dos alertas). Nunca derruba o envio:
-// devolve a mensagem de erro (ou null se deu certo) pra quem chamou mostrar na tela.
-export async function notifyAlertsGroup(db: Db, userId: string, text: string): Promise<string | null> {
-  try {
-    const instance = await requireWhatsappInstance(db, userId);
-    if (!instance.alerts_group_id) {
-      return "Cadastre o grupo de avisos em Configurações → WhatsApp pra receber esse aviso.";
-    }
-    await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, text);
-    return null;
-  } catch (e) {
-    return (e as Error).message;
-  }
 }

@@ -28,6 +28,7 @@ import { getAccountsDailyCpa } from "@/lib/meta/daily-cpa";
 import { getPriorityOptions } from "@/lib/priority-labels";
 import { isInauguracao } from "@/lib/format";
 import { publishAlert } from "@/lib/alerts/notifications";
+import { describeAsanaSync, syncAsanaPriorities, type AsanaSyncSummary } from "@/lib/asana/priority-sync";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -68,6 +69,8 @@ export interface BulkStatusResult {
 export interface CheckBulkStatusResult {
   results: BulkStatusResult[];
   sendError: string | null;
+  // Etapa 113: resultado da sincronização direta com o Asana (só quando opts.send).
+  asana?: AsanaSyncSummary;
 }
 
 export async function checkAndUpdateBulkStatus(
@@ -205,6 +208,19 @@ export async function checkAndUpdateBulkStatus(
   const unchanged = results.filter((r) => r.outcome === "unchanged");
   const reportable = [...updated, ...unchanged];
 
+  // Etapa 113: manda o status de cada cliente classificado direto pro Asana (campo "Prioridade"),
+  // sem depender do Claude. Falha aqui nunca derruba a automação.
+  let asana: AsanaSyncSummary | undefined;
+  if (opts.send && reportable.length > 0) {
+    try {
+      asana = await syncAsanaPriorities(
+        reportable.filter((r) => r.to).map((r) => ({ clientName: r.clientName, priority: r.to as string })),
+      );
+    } catch (e) {
+      asana = { configured: true, updated: [], unchanged: 0, notFound: [], ambiguous: [], errors: [(e as Error).message] };
+    }
+  }
+
   let sendError: string | null = null;
   if (opts.send && reportable.length > 0) {
     try {
@@ -218,7 +234,7 @@ export async function checkAndUpdateBulkStatus(
       await publishAlert(db, userId, {
         kind: "bulk-status",
         title: "Status em massa atualizado",
-        body: lines.join("\n"),
+        body: asana ? `${lines.join("\n")}\n\n${describeAsanaSync(asana)}` : lines.join("\n"),
         count: reportable.length,
         groupText: lines.join("\n"),
       });
@@ -227,5 +243,5 @@ export async function checkAndUpdateBulkStatus(
     }
   }
 
-  return { results, sendError };
+  return { results, sendError, asana };
 }

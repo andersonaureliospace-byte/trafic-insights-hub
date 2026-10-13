@@ -2510,6 +2510,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     no Supabase antes do deploy (sem a tabela, os avisos que vão só pra aba retornam erro no hook).
     Código: `lib/alerts/notifications.ts`, `app/api/alerts/notifications/route.ts`,
     `components/painel/alertas-tab.tsx`.
+101. **Pix/boleto sem aviso no grupo + Status em massa direto no Asana (Etapa 113)** — o envio de
+    Pix e de boleto não manda mais mensagem pro grupo de avisos (a função `notifyAlertsGroup` foi
+    removida). O status em massa (automático, seg/qui 01h, e o botão "Atualizar status em massa"
+    da tela) agora também grava a Prioridade direto no Asana: projeto ESTRATEGISTA SPEED DIGITAL,
+    seção "Anderson - (Denner)", uma tarefa por cliente (`lib/asana/priority-sync.ts`). Mapeamento:
+    Baixa → Baixa, Média → Médio, Alta → Alta, Crítica → Alta - Crítica; Inauguração não é enviada.
+    O nome do cliente é comparado sem maiúsculas, acentos nem espaços sobrando; sem tarefa
+    correspondente ou com mais de uma parecida, não mexe e avisa (alerta "Status em massa" na aba
+    Alertas e mensagem no diálogo). Só troca o campo Prioridade e só quando o valor é diferente.
+    ⚠️ Precisa da variável `ASANA_ACCESS_TOKEN` (Personal Access Token do Asana) na Vercel; sem ela
+    a sincronização fica desligada e o alerta só avisa "Asana: não configurado". Nunca commitar o token.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
