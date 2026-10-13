@@ -12,8 +12,7 @@
 // cooldown de 24h dos outros alertas pra não reenviar WhatsApp toda hora.
 
 import type { createClient } from "@/lib/supabase/server";
-import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
-import { sendText } from "@/lib/whatsapp/client";
+import { publishAlert } from "@/lib/alerts/notifications";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -136,13 +135,13 @@ export async function checkManualReviews(
   let sendError: string | null = null;
   if (opts.send && toAlert.length > 0) {
     try {
-      const instance = await requireWhatsappInstance(db, userId);
-      if (!instance.alerts_group_id) {
-        throw new Error("Cadastre o grupo de avisos em Configurações → WhatsApp antes de verificar.");
-      }
       const lines = toAlert.map((s) => `🗓️ ${s.client_name}: verificação manual pendente`);
-      const message = `Aviso de verificação manual\n\n${lines.join("\n")}`;
-      await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, message);
+      await publishAlert(db, userId, {
+        kind: "manual-check",
+        title: "Aviso de verificação manual",
+        body: lines.join("\n"),
+        count: toAlert.length,
+      });
       const now = new Date().toISOString();
       for (const s of toAlert) {
         s.alerted = true;

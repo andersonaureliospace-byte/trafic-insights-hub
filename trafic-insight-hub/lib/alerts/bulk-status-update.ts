@@ -27,8 +27,7 @@ import type { createClient } from "@/lib/supabase/server";
 import { getAccountsDailyCpa } from "@/lib/meta/daily-cpa";
 import { getPriorityOptions } from "@/lib/priority-labels";
 import { isInauguracao } from "@/lib/format";
-import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
-import { sendText } from "@/lib/whatsapp/client";
+import { publishAlert } from "@/lib/alerts/notifications";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -209,19 +208,20 @@ export async function checkAndUpdateBulkStatus(
   let sendError: string | null = null;
   if (opts.send && reportable.length > 0) {
     try {
-      const instance = await requireWhatsappInstance(db, userId);
-      if (!instance.alerts_group_id) {
-        throw new Error("Cadastre o grupo de avisos em Configurações → WhatsApp antes de verificar.");
-      }
       const priorityOptions = await getPriorityOptions(db, userId);
       const labelFor = (id?: string | null) => priorityOptions.find((p) => p.id === id)?.label ?? "—";
       const lines = [...reportable]
         .sort((a, b) => a.clientName.localeCompare(b.clientName, "pt-BR"))
         .map((r) => `${r.clientName}: ${labelFor(r.to)}`);
-      // Sem cabeçalho, sem emoji, sem comentário, sem indicar se mudou ou
-      // manteve — só "cliente: status", um por linha, como pedido.
-      const message = lines.join("\n");
-      await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, message);
+      // Etapa 112: vai só pra aba Alertas (não está em GROUP_KINDS). Se um dia voltar pro grupo,
+      // o texto do grupo continua sendo só "cliente: status", um por linha, sem cabeçalho.
+      await publishAlert(db, userId, {
+        kind: "bulk-status",
+        title: "Status em massa atualizado",
+        body: lines.join("\n"),
+        count: reportable.length,
+        groupText: lines.join("\n"),
+      });
     } catch (e) {
       sendError = (e as Error).message;
     }

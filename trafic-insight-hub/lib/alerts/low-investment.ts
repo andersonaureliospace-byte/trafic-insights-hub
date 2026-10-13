@@ -16,8 +16,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import { getAccountsInsights } from "@/lib/meta/insights";
 import { ritmoFromInsight, RITMO_BAND } from "@/lib/meta/ritmo";
-import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
-import { sendText } from "@/lib/whatsapp/client";
+import { publishAlert } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
@@ -85,18 +84,16 @@ export async function checkLowInvestment(
   let sendError: string | null = null;
   if (opts.send && low.length > 0) {
     try {
-      const instance = await requireWhatsappInstance(db, userId);
-      if (!instance.alerts_group_id) {
-        throw new Error("Cadastre o grupo de avisos em Configurações → WhatsApp antes de verificar.");
-      }
       const lines = low.map(
         (s, i) =>
           `${i + 1}. ${s.client_name} — Invest. diário atual ${fmtCurrency(s.daily_budget)} | Ritmo necessário ${fmtCurrency(s.ritmo)}`,
       );
-      const message = `🟠 Investimento baixo pra bater a meta do mês (${low.length} conta${
-        low.length > 1 ? "s" : ""
-      })\n\n${lines.join("\n")}`;
-      await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, message);
+      await publishAlert(db, userId, {
+        kind: "low-investment",
+        title: `🟠 Investimento baixo pra bater a meta do mês (${low.length} conta${low.length > 1 ? "s" : ""})`,
+        body: lines.join("\n"),
+        count: low.length,
+      });
     } catch (e) {
       sendError = (e as Error).message;
     }

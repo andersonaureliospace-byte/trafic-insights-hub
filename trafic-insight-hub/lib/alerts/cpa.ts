@@ -9,8 +9,7 @@
 
 import type { createClient } from "@/lib/supabase/server";
 import { getAccountsInsights } from "@/lib/meta/insights";
-import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
-import { sendText } from "@/lib/whatsapp/client";
+import { publishAlert } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
@@ -72,15 +71,15 @@ export async function checkCpaAlerts(
   let sendError: string | null = null;
   if (opts.send && critical.length > 0) {
     try {
-      const instance = await requireWhatsappInstance(db, userId);
-      if (!instance.alerts_group_id) {
-        throw new Error("Cadastre o grupo de avisos em Configurações → WhatsApp antes de verificar.");
-      }
       const lines = critical.map(
         (s, i) => `${i + 1}. ${s.client_name} — CPA ideal ${fmtCurrency(s.cpa_target)} | CPA de ontem ${fmtCurrency(s.cpa_yesterday)}`,
       );
-      const message = `🔴 CPA acima da meta ontem (${critical.length} conta${critical.length > 1 ? "s" : ""})\n\n${lines.join("\n")}`;
-      await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, message);
+      await publishAlert(db, userId, {
+        kind: "cpa-yesterday",
+        title: `🔴 CPA acima da meta ontem (${critical.length} conta${critical.length > 1 ? "s" : ""})`,
+        body: lines.join("\n"),
+        count: critical.length,
+      });
     } catch (e) {
       sendError = (e as Error).message;
     }

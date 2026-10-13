@@ -34,8 +34,7 @@ import { setEntitiesStatusSequential } from "@/lib/meta/status";
 import { applyBudgetCut, getAdSetBudgetInfo } from "@/lib/meta/budget";
 import { decideAdSetAction } from "@/lib/alerts/adset-decision";
 import { clearQuarantine, loadQuarantine, saveQuarantine } from "@/lib/alerts/adset-quarantine";
-import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
-import { sendText } from "@/lib/whatsapp/client";
+import { publishAlert, type AlertKind } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
@@ -297,11 +296,7 @@ export async function checkAndPauseAdSets(
   let sendError: string | null = null;
   if (opts.send && (pausedOk.length > 0 || cutOk.length > 0 || cutNotes.length > 0)) {
     try {
-      const instance = await requireWhatsappInstance(db, userId);
-      if (!instance.alerts_group_id) {
-        throw new Error("Cadastre o grupo de avisos em Configurações → WhatsApp antes de verificar.");
-      }
-      const sections: string[] = [];
+      const sections: Array<{ kind: AlertKind; title: string; body: string; count: number }> = [];
       if (pausedOk.length > 0) {
         const lines = pausedOk.map((p, i) => {
           if (!p.has_active_ad) return `${i + 1}. ${p.client_name} — ${p.adset_name}: sem anúncio ativo`;
@@ -312,11 +307,14 @@ export async function checkAndPauseAdSets(
           const hist = p.cost_7d != null ? ` · 7 dias ${fmtCurrency(p.cost_7d)}` : "";
           return `${i + 1}. ${p.client_name} — ${p.adset_name}: ${metric}${hist}`;
         });
-        sections.push(
-          `⏸️ Conjuntos pausados automaticamente (CPA acima da meta nos últimos 3 e 7 dias) — ${pausedOk.length} conjunto${
+        sections.push({
+          kind: "adsets-paused",
+          title: `⏸️ Conjuntos pausados automaticamente (CPA acima da meta nos últimos 3 e 7 dias) — ${pausedOk.length} conjunto${
             pausedOk.length > 1 ? "s" : ""
-          }\n\n${lines.join("\n")}`,
-        );
+          }`,
+          body: lines.join("\n"),
+          count: pausedOk.length,
+        });
       }
       const cutLines = cutOk.map((r, i) => {
         const where = r.scope === "campaign" ? " (orçamento da campanha)" : "";
@@ -326,17 +324,25 @@ export async function checkAndPauseAdSets(
         return `${i + 1}. ${r.client_name} — ${r.adset_name}: ${money} · 3 dias ${metric} · 7 dias ${r.cost_7d != null ? fmtCurrency(r.cost_7d) : "—"}${r.repeat ? " · 2º corte" : ""}`;
       });
       if (cutLines.length > 0) {
-        sections.push(
-          `📉 Orçamento reduzido em R$10 (últimos 3 dias acima da meta, mas 7 dias abaixo do ideal — quarentena de 24h) — ${cutLines.length} conjunto${
+        sections.push({
+          kind: "adsets-cut",
+          title: `📉 Orçamento reduzido em R$10 (últimos 3 dias acima da meta, mas 7 dias abaixo do ideal — quarentena de 24h) — ${cutLines.length} conjunto${
             cutLines.length > 1 ? "s" : ""
-          }\n\n${cutLines.join("\n")}`,
-        );
+          }`,
+          body: cutLines.join("\n"),
+          count: cutLines.length,
+        });
       }
       if (cutNotes.length > 0) {
         const lines = cutNotes.map((r, i) => `${i + 1}. ${r.client_name} — ${r.adset_name}: ${r.error ?? "não deu pra cortar o orçamento"}`);
-        sections.push(`⚠️ Conjuntos que pediam corte de orçamento, mas não deu pra cortar (quarentena de 24h mesmo assim)\n\n${lines.join("\n")}`);
+        sections.push({
+          kind: "adsets-cut-failed",
+          title: "⚠️ Conjuntos que pediam corte de orçamento, mas não deu pra cortar (quarentena de 24h mesmo assim)",
+          body: lines.join("\n"),
+          count: cutNotes.length,
+        });
       }
-      await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, sections.join("\n\n"));
+      for (const section of sections) await publishAlert(db, userId, section);
     } catch (e) {
       sendError = (e as Error).message;
     }

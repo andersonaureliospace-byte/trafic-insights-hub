@@ -30,8 +30,7 @@ import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creati
 import { decideCreativePause } from "@/lib/alerts/creative-decision";
 import { spDate, type DateRangeInput } from "@/lib/meta/client";
 import { setEntitiesStatusSequential } from "@/lib/meta/status";
-import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
-import { sendText } from "@/lib/whatsapp/client";
+import { publishAlert } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
@@ -177,10 +176,6 @@ export async function checkAndPauseCreatives(
   let sendError: string | null = null;
   if (opts.send && pausedOk.length > 0) {
     try {
-      const instance = await requireWhatsappInstance(db, userId);
-      if (!instance.alerts_group_id) {
-        throw new Error("Cadastre o grupo de avisos em Configurações → WhatsApp antes de verificar.");
-      }
       const lines = pausedOk.map(
         (p, i) =>
           `${i + 1}. ${p.client_name} — ${p.ad_name}: ${
@@ -189,12 +184,14 @@ export async function checkAndPauseCreatives(
               : `gasto ${fmtCurrency(p.spend)} sem conversa`
           }${p.good_history ? " · 7 dias bom, mas acima nos 2 dias + hoje" : ""}`,
       );
-      const message = `⏸️ ${
-        opts.onlyNoResult ? "Criativos sem resultado pausados automaticamente (gasto acima da meta sem nenhuma conversa, ontem + hoje)" : "Criativos pausados automaticamente (CPA acima da meta ontem + hoje)"
-      } — ${pausedOk.length} anúncio${
-        pausedOk.length > 1 ? "s" : ""
-      }\n\n${lines.join("\n")}`;
-      await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, message);
+      await publishAlert(db, userId, {
+        kind: opts.onlyNoResult ? "creatives-no-result" : "creatives-pause",
+        title: `⏸️ ${
+          opts.onlyNoResult ? "Criativos sem resultado pausados automaticamente (gasto acima da meta sem nenhuma conversa, ontem + hoje)" : "Criativos pausados automaticamente (CPA acima da meta ontem + hoje)"
+        } — ${pausedOk.length} anúncio${pausedOk.length > 1 ? "s" : ""}`,
+        body: lines.join("\n"),
+        count: pausedOk.length,
+      });
     } catch (e) {
       sendError = (e as Error).message;
     }

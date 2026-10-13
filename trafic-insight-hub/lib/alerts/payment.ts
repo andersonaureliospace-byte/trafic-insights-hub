@@ -8,8 +8,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import { getAdAccounts, type AdAccount } from "@/lib/meta/insights";
 import { getRecentSends } from "@/lib/alerts/recent-sends";
-import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
-import { sendText } from "@/lib/whatsapp/client";
+import { publishAlert } from "@/lib/alerts/notifications";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -104,13 +103,13 @@ export async function checkPaymentErrors(
   let sendError: string | null = null;
   if (opts.send && toAlert.length > 0) {
     try {
-      const instance = await requireWhatsappInstance(db, userId);
-      if (!instance.alerts_group_id) {
-        throw new Error("Cadastre o grupo de avisos em Configurações → WhatsApp antes de verificar.");
-      }
       const lines = toAlert.map((s) => `⚠️ ${s.client_name}: ${s.reason}`);
-      const message = `Aviso de erro no pagamento\n\n${lines.join("\n")}`;
-      await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, message);
+      await publishAlert(db, userId, {
+        kind: "payment-error",
+        title: "Aviso de erro no pagamento",
+        body: lines.join("\n"),
+        count: toAlert.length,
+      });
       const now = new Date().toISOString();
       for (const s of toAlert) {
         s.alerted = true;

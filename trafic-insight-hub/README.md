@@ -2495,6 +2495,21 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     troque `SEU_DOMINIO` e `COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET` nos 10 nós HTTP Request; o segredo
     real não deve ser commitado). Cada gatilho já está ligado ao seu nó HTTP, com timeout de 120s e 2
     tentativas. Desative workflows antigos para não disparar em duplicidade.
+100. **Aba Alertas + só o urgente no grupo (Etapa 112)** — toda notificação das verificações
+    automáticas agora é gravada na tabela `alert_notifications` e aparece na nova aba **Alertas**
+    do Painel (bolinha vermelha com a quantidade ao lado do nome; filtros Todos / Urgentes / Só aqui;
+    botão OK por alerta e "OK em todos"). No grupo do WhatsApp vão só 5 tipos: CPA acima da meta
+    ontem, Invest. diário em 50% ou menos do Ritmo, Saldo baixo, Saldo de sexta e Erro no pagamento.
+    Todo o resto (criativos/conjuntos pausados, orçamento reduzido, Investimento baixo, Status em
+    massa, Verificação manual) fica só na aba. Cada alerta é apagado sozinho 72h depois
+    (`expires_at`) ou ao clicar em OK. Os avisos que repetem a cada rodada (Invest. diário em 50% do
+    Ritmo e Investimento baixo) não empilham: a linha aberta do tipo é atualizada. Pra mudar o que vai
+    pro grupo, edite só `GROUP_KINDS` em `lib/alerts/notifications.ts` (todas as verificações passam
+    por `publishAlert`). Os avisos de Pix/boleto enviados (`notifyAlertsGroup`) NÃO mudaram: seguem
+    pro grupo como confirmação da ação. ⚠️ rodar `supabase/migrations/0028_alert_notifications.sql`
+    no Supabase antes do deploy (sem a tabela, os avisos que vão só pra aba retornam erro no hook).
+    Código: `lib/alerts/notifications.ts`, `app/api/alerts/notifications/route.ts`,
+    `components/painel/alertas-tab.tsx`.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
