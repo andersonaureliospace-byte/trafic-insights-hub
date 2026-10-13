@@ -1,20 +1,37 @@
 {
-  "name": "Pausas e avisos automáticos (Trafic Insight Hub)",
+  "name": "Trafic Insight Hub - Pausas e avisos automáticos",
   "nodes": [
     {
       "parameters": {
-        "content": "## Antes de ativar\n\n1. Troque `SEU_DOMINIO` (nos 4 nós HTTP Request) pelo domínio real do seu app na Vercel (ex.: meuapp.vercel.app, sem https:// — ele já está na URL).\n2. Troque `COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET` (nos mesmos 4 nós) pelo mesmo valor da variável de ambiente `WHATSAPP_DISPATCH_SECRET`.\n3. Fuso do workflow: America/Sao_Paulo (já configurado em Settings). Horários: Criativos 02h/05h/08h/11h/14h/17h/20h/23h; Conjuntos 5 min depois; Aviso do Ritmo 10 min depois; Criativos sem resultado de hora em hora no minuto 30.\n4. Se você já tem workflows antigos chamando `creatives-pause-tick` e `adsets-pause-tick`, DESATIVE-OS pra não rodar em dobro.\n5. Rode o SQL `supabase/migrations/0027_adset_quarantine.sql` no Supabase antes de ativar (a pausa de conjuntos precisa dessa tabela).\n6. Ative o workflow.",
-        "height": 380,
-        "width": 560
+        "content": "## Leia antes de ativar\n\nWorkflow único com todas as automações do Trafic Insight Hub (todo gatilho está ligado ao seu nó HTTP).\n\n• Fuso: America/Sao_Paulo (Settings do workflow).\n• Se você ainda tem o workflow antigo ativo, DESATIVE-O pra nada rodar em dobro.\n• Antes de ativar: dar `git push` do app (as URLs novas só existem depois do deploy) e rodar o SQL `0027_adset_quarantine.sql` no Supabase.\n• Removido: `increase-budget-tick` (o aumento automático de orçamento saiu do app na Etapa 58 e a URL dá 404).\n• Falhou? O nó HTTP tenta 2x; se continuar falhando, a execução aparece em vermelho em Executions.",
+        "height": 330,
+        "width": 560,
+        "color": 7
       },
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        -700,
-        -180
+        -620,
+        -80
       ],
-      "id": "af07c853-89e2-4e21-b598-8f2bd9235c17",
-      "name": "Leia antes de ativar"
+      "id": "b4d6c6e3-351b-4aaa-9a02-0a4cd842029f",
+      "name": "Nota - Leia antes de ativar"
+    },
+    {
+      "parameters": {
+        "content": "## 1. Pausas automáticas (de 3 em 3 horas)\n\n02h, 05h, 08h, 11h, 14h, 17h, 20h e 23h (Brasília).\nCriativos no minuto 00, Conjuntos 5 minutos depois.",
+        "height": 100,
+        "width": 640,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -80
+      ],
+      "id": "5ecb2b20-9a0c-470b-a654-b5839423f897",
+      "name": "Nota - 1. Pausas automáticas (de 3 em 3 horas)"
     },
     {
       "parameters": {
@@ -31,12 +48,11 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        0
+        40
       ],
-      "id": "f42b5a95-9f31-4a11-a136-fd1a0f8f233b",
-      "name": "Agenda - Criativos acima da meta (3 em 3 horas)",
-      "notes": "Pausa criativo ativo R$4+ acima da meta ontem + hoje (histórico bom nos 7 dias só pausa se também estiver acima nos 2 dias + hoje). Avisa o grupo de WhatsApp.",
-      "notesInFlow": false
+      "id": "8cb68b74-8a03-4e46-bb0c-d32cef2cc81d",
+      "name": "Agenda - Criativos acima da meta (3h)",
+      "notes": "Pausa criativo ativo R$4+ acima da meta ontem + hoje (histórico bom nos 7 dias só pausa se também estiver acima nos 2 dias + hoje)."
     },
     {
       "parameters": {
@@ -52,18 +68,20 @@
           ]
         },
         "options": {
-          "timeout": 300000
+          "timeout": 120000
         }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        320,
-        0
+        300,
+        40
       ],
-      "id": "98a855dc-7d58-4c09-b257-221b6dd4a34c",
-      "name": "Chamar creatives-pause-tick",
-      "retryOnFail": false
+      "id": "5fdc6340-96cf-4dda-9c85-68a1be1d37b3",
+      "name": "Pausar criativos acima da meta",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
     },
     {
       "parameters": {
@@ -80,12 +98,11 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        260
+        180
       ],
-      "id": "ad7d469f-4660-4aec-97ab-cf1012dd1a45",
-      "name": "Agenda - Conjuntos (3 em 3 horas)",
-      "notes": "Pausa conjunto sem anúncio ativo (menos os em análise/processando) e conjunto acima da meta; com 7 dias bom corta R$10 e entra em quarentena de 24h.",
-      "notesInFlow": false
+      "id": "b601531f-afc2-4b18-9c27-7af5027e383c",
+      "name": "Agenda - Conjuntos (3h)",
+      "notes": "Pausa conjunto sem anúncio ativo (menos os em análise/processando) e conjunto acima da meta; com 7 dias bom corta R$10 e fica 24h em quarentena."
     },
     {
       "parameters": {
@@ -101,18 +118,36 @@
           ]
         },
         "options": {
-          "timeout": 300000
+          "timeout": 120000
         }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        320,
-        260
+        300,
+        180
       ],
-      "id": "e676e7c1-1cc9-4f3b-9bab-5cac5b8484ec",
-      "name": "Chamar adsets-pause-tick",
-      "retryOnFail": false
+      "id": "6b9588e5-7055-442b-9fb0-fdd22f1ccd3a",
+      "name": "Pausar conjuntos",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 2. Criativos sem resultado (de hora em hora)\n\nTodo dia, no minuto 30 de cada hora. Pausa só criativo que gastou R$4+ acima da meta ontem + hoje SEM nenhuma conversa.",
+        "height": 100,
+        "width": 640,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        340
+      ],
+      "id": "c776cec0-7bfb-405d-8681-55ca31d3c6f2",
+      "name": "Nota - 2. Criativos sem resultado (de hora em hora)"
     },
     {
       "parameters": {
@@ -129,12 +164,11 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        520
+        460
       ],
-      "id": "be3cf90b-e239-4f5d-9918-d585c293e927",
-      "name": "Agenda - Criativos sem resultado (de hora em hora)",
-      "notes": "Pausa só criativo ativo que gastou R$4+ acima da meta ontem + hoje SEM nenhuma conversa. O criativo ruim (com conversa) fica só na verificação de 3 em 3 horas.",
-      "notesInFlow": false
+      "id": "084b8e51-dc09-4fed-b90f-82c00fe3d80a",
+      "name": "Agenda - Criativos sem resultado (1h)",
+      "notes": "Roda mais vezes que a verificação de 3 em 3 horas porque o criativo sem nenhuma conversa não tem o que reverter."
     },
     {
       "parameters": {
@@ -150,18 +184,36 @@
           ]
         },
         "options": {
-          "timeout": 300000
+          "timeout": 120000
         }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        320,
-        520
+        300,
+        460
       ],
-      "id": "253c8f70-7277-408e-a239-d9bf2b490e83",
-      "name": "Chamar creatives-no-result-tick",
-      "retryOnFail": false
+      "id": "04eab333-a5bf-4733-93c1-7150de9449e9",
+      "name": "Pausar criativos sem resultado",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 3. Avisos no WhatsApp (só avisam, não mudam nada)\n\n• Invest. diário em 50% ou menos do Ritmo: de 3 em 3 horas, no minuto 10 (02h10, 05h10…).\n• Investimento baixo: seg a sex, 07h00, 09h15 e 13h00.",
+        "height": 110,
+        "width": 640,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        620
+      ],
+      "id": "bf8e3554-10d8-4039-a795-4d78a645efea",
+      "name": "Nota - 3. Avisos no WhatsApp (só avisam, não mudam nada)"
     },
     {
       "parameters": {
@@ -178,12 +230,10 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        780
+        750
       ],
-      "id": "6452982a-579b-42ec-b5b9-d5eb1c14cb03",
-      "name": "Agenda - Aviso: Invest. diário em 50% ou menos do Ritmo (3 em 3 horas)",
-      "notes": "Só avisa no WhatsApp as contas cujo Invest. diário está em 50% ou menos do Ritmo. Não muda nada.",
-      "notesInFlow": false
+      "id": "21d842cb-9b04-4b3f-b454-510a9f72603c",
+      "name": "Agenda - Invest. diário em 50% do Ritmo (3h)"
     },
     {
       "parameters": {
@@ -199,60 +249,207 @@
           ]
         },
         "options": {
-          "timeout": 300000
+          "timeout": 120000
         }
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        320,
-        780
+        300,
+        750
       ],
-      "id": "d6b09870-e444-4163-9a2c-54e52d435343",
-      "name": "Chamar low-budget-tick",
-      "retryOnFail": false
+      "id": "589f3d4d-86fc-4957-bc95-04d81c959e54",
+      "name": "Avisar Invest. diário em 50% do Ritmo",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7 * * 1-5"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "15 9 * * 1-5"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "0 13 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        890
+      ],
+      "id": "dac75200-b8ca-4b29-a030-80ffd7f5fe29",
+      "name": "Agenda - Investimento baixo (seg-sex 07h, 09h15, 13h)",
+      "notes": "Um único gatilho com 3 horários (antes eram 3 gatilhos separados, todos sem ligação)."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/low-investment-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        890
+      ],
+      "id": "4973c469-eeed-4a88-beca-6cf5f6dc4eff",
+      "name": "Avisar investimento baixo",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 4. Status em massa (segunda e quinta, 01h)\n\nReclassifica a prioridade (Baixa/Média/Alta/Crítica) de todas as Contas exibidas e avisa 'cliente: status' no grupo.",
+        "height": 100,
+        "width": 640,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        1050
+      ],
+      "id": "fefc69ec-cc85-4fca-9866-111f4e78b3e1",
+      "name": "Nota - 4. Status em massa (segunda e quinta, 01h)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 1 * * 1,4"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1170
+      ],
+      "id": "589d9f08-93c6-4eec-8fc5-045748181919",
+      "name": "Agenda - Status em massa (seg/qui 01h)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/bulk-status-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        1170
+      ],
+      "id": "63057421-6ab2-4181-ac3e-48043adfe556",
+      "name": "Atualizar status em massa",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
     }
   ],
   "pinData": {},
   "connections": {
-    "Agenda - Criativos acima da meta (3 em 3 horas)": {
+    "Agenda - Criativos acima da meta (3h)": {
       "main": [
         [
           {
-            "node": "Chamar creatives-pause-tick",
+            "node": "Pausar criativos acima da meta",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Agenda - Conjuntos (3 em 3 horas)": {
+    "Agenda - Conjuntos (3h)": {
       "main": [
         [
           {
-            "node": "Chamar adsets-pause-tick",
+            "node": "Pausar conjuntos",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Agenda - Criativos sem resultado (de hora em hora)": {
+    "Agenda - Criativos sem resultado (1h)": {
       "main": [
         [
           {
-            "node": "Chamar creatives-no-result-tick",
+            "node": "Pausar criativos sem resultado",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Agenda - Aviso: Invest. diário em 50% ou menos do Ritmo (3 em 3 horas)": {
+    "Agenda - Invest. diário em 50% do Ritmo (3h)": {
       "main": [
         [
           {
-            "node": "Chamar low-budget-tick",
+            "node": "Avisar Invest. diário em 50% do Ritmo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Investimento baixo (seg-sex 07h, 09h15, 13h)": {
+      "main": [
+        [
+          {
+            "node": "Avisar investimento baixo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Status em massa (seg/qui 01h)": {
+      "main": [
+        [
+          {
+            "node": "Atualizar status em massa",
             "type": "main",
             "index": 0
           }

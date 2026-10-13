@@ -2489,9 +2489,12 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     a cada rodada enquanto durar. Agenda no n8n: `POST /api/public/hooks/low-budget-tick`
     (header `x-webhook-secret`), de 3 em 3 horas (`0 2,5,8,11,14,17,20,23 * * *`). Código:
     `lib/alerts/low-budget.ts`. O aviso de Investimento baixo (banda de R$10) continua como estava.
-    Workflow pronto com as 4 agendas (Criativos 3h, Conjuntos 3h, Criativos sem resultado de hora em
-    hora e este aviso): `n8n-workflows/pausas-e-avisos-automaticos.json` (Import from File; troque
-    `SEU_DOMINIO` e o segredo nos 4 nós HTTP Request).
+    Workflow único com as 6 agendas (Criativos acima da meta 3h, Conjuntos 3h, Criativos sem resultado
+    de hora em hora, Invest. diário em 50% do Ritmo 3h, Investimento baixo seg-sex 07h/09h15/13h e
+    Status em massa seg/qui 01h): `n8n-workflows/pausas-e-avisos-automaticos.json` (Import from File;
+    troque `SEU_DOMINIO` e `COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET` nos 6 nós HTTP Request; o segredo
+    real não deve ser commitado). Cada gatilho já está ligado ao seu nó HTTP, com timeout de 120s e 2
+    tentativas. Desative workflows antigos para não disparar em duplicidade.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

@@ -13,6 +13,9 @@ import { checkAndUpdateBulkStatus } from "@/lib/alerts/bulk-status-update";
 // de fora quem foi pulado: inauguração, sem meta de CPA ou sem gasto no
 // período). Protegido pelo mesmo segredo compartilhado dos outros hooks
 // internos (WHATSAPP_DISPATCH_SECRET).
+// Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {

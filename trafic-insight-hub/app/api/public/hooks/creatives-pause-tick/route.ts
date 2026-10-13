@@ -7,6 +7,9 @@ import { checkAndPauseCreatives } from "@/lib/alerts/creatives-pause";
 // acima da meta (mesmo limite de Análise > Criativos) e avisa o grupo de
 // WhatsApp configurado quais criativos foram pausados. Protegido pelo mesmo
 // segredo compartilhado dos outros hooks internos (WHATSAPP_DISPATCH_SECRET).
+// Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
