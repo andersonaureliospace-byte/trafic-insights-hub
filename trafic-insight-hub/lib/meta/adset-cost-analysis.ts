@@ -27,7 +27,15 @@ export interface AdSetCostRow {
   // checagem que a Auditoria já fazia em lib/audit/errors.ts, agora também
   // disponível pra Análise > Conjuntos sinalizar).
   has_active_ad: boolean;
+  // Etapa 104: conjunto sem anúncio ATIVO, mas com anúncio em análise / processando /
+  // pré-aprovado / com problemas / aguardando cobrança — NÃO deve ser pausado
+  // automaticamente (o anúncio ainda vai entrar no ar). Só é calculado quando o conjunto
+  // está sem anúncio ativo; se a busca falhar, vem true (na dúvida, não pausa).
+  has_pending_ad?: boolean;
 }
+
+// Status de anúncio "a caminho de ficar ativo" (mesma lista de lib/meta/insights.ts, sem ACTIVE).
+const PENDING_AD_STATUSES = ["PENDING_REVIEW", "PREAPPROVED", "IN_PROCESS", "WITH_ISSUES", "PENDING_BILLING_INFO"];
 
 interface AdSetStatusRow {
   id?: string;
@@ -73,6 +81,26 @@ export async function getAdSetCostAnalysis(
     });
   }
 
+  // Etapa 104: só busca os anúncios "a caminho de ficar ativo" se existe algum conjunto
+  // ativo sem anúncio ativo (o único caso em que isso importa). null = a busca falhou.
+  let pendingAdsetIds: Set<string> | null = new Set();
+  const needsPending = [...adsetInfoMap.values()].some((i) => i.effectiveStatus === "ACTIVE" && !i.hasActiveAd);
+  if (needsPending) {
+    try {
+      const pendingAds = await metaGetAll<{ adset_id?: string }>(token, `/${id}/ads`, {
+        fields: "adset_id",
+        limit: "500",
+        filtering: JSON.stringify([{ field: "ad.effective_status", operator: "IN", value: PENDING_AD_STATUSES }]),
+      });
+      for (const a of pendingAds) if (a.adset_id) pendingAdsetIds.add(a.adset_id);
+    } catch (e) {
+      console.error("adset analysis pending ads err (non-fatal)", id, e);
+      pendingAdsetIds = null;
+    }
+  }
+  const hasPending = (adsetId: string, hasActiveAd: boolean): boolean =>
+    !hasActiveAd && (pendingAdsetIds === null || pendingAdsetIds.has(adsetId));
+
   const groups = new Map<string, AdSetCostRow>();
   for (const ad of adRows) {
     if (!ad.adset_id) continue;
@@ -111,6 +139,7 @@ export async function getAdSetCostAnalysis(
     if (info?.effectiveStatus !== "ACTIVE") continue; // só conjunto ativo, pedido explícito
     g.cost_per_conversation = g.conversations && g.conversations > 0 ? g.spend / g.conversations : null;
     g.has_active_ad = info.hasActiveAd;
+    g.has_pending_ad = hasPending(g.id, info.hasActiveAd);
     result.push(g);
     includedIds.add(g.id);
   }
@@ -132,6 +161,7 @@ export async function getAdSetCostAnalysis(
       cost_per_conversation: null,
       ads: [],
       has_active_ad: false,
+      has_pending_ad: hasPending(adsetId, false),
     });
   }
 

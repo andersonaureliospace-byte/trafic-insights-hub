@@ -1,6 +1,6 @@
 // Pausa automática de Conjuntos acima da meta (Etapa 53) — pensada pra
-// rodar várias vezes ao dia (05h05/09h05/13h05/23h05 sugeridos no n8n, 5
-// minutos depois do check de Criativos), pausando sozinho todo conjunto
+// rodar de 3 em 3 horas (01h05/04h05/07h05/10h05/13h05/16h05/19h05/22h05 no n8n, 5
+// minutos depois do check de Criativos; Etapa 104), pausando sozinho todo conjunto
 // ATIVO com custo por conversa (ou gasto, sem conversa) no DOBRO da Meta
 // CPA + R$1 (ou mais) — MESMA lógica/limite de Painel > Análise > Conjuntos
 // (isAdSetFlaggedAbove) — e avisando no grupo de WhatsApp quais conjuntos
@@ -88,6 +88,7 @@ const toMetrics = (r: AdSetCostRow) => ({
   conversations: r.conversations,
   cost_per_conversation: r.cost_per_conversation,
   has_active_ad: r.has_active_ad,
+  has_pending_ad: r.has_pending_ad,
 });
 
 export async function checkAndPauseAdSets(

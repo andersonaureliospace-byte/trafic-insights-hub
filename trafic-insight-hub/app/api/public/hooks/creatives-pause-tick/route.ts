@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkAndPauseCreatives } from "@/lib/alerts/creatives-pause";
 
-// Endpoint público chamado pelo n8n, várias vezes ao dia (05h/09h/13h/23h
-// sugeridos, Etapa 53) — pausa sozinho todo criativo ATIVO com CPA R$4+
+// Endpoint público chamado pelo n8n, de 3 em 3 horas (01h/04h/07h/10h/13h/16h/19h/22h,
+// Etapa 104; antes 05h/09h/13h/23h) — pausa sozinho todo criativo ATIVO com CPA R$4+
 // acima da meta (mesmo limite de Análise > Criativos) e avisa o grupo de
 // WhatsApp configurado quais criativos foram pausados. Protegido pelo mesmo
 // segredo compartilhado dos outros hooks internos (WHATSAPP_DISPATCH_SECRET).

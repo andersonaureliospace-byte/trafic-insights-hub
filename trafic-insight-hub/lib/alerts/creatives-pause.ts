@@ -1,13 +1,15 @@
 // Pausa automática de Criativos acima da meta (Etapa 53) — pensada pra
-// rodar várias vezes ao dia (05h/09h/13h/23h sugeridos no n8n), pausando
-// sozinho todo criativo ATIVO com custo por conversa (ou gasto, sem
-// conversa) R$4+ acima da Meta CPA — MESMA lógica/limite de Painel >
-// Análise > Criativos (isCreativeFlaggedAbove) — e avisando no grupo de
-// WhatsApp quais criativos foram pausados. Sem cooldown: como o critério é
-// "ainda ATIVO e acima do limite", um criativo já pausado nessa rodada
-// simplesmente não aparece mais nas rodadas seguintes (deixou de ser
-// ATIVO), então não tem re-pausa nem re-aviso do mesmo criativo. Período
-// fixo "últimos 3 dias + hoje" — mesmo padrão default da tela de Análise.
+// rodar de 3 em 3 horas (01h/04h/07h/10h/13h/16h/19h/22h, n8n; Etapa 104),
+// pausando sozinho todo criativo ATIVO com custo por conversa (ou gasto, sem
+// conversa) R$4+ acima da Meta CPA — e avisando no grupo de WhatsApp quais
+// criativos foram pausados.
+// Etapa 104 (mais agressivo): o período agora é ONTEM + HOJE (antes, últimos 3 dias
+// + hoje). Criativo com histórico bom nos últimos 7 dias (CPA de 7 dias abaixo do
+// ideal, a "linha verde" de Análise) só é pausado se também estiver R$4+ acima nos
+// últimos dois dias + hoje. Regras puras em lib/alerts/creative-decision.ts.
+// Sem cooldown: como o critério é "ainda ATIVO e acima do limite", um criativo já
+// pausado nessa rodada simplesmente não aparece mais nas rodadas seguintes
+// (deixou de ser ATIVO), então não tem re-pausa nem re-aviso do mesmo criativo.
 // Etapa 56: as pausas na Meta agora saem uma de cada vez, com 3s de
 // intervalo (setEntitiesStatusSequential), em vez de todas em paralelo —
 // mesma pauta de segurança contra rate limit que os botões manuais de
@@ -22,15 +24,22 @@
 // "Marcia Dantas".
 
 import type { createClient } from "@/lib/supabase/server";
-import { getCreativeCostAnalysis } from "@/lib/meta/creative-analysis";
-import { isCreativeFlaggedAbove } from "@/lib/meta/analysis-thresholds";
+import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";
+import { decideCreativePause } from "@/lib/alerts/creative-decision";
+import { spDate, type DateRangeInput } from "@/lib/meta/client";
 import { setEntitiesStatusSequential } from "@/lib/meta/status";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { fmtCurrency } from "@/lib/format";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
-const DATE_PRESET = "last_3d_plus_today" as const;
+const DATE_PRESET = "today_yesterday" as const; // ontem + hoje
+const DATE_PRESET_7D = "last_7d" as const;
+
+// Anteontem + ontem + hoje (fuso de Brasília): "os últimos dois dias + hoje".
+function twoDaysPlusToday(now: Date = new Date()): DateRangeInput {
+  return { since: spDate(new Date(now.getTime() - 2 * 86_400_000)), until: spDate(now) };
+}
 const STATUSES = ["ACTIVE"];
 
 export interface PausedCreative {
@@ -40,6 +49,7 @@ export interface PausedCreative {
   ad_name: string;
   spend: number;
   cost_per_conversation: number | null;
+  good_history?: boolean; // tinha histórico bom nos 7 dias e mesmo assim passou do limite nos 2 dias + hoje
   ok: boolean;
   error?: string;
 }
@@ -72,7 +82,7 @@ export async function checkAndPauseCreatives(
   if (bindingsErr) throw bindingsErr;
   if (!bindings || bindings.length === 0) return { paused: [], sendError: null };
 
-  const flagged: { ad_account_id: string; client_name: string; ad_id: string; ad_name: string; spend: number; cost_per_conversation: number | null }[] = [];
+  const flagged: { ad_account_id: string; client_name: string; ad_id: string; ad_name: string; spend: number; cost_per_conversation: number | null; good_history: boolean }[] = [];
 
   await Promise.all(
     bindings.map(async (b) => {
@@ -81,9 +91,48 @@ export async function checkAndPauseCreatives(
       const clientName = (b.client_name as string | null) || accountId;
       try {
         const rows = await getCreativeCostAnalysis(token, accountId, DATE_PRESET);
-        for (const r of rows) {
-          if (!STATUSES.includes((r.status ?? "").toUpperCase())) continue;
-          if (!isCreativeFlaggedAbove(r, cpaTarget)) continue;
+        const active = rows.filter((r) => STATUSES.includes((r.status ?? "").toUpperCase()));
+        // Só busca 7 dias / 2 dias + hoje se a conta tiver algum criativo acima do limite.
+        const first = active.filter(
+          (r) =>
+            decideCreativePause({ cpaTarget, m2: r, m7: undefined, sevenDayFetched: false, m3: undefined, threeDayFetched: false })
+              .action !== "none",
+        );
+        if (first.length === 0) return;
+        let rows7: CreativeCostRow[] | null = null;
+        try {
+          rows7 = await getCreativeCostAnalysis(token, accountId, DATE_PRESET_7D);
+        } catch (e) {
+          console.error("creatives-pause 7d err (não decide sem o histórico)", accountId, e);
+        }
+        const by7 = new Map((rows7 ?? []).map((r) => [r.id, r]));
+        const needs3 = rows7 !== null && first.some((r) => {
+          const r7 = by7.get(r.id);
+          return (
+            decideCreativePause({ cpaTarget, m2: r, m7: r7, sevenDayFetched: true, m3: undefined, threeDayFetched: false }).action ===
+            "skip"
+          );
+        });
+        let rows3: CreativeCostRow[] | null = [];
+        if (needs3) {
+          try {
+            rows3 = await getCreativeCostAnalysis(token, accountId, twoDaysPlusToday());
+          } catch (e) {
+            console.error("creatives-pause 2d+hoje err (não decide sem o histórico)", accountId, e);
+            rows3 = null;
+          }
+        }
+        const by3 = new Map((rows3 ?? []).map((r) => [r.id, r]));
+        for (const r of first) {
+          const decision = decideCreativePause({
+            cpaTarget,
+            m2: r,
+            m7: by7.get(r.id),
+            sevenDayFetched: rows7 !== null,
+            m3: by3.get(r.id),
+            threeDayFetched: rows3 !== null,
+          });
+          if (decision.action !== "pause") continue;
           flagged.push({
             ad_account_id: accountId,
             client_name: clientName,
@@ -91,6 +140,7 @@ export async function checkAndPauseCreatives(
             ad_name: r.name,
             spend: r.spend,
             cost_per_conversation: r.cost_per_conversation,
+            good_history: decision.goodHistory,
           });
         }
       } catch (e) {
@@ -128,9 +178,9 @@ export async function checkAndPauseCreatives(
             p.cost_per_conversation != null
               ? `${fmtCurrency(p.cost_per_conversation)}/conversa`
               : `gasto ${fmtCurrency(p.spend)} sem conversa`
-          }`,
+          }${p.good_history ? " · 7 dias bom, mas acima nos 2 dias + hoje" : ""}`,
       );
-      const message = `⏸️ Criativos pausados automaticamente (CPA acima da meta) — ${pausedOk.length} anúncio${
+      const message = `⏸️ Criativos pausados automaticamente (CPA acima da meta ontem + hoje) — ${pausedOk.length} anúncio${
         pausedOk.length > 1 ? "s" : ""
       }\n\n${lines.join("\n")}`;
       await sendText({ api_url: instance.api_url, token: instance.token }, instance.alerts_group_id, message);

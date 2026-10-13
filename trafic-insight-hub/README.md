@@ -2461,6 +2461,21 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     e as cores do Investimento seguem sempre o ideal de hoje. Código: `hourSP()` e
     `RITMO_ANTICIPATE_HOUR` em `lib/meta/ritmo.ts`.
 
+98. **Pausa automática mais agressiva + verificação de 3 em 3 horas (Etapa 104)** —
+    (a) Criativos: o período passou a ser ONTEM + HOJE (antes, últimos 3 dias + hoje). Criativo
+    ativo com custo por conversa (ou gasto, sem conversa) R$4+ acima da Meta CPA nesse período é
+    pausado. Se tem histórico bom nos 7 dias (CPA de 7 dias abaixo do ideal, a linha verde de
+    Análise), só pausa se TAMBÉM estiver R$4+ acima nos últimos dois dias + hoje (anteontem,
+    ontem e hoje juntos); se a busca dos 7 dias ou dos 2 dias + hoje falhar, pula (não decide no
+    escuro). O aviso do WhatsApp marca esses casos com "7 dias bom, mas acima nos 2 dias + hoje".
+    Regras puras em `lib/alerts/creative-decision.ts`. (b) Conjuntos: continua pausando conjunto
+    ativo SEM anúncio ativo, mas agora NÃO pausa se ele tem anúncio em análise, processando,
+    pré-aprovado, com problemas ou aguardando cobrança (campo `has_pending_ad` em
+    `adset-cost-analysis.ts`; se a busca desses anúncios falhar, na dúvida não pausa). (c)
+    Agenda no n8n: Criativos às 01h, 04h, 07h, 10h, 13h, 16h, 19h e 22h (`0 1,4,7,10,13,16,19,22
+    * * *`) e Conjuntos 5 minutos depois (`5 1,4,7,10,13,16,19,22 * * *`), horário de Brasília,
+    ambos com `POST` + header `x-webhook-secret`.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

@@ -15,7 +15,8 @@
 //  6. Sem registro de quarentena e CPA de 7 dias NÃO abaixo do ideal (ou sem conversa) → pausa,
 //     como sempre foi.
 //  Conjunto ativo sem nenhum anúncio ativo continua sendo pausado direto (não é questão de
-//  desempenho), mesmo em quarentena.
+//  desempenho), mesmo em quarentena — EXCETO (Etapa 104) quando tem anúncio em análise,
+//  processando, pré-aprovado, com problemas ou aguardando cobrança: esses não são pausados.
 
 import { ADSET_ABOVE_EXTRA, ADSET_ABOVE_MULTIPLIER } from "@/lib/meta/analysis-thresholds";
 
@@ -24,6 +25,7 @@ export interface AdSetMetrics {
   conversations: number | null;
   cost_per_conversation: number | null;
   has_active_ad: boolean;
+  has_pending_ad?: boolean; // Etapa 104: sem anúncio ativo, mas com anúncio em análise/processando
 }
 
 export type AdSetDecision =
@@ -66,7 +68,11 @@ export function decideAdSetAction(input: {
 }): AdSetDecision {
   const { cpaTarget, now, m3, m7, sevenDayFetched, quarantineUntil } = input;
 
-  if (!m3.has_active_ad) return { action: "pause", reason: "sem anúncio ativo" };
+  if (!m3.has_active_ad) {
+    // Etapa 104: anúncio em análise / processando / pré-aprovado etc. ainda vai entrar no ar — não pausa.
+    if (m3.has_pending_ad) return { action: "none", reason: "anúncio em análise ou processando" };
+    return { action: "pause", reason: "sem anúncio ativo" };
+  }
 
   if (quarantineUntil && quarantineUntil.getTime() > now.getTime()) return { action: "skip", reason: "quarantine" };
 
