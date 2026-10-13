@@ -27,6 +27,16 @@ import { InlineNumber } from "@/components/painel/inline-number";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
 import { usePainelUiState } from "@/lib/hooks/use-painel-ui-state";
 
+// Dia de hoje (YYYY-MM-DD) no fuso de Brasília — mesma regra do servidor (spDate) pro reset do "Otimizado".
+function brtDay(d: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
 interface AccountBinding {
   ad_account_id: string;
   client_name: string | null;
@@ -181,6 +191,8 @@ export default function PainelPage() {
   const [allAccounts, setAllAccounts] = useState<AdAccount[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [bindings, setBindings] = useState<Record<string, AccountBinding>>({});
+  // Dia (YYYY-MM-DD em Brasília) em que as marcações foram lidas — usado pra detectar a virada do dia.
+  const bindingsDayRef = useRef<string | null>(null);
   const [pixAccounts, setPixAccounts] = useState<Record<string, PixRow>>({});
   const [insights, setInsights] = useState<Record<string, AccountInsight>>({});
   const [monthlyInsights, setMonthlyInsights] = useState<Record<string, AccountInsight>>({});
@@ -256,6 +268,40 @@ export default function PainelPage() {
   // barato) de cara — o que é pesado de verdade (insights/breakdown/análise
   // do Meta) só é buscado quando a aba correspondente está ativa, mais
   // abaixo.
+  // Marcações de "Otimizado" (Acompanhamento e Acompanhamento de metas) valem só pro dia de hoje em
+  // Brasília: o servidor já devolve "não otimizado" pra marcação de ontem, mas a tela só lia isso UMA vez
+  // ao abrir. Quem deixa o Painel aberto de um dia pro outro continuava vendo o dia anterior. Agora a tela
+  // relê as marcações quando o dia (BRT) vira e quando você volta pra aba.
+  const loadBindings = useCallback(async () => {
+    try {
+      const r = await fetch("/api/account-bindings", { cache: "no-store" });
+      const d = await r.json();
+      const map: Record<string, AccountBinding> = {};
+      for (const b of d.bindings ?? []) map[b.ad_account_id] = b;
+      setBindings(map);
+      bindingsDayRef.current = brtDay();
+    } catch {
+      // sem rede: tenta de novo na próxima checagem
+    }
+  }, []);
+
+  useEffect(() => {
+    function checkNewDay() {
+      if (bindingsDayRef.current && bindingsDayRef.current !== brtDay()) void loadBindings();
+    }
+    const t = setInterval(checkNewDay, 60_000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkNewDay();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", checkNewDay);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", checkNewDay);
+    };
+  }, [loadBindings]);
+
   useEffect(() => {
     fetch("/api/selected-accounts")
       .then((r) => r.json())
@@ -264,13 +310,7 @@ export default function PainelPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca as contas do Meta ao montar; o mesmo loadAccounts é reusado pelo botão "Atualizar" de Controle de Saldo/Clientes
     void loadAccounts();
 
-    fetch("/api/account-bindings")
-      .then((r) => r.json())
-      .then((d) => {
-        const map: Record<string, AccountBinding> = {};
-        for (const b of d.bindings ?? []) map[b.ad_account_id] = b;
-        setBindings(map);
-      });
+    void loadBindings();
 
     fetch("/api/pix-accounts")
       .then((r) => r.json())
@@ -283,7 +323,7 @@ export default function PainelPage() {
     fetch("/api/focus-groups")
       .then((r) => r.json())
       .then((d) => setFocusGroups(d.groups ?? []));
-  }, [loadAccounts]);
+  }, [loadAccounts, loadBindings]);
 
   // Etapa 39: assim que a aba/filtros salvos chegam do Supabase, aplica uma
   // única vez (uiHydrated evita reaplicar e "prender" o usuário se ele

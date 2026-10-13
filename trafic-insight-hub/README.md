@@ -2540,6 +2540,11 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     adicionar o fluxo "Descrições do Asana" ao workflow do n8n (já no
     `n8n-workflows/pausas-e-avisos-automaticos.json`, agora com 11 agendas). Código:
     `lib/asana/descriptions.ts`, `app/api/asana/descriptions/route.ts`, `components/painel/descricao-tab.tsx`.
+104. **Otimizado reseta na virada do dia mesmo com o Painel aberto (Etapa 116)** — o servidor já devolvia
+    "não otimizado" pra marcação de ontem, mas o Painel só lia as marcações UMA vez ao abrir; quem deixava a
+    tela aberta de um dia pro outro continuava vendo o dia anterior até apertar F5. Agora a tela confere o dia
+    de Brasília a cada minuto e ao voltar pra aba (focus/visibilitychange) e, se virou, relê as marcações
+    (vale pro Otimizado de Acompanhamento e de Acompanhamento de metas).
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
