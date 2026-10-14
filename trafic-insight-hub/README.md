@@ -2573,6 +2573,10 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     ter cliente + PDF + vencimento). Agora ele seleciona o cliente, rola até o formulário, já abre a escolha do
     PDF e mostra um aviso; ao lado do "Enviar e-mail" aparece o que ainda falta.
 
+109. **Nome do cliente só leitura em Acompanhamento + balão (Etapa 121)** — o nome deixou de ser um campo
+    editável na aba Acompanhamento (a edição fica só em Clientes). Ao passar o mouse sobre o nome abre um balão
+    discreto com o WhatsApp e o Investimento mensal cadastrados ("não cadastrado" quando vazio).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

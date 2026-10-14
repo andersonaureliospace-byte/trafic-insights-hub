@@ -25,6 +25,7 @@ import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { EditClientDialog } from "@/components/painel/edit-client-dialog";
 import { InlineNumber } from "@/components/painel/inline-number";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
+import { ClientNameHover } from "@/components/painel/client-name-hover";
 import { usePainelUiState } from "@/lib/hooks/use-painel-ui-state";
 
 // Dia de hoje (YYYY-MM-DD) no fuso de Brasília — mesma regra do servidor (spDate) pro reset do "Otimizado".
@@ -1148,14 +1149,10 @@ export default function PainelPage() {
                               />
                             </td>
                             <td className="px-4 py-2">
-                              <input
-                                defaultValue={binding?.client_name ?? ""}
-                                placeholder={acc.name}
-                                onBlur={(e) => {
-                                  const v = e.target.value.trim();
-                                  if (v !== (binding?.client_name ?? "")) void patchBinding(acc.account_id, { client_name: v || null });
-                                }}
-                                className="w-36 rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm outline-none hover:border-zinc-300 focus:border-zinc-900 dark:hover:border-zinc-700 dark:focus:border-zinc-100"
+                              <ClientNameHover
+                                name={binding?.client_name || acc.name}
+                                whatsapp={binding?.whatsapp_contact}
+                                monthlyInvestment={binding?.monthly_investment}
                               />
                             </td>
                             <td className="px-4 py-2">
