@@ -62,6 +62,48 @@ function isRateLimitCode(code: unknown): boolean {
   return code === 4 || code === 17 || code === 32 || code === 613 || code === 80004;
 }
 
+// Etapa 123: limite do APP inteiro ("Application request limit reached", código 4 / subcódigo 1504022) ou do
+// usuário (código 17). Esse limite é por hora e NÃO adianta tentar de novo em segundos — insistir só gasta mais
+// chamadas e prolonga o bloqueio. Quando acontece: falha na hora, com mensagem clara, e (por uns minutos,
+// nesta instância do servidor) as próximas buscas nem chegam na Meta — "disjuntor".
+export class MetaRateLimitError extends Error {
+  readonly retryInMs: number;
+  constructor(retryInMs: number) {
+    super(
+      `A Meta limitou as chamadas do app (excesso de requisições). Aguarde uns ${Math.max(1, Math.ceil(retryInMs / 60000))} minutos — libera sozinho. Evite clicar em Atualizar várias vezes.`,
+    );
+    this.retryInMs = retryInMs;
+    this.name = "MetaRateLimitError";
+  }
+}
+
+const APP_LIMIT_COOLDOWN_MS = 5 * 60 * 1000;
+let limitedUntil = 0;
+
+function guardAppLimit(): void {
+  const left = limitedUntil - Date.now();
+  if (left > 0) throw new MetaRateLimitError(left);
+}
+
+function isAppLimitText(text: string): boolean {
+  try {
+    const e = JSON.parse(text)?.error;
+    return e?.code === 4 || e?.code === 17 || e?.error_subcode === 1504022;
+  } catch {
+    return false;
+  }
+}
+
+function tripAppLimit(): never {
+  limitedUntil = Date.now() + APP_LIMIT_COOLDOWN_MS;
+  throw new MetaRateLimitError(APP_LIMIT_COOLDOWN_MS);
+}
+
+// Pra quem mostra erro na tela: o limite do app está ativo agora (nesta instância)?
+export function metaAppLimitedForMs(): number {
+  return Math.max(0, limitedUntil - Date.now());
+}
+
 export async function metaGet<T>(
   token: string,
   path: string,
@@ -71,11 +113,13 @@ export async function metaGet<T>(
   const url = `${GRAPH}${path}?${qs.toString()}`;
   const maxAttempts = 3;
   let lastErr: unknown = null;
+  guardAppLimit();
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       const res = await fetch(url);
       if (res.ok) return (await res.json()) as T;
       const text = await res.text();
+      if (isAppLimitText(text)) tripAppLimit();
       let transient = res.status >= 500 || res.status === 429;
       let limited = false;
       if (!transient) {
@@ -99,6 +143,7 @@ export async function metaGet<T>(
       throw new Error(`Meta API ${res.status}: ${text}`);
     } catch (e) {
       lastErr = e;
+      if (e instanceof MetaRateLimitError) throw e; // limite do app: não insiste
       if (attempt >= maxAttempts) throw e;
       await new Promise((r) => setTimeout(r, 400 * attempt));
     }
@@ -116,10 +161,12 @@ export async function metaGetAll<T>(
   const qs = new URLSearchParams({ ...params, access_token: token });
   let url = `${GRAPH}${path}?${qs.toString()}`;
   for (let i = 0; i < maxPages; i++) {
+    guardAppLimit();
     let res = await fetch(url);
     // Etapa 118: até 2 novas tentativas (com espera) em 5xx/429 ou limite de requisições.
     for (let attempt = 1; !res.ok && attempt <= 2; attempt++) {
       const text = await res.clone().text();
+      if (isAppLimitText(text)) tripAppLimit();
       let retry = res.status >= 500 || res.status === 429;
       let limited = false;
       try {
@@ -138,6 +185,7 @@ export async function metaGetAll<T>(
     }
     if (!res.ok) {
       const text = await res.text();
+      if (isAppLimitText(text)) tripAppLimit();
       throw new Error(`Meta API ${res.status}: ${text}`);
     }
     const json = (await res.json()) as { data?: T[]; paging?: { next?: string } };

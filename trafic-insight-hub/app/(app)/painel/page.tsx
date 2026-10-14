@@ -191,6 +191,8 @@ export default function PainelPage() {
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [allAccounts, setAllAccounts] = useState<AdAccount[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
+  // Etapa 123: aviso de que a lista de contas é a salva no navegador (a Meta não respondeu).
+  const [accountsStale, setAccountsStale] = useState<string | null>(null);
   const [bindings, setBindings] = useState<Record<string, AccountBinding>>({});
   // Dia (YYYY-MM-DD em Brasília) em que as marcações foram lidas — usado pra detectar a virada do dia.
   const bindingsDayRef = useRef<string | null>(null);
@@ -276,20 +278,47 @@ export default function PainelPage() {
   // Contas do Meta (nome, status, saldo/teto de gasto, tipo de negócio) —
   // é o que alimenta Controle de Saldo. Função à parte (não só um efeito)
   // pra dar pra chamar de novo pelo botão "Atualizar" sem precisar dar F5.
+  // Etapa 123: a última lista de contas que veio certa fica guardada no navegador. Se a Meta bloquear por excesso de
+  // chamadas (ou cair), o Painel abre com essa lista salva (avisando) em vez de ficar sem contas.
   const loadAccounts = useCallback(async () => {
     setLoadingAccounts(true);
+    const CACHE_KEY = "painel_accounts_cache_v1";
+    const useSaved = (errMsg: string): boolean => {
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (!raw) return false;
+        const saved = JSON.parse(raw) as { at?: number; accounts?: AdAccount[] };
+        if (!saved.accounts || saved.accounts.length === 0) return false;
+        setAllAccounts(saved.accounts);
+        setAccountsError(null);
+        const hhmm = saved.at
+          ? new Date(saved.at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })
+          : "antes";
+        setAccountsStale(`${errMsg} Mostrando a lista de contas salva às ${hhmm} — saldos e gastos podem estar desatualizados.`);
+        return true;
+      } catch {
+        return false;
+      }
+    };
     try {
       const res = await fetch("/api/meta/accounts", { signal: AbortSignal.timeout(90_000) });
       const d = await res.json();
-      if (d.error) setAccountsError(d.error);
-      else {
+      if (d.error) {
+        if (!useSaved(String(d.error))) setAccountsError(d.error);
+      } else {
         setAccountsError(null);
+        setAccountsStale(null);
         setAllAccounts(d.accounts ?? []);
+        try {
+          localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), accounts: d.accounts ?? [] }));
+        } catch {
+          /* sem armazenamento: segue sem cache */
+        }
       }
     } catch {
-      // Sem resposta (limite da Meta, queda de rede, tempo esgotado): mostra o erro com botão de tentar de novo
-      // em vez de deixar a tela inteira presa em "Carregando…".
-      setAccountsError("Não consegui carregar as contas da Meta (sem resposta do servidor).");
+      // Sem resposta (limite da Meta, queda de rede, tempo esgotado).
+      const msg = "Não consegui carregar as contas da Meta (sem resposta do servidor).";
+      if (!useSaved(msg)) setAccountsError(msg);
     } finally {
       setLoadingAccounts(false);
     }
@@ -813,6 +842,7 @@ export default function PainelPage() {
   const failedLabels = Object.entries(metaFailed).filter(([, v]) => v).map(([k]) => k);
   const statusErrors = [
     ...(accountsError ? ["contas"] : []),
+    ...(accountsStale ? ["Meta limitou as chamadas"] : []),
     ...failedLabels,
     ...(failedAccounts > 0 ? [`${failedAccounts} conta(s) sem gasto do mês`] : []),
   ];
@@ -899,6 +929,14 @@ export default function PainelPage() {
           </aside>
 
           <div className="min-w-0">
+            {accountsStale ? (
+              <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                {accountsStale}{" "}
+                <button onClick={() => void loadAccounts()} className="font-medium underline">
+                  Tentar de novo
+                </button>
+              </div>
+            ) : null}
             {accountsError ? (
               <div className="mb-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
                 {accountsError}{" "}

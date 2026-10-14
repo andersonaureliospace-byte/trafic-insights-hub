@@ -2587,6 +2587,13 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     mais acima do ideal (ADSET_CUT_EXTRA); sem resultado ou abaixo disso não mexe em nada. 7 dias abaixo do ideal
     → corta + quarentena; senão pausa (1ª vez só se passou de 2x + R$1).
 
+111. **Limite de requisições do app na Meta (Etapa 123)** — erro "Application request limit reached" (código 4 /
+    subcódigo 1504022): é o limite por hora do app inteiro (Painel + todas as automações do n8n usam o mesmo
+    token) e libera sozinho. Agora, nesse erro, o app NÃO insiste (as tentativas em segundos só gastavam mais
+    chamadas): falha na hora com mensagem clara e um "disjuntor" de 5 min faz as próximas buscas nem chegarem na
+    Meta (lib/meta/client.ts, MetaRateLimitError). O Painel guarda no navegador a última lista de contas e, se a
+    Meta bloquear, abre com ela (aviso amarelo + "Tentar de novo") em vez de ficar sem contas.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
