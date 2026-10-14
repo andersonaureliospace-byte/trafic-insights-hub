@@ -14,7 +14,7 @@
         -620,
         -80
       ],
-      "id": "894a24c2-71c7-4684-8769-bb5241eba986",
+      "id": "9c8e60d2-8d03-41f6-96ff-3fd292920c64",
       "name": "Nota - Leia antes de ativar"
     },
     {
@@ -30,7 +30,7 @@
         0,
         -80
       ],
-      "id": "3f346a5c-a95d-4f23-942e-737aec9ff98c",
+      "id": "d4409c74-21c7-45ca-8ba0-153056b1d8d9",
       "name": "Nota - 1. Pausas automáticas (Criativos → Conjuntos)"
     },
     {
@@ -54,7 +54,7 @@
         0,
         60
       ],
-      "id": "1c441389-2ee9-4b36-a241-86ee273f8340",
+      "id": "fbcbad5e-f41f-4ea0-83ff-a1995bfd0c82",
       "name": "Agenda - Pausas (Criativos e depois Conjuntos)",
       "notes": "Pausa criativo ativo R$4+ acima da meta ontem + hoje (com histórico dos 7 dias). Em seguida: conjunto sem NENHUM anúncio vivo, e conjunto com CPA R$4+ acima do ideal e resultado (corta R$10 ou pausa)."
     },
@@ -81,7 +81,7 @@
         300,
         60
       ],
-      "id": "76a78156-5718-4714-b3e1-437ddfc8fb87",
+      "id": "1cf97a87-5325-493c-ab75-647ca0460e11",
       "name": "Pausar criativos acima da meta (e sem resultado)",
       "retryOnFail": true,
       "maxTries": 2,
@@ -111,7 +111,7 @@
         600,
         60
       ],
-      "id": "3ad33d95-59dc-4564-8770-0b40aa2aab9e",
+      "id": "2e9048b9-8181-425e-9bab-5f6137122ef5",
       "name": "Pausar conjuntos",
       "retryOnFail": true,
       "maxTries": 2,
@@ -130,7 +130,7 @@
         0,
         220
       ],
-      "id": "b9013249-c1be-41f2-a1d1-9cc161fa2c82",
+      "id": "31231e06-996d-42eb-8a8a-5a429202ffd4",
       "name": "Nota - 2. CPA ontem (06h00)"
     },
     {
@@ -150,7 +150,7 @@
         0,
         330
       ],
-      "id": "a31da335-3dcb-406e-b508-ef912555a0e6",
+      "id": "08cbfe50-1cd7-47fa-aab3-6d3901683a0c",
       "name": "Agenda - CPA acima da meta ontem (06h00)"
     },
     {
@@ -176,7 +176,7 @@
         300,
         330
       ],
-      "id": "34251c58-b85e-4222-8789-20cc62c83172",
+      "id": "1e30c074-6929-4885-86a0-35a513ecb4ed",
       "name": "Avisar CPA acima da meta",
       "retryOnFail": true,
       "maxTries": 2,
@@ -195,7 +195,7 @@
         0,
         480
       ],
-      "id": "4645508b-e3b0-4659-b340-f2c17bce2053",
+      "id": "bdfda3b3-855f-4d64-a95c-9b318b799988",
       "name": "Nota - 3. Invest. diário em 80% do Ritmo (07h e 16h)"
     },
     {
@@ -215,7 +215,7 @@
         0,
         590
       ],
-      "id": "87f1eaa0-76b0-49a9-91a2-2fd880fb0f42",
+      "id": "bf6b9acc-85cc-4a45-8854-61112aba6ac7",
       "name": "Agenda - Invest. diário em 80% do Ritmo (07h e 16h)"
     },
     {
@@ -241,7 +241,7 @@
         300,
         590
       ],
-      "id": "3d80d6a8-e5fe-434e-9647-51c9d29cfc1b",
+      "id": "2168540c-b90c-4a65-aa90-7b092d611d07",
       "name": "Avisar Invest. diário em 80% do Ritmo",
       "retryOnFail": true,
       "maxTries": 2,
@@ -260,7 +260,7 @@
         0,
         740
       ],
-      "id": "9368f13c-3566-4a20-948b-46ec9da571ef",
+      "id": "d9efdb04-63d4-4d42-9d06-1e40a142d170",
       "name": "Nota - 4. Status em massa (segunda e quinta, 01h)"
     },
     {
@@ -280,7 +280,7 @@
         0,
         850
       ],
-      "id": "07894f52-c1d7-4461-9001-22a354bd4e06",
+      "id": "b1f23505-0f51-48b5-9e91-586957e10134",
       "name": "Agenda - Status em massa (seg/qui 01h)"
     },
     {
@@ -306,7 +306,7 @@
         300,
         850
       ],
-      "id": "248650be-c420-4abe-98f5-8c29924dad19",
+      "id": "15008990-ea0a-4f13-a874-1f5fab542380",
       "name": "Atualizar status em massa",
       "retryOnFail": true,
       "maxTries": 2,
@@ -325,7 +325,7 @@
         0,
         1010
       ],
-      "id": "17d9435e-8c33-4918-b0a6-5c74650cf629",
+      "id": "f088a03c-6075-4571-9a31-6f6cdfe75bf9",
       "name": "Nota - 5. Saldo, pagamento e fundos"
     },
     {
@@ -345,7 +345,7 @@
         0,
         1150
       ],
-      "id": "35ed1569-02c5-4def-ac46-f4238b747174",
+      "id": "44fea200-f149-4634-80e7-830d3ef914fd",
       "name": "Agenda - Saldo e pagamento (seg-sáb 07h30, 12h30, 16h30, 19h30)"
     },
     {
@@ -371,7 +371,7 @@
         300,
         1150
       ],
-      "id": "722d62c5-787a-42b7-b65d-c7debbb949b9",
+      "id": "d3917bd3-b518-4b37-bc40-3f2559183749",
       "name": "Checar saldo baixo e pagamento",
       "retryOnFail": true,
       "maxTries": 2,
@@ -394,7 +394,7 @@
         0,
         1290
       ],
-      "id": "e852887a-aada-49ec-9305-966aa130e87b",
+      "id": "e1e15c05-18e5-4961-8956-4532579c2e06",
       "name": "Agenda - Saldo por fundos"
     },
     {
@@ -420,7 +420,7 @@
         300,
         1290
       ],
-      "id": "a85c8566-d6db-4b81-96b9-6b1cf5bb9b46",
+      "id": "f3dad7a8-5132-4066-988c-b3181e013c6b",
       "name": "Atualizar saldo por fundos",
       "retryOnFail": true,
       "maxTries": 2,
@@ -439,7 +439,7 @@
         0,
         1450
       ],
-      "id": "c6cdc172-ab5f-41ff-80f9-357e423e3813",
+      "id": "4e239f4a-6426-4340-9e36-9c1fd66137cf",
       "name": "Nota - 6. Auditoria (de hora em hora, com 1 rodada em cada pico)"
     },
     {
@@ -459,7 +459,7 @@
         0,
         1570
       ],
-      "id": "3bafbeaa-13b6-4ef5-82c9-362cb42c4fdd",
+      "id": "64e3965f-9e4f-4a92-909b-2822ad5e1832",
       "name": "Agenda - Auditoria (hora em hora, fora dos picos)"
     },
     {
@@ -485,7 +485,7 @@
         300,
         1570
       ],
-      "id": "4ef22b66-3566-496a-93cb-563bc1536c21",
+      "id": "223dcede-c532-4232-9c51-7d06e41653b1",
       "name": "Rodar auditoria (localização + erros)",
       "retryOnFail": true,
       "maxTries": 2,
@@ -504,7 +504,7 @@
         0,
         1730
       ],
-      "id": "a363a979-de36-461a-88c8-b98c556e6f32",
+      "id": "a447bd14-f44a-4842-88e2-e0498668f248",
       "name": "Nota - 7. Descrições do Asana (horário comercial)"
     },
     {
@@ -524,7 +524,7 @@
         0,
         1850
       ],
-      "id": "263217e4-1dfa-456a-b08a-2d6b236deef4",
+      "id": "6c530596-0962-4e45-a697-7953b14d5fd8",
       "name": "Agenda - Descrições do Asana (30 min, seg-sex 08h-18h)",
       "notes": "Só leitura do Asana. Pra mandar uma descrição editada pro Asana, use o botão por cliente na aba Descrição do Painel."
     },
@@ -551,8 +551,78 @@
         300,
         1850
       ],
-      "id": "e522add3-356a-46a3-8857-a18d9a58ab99",
+      "id": "db50f900-2e43-42e3-91af-1a61d7ccd2f9",
       "name": "Sincronizar descrições do Asana",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 8. Backup das métricas (madrugada)\n\n03h00 e 03h25: refaz no Supabase o gasto e os resultados de cada conta, dia a dia, dos últimos 37 dias (pega conversa atribuída depois) e apaga o que passou de 37 dias. É por isso que as telas e automações só precisam perguntar 'hoje' à Meta. A 2ª rodada só termina o que sobrou da 1ª (contas já refeitas são puladas).",
+        "height": 110,
+        "width": 900,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        2010
+      ],
+      "id": "c10b4326-e3cb-4f60-89a5-a86caf465548",
+      "name": "Nota - 8. Backup das métricas (madrugada)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 3 * * *"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "25 3 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2130
+      ],
+      "id": "46bfb821-5427-4a65-8be5-5854deee029e",
+      "name": "Agenda - Backup das métricas (03h00 e 03h25)",
+      "notes": "Rode este fluxo uma vez agora, manualmente (Execute), pra preencher os 37 dias pela primeira vez."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/metrics-sync-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        2130
+      ],
+      "id": "6e11ee96-7ee7-45d1-b8cc-54696e5ea541",
+      "name": "Atualizar backup das métricas",
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
@@ -653,6 +723,17 @@
         [
           {
             "node": "Sincronizar descrições do Asana",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Backup das métricas (03h00 e 03h25)": {
+      "main": [
+        [
+          {
+            "node": "Atualizar backup das métricas",
             "type": "main",
             "index": 0
           }
