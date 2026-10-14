@@ -5,6 +5,7 @@
 // expandir sem precisar de uma segunda busca.
 import { metaGetAll, type DateRangeInput } from "./client";
 import { getCreativeCostAnalysis } from "./creative-analysis";
+import { checkAdsetSafeToPause } from "./adset-ads-check";
 
 export interface AdSetCreativeRow {
   id: string;
@@ -27,15 +28,12 @@ export interface AdSetCostRow {
   // checagem que a Auditoria já fazia em lib/audit/errors.ts, agora também
   // disponível pra Análise > Conjuntos sinalizar).
   has_active_ad: boolean;
-  // Etapa 104: conjunto sem anúncio ATIVO, mas com anúncio em análise / processando /
-  // pré-aprovado / com problemas / aguardando cobrança — NÃO deve ser pausado
-  // automaticamente (o anúncio ainda vai entrar no ar). Só é calculado quando o conjunto
-  // está sem anúncio ativo; se a busca falhar, vem true (na dúvida, não pausa).
+  // Etapa 104/122: conjunto sem anúncio ATIVO que NÃO deve ser pausado automaticamente: tem anúncio em
+  // QUALQUER outro status que não seja pausado/arquivado/excluído (em análise, processando, pré-aprovado,
+  // com problemas, reprovado, cobrança…), ou foi criado há menos de 3h e ainda não tem anúncio, ou a
+  // conferência na Meta falhou (na dúvida, não pausa). Só é calculado quando o conjunto está sem anúncio ativo.
   has_pending_ad?: boolean;
 }
-
-// Status de anúncio "a caminho de ficar ativo" (mesma lista de lib/meta/insights.ts, sem ACTIVE).
-const PENDING_AD_STATUSES = ["PENDING_REVIEW", "PREAPPROVED", "IN_PROCESS", "WITH_ISSUES", "PENDING_BILLING_INFO"];
 
 interface AdSetStatusRow {
   id?: string;
@@ -43,6 +41,7 @@ interface AdSetStatusRow {
   effective_status?: string;
   status?: string;
   campaign?: { name?: string };
+  created_time?: string;
   // Filtro de edge do Graph API: só traz até 1 anúncio ATIVO — usado só pra
   // saber se existe pelo menos um (ads.data.length > 0), sem precisar buscar
   // todos os anúncios do conjunto de novo.
@@ -59,7 +58,7 @@ export async function getAdSetCostAnalysis(
   const [adRows, adsetStatusRows] = await Promise.all([
     getCreativeCostAnalysis(token, accountId, datePreset),
     metaGetAll<AdSetStatusRow>(token, `/${id}/adsets`, {
-      fields: "id,name,effective_status,status,campaign{name},ads.effective_status(['ACTIVE']).limit(1){id}",
+      fields: "id,name,effective_status,status,created_time,campaign{name},ads.effective_status(['ACTIVE']).limit(1){id}",
       limit: "500",
     }).catch((e) => {
       console.error("adset analysis status err (non-fatal)", id, e);
@@ -69,7 +68,7 @@ export async function getAdSetCostAnalysis(
 
   const adsetInfoMap = new Map<
     string,
-    { name: string; campaignName: string | null; effectiveStatus: string; hasActiveAd: boolean }
+    { name: string; campaignName: string | null; effectiveStatus: string; hasActiveAd: boolean; createdTime: string | null }
   >();
   for (const a of adsetStatusRows) {
     if (!a.id) continue;
@@ -78,28 +77,22 @@ export async function getAdSetCostAnalysis(
       campaignName: a.campaign?.name ?? null,
       effectiveStatus: (a.effective_status || a.status || "").toUpperCase(),
       hasActiveAd: (a.ads?.data?.length ?? 0) > 0,
+      createdTime: a.created_time ?? null,
     });
   }
 
-  // Etapa 104: só busca os anúncios "a caminho de ficar ativo" se existe algum conjunto
-  // ativo sem anúncio ativo (o único caso em que isso importa). null = a busca falhou.
-  let pendingAdsetIds: Set<string> | null = new Set();
-  const needsPending = [...adsetInfoMap.values()].some((i) => i.effectiveStatus === "ACTIVE" && !i.hasActiveAd);
-  if (needsPending) {
-    try {
-      const pendingAds = await metaGetAll<{ adset_id?: string }>(token, `/${id}/ads`, {
-        fields: "adset_id",
-        limit: "500",
-        filtering: JSON.stringify([{ field: "ad.effective_status", operator: "IN", value: PENDING_AD_STATUSES }]),
-      });
-      for (const a of pendingAds) if (a.adset_id) pendingAdsetIds.add(a.adset_id);
-    } catch (e) {
-      console.error("adset analysis pending ads err (non-fatal)", id, e);
-      pendingAdsetIds = null;
-    }
+  // Etapa 122: pra todo conjunto ATIVO que veio "sem anúncio ativo", confere DIRETO os anúncios dele na Meta
+  // antes de qualquer pausa (o campo aninhado acima pode vir vazio por falha da Meta). Se achar anúncio
+  // ativo, corrige; se achar anúncio em outro status vivo, conjunto novo sem anúncio ou falhar, marca
+  // "não pausar" (has_pending_ad).
+  const noPause = new Set<string>();
+  for (const [adsetId, info] of adsetInfoMap) {
+    if (info.effectiveStatus !== "ACTIVE" || info.hasActiveAd) continue;
+    const check = await checkAdsetSafeToPause(token, adsetId, info.createdTime);
+    if (check.hasActive) info.hasActiveAd = true;
+    else if (!check.safeToPause) noPause.add(adsetId);
   }
-  const hasPending = (adsetId: string, hasActiveAd: boolean): boolean =>
-    !hasActiveAd && (pendingAdsetIds === null || pendingAdsetIds.has(adsetId));
+  const hasPending = (adsetId: string, hasActiveAd: boolean): boolean => !hasActiveAd && noPause.has(adsetId);
 
   const groups = new Map<string, AdSetCostRow>();
   for (const ad of adRows) {

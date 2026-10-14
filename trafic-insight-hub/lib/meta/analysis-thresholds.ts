@@ -12,6 +12,9 @@ import type { CreativeCostRow } from "./creative-analysis";
 // conversa iniciada no período).
 export const ADSET_ABOVE_MULTIPLIER = 2;
 export const ADSET_ABOVE_EXTRA = 1;
+// Etapa 122: a pausa automática de conjuntos só REDUZ orçamento (corte de R$10) quando o CPA está pelo menos
+// R$4 acima da Meta CPA, e só com resultado — sem resultado ou abaixo disso, não mexe em nada.
+export const ADSET_CUT_EXTRA = 4;
 
 export function isAdSetFlaggedAbove(row: AdSetCostRow, cpaTarget: number): boolean {
   if (!row.has_active_ad) return true; // Etapa 46: avisa mesmo sem bater o limite de CPA

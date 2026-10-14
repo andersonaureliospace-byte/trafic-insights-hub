@@ -32,7 +32,7 @@ import type { createClient } from "@/lib/supabase/server";
 import { getAdSetCostAnalysis, type AdSetCostRow } from "@/lib/meta/adset-cost-analysis";
 import { setEntitiesStatusSequential } from "@/lib/meta/status";
 import { applyBudgetCut, getAdSetBudgetInfo } from "@/lib/meta/budget";
-import { decideAdSetAction } from "@/lib/alerts/adset-decision";
+import { decideAdSetAction, needsSevenDayData } from "@/lib/alerts/adset-decision";
 import { clearQuarantine, loadQuarantine, saveQuarantine } from "@/lib/alerts/adset-quarantine";
 import { publishAlert, type AlertKind } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
@@ -137,15 +137,7 @@ export async function checkAndPauseAdSets(
         // Só busca os 7 dias se algum conjunto da conta precisar da decisão.
         const needs7 = rows3.some((r) => {
           const rec = quarantine.get(r.id);
-          const d = decideAdSetAction({
-            cpaTarget,
-            now,
-            m3: toMetrics(r),
-            m7: undefined,
-            sevenDayFetched: true,
-            quarantineUntil: rec ? new Date(rec.quarantine_until) : null,
-          });
-          return d.action === "cut" || (d.action === "pause" && r.has_active_ad);
+          return needsSevenDayData(toMetrics(r), cpaTarget, rec ? new Date(rec.quarantine_until) : null, now);
         });
         let rows7: AdSetCostRow[] | null = [];
         if (needs7) {

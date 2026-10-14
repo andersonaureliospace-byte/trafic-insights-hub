@@ -2,8 +2,13 @@
 // (audit-errors.server.ts). Considera só campanhas/conjuntos ativos:
 // anúncios reprovados/restritos/em análise, e conjuntos ativos sem nenhum
 // anúncio ativo.
+// Etapa 122: SÓ o caso "conjunto sem anúncio ativo" gera pausa (e só depois de conferir DIRETO os anúncios do
+// conjunto: se tiver qualquer anúncio ativo ou em outro status vivo — análise, processando, reprovado… —, ou o
+// conjunto for novo e ainda sem anúncio, não pausa). Anúncio com erro/em análise só é REGISTRADO como aviso
+// (entity_type "ad"); o conjunto dele não é pausado.
 
 import { metaGetAll } from "@/lib/meta/client";
+import { checkAdsetSafeToPause } from "@/lib/meta/adset-ads-check";
 
 export interface AuditErrorIssue {
   entity_id: string;
@@ -38,6 +43,7 @@ interface AdsetRow {
   status?: string;
   effective_status?: string;
   end_time?: string;
+  created_time?: string;
   campaign?: { name?: string; effective_status?: string };
   ads?: { data?: Array<{ id: string }> };
 }
@@ -95,7 +101,7 @@ export async function auditAccountErrors(
     `/${actId}/adsets`,
     {
       fields:
-        "id,name,status,effective_status,end_time,campaign{name,effective_status},ads.effective_status(['ACTIVE']).limit(1){id}",
+        "id,name,status,effective_status,end_time,created_time,campaign{name,effective_status},ads.effective_status(['ACTIVE']).limit(1){id}",
       effective_status: JSON.stringify(["ACTIVE"]),
       limit: "200",
     },
@@ -109,6 +115,9 @@ export async function auditAccountErrors(
     if (row.end_time && new Date(row.end_time).getTime() <= now) continue;
     checked++;
     if ((row.ads?.data?.length ?? 0) === 0) {
+      // Confere direto na Meta antes de acusar (e pausar): só vale se não há nenhum anúncio "vivo".
+      const check = await checkAdsetSafeToPause(token, row.id, row.created_time);
+      if (!check.safeToPause) continue;
       issues.push({
         entity_id: row.id,
         entity_name: row.name || row.id,
