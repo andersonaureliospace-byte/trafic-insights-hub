@@ -5,6 +5,8 @@
 
 import { metaGet, metaGetAll, spDate } from "./client";
 import { isVaga, EXCLUDED_OBJECTIVES, pickFirstNumeric } from "./shared";
+import { memoMeta } from "./memo";
+import { closedDaysFor, hasAllClosedDays, normAccountId } from "./daily-store";
 
 // Soma/subtrai dias de uma data YYYY-MM-DD só no calendário (UTC puro, sem
 // fuso nem horário de verão), então dá o mesmo resultado em qualquer servidor.
@@ -34,23 +36,28 @@ interface DailyInsightRow {
   results?: Array<{ values?: Array<{ value?: string }> }>;
 }
 
+// Etapa 125: lista de campanhas excluídas guardada por 2 min (várias partes da mesma tela pedem junto);
+// se a Meta falhar, devolve vazio e NÃO guarda o vazio (a próxima chamada tenta de novo).
 async function getExcludedCampaignIds(token: string, id: string): Promise<Set<string>> {
-  const excluded = new Set<string>();
   try {
-    const camps = await metaGet<{ data: CampaignRow[] }>(token, `/${id}/campaigns`, {
-      fields: "id,name,objective",
-      limit: "500",
-    });
-    for (const c of camps.data ?? []) {
-      if (!c.id) continue;
-      if (isVaga(c.name) || (c.objective && EXCLUDED_OBJECTIVES.has(c.objective))) {
-        excluded.add(c.id);
+    return await memoMeta(`daily-excl:${id}:${token.slice(-10)}`, 120_000, async () => {
+      const excluded = new Set<string>();
+      const camps = await metaGet<{ data: CampaignRow[] }>(token, `/${id}/campaigns`, {
+        fields: "id,name,objective",
+        limit: "500",
+      });
+      for (const c of camps.data ?? []) {
+        if (!c.id) continue;
+        if (isVaga(c.name) || (c.objective && EXCLUDED_OBJECTIVES.has(c.objective))) {
+          excluded.add(c.id);
+        }
       }
-    }
+      return excluded;
+    });
   } catch (e) {
     console.error("daily-cpa campaigns err", id, e);
+    return new Set<string>();
   }
-  return excluded;
 }
 
 async function getAccountDailyCpa(
@@ -108,7 +115,19 @@ async function getAccountDailyCpa(
 // date_preset "today" (agregado, sem quebra por dia) — a mesma técnica já
 // usada com sucesso no resto do Painel (Acompanhamento) — e sobrescrevendo
 // o ponto de hoje no array com esse valor, sempre que houver dado.
-async function getAccountTodayCpa(
+function getAccountTodayCpa(
+  token: string,
+  actId: string,
+  todayDate: string,
+  excluded: Set<string>,
+): Promise<DailyCpaPoint> {
+  // Etapa 125: Evolução pede "hoje" duas vezes (dia a dia + mês) — junta numa chamada só (1 min).
+  return memoMeta(`daily-today:${actId}:${todayDate}:${token.slice(-10)}`, 60_000, () =>
+    fetchAccountTodayCpa(token, actId, todayDate, excluded),
+  );
+}
+
+async function fetchAccountTodayCpa(
   token: string,
   actId: string,
   todayDate: string,
@@ -147,12 +166,26 @@ export async function getAccountsMonthCpa(
   accountIds: string[],
 ): Promise<Record<string, DailyCpaPoint>> {
   const out: Record<string, DailyCpaPoint> = {};
+  // Etapa 125: dia 01 até ontem vem do backup diário (Supabase); a Meta só responde "hoje".
+  const todayDate = spDate(new Date());
+  const monthStart = `${todayDate.slice(0, 7)}-01`;
+  const yesterday = addDaysYmd(todayDate, -1);
+  const storedMonth = monthStart <= yesterday ? await closedDaysFor(accountIds, monthStart, yesterday) : new Map();
   await Promise.all(
     accountIds.map(async (actId) => {
       const id = actId.startsWith("act_") ? actId : `act_${actId}`;
       const excluded = await getExcludedCampaignIds(token, id);
       let spend = 0;
       let results = 0;
+      if (monthStart > yesterday || hasAllClosedDays(storedMonth.get(normAccountId(actId)), monthStart, yesterday)) {
+        const days = storedMonth.get(normAccountId(actId));
+        if (days) for (const d of days.values()) { spend += d.cpaSpend; results += d.results; }
+        const t = await getAccountTodayCpa(token, actId, todayDate, excluded);
+        spend += t.spend;
+        results += t.results;
+        out[actId] = { date: "this_month", spend, results, cpa: results > 0 && spend > 0 ? spend / results : null };
+        return;
+      }
       try {
         const rows = await metaGetAll<Omit<DailyInsightRow, "date_start">>(token, `/${id}/insights`, {
           fields: "campaign_id,campaign_name,spend,results",
@@ -195,11 +228,26 @@ export async function getAccountsDailyCpa(
   const since = addDaysYmd(until, -(clampedDays - 1));
 
   const out: Record<string, DailyCpaPoint[]> = {};
+  // Etapa 125: dias fechados do período vêm do backup diário (Supabase) quando a conta tem todos eles;
+  // senão, a busca de sempre na Meta. Hoje (includeToday) continua ao vivo.
+  const closedUntil = until < todayDate ? until : addDaysYmd(todayDate, -1);
+  const stored = since <= closedUntil ? await closedDaysFor(accountIds, since, closedUntil) : new Map();
   await Promise.all(
     accountIds.map(async (actId) => {
       const id = actId.startsWith("act_") ? actId : `act_${actId}`;
       const excluded = await getExcludedCampaignIds(token, id);
-      const points = await getAccountDailyCpa(token, actId, since, until, excluded);
+      const days = stored.get(normAccountId(actId));
+      let points: DailyCpaPoint[];
+      if (since <= closedUntil && hasAllClosedDays(days, since, closedUntil)) {
+        points = [];
+        for (let d = since; d <= closedUntil; d = addDaysYmd(d, 1)) {
+          const v = days!.get(d)!;
+          points.push({ date: d, spend: v.cpaSpend, results: v.results, cpa: v.results > 0 && v.cpaSpend > 0 ? v.cpaSpend / v.results : null });
+        }
+        if (until >= todayDate) points.push({ date: todayDate, spend: 0, results: 0, cpa: null });
+      } else {
+        points = await getAccountDailyCpa(token, actId, since, until, excluded);
+      }
       if (includeToday) {
         const today = await getAccountTodayCpa(token, actId, todayDate, excluded);
         const idx = points.findIndex((p) => p.date === todayDate);

@@ -2606,6 +2606,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Análise, 15 min e apagado depois de qualquer ação); o "↻ Atualizar" de cada aba busca só dela. Acompanhamento
     não busca mais sozinho a cada 5 min. Falhou a busca? O salvo continua na tela.
 
+113. **Backup diário das métricas no Supabase — 37 dias (Etapa 125)** — rode `supabase/migrations/0030_meta_daily_metrics.sql`
+    (tabela meta_daily_metrics: uma linha por conta e dia com gasto, gasto das campanhas de CPA, resultados e tipos).
+    O hook `metrics-sync-tick` (n8n, 03h00 e 03h25) refaz os últimos 37 dias de cada conta — refazer tudo pega as
+    conversas atribuídas depois — e apaga o que passou de 37 dias (janela móvel: é o "reset" da virada do mês, e no
+    dia 1º ainda existe o mês anterior inteiro pra olhar os últimos 7 dias). Quem lê (lib/meta/daily-store.ts):
+    getAccountInsight (Ritmo, Acompanhamento, Metas, Monitor de CPA, avisos de CPA e Invest. diário) e o CPA diário
+    + mensal da Evolução usam os dias fechados do backup e perguntam à Meta só o dia de hoje (ou o que faltar:
+    conta nova, buraco no backup, período mais velho que a janela, "maximum" → busca de sempre na Meta, sem erro).
+    Regras de período em lib/meta/daily-range.ts (testadas). Não cobre as análises por conjunto/anúncio
+    (Análise, pausas automáticas): essas continuam ao vivo.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

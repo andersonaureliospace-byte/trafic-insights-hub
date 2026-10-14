@@ -18,6 +18,7 @@
 
 import { metaGet, metaGetAll, presetParams, type DateRangeInput } from "./client";
 import { memoMeta, tokenTag } from "./memo";
+import { planFromStore } from "./daily-store";
 import { isVaga, isJobCampaign, EXCLUDED_OBJECTIVES, pickFirstNumeric, lifetimeToDailyEquivalent } from "./shared";
 
 // Ajuste pedido pelo usuário: um conjunto "Programado" (Meta Ads mostra o
@@ -282,23 +283,42 @@ export async function getAccountInsight(
     // estourar limite/timeout da Meta) e, se vier vazio, tenta mais uma vez — a Meta
     // às vezes devolve lista vazia sem erro quando está sobrecarregada, o que virava
     // "gasto zero" e inflava o Ritmo.
+    // Etapa 125: os dias FECHADOS do período vêm do backup diário no Supabase (meta_daily_metrics); a Meta
+    // só é perguntada pelo que falta — normalmente só o dia de hoje. Sem backup (conta nova, período
+    // desconhecido, banco fora do ar) = caminho de sempre: o período inteiro na Meta.
+    const stored = await planFromStore(actId, datePreset).catch(() => null);
     const fetchIns = () =>
       metaGet<InsRes>(token, `/${id}/insights`, {
         fields: spendOnly
           ? "campaign_id,campaign_name,spend"
           : "campaign_id,campaign_name,spend,actions,cost_per_action_type,results,cost_per_result",
-        ...presetParams(datePreset),
+        ...(stored?.live ? { time_range: JSON.stringify(stored.live) } : presetParams(datePreset)),
         level: "campaign",
         limit: "500",
         ...(spendOnly ? {} : { use_unified_attribution_setting: "true" }),
       });
-    let ins = await fetchIns();
-    if (spendOnly && (ins.data ?? []).length === 0) {
-      await new Promise((r) => setTimeout(r, 800));
+    let ins: InsRes = { data: [] };
+    if (!stored || stored.live) {
       ins = await fetchIns();
+      if (spendOnly && !stored && (ins.data ?? []).length === 0) {
+        await new Promise((r) => setTimeout(r, 800));
+        ins = await fetchIns();
+      }
     }
     let totalResults = 0;
     let hasResults = false;
+    for (const day of stored?.used ?? []) {
+      spend += day.spend;
+      cpaSpend += day.cpaSpend;
+      if (day.results > 0) {
+        totalResults += day.results;
+        hasResults = true;
+      }
+      for (const t of day.types) {
+        resultTypesSet.add(t);
+        lastResultType = t;
+      }
+    }
     for (const row of ins.data ?? []) {
       if (isJobCampaign(row.campaign_name)) continue;
       if (row.campaign_id && vagaIds.has(row.campaign_id)) continue;
