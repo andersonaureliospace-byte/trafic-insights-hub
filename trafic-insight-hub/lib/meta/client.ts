@@ -2,6 +2,8 @@
 // Portado do app anterior (src/lib/meta.functions.ts), mesma lógica de retry
 // e paginação.
 
+import { invalidateMetaMemo } from "./memo";
+
 const GRAPH = "https://graph.facebook.com/v21.0";
 
 export type DatePreset =
@@ -234,7 +236,10 @@ export async function metaPost<T>(
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: body.toString(),
     });
-    if (res.ok) return res.json() as Promise<T>;
+    if (res.ok) {
+      invalidateMetaMemo(); // Etapa 124: depois de qualquer escrita, as respostas guardadas deixam de valer
+      return res.json() as Promise<T>;
+    }
     const text = await res.text();
     const { transient, rateLimited, msg } = classifyPostError(res.status, text);
     lastMsg = msg;

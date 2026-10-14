@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client-cache";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -31,13 +32,8 @@ interface MetasInsight {
 }
 
 // Etapa 90: trocar de aba desmonta este componente — sem cache, voltar pra cá refazia
-// a busca completa na Meta toda vez. Guarda a última busca completa (5 min).
-const METAS_CACHE_MS = 5 * 60 * 1000;
-let metasCache: {
-  key: string;
-  at: number;
-  insights: Record<string, MetasInsight>;
-} | null = null;
+// a busca completa na Meta toda vez. Etapa 124: o backup agora fica no navegador (localStorage, sobrevive ao
+// F5) — entrar na aba mostra o salvo e só busca se não tem nada recente (1h); ↻ Atualizar sempre busca.
 
 interface Row {
   accountId: string;
@@ -122,13 +118,19 @@ export function MetasTab({
       ? 0
       : accounts.filter((a) => !insights[a.account_id] || insights[a.account_id]?.insights_failed).length;
 
-  const load = useCallback(async () => {
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const load = useCallback(async (force = false) => {
     if (accounts.length === 0) {
       setInsights({});
       return;
     }
-    const accountsKey = accounts.map((a) => a.account_id).join(",");
     const targets = accounts;
+    const backup = readTabCache<Record<string, MetasInsight>>("metas");
+    if (backup) {
+      setInsights(backup.data);
+      setSavedAt(backup.at);
+      if (!force && isFresh(backup) && accounts.every((a) => backup.data[a.account_id] && !backup.data[a.account_id]?.insights_failed)) return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -144,8 +146,12 @@ export function MetasTab({
       const d = await res.json();
       if (d.error) throw new Error(d.error);
       const fresh = (d.insights ?? {}) as Record<string, MetasInsight>;
-      setInsights(fresh);
-      metasCache = { key: accountsKey, at: Date.now(), insights: fresh };
+      // Se a Meta falhou em quase tudo e já existe backup, não troca bom por ruim.
+      const failedAll = Object.keys(fresh).length > 0 && Object.values(fresh).every((v) => v.insights_failed);
+      if (!(failedAll && backup)) {
+        setInsights(fresh);
+        setSavedAt(writeTabCache("metas", fresh));
+      }
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -154,16 +160,9 @@ export function MetasTab({
   }, [accounts]);
 
   useEffect(() => {
-    const key = accounts.map((a) => a.account_id).join(",");
-    if (metasCache && metasCache.key === key && Date.now() - metasCache.at < METAS_CACHE_MS) {
-       
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reaproveita a última busca (menos de 5 min) ao voltar pra aba
-      setInsights(metasCache.insights);
-      return;
-    }
-     
-    void load();
-  }, [load, accounts]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mostra o backup e só busca se não há dado recente
+    void load(false);
+  }, [load]);
 
   // Calendário só é calculado no cliente, no momento do render da aba — dias
   // decorridos do mês (contando hoje) e dias reais do mês, mesma base do Ritmo.
@@ -226,12 +225,13 @@ export function MetasTab({
             ))}
           </select>
           <button
-            onClick={() => void load()}
+            onClick={() => void load(true)}
             disabled={loading}
             className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
           >
             {loading ? "Atualizando…" : "↻ Atualizar"}
           </button>
+          {savedAt && !loading ? <span className="text-xs text-zinc-400">atualizado às {fmtCacheTime(savedAt)}</span> : null}
         </div>
       </div>
 

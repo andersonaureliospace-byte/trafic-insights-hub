@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { runLocationAudit, runErrorAudit } from "@/lib/audit/run";
 
-// Endpoint público chamado pelo n8n (ex.: a cada 30-60 minutos) pra rodar as
+// Endpoint público chamado pelo n8n (Etapa 124: de hora em hora no minuto 50, menos 08h/10h/14h — nos
+// picos de uso roda só às 09h50 e 15h50) pra rodar as
 // duas auditorias automaticamente, sem precisar clicar em "Verificar agora".
 // Protegido pelo mesmo segredo compartilhado do disparo de WhatsApp — é o
 // segredo geral dos hooks internos do sistema, não só do WhatsApp.

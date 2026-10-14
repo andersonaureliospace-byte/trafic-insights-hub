@@ -1,6 +1,11 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { dropTabCachePrefix, fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client-cache";
+
+// Etapa 124: a Análise gera listas pra AGIR (pausar/aumentar orçamento) — o backup vale só 15 min
+// e é apagado depois de qualquer ação, pra nunca agir em cima de lista velha.
+const ANALISE_FRESH_MS = 15 * 60 * 1000;
 import type { AdAccount } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -355,28 +360,45 @@ export function AnaliseTab({
 
   const accountNameById = useMemo(() => new Map(accounts.map((a) => [a.account_id, a.name])), [accounts]);
 
-  const loadAdsets = useCallback(async () => {
+  const [analiseAt, setAnaliseAt] = useState<number | null>(null);
+  const loadAdsets = useCallback(async (force = false) => {
     if (accounts.length === 0) {
       setGroups([]);
       return;
     }
+    const key = `analise-adsets:${mode}:${preset}:${accounts.map((a) => a.account_id).join(",")}`;
+    const backup = readTabCache<{ groups: Group[]; skipped: typeof skipped }>(key);
+    if (backup) {
+      setGroups(backup.data.groups);
+      setSkipped(backup.data.skipped);
+      setAnaliseAt(backup.at);
+      if (!force && isFresh(backup, ANALISE_FRESH_MS)) return;
+    } else {
+      setAnaliseAt(null);
+    }
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/analysis/adsets", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        accountIds: accounts.map((a) => a.account_id),
-        datePreset: preset,
-        mode,
-      }),
-    });
-    const d = await res.json();
+    let d: { error?: string; groups?: Group[]; skipped?: typeof skipped };
+    try {
+      const res = await fetch("/api/analysis/adsets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountIds: accounts.map((a) => a.account_id),
+          datePreset: preset,
+          mode,
+        }),
+      });
+      d = await res.json();
+    } catch (e) {
+      d = { error: (e as Error).message };
+    }
     setLoading(false);
     if (d.error) {
       setError(d.error);
       return;
     }
+    setAnaliseAt(writeTabCache(key, { groups: d.groups ?? [], skipped: d.skipped ?? [] }));
     setGroups(d.groups ?? []);
     setSkipped(d.skipped ?? []);
     setIncreasedIds(new Set());
@@ -385,27 +407,41 @@ export function AnaliseTab({
 
   // Criativos só existem na aba "acima da meta" — não busca nada na
   // "abaixo da meta", pra não gastar chamada à toa com o que não aparece.
-  const loadCreatives = useCallback(async () => {
+  const loadCreatives = useCallback(async (force = false) => {
     if (mode !== "above" || accounts.length === 0) {
       setCreativeGroups(mode !== "above" ? null : []);
       return;
     }
+    const key = `analise-creatives:${preset}:${accounts.map((a) => a.account_id).join(",")}`;
+    const backup = readTabCache<{ groups: CreativeGroup[]; skipped: typeof skipped }>(key);
+    if (backup) {
+      setCreativeGroups(backup.data.groups);
+      setSkipped(backup.data.skipped);
+      setAnaliseAt(backup.at);
+      if (!force && isFresh(backup, ANALISE_FRESH_MS)) return;
+    }
     setCreativeLoading(true);
     setCreativeError(null);
-    const res = await fetch("/api/analysis/creatives", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        accountIds: accounts.map((a) => a.account_id),
-        datePreset: preset,
-      }),
-    });
-    const d = await res.json();
+    let d: { error?: string; groups?: CreativeGroup[]; skipped?: typeof skipped };
+    try {
+      const res = await fetch("/api/analysis/creatives", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountIds: accounts.map((a) => a.account_id),
+          datePreset: preset,
+        }),
+      });
+      d = await res.json();
+    } catch (e) {
+      d = { error: (e as Error).message };
+    }
     setCreativeLoading(false);
     if (d.error) {
       setCreativeError(d.error);
       return;
     }
+    setAnaliseAt(writeTabCache(key, { groups: d.groups ?? [], skipped: d.skipped ?? [] }));
     setCreativeGroups(d.groups ?? []);
     // Mesma checagem de "conta sem Meta CPA cadastrada" do lado de Conjuntos
     // — atualiza o aviso mesmo quando quem buscou por último foi a tela de
@@ -419,8 +455,8 @@ export function AnaliseTab({
   // duas listas na mesma tela. Em "abaixo da meta" só existe Conjuntos.
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca a análise ao trocar contas/período/aba/tela exibida
-    if (mode === "below" || subPanel === "conjuntos") void loadAdsets();
-    if (mode === "above" && subPanel === "criativos") void loadCreatives();
+    if (mode === "below" || subPanel === "conjuntos") void loadAdsets(false);
+    if (mode === "above" && subPanel === "criativos") void loadCreatives(false);
   }, [loadAdsets, loadCreatives, mode, subPanel]);
 
   // Desarma os botões em massa sozinho ao trocar de aba/tela/período — evita
@@ -495,6 +531,7 @@ export function AnaliseTab({
   // no conjunto. Sem popup de confirmação (pedido explícito também). Usado
   // pelos criativos expandidos DENTRO de um conjunto (sub-painel Conjuntos).
   async function pauseCreative(ad: AdRow, adsetId: string) {
+    dropTabCachePrefix("analise-");
     setActingId(ad.id);
     const res = await fetch("/api/meta/status", {
       method: "POST",
@@ -527,6 +564,7 @@ export function AnaliseTab({
   // nada. Some da lista ao pausar, já que deixa de ser um conjunto ativo pra
   // sinalizar aqui.
   async function pauseOneAdSet(adset: AdSetRow): Promise<{ ok: true } | { ok: false; error: string }> {
+    dropTabCachePrefix("analise-");
     const res = await fetch("/api/meta/status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -554,6 +592,7 @@ export function AnaliseTab({
   // chamada simples, mas opera na lista plana (creativeGroups), não na
   // nested de dentro de um conjunto.
   async function pauseOneCreativeStandalone(ad: CreativeRow): Promise<{ ok: true } | { ok: false; error: string }> {
+    dropTabCachePrefix("analise-");
     const res = await fetch("/api/meta/status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -579,6 +618,7 @@ export function AnaliseTab({
   // R$2,50 fixo. Fica marcado como "Aumentado" (e o botão trava) até a
   // próxima atualização, pra não dar dois cliques sem querer.
   async function increaseOneBudget(adset: AdSetRow): Promise<{ ok: true } | { ok: false; error: string }> {
+    dropTabCachePrefix("analise-");
     const res = await fetch("/api/analysis/increase-budget", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -797,14 +837,17 @@ export function AnaliseTab({
           </select>
           <button
             onClick={() => {
-              if (mode === "below" || subPanel === "conjuntos") void loadAdsets();
-              if (mode === "above" && subPanel === "criativos") void loadCreatives();
+              if (mode === "below" || subPanel === "conjuntos") void loadAdsets(true);
+              if (mode === "above" && subPanel === "criativos") void loadCreatives(true);
             }}
             disabled={controlsDisabled}
             className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
           >
             {loading || creativeLoading ? "Atualizando…" : "↻ Atualizar"}
           </button>
+          {analiseAt && !(loading || creativeLoading) ? (
+            <span className="text-xs text-zinc-400">atualizado às {fmtCacheTime(analiseAt)}</span>
+          ) : null}
         </div>
       </div>
 

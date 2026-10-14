@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkLowBudget } from "@/lib/alerts/low-budget";
 
-// Endpoint público chamado pelo n8n, de 3 em 3 horas (02h/05h/08h/11h/14h/17h/20h/23h, Etapa
-// 106) — só avisa (nunca pausa nem muda nada) o grupo de WhatsApp configurado com as contas
+// Endpoint público chamado pelo n8n (Etapa 124: só às 07h e às 16h, todo dia; antes de 3 em 3 horas) — só avisa (nunca pausa nem muda nada) o grupo de WhatsApp configurado com as contas
 // cujo Invest. diário atual está em 80% ou menos do Ritmo. Protegido pelo mesmo segredo
 // compartilhado dos outros hooks internos (WHATSAPP_DISPATCH_SECRET).
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).

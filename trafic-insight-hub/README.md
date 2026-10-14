@@ -2594,6 +2594,18 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Meta (lib/meta/client.ts, MetaRateLimitError). O Painel guarda no navegador a última lista de contas e, se a
     Meta bloquear, abre com ela (aviso amarelo + "Tentar de novo") em vez de ficar sem contas.
 
+112. **Menos requisições à Meta + horários de pico livres (Etapa 124)** — pedido: o sistema é mais usado das 08h às
+    11h e das 14h às 16h e não pode falhar aí. (a) n8n: Criativos e Conjuntos viraram UM fluxo encadeado (pausa os
+    criativos e logo depois os conjuntos) às 01h10/04h10/07h10/11h10/13h40/16h10/19h10/22h10; saíram "Investimento
+    baixo" e "Criativos sem resultado" de hora em hora (as rotas continuam existindo, só sem agendamento); Invest.
+    diário em 80% do Ritmo só às 07h e 16h; CPA de ontem às 06h; a auditoria não roda às 08h/10h/14h (nos picos só
+    09h50 e 15h50). (b) Servidor: lib/meta/memo.ts guarda por poucos minutos a lista de contas, o status dos
+    anúncios e as campanhas (junta chamadas iguais simultâneas e, se a Meta falhar, devolve a última resposta boa);
+    qualquer escrita na Meta limpa essa memória. (c) Painel: cada aba tem backup no navegador (lib/client-cache.ts,
+    localStorage): ao entrar mostra o salvo + "atualizado às HH:MM" e só busca na Meta se não há nada recente (1h; na
+    Análise, 15 min e apagado depois de qualquer ação); o "↻ Atualizar" de cada aba busca só dela. Acompanhamento
+    não busca mais sozinho a cada 5 min. Falhou a busca? O salvo continua na tela.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

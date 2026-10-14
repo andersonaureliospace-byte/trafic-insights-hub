@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkLowInvestment } from "@/lib/alerts/low-investment";
 
-// Endpoint público chamado pelo n8n, de segunda a sexta (07h/09h15/13h
-// sugeridos, Etapa 53) — só avisa (nunca pausa nem muda nada) o grupo de
+// Endpoint público (Etapa 124: SEM agendamento no n8n — o aviso de "Invest. diário em 80% do Ritmo",
+// low-budget-tick, cobre o caso; a rota continua existindo pra uso manual) — só avisa (nunca pausa nem muda nada) o grupo de
 // WhatsApp configurado com as contas cujo orçamento diário já configurado
 // está MENOR que o Ritmo necessário pra bater a meta do mês — qualquer
 // diferença, sem banda de tolerância (Etapa 54). Protegido pelo mesmo

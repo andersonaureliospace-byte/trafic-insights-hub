@@ -10,6 +10,7 @@
 
 import { metaGetAll, presetParams, type DateRangeInput } from "./client";
 import { isVaga, EXCLUDED_OBJECTIVES } from "./shared";
+import { memoMeta, tokenTag } from "./memo";
 
 export interface CreativeCostRow {
   id: string;
@@ -67,17 +68,23 @@ export async function getCreativeCostAnalysis(
       limit: "500",
       use_unified_attribution_setting: "true",
     }),
-    metaGetAll<AdStatusRow>(token, `/${id}/ads`, {
-      fields: "id,effective_status,status",
-      limit: "500",
-    }).catch((e) => {
+    // Etapa 124: a lista de status dos anúncios e a de campanhas não dependem do período — ficam 2 min na memória
+    // (compartilhadas entre os períodos da mesma rodada e entre Criativos → Conjuntos). Pausar/ativar limpa isso.
+    memoMeta(`creative-ads:${tokenTag(token)}:${id}`, 120_000, () =>
+      metaGetAll<AdStatusRow>(token, `/${id}/ads`, {
+        fields: "id,effective_status,status",
+        limit: "500",
+      }),
+    ).catch((e) => {
       console.error("creative analysis status err (non-fatal)", id, e);
       return [] as AdStatusRow[];
     }),
-    metaGetAll<CampaignRow>(token, `/${id}/campaigns`, {
-      fields: "id,objective",
-      limit: "500",
-    }).catch((e) => {
+    memoMeta(`creative-campaigns:${tokenTag(token)}:${id}`, 120_000, () =>
+      metaGetAll<CampaignRow>(token, `/${id}/campaigns`, {
+        fields: "id,objective",
+        limit: "500",
+      }),
+    ).catch((e) => {
       console.error("creative analysis campaigns err (non-fatal)", id, e);
       return [] as CampaignRow[];
     }),

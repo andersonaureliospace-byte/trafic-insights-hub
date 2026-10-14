@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkAndPauseCreatives } from "@/lib/alerts/creatives-pause";
 
-// Endpoint público chamado pelo n8n, DE HORA EM HORA (Etapa 105) — pausa só os criativos
+// Endpoint público (Etapa 124: SEM agendamento no n8n — criativos sem resultado já são pausados por
+// creatives-pause-tick; a rota continua existindo pra uso manual) — pausa só os criativos
 // ATIVOS SEM RESULTADO: gastaram R$4+ acima da Meta CPA ontem + hoje sem nenhuma conversa
 // iniciada (mesmas regras de histórico dos 7 dias de creatives-pause-tick). Roda com mais
 // frequência que creatives-pause-tick, que também pausa o criativo "ruim" (com conversa,

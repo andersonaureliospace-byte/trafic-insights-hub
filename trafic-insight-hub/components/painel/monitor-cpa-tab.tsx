@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client-cache";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -97,11 +98,25 @@ export function MonitorCpaTab({
   // que "faltavam dados de clientes". Agora TODA conta selecionada aparece;
   // só quem não tem CPA ideal cadastrado fica sem barra colorida/tracinho
   // (nada pra comparar), mas o CPA real continua sendo mostrado.
-  const load = useCallback(async () => {
+  // Etapa 124: períodos "ao vivo" (Hoje, etc.) guardam um backup no navegador. Entrar na aba só
+  // busca na Meta se não tem backup recente; o ↻ Atualizar (force) sempre busca. Se a Meta falhar,
+  // o backup continua na tela.
+  const [liveAt, setLiveAt] = useState<number | null>(null);
+  const load = useCallback(async (force = false) => {
     if (accounts.length === 0) {
       setInsights({});
       setCachedAt(null);
       return;
+    }
+    const liveKey = `monitor-cpa:${period}`;
+    const backup = CACHED_PERIODS.has(period) ? null : readTabCache<Record<string, { cost_per_result: number | null }>>(liveKey);
+    if (backup) {
+      setInsights(backup.data);
+      setCachedAt(null);
+      setLiveAt(backup.at);
+      if (!force && isFresh(backup) && accounts.every((a) => backup.data[a.account_id] !== undefined)) return;
+    } else {
+      setLiveAt(null);
     }
     setLoading(true);
     setError(null);
@@ -127,6 +142,7 @@ export function MonitorCpaTab({
         if (d.error) throw new Error(d.error);
         setInsights(d.insights ?? {});
         setCachedAt(null);
+        setLiveAt(writeTabCache(liveKey, d.insights ?? {}));
       }
     } catch (e) {
       setError((e as Error).message);
@@ -137,7 +153,7 @@ export function MonitorCpaTab({
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca ao entrar na aba ou trocar de período/seleção de contas
-    void load();
+    void load(false);
   }, [load]);
 
   async function calcularAgora() {
@@ -147,7 +163,7 @@ export function MonitorCpaTab({
       const res = await fetch("/api/meta/cpa-board-cache/refresh", { method: "POST" });
       const d = await res.json();
       if (d.error) throw new Error(d.error);
-      await load();
+      await load(true);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -219,7 +235,7 @@ export function MonitorCpaTab({
               ? cachedAt
                 ? `Dados de ${periodLabel} atualizados automaticamente 1x por dia (última vez às ${fmtTime(cachedAt)}).`
                 : "Dados desse período ainda não foram calculados pela primeira vez."
-              : "Sempre ao vivo — clique em Atualizar pra buscar de novo na Meta."}
+              : `Dados salvos${liveAt ? ` (atualizado às ${fmtCacheTime(liveAt)})` : ""} — clique em Atualizar pra buscar de novo na Meta.`}
           </p>
         </div>
         {isCached ? (
@@ -232,7 +248,7 @@ export function MonitorCpaTab({
           </button>
         ) : (
           <button
-            onClick={() => void load()}
+            onClick={() => void load(true)}
             disabled={loading}
             className="h-8 shrink-0 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
           >

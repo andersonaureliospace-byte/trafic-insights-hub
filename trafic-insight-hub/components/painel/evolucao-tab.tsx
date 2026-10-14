@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client-cache";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -107,37 +108,53 @@ export function EvolucaoTab({
     });
   }, [accounts, month]);
 
-  const load = useCallback(async () => {
+  // Etapa 124: backup no navegador — entrar na aba mostra o salvo e só busca na Meta se não tem nada
+  // recente (1h); o ↻ Atualizar (force) sempre busca. Falhou? O salvo continua na tela.
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const load = useCallback(async (force = false) => {
     if (accounts.length === 0) {
       setDaily({});
       setMonth({});
       return;
     }
+    const backup = readTabCache<{ daily: typeof daily; month: typeof month }>("evolucao");
+    if (backup) {
+      setDaily(backup.data.daily);
+      setMonth(backup.data.month);
+      setSavedAt(backup.at);
+      if (!force && isFresh(backup) && accounts.every((a) => backup.data.month[a.account_id] !== undefined || backup.data.daily[a.account_id] !== undefined)) return;
+    }
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/meta/daily-cpa", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        accountIds: accounts.map((a) => a.account_id),
-        days: DAYS_BACK + 1,
-        includeToday: true,
-        includeMonth: true,
-      }),
-    });
-    const d = await res.json();
-    setLoading(false);
-    if (d.error) {
-      setError(d.error);
-      return;
+    try {
+      const res = await fetch("/api/meta/daily-cpa", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountIds: accounts.map((a) => a.account_id),
+          days: DAYS_BACK + 1,
+          includeToday: true,
+          includeMonth: true,
+        }),
+      });
+      const d = await res.json();
+      if (d.error) {
+        setError(d.error);
+        return;
+      }
+      setDaily(d.daily ?? {});
+      setMonth(d.month ?? {});
+      setSavedAt(writeTabCache("evolucao", { daily: d.daily ?? {}, month: d.month ?? {} }));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setLoading(false);
     }
-    setDaily(d.daily ?? {});
-    setMonth(d.month ?? {});
   }, [accounts]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca o CPA diário ao entrar na aba ou trocar a seleção de contas
-    void load();
+    void load(false);
   }, [load]);
 
   if (accounts.length === 0) {
@@ -149,7 +166,7 @@ export function EvolucaoTab({
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <div>
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
-            Evolução {loading ? "· atualizando…" : ""}
+            Evolução {loading ? "· atualizando…" : savedAt ? `· atualizado às ${fmtCacheTime(savedAt)}` : ""}
           </h2>
           <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
             CPA de cada dia (últimos 7 dias + hoje) e do mês atual, comparado com o CPA ideal de cada
@@ -158,7 +175,7 @@ export function EvolucaoTab({
           </p>
         </div>
         <button
-          onClick={() => void load()}
+          onClick={() => void load(true)}
           disabled={loading}
           className="h-8 shrink-0 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
         >

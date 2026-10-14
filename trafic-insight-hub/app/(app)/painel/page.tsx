@@ -27,6 +27,7 @@ import { InlineNumber } from "@/components/painel/inline-number";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
 import { ClientNameHover } from "@/components/painel/client-name-hover";
 import { usePainelUiState } from "@/lib/hooks/use-painel-ui-state";
+import { FRESH_MS, fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client-cache";
 
 // Dia de hoje (YYYY-MM-DD) no fuso de Brasília — mesma regra do servidor (spDate) pro reset do "Otimizado".
 function brtDay(d: Date = new Date()): string {
@@ -116,7 +117,9 @@ type SortMode = "manual" | MetasSort | typeof PRIORITY_CPA_SORT;
 // antigo. Função pura fora do componente + comparador de uma expressão só
 // pro React Compiler conseguir preservar a memoização do useMemo abaixo.
 // Etapa 90: busca automática (entrar na aba) só repete depois disso; ↻ sempre busca.
-const AUTO_RELOAD_MS = 5 * 60 * 1000;
+// Etapa 124: só evita disparar a mesma busca 2x seguidas (efeitos re-rodando); quem decide se busca é o
+// backup local (lib/client-cache.ts): entrou na aba com dado recente salvo → não busca.
+const AUTO_RELOAD_MS = 60 * 1000;
 
 function rowSortKey(row: { binding?: AccountBinding; insight?: AccountInsight }): number {
   return row.binding?.sort_order ?? (1_000_000_000 - (row.insight?.spend ?? 0));
@@ -200,6 +203,10 @@ export default function PainelPage() {
   const [insights, setInsights] = useState<Record<string, AccountInsight>>({});
   const [monthlyInsights, setMonthlyInsights] = useState<Record<string, AccountInsight>>({});
   const [loadingInsights, setLoadingInsights] = useState(false);
+  // Etapa 124: hora da última atualização de cada bloco (vem do backup local ou da busca) — aparece ao lado do ↻.
+  const [insightsAt, setInsightsAt] = useState<number | null>(null);
+  const insightsRef = useRef<Record<string, AccountInsight>>({});
+  const monthlyRef = useRef<Record<string, AccountInsight>>({});
   const [preset, setPreset] = useState<PresetId>("last_7d");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -463,6 +470,12 @@ export default function PainelPage() {
     const balanceRes = await fetch("/api/alerts/balance", { signal: AbortSignal.timeout(90_000) }).then((r) => r.json()).catch(() => ({}));
     const paymentRes = await fetch("/api/alerts/payment", { signal: AbortSignal.timeout(90_000) }).then((r) => r.json()).catch(() => ({}));
     // Se a Meta falhou (limite de requisições), mantém o que já estava na tela em vez de apagar as cores.
+    if (balanceRes.statuses && paymentRes.statuses) {
+      writeTabCache("acomp-alertas", {
+        low: ((balanceRes.statuses ?? []) as Array<{ ad_account_id: string; low: boolean }>).filter((x) => x.low).map((x) => x.ad_account_id),
+        pay: ((paymentRes.statuses ?? []) as Array<{ ad_account_id: string; hasError: boolean }>).filter((x) => x.hasError).map((x) => x.ad_account_id),
+      });
+    }
     if (balanceRes.statuses) setLowBalanceIds(
       new Set(
         ((balanceRes.statuses ?? []) as Array<{ ad_account_id: string; low: boolean }>)
@@ -485,7 +498,13 @@ export default function PainelPage() {
     const at = autoLoadRef.current.alerts;
     if (at && Date.now() - at < AUTO_RELOAD_MS) return;
     autoLoadRef.current.alerts = Date.now();
-     
+    // Etapa 124: mostra o backup na hora; só busca na Meta se não tem backup recente.
+    const c = readTabCache<{ low: string[]; pay: string[] }>("acomp-alertas");
+    if (c) {
+      setLowBalanceIds(new Set(c.data.low));
+      setPaymentErrorIds(new Set(c.data.pay));
+      if (isFresh(c)) return;
+    }
     void loadAlertStatuses();
   }, [loadAlertStatuses, tab]);
 
@@ -533,7 +552,10 @@ export default function PainelPage() {
         const d = await res.json();
         // Erro geral da chamada: mantém o que já estava na tela em vez de zerar tudo.
         if (!d.insights) return false;
-        setInsights((prev) => (pinned ? { ...prev, ...d.insights } : d.insights));
+        const merged = pinned ? { ...insightsRef.current, ...d.insights } : d.insights;
+        insightsRef.current = merged;
+        setInsights(merged);
+        setInsightsAt(writeTabCache(`acomp-insights:${preset}`, merged));
         return true;
       } catch {
         return false;
@@ -557,7 +579,17 @@ export default function PainelPage() {
     const last = autoLoadRef.current.insights;
     if (last && last.key === key && Date.now() - last.at < AUTO_RELOAD_MS) return;
     autoLoadRef.current.insights = { key, at: Date.now() };
-     
+    // Etapa 124: backup local primeiro (aparece na hora). Só vai à Meta se faltou conta, ou se o backup tem > 1h.
+    // Nas demais situações, o ↻ Atualizar é quem busca.
+    const c = readTabCache<Record<string, AccountInsight>>(`acomp-insights:${preset}`);
+    if (c) {
+      insightsRef.current = c.data;
+      setInsights(c.data);
+      setInsightsAt(c.at);
+      if (isFresh(c, FRESH_MS) && selectedAccounts.every((a) => c.data[a.account_id])) return;
+    } else {
+      setInsightsAt(null);
+    }
     void loadInsights().then((ok) => {
       if (!ok) autoLoadRef.current.insights = null;
     });
@@ -590,7 +622,10 @@ export default function PainelPage() {
         });
         const d = await res.json();
         if (!d.insights) return false;
-        setMonthlyInsights((prev) => (pinned ? { ...prev, ...d.insights } : d.insights));
+        const merged = pinned ? { ...monthlyRef.current, ...d.insights } : d.insights;
+        monthlyRef.current = merged;
+        setMonthlyInsights(merged);
+        writeTabCache("acomp-mensal", merged);
         return true;
       } catch {
         return false;
@@ -605,7 +640,12 @@ export default function PainelPage() {
     const last = autoLoadRef.current.monthly;
     if (last && last.key === key && Date.now() - last.at < AUTO_RELOAD_MS) return;
     autoLoadRef.current.monthly = { key, at: Date.now() };
-     
+    const c = readTabCache<Record<string, AccountInsight>>("acomp-mensal");
+    if (c) {
+      monthlyRef.current = c.data;
+      setMonthlyInsights(c.data);
+      if (isFresh(c, FRESH_MS) && selectedAccounts.every((a) => c.data[a.account_id])) return;
+    }
     void loadMonthlyInsights().then((ok) => {
       if (!ok) autoLoadRef.current.monthly = null;
     });
@@ -1015,6 +1055,11 @@ export default function PainelPage() {
                     >
                       {loadingInsights ? "Atualizando…" : hasPinned ? "↻ Atualizar fixadas" : "↻ Atualizar"}
                     </button>
+                    {insightsAt ? (
+                      <span className="text-xs text-zinc-400" title="Dados salvos neste navegador. Clique em ↻ Atualizar para buscar na Meta.">
+                        atualizado às {fmtCacheTime(insightsAt)}
+                      </span>
+                    ) : null}
                     <button
                       onClick={() => setBulkStatusOpen(true)}
                       className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium dark:border-zinc-700"

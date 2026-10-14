@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { dropTabCache, fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client-cache";
 import type { AdAccount } from "@/lib/meta/insights";
 import type { BreakdownLevel, BreakdownRow } from "@/lib/meta/breakdown";
 import { DATE_PRESETS, fmtCurrency, type PresetId } from "@/lib/format";
@@ -84,36 +85,64 @@ export function VisaoGeral({
     }
   }, [accounts, accountId]);
 
-  const load = useCallback(async () => {
+  // Etapa 124: backup no navegador por conta/período/nível. Entrar na aba (ou trocar o filtro) mostra o
+  // salvo e só busca na Meta se não tem nada recente (1h); o ↻ Atualizar (force) sempre busca.
+  // Se a Meta falhar e existe backup, ele continua na tela.
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const load = useCallback(async (force = false) => {
     if (!accountId) return;
+    const key = `visao:${accountId}:${preset}:${level}`;
+    const backup = readTabCache<BreakdownRow[]>(key);
+    if (backup) {
+      setRows(backup.data);
+      setSavedAt(backup.at);
+      setError(null);
+      if (!force && isFresh(backup)) return;
+    } else {
+      setSavedAt(null);
+    }
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/meta/breakdown", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ accountId, datePreset: preset, level }),
-    });
-    const d = await res.json();
-    setLoading(false);
-    if (d.error) {
-      setError(d.error);
-      setRows(null);
-      return;
+    try {
+      const res = await fetch("/api/meta/breakdown", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId, datePreset: preset, level }),
+      });
+      const d = await res.json();
+      if (d.error) {
+        setError(d.error);
+        if (!backup) setRows(null);
+        return;
+      }
+      setRows(d.rows ?? []);
+      setSavedAt(writeTabCache(key, d.rows ?? []));
+    } catch (e) {
+      setError((e as Error).message);
+      if (!backup) setRows(null);
+    } finally {
+      setLoading(false);
     }
-    setRows(d.rows ?? []);
   }, [accountId, preset, level]);
 
   useEffect(() => {
     if (searching) return; // modo normal só busca quando NÃO está pesquisando
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca o breakdown ao trocar conta/nível/período
-    void load();
+    void load(false);
   }, [load, searching]);
 
   // Busca o breakdown de TODAS as contas exibidas, uma vez, pro nível e
   // período atuais — falha isolada de uma conta específica (token vencido,
   // conta restrita) não derruba a busca inteira, só fica de fora (mesmo
   // espírito das automações em massa: log no console, segue com o resto).
-  const loadAll = useCallback(async () => {
+  const loadAll = useCallback(async (force = false) => {
+    const allKey = `visao-all:${accounts.map((a) => a.account_id).join(",")}:${preset}:${level}`;
+    const backup = readTabCache<SearchRow[]>(allKey);
+    if (backup) {
+      setAllRows(backup.data);
+      setSavedAt(backup.at);
+      if (!force && isFresh(backup)) return;
+    }
     setAllLoading(true);
     setAllError(null);
     const settled = await Promise.all(
@@ -134,13 +163,17 @@ export function VisaoGeral({
       }),
     );
     setAllLoading(false);
-    setAllRows(settled.flat());
+    const flat = settled.flat();
+    // Se tudo falhou (ex.: limite da Meta) e existe backup, mantém o backup em vez de zerar a lista.
+    if (flat.length === 0 && backup) return;
+    setAllRows(flat);
+    if (flat.length > 0) setSavedAt(writeTabCache(allKey, flat));
   }, [accounts, preset, level]);
 
   useEffect(() => {
     if (!searching) return; // modo busca só chama a Meta quando ESTÁ pesquisando
     // eslint-disable-next-line react-hooks/set-state-in-effect -- busca em todas as contas ao começar a pesquisar, ou trocar nível/período enquanto pesquisa
-    void loadAll();
+    void loadAll(false);
   }, [loadAll, searching]);
 
   // Filtra localmente o que já foi buscado — digitar mais letras não faz
@@ -171,6 +204,9 @@ export function VisaoGeral({
       alert(result?.error ?? "Não foi possível atualizar o status.");
       return;
     }
+    // o backup guardado ficou com o status antigo — descarta (próxima entrada busca de novo)
+    dropTabCache(`visao:${accountId}:${preset}:${level}`);
+    dropTabCache(`visao-all:${accounts.map((a) => a.account_id).join(",")}:${preset}:${level}`);
     setRows((prev) => (prev ? prev.map((r) => (r.id === row.id ? { ...r, status: next } : r)) : prev));
     setAllRows((prev) => (prev ? prev.map((r) => (r.id === row.id ? { ...r, status: next } : r)) : prev));
   }
@@ -180,7 +216,12 @@ export function VisaoGeral({
   return (
     <div className="mt-6 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Visão Geral</h2>
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          Visão Geral
+          {savedAt && !displayLoading ? (
+            <span className="ml-2 text-xs font-normal text-zinc-400">· atualizado às {fmtCacheTime(savedAt)}</span>
+          ) : null}
+        </h2>
         <div className="flex flex-wrap items-center gap-2">
           <input
             type="text"
@@ -224,7 +265,7 @@ export function VisaoGeral({
             </a>
           ) : null}
           <button
-            onClick={() => (searching ? void loadAll() : void load())}
+            onClick={() => (searching ? void loadAll(true) : void load(true))}
             disabled={displayLoading}
             className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
           >

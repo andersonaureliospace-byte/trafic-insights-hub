@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client-cache";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { fmtCurrency, PAYMENT_TYPES } from "@/lib/format";
 import { billingHubUrl } from "@/lib/meta/ads-manager-link";
@@ -330,24 +331,65 @@ export function ControleSaldo({
   const [pixHistory, setPixHistory] = useState<PixSend[] | null>(null);
   const [pixHistoryOpen, setPixHistoryOpen] = useState(false);
 
-  const loadStatuses = useCallback(async () => {
+  // Etapa 124: backup no navegador dos 4 status. Entrar na aba mostra o salvo e só busca (4 consultas à Meta)
+  // se não há nada recente (1h); ↻ Atualizar e qualquer ação (verificar, boleto, Pix) buscam de novo (force).
+  // Se a Meta falhar, o salvo continua na tela.
+  const [statusesAt, setStatusesAt] = useState<number | null>(null);
+  const loadStatuses = useCallback(async (force = false) => {
+    type Saved = {
+      balance: BalanceStatus[];
+      friday: FridayBalanceStatus[];
+      payment: PaymentStatus[];
+      manual: ManualCheckStatus[];
+    };
+    const backup = readTabCache<Saved>("saldo-status");
+    if (backup) {
+      setBalanceStatuses(backup.data.balance);
+      setFridayStatuses(backup.data.friday);
+      setPaymentStatuses(backup.data.payment);
+      setManualStatuses(backup.data.manual);
+      setStatusesAt(backup.at);
+      if (!force && isFresh(backup)) return;
+    }
     setLoadingStatuses(true);
-    const [balanceRes, fridayRes, paymentRes, manualRes] = await Promise.all([
-      fetch("/api/alerts/balance").then((r) => r.json()),
-      fetch("/api/alerts/balance-friday").then((r) => r.json()),
-      fetch("/api/alerts/payment").then((r) => r.json()),
-      fetch("/api/alerts/manual-check").then((r) => r.json()),
-    ]);
-    setBalanceStatuses(balanceRes.statuses ?? []);
-    setFridayStatuses(fridayRes.statuses ?? []);
-    setPaymentStatuses(paymentRes.statuses ?? []);
-    setManualStatuses(manualRes.statuses ?? []);
-    setLoadingStatuses(false);
+    try {
+      const [balanceRes, fridayRes, paymentRes, manualRes] = await Promise.all([
+        fetch("/api/alerts/balance").then((r) => r.json()),
+        fetch("/api/alerts/balance-friday").then((r) => r.json()),
+        fetch("/api/alerts/payment").then((r) => r.json()),
+        fetch("/api/alerts/manual-check").then((r) => r.json()),
+      ]);
+      const okAll = balanceRes.statuses && fridayRes.statuses && paymentRes.statuses && manualRes.statuses;
+      if (!okAll && backup) return; // Meta falhou: mantém o salvo
+      setBalanceStatuses(balanceRes.statuses ?? []);
+      setFridayStatuses(fridayRes.statuses ?? []);
+      setPaymentStatuses(paymentRes.statuses ?? []);
+      setManualStatuses(manualRes.statuses ?? []);
+      if (okAll) {
+        setStatusesAt(
+          writeTabCache<Saved>("saldo-status", {
+            balance: balanceRes.statuses,
+            friday: fridayRes.statuses,
+            payment: paymentRes.statuses,
+            manual: manualRes.statuses,
+          }),
+        );
+      }
+    } catch {
+      if (!backup) {
+        setBalanceStatuses((v) => v ?? []);
+        setFridayStatuses((v) => v ?? []);
+        setPaymentStatuses((v) => v ?? []);
+        setManualStatuses((v) => v ?? []);
+      }
+    } finally {
+      setLoadingStatuses(false);
+    }
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial dos 4 status que decidem quem tem aviso pendente
-    void loadStatuses();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial dos 4 status (usa o backup se recente)
+    void loadStatuses(false);
   }, [loadStatuses]);
 
   async function handleVerify(accountId: string) {
@@ -357,13 +399,13 @@ export function ControleSaldo({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ad_account_id: accountId }),
     });
-    await loadStatuses();
+    await loadStatuses(true);
     setVerifyingId(null);
   }
 
   async function handleRefresh() {
     onRefresh();
-    await loadStatuses();
+    await loadStatuses(true);
   }
 
   async function uploadBoleto(file: File) {
@@ -422,7 +464,7 @@ export function ControleSaldo({
         setBoletoDueDate("");
         if (boletoFileInputRef.current) boletoFileInputRef.current.value = "";
         if (boletoHistoryOpen) void loadBoletoHistory();
-        void loadStatuses();
+        void loadStatuses(true);
       }
     } catch {
       setBoletoMsg({ ok: false, text: "Falha ao disparar o e-mail." });
@@ -522,7 +564,12 @@ export function ControleSaldo({
   return (
     <div className="mt-6 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Controle de Saldo</h2>
+        <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+          Controle de Saldo
+          {statusesAt && !loadingStatuses ? (
+            <span className="ml-2 text-xs font-normal text-zinc-400">· atualizado às {fmtCacheTime(statusesAt)}</span>
+          ) : null}
+        </h2>
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -842,7 +889,7 @@ export function ControleSaldo({
         pixRow={pixDialogAccount ? pixByAccount[pixDialogAccount.id] : undefined}
         onSent={() => {
           if (pixHistoryOpen) void loadPixHistory();
-          void loadStatuses();
+          void loadStatuses(true);
         }}
       />
     </div>

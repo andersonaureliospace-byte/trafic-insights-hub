@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkAndPauseAdSets } from "@/lib/alerts/adsets-pause";
 
-// Endpoint público chamado pelo n8n, de 3 em 3 horas (02h05/05h05/08h05/11h05/
-// 14h05/17h05/20h05/23h05, 5 minutos depois do check de Criativos, Etapa 104/105) — pausa
+// Endpoint público chamado pelo n8n (Etapa 124: encadeado logo DEPOIS de creatives-pause-tick, no mesmo
+// fluxo — 01h10/04h10/07h10/11h10/13h40/16h10/19h10/22h10, fora dos horários de pico) — pausa
 // sozinho todo conjunto ATIVO no dobro da Meta CPA + R$1 ou mais (mesmo
 // limite de Análise > Conjuntos), incluindo conjunto sem anúncio ativo, e
 // avisa o grupo de WhatsApp configurado quais conjuntos foram pausados.
