@@ -2577,6 +2577,16 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     editável na aba Acompanhamento (a edição fica só em Clientes). Ao passar o mouse sobre o nome abre um balão
     discreto com o WhatsApp e o Investimento mensal cadastrados ("não cadastrado" quando vazio).
 
+110. **Pausa de conjuntos mais segura + corte só com CPA R$4+ acima (Etapa 122)** — (a) "Conjunto sem anúncio
+    ativo" agora confere DIRETO os anúncios do conjunto na Meta (lib/meta/adset-ads-check.ts) e só pausa se não
+    tem NENHUM anúncio vivo: qualquer status que não seja pausado/arquivado/excluído (em análise, processando,
+    pré-aprovado, com problemas, reprovado, cobrança…) protege; anúncio ativo achado corrige o falso "sem ativo";
+    falha na Meta = não pausa; conjunto criado há menos de 3h e sem anúncio também não pausa. (b) A Auditoria
+    (30 min) deixou de pausar conjunto por anúncio em análise/erro — isso vira só aviso; só pausa "sem anúncio
+    ativo" já conferido. (c) Desempenho: só corta R$10/pausa com RESULTADO e CPA dos últimos 3 dias + hoje R$4 ou
+    mais acima do ideal (ADSET_CUT_EXTRA); sem resultado ou abaixo disso não mexe em nada. 7 dias abaixo do ideal
+    → corta + quarentena; senão pausa (1ª vez só se passou de 2x + R$1).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
