@@ -2,9 +2,10 @@
 
 import { useRef, useState } from "react";
 import { fmtCurrency } from "@/lib/format";
+import { monthCalendarSP } from "@/lib/meta/ritmo";
 
 // Etapa 121: nome do cliente em Acompanhamento — só leitura (a edição fica na aba Clientes). Ao passar o mouse
-// abre um balão discreto com o WhatsApp e o Investimento mensal cadastrados.
+// abre um balão discreto com o WhatsApp e o Investimento mensal cadastrados (Etapa 130: + Invest. diário médio = mensal ÷ dias do mês).
 // O balão é "fixed" (posicionado pela posição do nome na tela) pra não ser cortado pela rolagem da tabela.
 // Etapa 126: perto da borda de baixo da tela (últimas linhas) o balão abre PRA CIMA do nome — antes ficava
 // escondido atrás da barra de tarefas — e perto da borda da direita é puxado pra dentro da tela.
@@ -20,7 +21,7 @@ export function ClientNameHover({
   const ref = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number; above: boolean } | null>(null);
 
-  const BALLOON_H = 110; // altura aproximada do balão (3 linhas)
+  const BALLOON_H = 130; // altura aproximada do balão (4 linhas)
   const BALLOON_W = 260;
 
   function show() {
@@ -32,6 +33,8 @@ export function ClientNameHover({
   }
 
   const wa = whatsapp?.trim();
+  // Etapa 130: Invest. diário médio = Investimento mensal ÷ dias reais do mês (28-31, fuso de Brasília).
+  const avgDaily = monthlyInvestment != null ? monthlyInvestment / monthCalendarSP().daysInMonth : null;
 
   return (
     <span
@@ -60,6 +63,12 @@ export function ClientNameHover({
             Investimento mensal:{" "}
             <span className="text-zinc-800 dark:text-zinc-200">
               {monthlyInvestment != null ? fmtCurrency(monthlyInvestment) : "não cadastrado"}
+            </span>
+          </span>
+          <span className="block text-zinc-500 dark:text-zinc-400">
+            Invest. diário médio:{" "}
+            <span className="text-zinc-800 dark:text-zinc-200">
+              {avgDaily != null ? fmtCurrency(avgDaily) : "não cadastrado"}
             </span>
           </span>
         </span>

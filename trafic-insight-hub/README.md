@@ -2648,6 +2648,13 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Investimento Baixo/Alto, o aviso de Investimento baixo e o alerta "Invest. diário ≤ 80% do Ritmo" — que passam a disparar
     com base no novo valor (contas adiantadas, mas ainda longe da meta, passam a ter Ritmo maior que antes).
 
+118. **Balão do cliente: Invest. diário médio + conferência do Invest. diário (Etapa 130)** — o balão do nome do cliente em
+    Acompanhamento ganhou "Invest. diário médio" = Investimento mensal ÷ dias reais do mês (ex.: R$ 4.000 em outubro =
+    R$ 129,03). Também: o cálculo do Invest. diário (`lib/meta/insights.ts` e `breakdown.ts`) passou a tratar orçamento
+    "0" como SEM orçamento (`Number(x) > 0`) — a Meta pode devolver "0" em campanha sem CBO e, como texto "0" é
+    verdadeiro no JS, a campanha era lida como CBO de R$ 0 e os conjuntos dela sumiam da soma (caso IVS Muriaé: o painel
+    mostrava R$ 70 e na Meta são R$ 100, 30 da campanha GERAL criada em 14/10).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

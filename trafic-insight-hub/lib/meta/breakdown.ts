@@ -167,9 +167,9 @@ export async function getAccountBreakdown(
     if (c.objective) campaignObjective.set(c.id, c.objective);
     if (c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) excludedObjectiveIds.add(c.id);
     let cDaily: number | null = null;
-    if (c.daily_budget) {
+    if (Number(c.daily_budget) > 0) {
       cDaily = Number(c.daily_budget) / 100;
-    } else if (c.lifetime_budget) {
+    } else if (Number(c.lifetime_budget) > 0) {
       const v = lifetimeToDailyEquivalent(c.lifetime_budget, c.start_time, c.stop_time, c.created_time);
       if (v > 0) cDaily = v;
     }
@@ -190,9 +190,9 @@ export async function getAccountBreakdown(
     const eff = a.effective_status || a.status || "";
     if (eff) adsetStatus.set(a.id, eff);
     let v: number | null = null;
-    if (a.daily_budget) {
+    if (Number(a.daily_budget) > 0) {
       v = Number(a.daily_budget) / 100;
-    } else if (a.lifetime_budget) {
+    } else if (Number(a.lifetime_budget) > 0) {
       const eq = lifetimeToDailyEquivalent(a.lifetime_budget, a.start_time, a.end_time, a.created_time);
       if (eq > 0) v = eq;
     }

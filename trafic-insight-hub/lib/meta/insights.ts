@@ -215,11 +215,13 @@ export async function getAccountInsight(
       // Gerenciador, mesmo com a chavinha ligada e o effective_status ainda ACTIVE.
       if (hasEnded(c.stop_time)) continue;
       if (!c.id || !campaignsWithActiveAd.has(c.id)) continue;
-      if (c.daily_budget) {
+      // Etapa 130: "0" (texto) conta como SEM orçamento — a Meta pode devolver daily_budget/lifetime_budget "0" numa campanha
+      // sem CBO, e como texto "0" é verdadeiro no JS, a campanha era tratada como CBO de R$ 0 e os conjuntos dela sumiam da soma.
+      if (Number(c.daily_budget) > 0) {
         const v = Number(c.daily_budget) / 100;
         dailyBudget += v;
         cboBudget += v;
-      } else if (c.lifetime_budget) {
+      } else if (Number(c.lifetime_budget) > 0) {
         const v = lifetimeToDailyEquivalent(c.lifetime_budget, c.start_time, c.stop_time, c.created_time);
         dailyBudget += v;
         cboBudget += v;
@@ -254,9 +256,9 @@ export async function getAccountInsight(
         // "Concluído" no Gerenciador (chavinha ligada, mas sem entregar) — o
         // Graph API continua devolvendo effective_status ACTIVE, então checa a data.
         if (hasEnded(a.end_time)) continue;
-        if (a.daily_budget) {
+        if (Number(a.daily_budget) > 0) {
           dailyBudget += Number(a.daily_budget) / 100;
-        } else if (a.lifetime_budget) {
+        } else if (Number(a.lifetime_budget) > 0) {
           dailyBudget += lifetimeToDailyEquivalent(a.lifetime_budget, a.start_time, a.end_time, a.created_time);
         }
       }
