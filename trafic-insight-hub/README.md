@@ -2617,6 +2617,11 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Regras de período em lib/meta/daily-range.ts (testadas). Não cobre as análises por conjunto/anúncio
     (Análise, pausas automáticas): essas continuam ao vivo.
 
+114. **Balão do nome do cliente não cortado + espaço no fim da página (Etapa 126)** — nas últimas linhas do
+    Acompanhamento o balão (WhatsApp / Investimento mensal) ficava escondido atrás da borda de baixo da tela. Agora
+    ele abre PARA CIMA do nome quando falta espaço embaixo (e é puxado pra dentro da tela se estiver na borda direita),
+    e o Painel ganhou um respiro no final da página (components/painel/client-name-hover.tsx).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

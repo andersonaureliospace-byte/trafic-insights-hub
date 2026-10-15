@@ -909,7 +909,7 @@ export default function PainelPage() {
         </div>
       </header>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-[180px_1fr] md:gap-6">
+      <div className="mt-6 grid grid-cols-1 gap-4 pb-40 md:grid-cols-[180px_1fr] md:gap-6">
           {/* Etapa 119: menu fixo ao rolar (no PC) e sempre visível — mesmo carregando ou com erro. */}
           <aside className="sticky top-14 z-20 -mx-4 flex gap-1 overflow-x-auto bg-zinc-50/95 px-4 py-1 backdrop-blur dark:bg-zinc-950/95 md:top-20 md:mx-0 md:max-h-[calc(100vh-6rem)] md:flex-col md:self-start md:overflow-x-visible md:overflow-y-auto md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none">
             {TABS.map((t) => (
