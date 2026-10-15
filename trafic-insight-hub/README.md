@@ -2628,7 +2628,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     "Sem resultado" = nenhuma conversa iniciada. Colunas agora: caixinha | Data | Conjunto | Criativo | Gasto | CPA | Conversas | Diferença. "Data" =
     quando o CONJUNTO foi criado (vem na mesma consulta da lista de anúncios, sem chamada extra). Saiu o botão
     "Pausar criativo" individual de cada linha (continuam "Pausar todos os listados" e "Pausar selecionados" — que
-    respeitam o filtro escolhido).
+    respeitam o filtro escolhido). Criativos ganhou também o filtro "Até R$ 10,00" (Diferença de até R$10).
+116. **Análise > Conjuntos: filtro, data e colunas novas (Etapa 128)** — só na aba "acima da meta". Colunas agora:
+    caixinha | Data | Conjunto | Gasto | CPA | Conversas | Diferença (a coluna "Pausar conjunto" de cada linha saiu;
+    duplo clique continua abrindo os criativos, que mantêm o botão de pausar). "Data" = quando o conjunto foi criado
+    (já vinha na consulta de status dos conjuntos, sem chamada extra). Botões de filtro, com contador, que
+    trabalham só no que já está na tela: "Todos (padrão, fixo) / Sem anúncio ativo / Até R$ 10,00 / Até R$ 15,00 /
+    Até R$ 20,00 / Acima de R$ 20,00". "Até R$ X" = a coluna DIFERENÇA (CPA do conjunto menos a Meta CPA) de até X
+    (inclui os mais baixos); "Acima de R$ 20,00" = Diferença maior que 20. "Sem anúncio ativo" substituiu o
+    checkbox "Só sem anúncio ativo" e continua salvo junto com as outras escolhas da tela. "Pausar todos os listados" e
+    "Pausar selecionados" respeitam o filtro. A aba "abaixo da meta" não mudou. Cache da tela renomeado
+    (`analise-adsets-v2:`) pra não misturar com dados antigos sem a data.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

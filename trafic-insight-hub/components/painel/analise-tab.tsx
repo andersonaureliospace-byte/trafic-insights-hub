@@ -61,6 +61,8 @@ interface AdSetRow {
   // false, o conjunto pode ter entrado na lista só por isso (sem bater o
   // limite de CPA).
   has_active_ad?: boolean;
+  // Etapa 128: data de criação do conjunto (ISO)
+  created_time?: string | null;
 }
 
 interface Group {
@@ -114,10 +116,15 @@ function statusLabel(status: string | null): string {
 // Etapa 127: filtro da tela Criativos. Trabalha só em cima do que já foi buscado (sem nova consulta à Meta).
 // "Acima de R$10/R$15" = a DIFERENÇA da coluna (CPA do criativo menos a Meta CPA da conta) maior que esse valor —
 // ou seja, quanto ele está acima da meta, não o CPA em si. "Todos" é o padrão e fica sempre fixo.
-type CreativeFilterId = "all" | "none" | "gt10" | "gt15";
+type CreativeFilterId = "all" | "none" | "le10" | "gt10" | "gt15";
 const CREATIVE_FILTERS: Array<{ id: CreativeFilterId; label: string; match: (a: CreativeRow, cpaTarget: number) => boolean }> = [
   { id: "all", label: "Todos", match: () => true },
   { id: "none", label: "Sem resultado", match: (a) => !a.conversations || a.conversations <= 0 },
+  {
+    id: "le10",
+    label: "Até R$ 10,00",
+    match: (a, t) => diffFor(a.spend, a.conversations, a.cost_per_conversation, t) <= 10,
+  },
   {
     id: "gt10",
     label: "Acima de R$10",
@@ -128,6 +135,19 @@ const CREATIVE_FILTERS: Array<{ id: CreativeFilterId; label: string; match: (a: 
     label: "Acima de R$15",
     match: (a, t) => diffFor(a.spend, a.conversations, a.cost_per_conversation, t) > 15,
   },
+];
+
+// Etapa 128: filtro da tela Conjuntos (só em "acima da meta"). Também só trabalha no que já está na tela.
+// "Até R$ X" = a DIFERENÇA da coluna (CPA do conjunto menos a Meta CPA da conta) menor ou igual a X; "Acima de R$ 20,00"
+// = maior que 20. "Sem anúncio ativo" é o antigo checkbox "Só sem anúncio ativo". "Todos" é o padrão e fica fixo.
+type AdsetFilterId = "all" | "noad" | "le10" | "le15" | "le20" | "gt20";
+const ADSET_FILTERS: Array<{ id: AdsetFilterId; label: string; match: (a: AdSetRow, cpaTarget: number) => boolean }> = [
+  { id: "all", label: "Todos", match: () => true },
+  { id: "noad", label: "Sem anúncio ativo", match: (a) => a.has_active_ad === false },
+  { id: "le10", label: "Até R$ 10,00", match: (a, t) => diffFor(a.spend, a.conversations, a.cost_per_conversation, t) <= 10 },
+  { id: "le15", label: "Até R$ 15,00", match: (a, t) => diffFor(a.spend, a.conversations, a.cost_per_conversation, t) <= 15 },
+  { id: "le20", label: "Até R$ 20,00", match: (a, t) => diffFor(a.spend, a.conversations, a.cost_per_conversation, t) <= 20 },
+  { id: "gt20", label: "Acima de R$ 20,00", match: (a, t) => diffFor(a.spend, a.conversations, a.cost_per_conversation, t) > 20 },
 ];
 
 // Data de criação do conjunto, no fuso de Brasília: "12/10/26" (o horário completo fica no tooltip).
@@ -377,6 +397,8 @@ export function AnaliseTab({
   const [selectedCreativeIds, setSelectedCreativeIds] = useState<Set<string>>(new Set());
   // Etapa 127: filtro da lista de criativos — só esconde/mostra o que JÁ está na tela (nenhuma busca nova).
   const [creativeFilter, setCreativeFilter] = useState<CreativeFilterId>("all");
+  // Etapa 128: filtro de valor dos conjuntos (o "Sem anúncio ativo" continua sendo o noActiveAdOnly, salvo junto com as outras escolhas)
+  const [adsetValueFilter, setAdsetValueFilter] = useState<AdsetFilterId>("all");
 
   // Seis ações em massa independentes: conjuntos "abaixo da meta" — todos
   // listados e só selecionados (aumentar orçamento); conjuntos "acima da
@@ -401,7 +423,7 @@ export function AnaliseTab({
       setGroups([]);
       return;
     }
-    const key = `analise-adsets:${mode}:${preset}:${accounts.map((a) => a.account_id).join(",")}`;
+    const key = `analise-adsets-v2:${mode}:${preset}:${accounts.map((a) => a.account_id).join(",")}`;
     const backup = readTabCache<{ groups: Group[]; skipped: typeof skipped }>(key);
     if (backup) {
       setGroups(backup.data.groups);
@@ -616,13 +638,6 @@ export function AnaliseTab({
     return { ok: true };
   }
 
-  async function pauseAdSet(adset: AdSetRow) {
-    setActingId(adset.id);
-    const result = await pauseOneAdSet(adset);
-    setActingId(null);
-    if (!result.ok) alert(result.error);
-  }
-
   // Novo (Etapa 40): pausa um criativo do sub-painel Criativos — mesma
   // chamada simples, mas opera na lista plana (creativeGroups), não na
   // nested de dentro de um conjunto.
@@ -678,11 +693,22 @@ export function AnaliseTab({
   // mantendo a ordem por gravidade (sortKey da API) dentro de cada grupo —
   // não mistura mais os dois pra achar o badge no meio da lista.
   const separateNoActiveAd = mode === "above" && subPanel === "conjuntos";
-  const filteredGroups = (groups ?? [])
+  // Etapa 128: lista depois da busca por nome, ANTES do filtro de valor — base dos contadores dos botões.
+  const searchedGroups = (groups ?? []).map((g) => ({
+    ...g,
+    adsets: g.adsets.filter((as) => !q || as.name.toLowerCase().includes(q) || (as.campaign_name ?? "").toLowerCase().includes(q)),
+  }));
+  const adsetFilterId: AdsetFilterId = noActiveAdFilterActive ? "noad" : separateNoActiveAd ? adsetValueFilter : "all";
+  const adsetFilterCounts: Record<AdsetFilterId, number> = { all: 0, noad: 0, le10: 0, le15: 0, le20: 0, gt20: 0 };
+  for (const g of searchedGroups) {
+    for (const as of g.adsets) {
+      for (const f of ADSET_FILTERS) if (f.match(as, g.cpaTarget)) adsetFilterCounts[f.id]++;
+    }
+  }
+  const activeAdsetFilter = ADSET_FILTERS.find((f) => f.id === adsetFilterId) ?? ADSET_FILTERS[0];
+  const filteredGroups = searchedGroups
     .map((g) => {
-      const adsets = g.adsets
-        .filter((as) => !q || as.name.toLowerCase().includes(q) || (as.campaign_name ?? "").toLowerCase().includes(q))
-        .filter((as) => !noActiveAdFilterActive || as.has_active_ad === false);
+      const adsets = g.adsets.filter((as) => activeAdsetFilter.match(as, g.cpaTarget));
       return {
         ...g,
         adsets: separateNoActiveAd
@@ -699,7 +725,7 @@ export function AnaliseTab({
       ? g.ads.filter((a) => a.name.toLowerCase().includes(q) || (a.campaign_name ?? "").toLowerCase().includes(q))
       : g.ads,
   }));
-  const creativeFilterCounts: Record<CreativeFilterId, number> = { all: 0, none: 0, gt10: 0, gt15: 0 };
+  const creativeFilterCounts: Record<CreativeFilterId, number> = { all: 0, none: 0, le10: 0, gt10: 0, gt15: 0 };
   for (const g of searchedCreativeGroups) {
     for (const a of g.ads) {
       for (const f of CREATIVE_FILTERS) if (f.match(a, g.cpaTarget)) creativeFilterCounts[f.id]++;
@@ -850,17 +876,6 @@ export function AnaliseTab({
             placeholder="Buscar conjunto/criativo/campanha…"
             className="h-8 w-52 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 disabled:opacity-50 dark:border-zinc-700 dark:focus:border-zinc-100"
           />
-          {mode === "above" && subPanel === "conjuntos" ? (
-            <label className="flex h-8 items-center gap-1.5 rounded-md border border-zinc-300 px-2.5 text-xs font-medium text-zinc-600 dark:border-zinc-700 dark:text-zinc-300">
-              <input
-                type="checkbox"
-                checked={noActiveAdOnly}
-                onChange={(e) => setNoActiveAdOnly(e.target.checked)}
-                disabled={controlsDisabled}
-              />
-              Só sem anúncio ativo
-            </label>
-          ) : null}
           <select
             value={preset}
             onChange={(e) => setPreset(e.target.value)}
@@ -893,6 +908,29 @@ export function AnaliseTab({
       {/* virou tela exclusiva, alternada com Criativos, em vez de empilhada) ─── */}
       {mode === "below" || subPanel === "conjuntos" ? (
       <div>
+        {/* Etapa 128: filtro rápido da lista de conjuntos (não faz nova busca na Meta) */}
+        {mode === "above" ? (
+          <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
+            <span className="text-xs text-zinc-400">Filtrar:</span>
+            {ADSET_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => {
+                  setNoActiveAdOnly(f.id === "noad");
+                  setAdsetValueFilter(f.id === "noad" ? "all" : f.id);
+                }}
+                disabled={controlsDisabled || aboveAdsetBusy}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${
+                  adsetFilterId === f.id
+                    ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                    : "border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {f.label} ({adsetFilterCounts[f.id]})
+              </button>
+            ))}
+          </div>
+        ) : null}
         <BulkBar
           label={mode === "above" ? "Pausar todos os conjuntos listados" : "Aumentar todos os orçamentos listados"}
           count={mode === "above" ? aboveAdsetBulkTargets.length : belowBulkTargets.length}
@@ -955,6 +993,8 @@ export function AnaliseTab({
               ? "Nenhum conjunto encontrado com esse nome."
               : noActiveAdFilterActive
                 ? "Nenhum conjunto sem anúncio ativo nesse período."
+                : mode === "above" && adsetFilterId !== "all"
+                  ? "Nenhum conjunto nesse filtro."
                 : mode === "above"
                   ? "Nenhum conjunto ativo no dobro da meta + R$1 (ou mais), ou sem anúncio ativo, nesse período."
                   : "Nenhum conjunto ativo abaixo da meta nesse período."}
@@ -984,12 +1024,25 @@ export function AnaliseTab({
                     <thead>
                       <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
                         <th className="w-8 px-4 py-1.5"></th>
-                        <th className="px-4 py-1.5 font-medium">Conjunto</th>
-                        <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
-                        <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
-                        <th className="px-4 py-1.5 text-right font-medium">Conversas</th>
-                        <th className="px-4 py-1.5 text-right font-medium">Gasto</th>
-                        <th className="px-4 py-1.5 font-medium"></th>
+                        {mode === "above" ? (
+                          <>
+                            <th className="px-4 py-1.5 font-medium">Data</th>
+                            <th className="px-4 py-1.5 font-medium">Conjunto</th>
+                            <th className="px-4 py-1.5 text-right font-medium">Gasto</th>
+                            <th className="px-4 py-1.5 text-right font-medium">CPA</th>
+                            <th className="px-4 py-1.5 text-right font-medium">Conversas</th>
+                            <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
+                          </>
+                        ) : (
+                          <>
+                            <th className="px-4 py-1.5 font-medium">Conjunto</th>
+                            <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
+                            <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
+                            <th className="px-4 py-1.5 text-right font-medium">Conversas</th>
+                            <th className="px-4 py-1.5 text-right font-medium">Gasto</th>
+                            <th className="px-4 py-1.5 font-medium"></th>
+                          </>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
@@ -1009,6 +1062,78 @@ export function AnaliseTab({
                         const isGood = goodTrend(adset.avg_cost_7d, g.cpaTarget);
                         const showDivider =
                           separateNoActiveAd && noActiveAdCount > 0 && noActiveAdCount < g.adsets.length && adsetIdx === noActiveAdCount;
+                        const created = fmtAdsetDate(adset.created_time);
+                        const nameTd = (
+                              <td className="max-w-[260px] px-4 py-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="inline-block w-3 shrink-0 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
+                                  <span className="min-w-0 truncate" title={adset.name}>
+                                    {adset.name}
+                                  </span>
+                                  {noActiveAd ? (
+                                    <span
+                                      title="Esse conjunto está ativo, mas nenhum anúncio dentro dele está ativo"
+                                      className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950 dark:text-red-300"
+                                    >
+                                      Sem anúncio ativo
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </td>
+                        );
+                        const cpaTd = (
+                              <td
+                                className={`px-4 py-2 text-right tabular-nums font-medium ${
+                                  mode === "above" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"
+                                }`}
+                              >
+                                {noConversion ? (
+                                  <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
+                                    —
+                                  </span>
+                                ) : (
+                                  fmtCurrency(adset.cost_per_conversation)
+                                )}
+                              </td>
+                        );
+                        const diffTd = (
+                              <td
+                                className={`px-4 py-2 text-right tabular-nums ${
+                                  diff >= 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
+                                }`}
+                              >
+                                {fmtDiffSigned(diff)}
+                              </td>
+                        );
+                        const convTd = (
+                              <td className="px-4 py-2 text-right tabular-nums">{adset.conversations ?? "—"}</td>
+                        );
+                        const spendTd = (
+                              <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(adset.spend)}</td>
+                        );
+                        const dateTd = (
+                              <td
+                                className="whitespace-nowrap px-4 py-2 text-xs tabular-nums text-zinc-500 dark:text-zinc-400"
+                                title={created ? `Conjunto criado em ${created.full}` : "Data de criação não disponível"}
+                              >
+                                {created?.short ?? "—"}
+                              </td>
+                        );
+                        const actBelowTd = (
+                              <td className="px-4 py-2 text-right">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void increaseBudget(adset);
+                                    }}
+                                    disabled={actingId === adset.id || wasIncreased || belowBulk.running}
+                                    title="Aumenta o orçamento diário desse conjunto em R$2,50 fixo"
+                                    className="rounded-md border border-emerald-300 px-2 py-1 text-xs font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400"
+                                  >
+                                    {actingId === adset.id ? "…" : wasIncreased ? "✓ Aumentado" : "Aumentar +R$2,50"}
+                                  </button>
+                              </td>
+                        );
                         return (
                           <Fragment key={adset.id}>
                             {showDivider ? (
@@ -1037,71 +1162,25 @@ export function AnaliseTab({
                                   disabled={mode === "above" ? aboveAdsetBusy : belowBusy || wasIncreased}
                                 />
                               </td>
-                              <td className="max-w-[260px] px-4 py-2">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="inline-block w-3 shrink-0 text-zinc-400">{isOpen ? "▾" : "▸"}</span>
-                                  <span className="min-w-0 truncate" title={adset.name}>
-                                    {adset.name}
-                                  </span>
-                                  {noActiveAd ? (
-                                    <span
-                                      title="Esse conjunto está ativo, mas nenhum anúncio dentro dele está ativo"
-                                      className="shrink-0 rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-950 dark:text-red-300"
-                                    >
-                                      Sem anúncio ativo
-                                    </span>
-                                  ) : null}
-                                </div>
-                              </td>
-                              <td
-                                className={`px-4 py-2 text-right tabular-nums font-medium ${
-                                  mode === "above" ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"
-                                }`}
-                              >
-                                {noConversion ? (
-                                  <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
-                                    —
-                                  </span>
-                                ) : (
-                                  fmtCurrency(adset.cost_per_conversation)
-                                )}
-                              </td>
-                              <td
-                                className={`px-4 py-2 text-right tabular-nums ${
-                                  diff >= 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
-                                }`}
-                              >
-                                {fmtDiffSigned(diff)}
-                              </td>
-                              <td className="px-4 py-2 text-right tabular-nums">{adset.conversations ?? "—"}</td>
-                              <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(adset.spend)}</td>
-                              <td className="px-4 py-2 text-right">
-                                {mode === "above" ? (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void pauseAdSet(adset);
-                                    }}
-                                    disabled={actingId === adset.id || aboveAdsetBusy}
-                                    title="Pausa só o conjunto inteiro — não mexe em nenhum criativo"
-                                    className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
-                                  >
-                                    {actingId === adset.id ? "…" : "Pausar conjunto"}
-                                  </button>
-                                ) : (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      void increaseBudget(adset);
-                                    }}
-                                    disabled={actingId === adset.id || wasIncreased || belowBulk.running}
-                                    title="Aumenta o orçamento diário desse conjunto em R$2,50 fixo"
-                                    className="rounded-md border border-emerald-300 px-2 py-1 text-xs font-medium text-emerald-700 disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-400"
-                                  >
-                                    {actingId === adset.id ? "…" : wasIncreased ? "✓ Aumentado" : "Aumentar +R$2,50"}
-                                  </button>
-                                )}
-                              </td>
+                              {mode === "above" ? (
+                                <>
+                                  {dateTd}
+                                  {nameTd}
+                                  {spendTd}
+                                  {cpaTd}
+                                  {convTd}
+                                  {diffTd}
+                                </>
+                              ) : (
+                                <>
+                                  {nameTd}
+                                  {cpaTd}
+                                  {diffTd}
+                                  {convTd}
+                                  {spendTd}
+                                  {actBelowTd}
+                                </>
+                              )}
                             </tr>
                             {isOpen ? (
                               <tr className="border-t border-zinc-100 dark:border-zinc-800/60">

@@ -28,6 +28,8 @@ export interface AdSetCostRow {
   // checagem que a Auditoria já fazia em lib/audit/errors.ts, agora também
   // disponível pra Análise > Conjuntos sinalizar).
   has_active_ad: boolean;
+  // Etapa 128: data de criação do conjunto (ISO) — coluna "Data" da tela Análise > Conjuntos.
+  created_time: string | null;
   // Etapa 104/122: conjunto sem anúncio ATIVO que NÃO deve ser pausado automaticamente: tem anúncio em
   // QUALQUER outro status que não seja pausado/arquivado/excluído (em análise, processando, pré-aprovado,
   // com problemas, reprovado, cobrança…), ou foi criado há menos de 3h e ainda não tem anúncio, ou a
@@ -108,6 +110,7 @@ export async function getAdSetCostAnalysis(
         cost_per_conversation: null,
         ads: [],
         has_active_ad: true,
+        created_time: null,
       };
       groups.set(ad.adset_id, g);
     }
@@ -132,6 +135,7 @@ export async function getAdSetCostAnalysis(
     if (info?.effectiveStatus !== "ACTIVE") continue; // só conjunto ativo, pedido explícito
     g.cost_per_conversation = g.conversations && g.conversations > 0 ? g.spend / g.conversations : null;
     g.has_active_ad = info.hasActiveAd;
+    g.created_time = info.createdTime;
     g.has_pending_ad = hasPending(g.id, info.hasActiveAd);
     result.push(g);
     includedIds.add(g.id);
@@ -154,6 +158,7 @@ export async function getAdSetCostAnalysis(
       cost_per_conversation: null,
       ads: [],
       has_active_ad: false,
+      created_time: info.createdTime,
       has_pending_ad: hasPending(adsetId, false),
     });
   }
