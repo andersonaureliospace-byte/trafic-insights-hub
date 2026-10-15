@@ -848,7 +848,7 @@ Evolução, Controle de Saldo e Clientes não têm filtro nenhum pra lembrar
 acesso totalmente novo (sem nada salvo ainda), o Painel continua abrindo em
 Visão Geral, sem filtro nenhum ativo, do jeito que já era.
 
-⚠️ **Sobre a coluna Ritmo (Acompanhamento) — regra da Etapa 85**: o Ritmo
+⚠️ **(SUBSTITUÍDA pela Etapa 129 — ver item 117: voltou a ser "o que falta ÷ dias que faltam")** **Sobre a coluna Ritmo (Acompanhamento) — regra da Etapa 85**: o Ritmo
 é o investimento diário pra ALCANÇAR o Ideal até hoje, não mais "o que falta
 ÷ dias restantes". Investimento diário normal = Investimento mensal ÷ dias
 reais do mês (28-31, fuso de Brasília); Ideal até hoje = normal × dia de hoje;
@@ -2639,6 +2639,14 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     checkbox "Só sem anúncio ativo" e continua salvo junto com as outras escolhas da tela. "Pausar todos os listados" e
     "Pausar selecionados" respeitam o filtro. A aba "abaixo da meta" não mudou. Cache da tela renomeado
     (`analise-adsets-v2:`) pra não misturar com dados antigos sem a data.
+117. **Ritmo = o que falta ÷ dias que faltam (Etapa 129)** — `lib/meta/ritmo.ts`. Ritmo = (Investimento mensal − gasto do
+    dia 01 até agora, com hoje) ÷ (dias do mês − dia de hoje). Ex.: Chapecó, meta 5.000, gasto 2.525,36 no dia 15 de 31 →
+    faltam 2.474,64 em 16 dias → R$ 154,67 por dia (antes mostrava R$ 80,65: a regra da Etapa 117 — normal + o que falta pra
+    alcançar o ideal de amanhã, com piso de 50% do normal — considerava a conta "adiantada" e parava no piso). Sem piso e sem
+    teto; nunca negativo (meta já batida = R$ 0); no último dia do mês = o que falta pra meta. "Ideal até hoje" (normal × dia) e
+    as cores do Investimento seguem iguais. A mesma conta alimenta a coluna Ritmo de Acompanhamento e de Metas, o filtro
+    Investimento Baixo/Alto, o aviso de Investimento baixo e o alerta "Invest. diário ≤ 80% do Ritmo" — que passam a disparar
+    com base no novo valor (contas adiantadas, mas ainda longe da meta, passam a ter Ritmo maior que antes).
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
