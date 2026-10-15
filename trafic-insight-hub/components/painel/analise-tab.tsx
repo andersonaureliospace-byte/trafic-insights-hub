@@ -74,6 +74,8 @@ interface CreativeRow {
   id: string;
   name: string;
   adset_name: string | null;
+  // Etapa 127: data de criação do conjunto (ISO)
+  adset_created_time?: string | null;
   campaign_name: string | null;
   spend: number;
   conversations: number | null;
@@ -109,6 +111,37 @@ function statusLabel(status: string | null): string {
 // Mesmo cálculo de "Diferença" usado em conjunto e criativo: sem conversa, o
 // sinal vira o próprio gasto acima da Meta CPA; com conversa, é custo por
 // conversa menos a Meta CPA. Negativo = abaixo da meta.
+// Etapa 127: filtro da tela Criativos. Trabalha só em cima do que já foi buscado (sem nova consulta à Meta).
+// "Acima de R$10/R$15" = custo por conversa (CPA) do criativo acima desse valor; quem não teve conversa
+// (CPA "—") entra só em "Sem resultado". "Todos" é o padrão e fica sempre fixo.
+type CreativeFilterId = "all" | "none" | "gt10" | "gt15";
+const CREATIVE_FILTERS: Array<{ id: CreativeFilterId; label: string; match: (a: CreativeRow) => boolean }> = [
+  { id: "all", label: "Todos", match: () => true },
+  { id: "none", label: "Sem resultado", match: (a) => !a.conversations || a.conversations <= 0 },
+  {
+    id: "gt10",
+    label: "Acima de R$10",
+    match: (a) => !!a.conversations && a.conversations > 0 && a.cost_per_conversation != null && a.cost_per_conversation > 10,
+  },
+  {
+    id: "gt15",
+    label: "Acima de R$15",
+    match: (a) => !!a.conversations && a.conversations > 0 && a.cost_per_conversation != null && a.cost_per_conversation > 15,
+  },
+];
+
+// Data de criação do conjunto, no fuso de Brasília: "12/10/26" (o horário completo fica no tooltip).
+function fmtAdsetDate(iso?: string | null): { short: string; full: string } | null {
+  if (!iso) return null;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return null;
+  const tz = "America/Sao_Paulo";
+  return {
+    short: new Intl.DateTimeFormat("pt-BR", { timeZone: tz, day: "2-digit", month: "2-digit", year: "2-digit" }).format(t),
+    full: new Intl.DateTimeFormat("pt-BR", { timeZone: tz, dateStyle: "short", timeStyle: "short" }).format(t),
+  };
+}
+
 function diffFor(spend: number, conversations: number | null, costPerConversation: number | null, cpaTarget: number) {
   const noConversion = !conversations || conversations <= 0;
   return noConversion ? spend - cpaTarget : (costPerConversation ?? 0) - cpaTarget;
@@ -342,6 +375,8 @@ export function AnaliseTab({
   // listados" continua existindo do lado, sem checkbox nenhum marcado.
   const [selectedAdsetIds, setSelectedAdsetIds] = useState<Set<string>>(new Set());
   const [selectedCreativeIds, setSelectedCreativeIds] = useState<Set<string>>(new Set());
+  // Etapa 127: filtro da lista de criativos — só esconde/mostra o que JÁ está na tela (nenhuma busca nova).
+  const [creativeFilter, setCreativeFilter] = useState<CreativeFilterId>("all");
 
   // Seis ações em massa independentes: conjuntos "abaixo da meta" — todos
   // listados e só selecionados (aumentar orçamento); conjuntos "acima da
@@ -412,7 +447,7 @@ export function AnaliseTab({
       setCreativeGroups(mode !== "above" ? null : []);
       return;
     }
-    const key = `analise-creatives:${preset}:${accounts.map((a) => a.account_id).join(",")}`;
+    const key = `analise-creatives-v2:${preset}:${accounts.map((a) => a.account_id).join(",")}`;
     const backup = readTabCache<{ groups: CreativeGroup[]; skipped: typeof skipped }>(key);
     if (backup) {
       setCreativeGroups(backup.data.groups);
@@ -607,12 +642,6 @@ export function AnaliseTab({
     return { ok: true };
   }
 
-  async function pauseCreativeStandalone(ad: CreativeRow) {
-    setActingId(ad.id);
-    const result = await pauseOneCreativeStandalone(ad);
-    setActingId(null);
-    if (!result.ok) alert(result.error);
-  }
 
   // Só na aba "abaixo da meta": aumenta o orçamento diário do conjunto em
   // R$2,50 fixo. Fica marcado como "Aumentado" (e o botão trava) até a
@@ -663,13 +692,22 @@ export function AnaliseTab({
     })
     .filter((g) => g.adsets.length > 0);
 
-  const filteredCreativeGroups = (creativeGroups ?? [])
-    .map((g) => ({
-      ...g,
-      ads: q
-        ? g.ads.filter((a) => a.name.toLowerCase().includes(q) || (a.campaign_name ?? "").toLowerCase().includes(q))
-        : g.ads,
-    }))
+  // Lista depois da busca por nome, ANTES do filtro de valor — é a base dos contadores dos botões do filtro.
+  const searchedCreativeGroups = (creativeGroups ?? []).map((g) => ({
+    ...g,
+    ads: q
+      ? g.ads.filter((a) => a.name.toLowerCase().includes(q) || (a.campaign_name ?? "").toLowerCase().includes(q))
+      : g.ads,
+  }));
+  const creativeFilterCounts: Record<CreativeFilterId, number> = { all: 0, none: 0, gt10: 0, gt15: 0 };
+  for (const g of searchedCreativeGroups) {
+    for (const a of g.ads) {
+      for (const f of CREATIVE_FILTERS) if (f.match(a)) creativeFilterCounts[f.id]++;
+    }
+  }
+  const activeCreativeFilter = CREATIVE_FILTERS.find((f) => f.id === creativeFilter) ?? CREATIVE_FILTERS[0];
+  const filteredCreativeGroups = searchedCreativeGroups
+    .map((g) => ({ ...g, ads: g.ads.filter((a) => activeCreativeFilter.match(a)) }))
     .filter((g) => g.ads.length > 0);
 
   const totalAdsets = filteredGroups.reduce((s, g) => s + g.adsets.length, 0);
@@ -1151,6 +1189,25 @@ export function AnaliseTab({
         <div>
           <h3 className="px-4 pt-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">Criativos</h3>
 
+          {/* Etapa 127: filtro rápido da lista (não faz nova busca na Meta) */}
+          <div className="flex flex-wrap items-center gap-1.5 px-4 pt-2">
+            <span className="text-xs text-zinc-400">Filtrar:</span>
+            {CREATIVE_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setCreativeFilter(f.id)}
+                disabled={aboveCreativeBusy}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium disabled:opacity-50 ${
+                  creativeFilter === f.id
+                    ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
+                    : "border-zinc-300 text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+                }`}
+              >
+                {f.label} ({creativeFilterCounts[f.id]})
+              </button>
+            ))}
+          </div>
+
           <BulkBar
             label="Pausar todos os criativos listados"
             count={aboveCreativeBulkTargets.length}
@@ -1193,7 +1250,11 @@ export function AnaliseTab({
             <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p>
           ) : totalCreatives === 0 ? (
             <p className="px-4 py-6 text-sm text-zinc-500">
-              {q ? "Nenhum criativo encontrado com esse nome." : "Nenhum criativo ativo acima do limite nesse período."}
+              {q
+                ? "Nenhum criativo encontrado com esse nome."
+                : creativeFilter !== "all" && (creativeGroups ?? []).length > 0
+                  ? "Nenhum criativo nesse filtro — escolha \"Todos\" pra ver a lista inteira."
+                  : "Nenhum criativo ativo acima do limite nesse período."}
             </p>
           ) : (
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -1220,18 +1281,19 @@ export function AnaliseTab({
                       <thead>
                         <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
                           <th className="w-8 px-4 py-1.5"></th>
-                          <th className="px-4 py-1.5 font-medium">Criativo</th>
+                          <th className="px-4 py-1.5 font-medium">Data</th>
                           <th className="px-4 py-1.5 font-medium">Conjunto</th>
-                          <th className="px-4 py-1.5 text-right font-medium">Custo/conversa</th>
-                          <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
-                          <th className="px-4 py-1.5 text-right font-medium">Conversas</th>
+                          <th className="px-4 py-1.5 font-medium">Criativo</th>
                           <th className="px-4 py-1.5 text-right font-medium">Gasto</th>
-                          <th className="px-4 py-1.5 font-medium"></th>
+                          <th className="px-4 py-1.5 text-right font-medium">CPA</th>
+                          <th className="px-4 py-1.5 text-right font-medium">Conversas</th>
+                          <th className="px-4 py-1.5 text-right font-medium">Diferença</th>
                         </tr>
                       </thead>
                       <tbody>
                         {g.ads.map((ad) => {
                           const noConversion = !ad.conversations || ad.conversations <= 0;
+                          const created = fmtAdsetDate(ad.adset_created_time);
                           const diff = diffFor(ad.spend, ad.conversations, ad.cost_per_conversation, g.cpaTarget);
                           const isGood = goodTrend(ad.avg_cost_7d, g.cpaTarget);
                           return (
@@ -1248,12 +1310,19 @@ export function AnaliseTab({
                                   disabled={aboveCreativeBusy}
                                 />
                               </td>
-                              <td className="max-w-[220px] truncate px-4 py-2" title={ad.name}>
-                                {ad.name}
+                              <td
+                                className="whitespace-nowrap px-4 py-2 text-xs tabular-nums text-zinc-500 dark:text-zinc-400"
+                                title={created ? `Conjunto criado em ${created.full}` : "Data de criação não disponível"}
+                              >
+                                {created?.short ?? "—"}
                               </td>
-                              <td className="max-w-[180px] truncate px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400" title={ad.adset_name ?? undefined}>
+                              <td className="max-w-[200px] truncate px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400" title={ad.adset_name ?? undefined}>
                                 {ad.adset_name ?? "—"}
                               </td>
+                              <td className="max-w-[240px] truncate px-4 py-2" title={ad.name}>
+                                {ad.name}
+                              </td>
+                              <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(ad.spend)}</td>
                               <td className="px-4 py-2 text-right tabular-nums font-medium text-amber-700 dark:text-amber-400">
                                 {noConversion ? (
                                   <span title="Sem conversa iniciada no período — sinalizado pelo gasto acima da Meta CPA">
@@ -1263,24 +1332,13 @@ export function AnaliseTab({
                                   fmtCurrency(ad.cost_per_conversation)
                                 )}
                               </td>
+                              <td className="px-4 py-2 text-right tabular-nums">{ad.conversations ?? "—"}</td>
                               <td
                                 className={`px-4 py-2 text-right tabular-nums ${
                                   diff >= 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
                                 }`}
                               >
                                 {fmtDiffSigned(diff)}
-                              </td>
-                              <td className="px-4 py-2 text-right tabular-nums">{ad.conversations ?? "—"}</td>
-                              <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(ad.spend)}</td>
-                              <td className="px-4 py-2 text-right">
-                                <button
-                                  onClick={() => void pauseCreativeStandalone(ad)}
-                                  disabled={actingId === ad.id || aboveCreativeBusy}
-                                  title="Pausa só esse criativo"
-                                  className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
-                                >
-                                  {actingId === ad.id ? "…" : "Pausar criativo"}
-                                </button>
                               </td>
                             </tr>
                           );

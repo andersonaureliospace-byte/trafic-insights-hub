@@ -2622,6 +2622,14 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     ele abre PARA CIMA do nome quando falta espaço embaixo (e é puxado pra dentro da tela se estiver na borda direita),
     e o Painel ganhou um respiro no final da página (components/painel/client-name-hover.tsx).
 
+115. **Análise > Criativos: filtro e data do conjunto (Etapa 127)** — botões de filtro "Todos (padrão, fixo) / Sem resultado /
+    Acima de R$10 / Acima de R$15" com contador em cada um; trabalham só em cima da lista que já está na tela (nenhuma
+    busca nova na Meta). "Acima de R$X" = custo por conversa do criativo acima de X; quem não teve conversa só entra em
+    "Sem resultado". Colunas agora: caixinha | Data | Conjunto | Criativo | Gasto | CPA | Conversas | Diferença. "Data" =
+    quando o CONJUNTO foi criado (vem na mesma consulta da lista de anúncios, sem chamada extra). Saiu o botão
+    "Pausar criativo" individual de cada linha (continuam "Pausar todos os listados" e "Pausar selecionados" — que
+    respeitam o filtro escolhido).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
