@@ -112,21 +112,21 @@ function statusLabel(status: string | null): string {
 // sinal vira o próprio gasto acima da Meta CPA; com conversa, é custo por
 // conversa menos a Meta CPA. Negativo = abaixo da meta.
 // Etapa 127: filtro da tela Criativos. Trabalha só em cima do que já foi buscado (sem nova consulta à Meta).
-// "Acima de R$10/R$15" = custo por conversa (CPA) do criativo acima desse valor; quem não teve conversa
-// (CPA "—") entra só em "Sem resultado". "Todos" é o padrão e fica sempre fixo.
+// "Acima de R$10/R$15" = a DIFERENÇA da coluna (CPA do criativo menos a Meta CPA da conta) maior que esse valor —
+// ou seja, quanto ele está acima da meta, não o CPA em si. "Todos" é o padrão e fica sempre fixo.
 type CreativeFilterId = "all" | "none" | "gt10" | "gt15";
-const CREATIVE_FILTERS: Array<{ id: CreativeFilterId; label: string; match: (a: CreativeRow) => boolean }> = [
+const CREATIVE_FILTERS: Array<{ id: CreativeFilterId; label: string; match: (a: CreativeRow, cpaTarget: number) => boolean }> = [
   { id: "all", label: "Todos", match: () => true },
   { id: "none", label: "Sem resultado", match: (a) => !a.conversations || a.conversations <= 0 },
   {
     id: "gt10",
     label: "Acima de R$10",
-    match: (a) => !!a.conversations && a.conversations > 0 && a.cost_per_conversation != null && a.cost_per_conversation > 10,
+    match: (a, t) => diffFor(a.spend, a.conversations, a.cost_per_conversation, t) > 10,
   },
   {
     id: "gt15",
     label: "Acima de R$15",
-    match: (a) => !!a.conversations && a.conversations > 0 && a.cost_per_conversation != null && a.cost_per_conversation > 15,
+    match: (a, t) => diffFor(a.spend, a.conversations, a.cost_per_conversation, t) > 15,
   },
 ];
 
@@ -702,12 +702,12 @@ export function AnaliseTab({
   const creativeFilterCounts: Record<CreativeFilterId, number> = { all: 0, none: 0, gt10: 0, gt15: 0 };
   for (const g of searchedCreativeGroups) {
     for (const a of g.ads) {
-      for (const f of CREATIVE_FILTERS) if (f.match(a)) creativeFilterCounts[f.id]++;
+      for (const f of CREATIVE_FILTERS) if (f.match(a, g.cpaTarget)) creativeFilterCounts[f.id]++;
     }
   }
   const activeCreativeFilter = CREATIVE_FILTERS.find((f) => f.id === creativeFilter) ?? CREATIVE_FILTERS[0];
   const filteredCreativeGroups = searchedCreativeGroups
-    .map((g) => ({ ...g, ads: g.ads.filter((a) => activeCreativeFilter.match(a)) }))
+    .map((g) => ({ ...g, ads: g.ads.filter((a) => activeCreativeFilter.match(a, g.cpaTarget)) }))
     .filter((g) => g.ads.length > 0);
 
   const totalAdsets = filteredGroups.reduce((s, g) => s + g.adsets.length, 0);

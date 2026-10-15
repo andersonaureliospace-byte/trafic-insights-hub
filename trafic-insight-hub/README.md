@@ -2624,8 +2624,8 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
 
 115. **Análise > Criativos: filtro e data do conjunto (Etapa 127)** — botões de filtro "Todos (padrão, fixo) / Sem resultado /
     Acima de R$10 / Acima de R$15" com contador em cada um; trabalham só em cima da lista que já está na tela (nenhuma
-    busca nova na Meta). "Acima de R$X" = custo por conversa do criativo acima de X; quem não teve conversa só entra em
-    "Sem resultado". Colunas agora: caixinha | Data | Conjunto | Criativo | Gasto | CPA | Conversas | Diferença. "Data" =
+    busca nova na Meta). "Acima de R$X" = a coluna DIFERENÇA (CPA do criativo menos a Meta CPA da conta) maior que X;
+    "Sem resultado" = nenhuma conversa iniciada. Colunas agora: caixinha | Data | Conjunto | Criativo | Gasto | CPA | Conversas | Diferença. "Data" =
     quando o CONJUNTO foi criado (vem na mesma consulta da lista de anúncios, sem chamada extra). Saiu o botão
     "Pausar criativo" individual de cada linha (continuam "Pausar todos os listados" e "Pausar selecionados" — que
     respeitam o filtro escolhido).
