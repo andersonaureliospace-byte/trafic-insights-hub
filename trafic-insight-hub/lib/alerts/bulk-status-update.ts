@@ -30,6 +30,7 @@ import { isInauguracao } from "@/lib/format";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { describeAsanaSync, syncAsanaPriorities, type AsanaSyncSummary } from "@/lib/asana/priority-sync";
 
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 // Mesma função de components/painel/bulk-status-dialog.tsx — mantenha as
@@ -84,7 +85,8 @@ export async function checkAndUpdateBulkStatus(
     .select("ad_account_id")
     .eq("user_id", userId);
   if (selectedErr) throw selectedErr;
-  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string);
+  const off = await inactiveAccountIds(db, userId);
+  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
   if (accountIds.length === 0) return { results: [], sendError: null };
 
   const { data: bindings, error: bindingsErr } = await db

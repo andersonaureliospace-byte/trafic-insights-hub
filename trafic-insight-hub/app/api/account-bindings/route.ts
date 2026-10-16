@@ -55,6 +55,9 @@ export async function PATCH(request: Request) {
       if (key in body) patch[key] = body[key];
     }
 
+    // Etapa 131: cliente ativo/desativado (padrão = ativo). Só booleano.
+    if ("active" in body) patch.active = body.active !== false;
+
     // "Otimizado" tem regra própria (não entra no loop genérico acima): é só
     // um liga/desliga, sem motivo — a data de referência é sempre calculada
     // aqui no servidor (nunca confia na data que o navegador mandaria) — é

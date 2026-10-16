@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { createServiceClient } from "@/lib/supabase/server";
 import { refreshCpaBoardCache } from "@/lib/meta/cpa-board-cache";
 
@@ -38,7 +39,8 @@ export async function POST(request: Request) {
         .eq("user_id", userId)
         .not("cpa_target", "is", null);
       if (bindingsErr) throw bindingsErr;
-      const accountIds = (bindings ?? []).map((b) => b.ad_account_id as string);
+      const off = await inactiveAccountIds(supabase, userId);
+      const accountIds = (bindings ?? []).map((b) => b.ad_account_id as string).filter((id) => !off.has(id));
       await refreshCpaBoardCache(supabase, userId, token, accountIds);
       results.push({ userId, accounts: accountIds.length });
     } catch (e) {

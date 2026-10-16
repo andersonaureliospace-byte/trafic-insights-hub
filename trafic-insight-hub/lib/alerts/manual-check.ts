@@ -14,6 +14,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import { publishAlert } from "@/lib/alerts/notifications";
 
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 const COOLDOWN_MS = 24 * 60 * 60 * 1000;
@@ -93,6 +94,7 @@ export async function checkManualReviews(
   userId: string,
   opts: { send: boolean; bypassCooldown?: boolean } = { send: false },
 ): Promise<CheckManualReviewsResult> {
+  const off = await inactiveAccountIds(db, userId);
   const { data: pixRows, error: pixErr } = await db
     .from("pix_accounts")
     .select("ad_account_id, manual_check_mode, manual_check_next_at, manual_check_alert_sent_at")
@@ -113,6 +115,7 @@ export async function checkManualReviews(
   const toAlert: ManualCheckStatus[] = [];
 
   for (const p of pixRows) {
+    if (off.has(p.ad_account_id as string)) continue; // Etapa 131: cliente desativado
     const nextAt = p.manual_check_next_at as string;
     const due = nextAt <= today;
     const clientName = clientNameById.get(p.ad_account_id as string) || p.ad_account_id;

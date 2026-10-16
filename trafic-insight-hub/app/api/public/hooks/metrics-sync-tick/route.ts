@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { createServiceClient } from "@/lib/supabase/server";
 import { syncAccounts } from "@/lib/meta/daily-store";
 
@@ -42,9 +43,10 @@ export async function POST(request: Request) {
       ]);
       if (e1) throw e1;
       if (e2) throw e2;
+      const off = await inactiveAccountIds(supabase, userId);
       const ids = [
         ...new Set([...(selected ?? []), ...(bindings ?? [])].map((r) => r.ad_account_id as string).filter(Boolean)),
-      ];
+      ].filter((id) => !off.has(id));
       const report = await syncAccounts(token, ids, { force: body.force === true, deadlineMs });
       results.push({
         userId,

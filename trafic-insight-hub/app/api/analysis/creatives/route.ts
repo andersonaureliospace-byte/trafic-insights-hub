@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";
 import { isCreativeFlaggedAbove } from "@/lib/meta/analysis-thresholds";
@@ -51,7 +52,8 @@ export async function POST(request: Request) {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
     const body = await request.json();
-    const accountIds: string[] = Array.isArray(body.accountIds) ? body.accountIds : [];
+    const off = await inactiveAccountIds(supabase, user.id);
+    const accountIds: string[] = (Array.isArray(body.accountIds) ? (body.accountIds as string[]) : []).filter((id) => !off.has(id));
     const datePreset = (body.datePreset ?? "last_3d_plus_today") as DateRangeInput;
     if (accountIds.length === 0) return NextResponse.json({ groups: [], skipped: [] });
 

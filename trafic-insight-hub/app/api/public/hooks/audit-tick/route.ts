@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { createServiceClient } from "@/lib/supabase/server";
 import { runLocationAudit, runErrorAudit } from "@/lib/audit/run";
 
@@ -39,7 +40,8 @@ export async function POST(request: Request) {
         .select("ad_account_id, client_name")
         .eq("user_id", userId);
       if (bindErr) throw bindErr;
-      const list = (bindings ?? []) as { ad_account_id: string; client_name: string | null }[];
+      const off = await inactiveAccountIds(supabase, userId);
+      const list = ((bindings ?? []) as { ad_account_id: string; client_name: string | null }[]).filter((b) => !off.has(b.ad_account_id));
       if (list.length === 0) {
         results.push({ userId, location: { checkedAccounts: 0 }, errors: { checkedAccounts: 0 } });
         continue;

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { refreshCpaBoardCache } from "@/lib/meta/cpa-board-cache";
 
@@ -16,7 +17,8 @@ export async function POST() {
       .eq("user_id", user.id)
       .not("cpa_target", "is", null);
     if (bindingsErr) throw bindingsErr;
-    const accountIds = (bindings ?? []).map((b) => b.ad_account_id as string);
+    const off = await inactiveAccountIds(supabase, user.id);
+    const accountIds = (bindings ?? []).map((b) => b.ad_account_id as string).filter((id) => !off.has(id));
     await refreshCpaBoardCache(supabase, user.id, token, accountIds);
     return NextResponse.json({ ok: true, accounts: accountIds.length });
   } catch (e) {

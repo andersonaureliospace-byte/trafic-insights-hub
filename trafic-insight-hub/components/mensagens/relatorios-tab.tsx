@@ -76,11 +76,13 @@ export function RelatoriosTab() {
     ]);
     const selectedIds = new Set<string>(selRes.accountIds ?? []);
     const clientByAccount = new Map<string, string>();
+    const inactive = new Set<string>(); // Etapa 131: cliente desativado não entra nos relatórios
     for (const b of bindRes.bindings ?? []) {
       if (b.client_name) clientByAccount.set(b.ad_account_id, b.client_name);
+      if (b.active === false) inactive.add(b.ad_account_id);
     }
     const list: AccountOption[] = (accRes.accounts ?? [])
-      .filter((a: { account_id: string }) => selectedIds.has(a.account_id))
+      .filter((a: { account_id: string }) => selectedIds.has(a.account_id) && !inactive.has(a.account_id))
       .map((a: { account_id: string; name: string }) => ({
         id: a.account_id,
         name: a.name,

@@ -19,6 +19,7 @@ import { ritmoFromInsight, RITMO_BAND } from "@/lib/meta/ritmo";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
 
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 export interface LowInvestmentStatus {
@@ -41,12 +42,14 @@ export async function checkLowInvestment(
   token: string,
   opts: { send: boolean } = { send: false },
 ): Promise<CheckLowInvestmentResult> {
-  const { data: bindings, error: bindingsErr } = await db
+  const off = await inactiveAccountIds(db, userId);
+  const { data: bindingsAll, error: bindingsErr } = await db
     .from("account_bindings")
     .select("ad_account_id, client_name, monthly_investment")
     .eq("user_id", userId)
     .not("monthly_investment", "is", null);
   if (bindingsErr) throw bindingsErr;
+  const bindings = (bindingsAll ?? []).filter((b) => !off.has(b.ad_account_id as string));
   if (!bindings || bindings.length === 0) return { statuses: [], sendError: null };
 
   const accountIds = bindings.map((b) => b.ad_account_id as string);

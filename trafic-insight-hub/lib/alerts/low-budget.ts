@@ -15,6 +15,7 @@ import { ritmoFromInsight } from "@/lib/meta/ritmo";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
 
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 // Orçamento diário igual ou menor que esta fração do Ritmo entra no aviso (0,8 = 80%).
@@ -50,7 +51,8 @@ export async function checkLowBudget(
     .select("ad_account_id")
     .eq("user_id", userId);
   if (selectedErr) throw selectedErr;
-  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string);
+  const off = await inactiveAccountIds(db, userId);
+  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
   if (accountIds.length === 0) return { statuses: [], sendError: null };
 
   const { data: bindings, error: bindingsErr } = await db

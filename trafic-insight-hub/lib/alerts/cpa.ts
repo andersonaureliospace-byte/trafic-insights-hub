@@ -12,6 +12,7 @@ import { getAccountsInsights } from "@/lib/meta/insights";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
 
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 // Mesma banda usada na cor da tela Evolução (Etapa 48): mais de R$2 acima
@@ -38,12 +39,14 @@ export async function checkCpaAlerts(
   token: string,
   opts: { send: boolean } = { send: false },
 ): Promise<CheckCpaAlertsResult> {
-  const { data: bindings, error: bindingsErr } = await db
+  const off = await inactiveAccountIds(db, userId);
+  const { data: bindingsAll, error: bindingsErr } = await db
     .from("account_bindings")
     .select("ad_account_id, client_name, cpa_target")
     .eq("user_id", userId)
     .not("cpa_target", "is", null);
   if (bindingsErr) throw bindingsErr;
+  const bindings = (bindingsAll ?? []).filter((b) => !off.has(b.ad_account_id as string));
   if (!bindings || bindings.length === 0) return { statuses: [], sendError: null };
 
   const accountIds = bindings.map((b) => b.ad_account_id as string);

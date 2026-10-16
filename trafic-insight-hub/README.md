@@ -2655,6 +2655,19 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     verdadeiro no JS, a campanha era lida como CBO de R$ 0 e os conjuntos dela sumiam da soma (caso IVS Muriaé: o painel
     mostrava R$ 70 e na Meta são R$ 100, 30 da campanha GERAL criada em 14/10).
 
+119. **Cliente ativo/desativado (Etapa 131)** — em Clientes > ⚙ (configurações do cliente) tem a chavinha "Cliente ativo"
+    (padrão: ativo, todo cliente existente continua ativo). Desativado = fica só o histórico das configurações (a linha
+    continua na aba Clientes, apagada e com a etiqueta "Desativado", pra poder reativar) e a conta SOME de: Acompanhamento,
+    Metas, Evolução, Monitor de CPA, Controle de Saldo, Visão Geral, Análise, Demandas, Descrição, Copy, Relatórios
+    (agendados e manuais) e de todas as automações/alertas (CPA, status em massa, pausas de criativos e conjuntos, investimento
+    baixo, invest. diário ≤ 80% do Ritmo, saldo e saldo por fundos, erro de pagamento, verificação manual, auditoria,
+    descrições do Asana, Monitor de CPA em cache e backup das métricas) — nenhuma consulta à Meta é feita pra ela.
+    Como funciona: coluna `account_bindings.active boolean not null default true` (SQL `supabase/migrations/0031_client_active.sql`);
+    `lib/accounts/inactive.ts` (`inactiveAccountIds`) devolve as contas desativadas e é aplicado em cada automação/rota (se a
+    coluna ainda não existir, devolve vazio e tudo segue como antes). Na tela, o Painel só usa as contas ativas
+    (`selectedAccounts`); só a aba Clientes enxerga todas (`selectedAccountsAll`). Os dados e configurações da conta ficam
+    guardados (nada é apagado); reativar volta tudo na hora. Dá pra usar pra uma pausa curta (ex.: 1 dia): desativa e reativa.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

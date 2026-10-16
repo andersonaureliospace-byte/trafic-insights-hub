@@ -55,6 +55,8 @@ interface AccountBinding {
   optimized: boolean | null;
   // Etapa 83: marcação própria da aba "Otimizado", separada de `optimized`.
   tab_optimized: boolean | null;
+  // Etapa 131: cliente ativo (padrão) ou desativado. Ausente/null = ativo.
+  active?: boolean | null;
 }
 
 // Base usada tanto no patch otimista de um campo quanto na reordenação em
@@ -197,6 +199,8 @@ export default function PainelPage() {
   // Etapa 123: aviso de que a lista de contas é a salva no navegador (a Meta não respondeu).
   const [accountsStale, setAccountsStale] = useState<string | null>(null);
   const [bindings, setBindings] = useState<Record<string, AccountBinding>>({});
+  // Etapa 131: só mostra contas depois de ler quem está desativado — assim uma conta desativada nem chega a consultar a Meta.
+  const [bindingsLoaded, setBindingsLoaded] = useState(false);
   // Dia (YYYY-MM-DD em Brasília) em que as marcações foram lidas — usado pra detectar a virada do dia.
   const bindingsDayRef = useRef<string | null>(null);
   const [pixAccounts, setPixAccounts] = useState<Record<string, PixRow>>({});
@@ -349,6 +353,8 @@ export default function PainelPage() {
       bindingsDayRef.current = brtDay();
     } catch {
       // sem rede: tenta de novo na próxima checagem
+    } finally {
+      setBindingsLoaded(true);
     }
   }, []);
 
@@ -517,11 +523,18 @@ export default function PainelPage() {
     });
   }
 
-  const selectedAccounts = useMemo(() => {
+  // Etapa 131: TODAS as contas exibidas, inclusive as de clientes desativados — só a aba Clientes usa (pra poder reativar).
+  const selectedAccountsAll = useMemo(() => {
     if (!allAccounts || !selectedIds) return [];
     const set = new Set(selectedIds);
     return allAccounts.filter((a) => set.has(a.account_id));
   }, [allAccounts, selectedIds]);
+
+  // Contas dos clientes ATIVOS: é o que todas as outras abas, buscas na Meta e filtros usam. Cliente desativado some daqui.
+  const selectedAccounts = useMemo(() => {
+    if (!bindingsLoaded) return [];
+    return selectedAccountsAll.filter((a) => bindings[a.account_id]?.active !== false);
+  }, [selectedAccountsAll, bindings, bindingsLoaded]);
 
   // Contas que o "↻ Atualizar" deve buscar: só as fixadas (se houver alguma
   // fixada entre as selecionadas), senão todas. A busca automática (entrar na
@@ -876,7 +889,7 @@ export default function PainelPage() {
 
   // Etapa 119: não bloqueia mais a tela inteira enquanto as contas carregam — o menu lateral fica
   // sempre visível e só a área de conteúdo mostra "Carregando…" ou o erro.
-  const accountsReady = selectedIds !== null && allAccounts !== null;
+  const accountsReady = selectedIds !== null && allAccounts !== null && bindingsLoaded;
   const needsAccounts = tab !== "alertas";
   const statusLoading = loadingAccounts || metaPending > 0 || selectedIds === null;
   const failedLabels = Object.entries(metaFailed).filter(([, v]) => v).map(([k]) => k);
@@ -897,7 +910,12 @@ export default function PainelPage() {
               Visão geral das suas contas
             </h1>
             <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              {accountsReady ? `Mostrando ${selectedAccounts.length} conta(s) selecionada(s).` : "Carregando contas…"}
+              {accountsReady
+                ? `Mostrando ${selectedAccounts.length} conta(s) selecionada(s).` +
+                  (selectedAccountsAll.length > selectedAccounts.length
+                    ? ` ${selectedAccountsAll.length - selectedAccounts.length} cliente(s) desativado(s) — veja em Clientes.`
+                    : "")
+                : "Carregando contas…"}
             </p>
           </div>
           <button
@@ -989,7 +1007,7 @@ export default function PainelPage() {
               <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
                 {accountsError ? "As contas não carregaram." : "Carregando contas…"} O menu ao lado continua funcionando.
               </div>
-            ) : needsAccounts && selectedAccounts.length === 0 ? (
+            ) : needsAccounts && (tab === "clientes" ? selectedAccountsAll.length === 0 : selectedAccounts.length === 0) ? (
               <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
                 Nenhuma conta selecionada.{" "}
                 <button onClick={() => setPickerOpen(true)} className="font-medium text-zinc-900 underline dark:text-zinc-100">
@@ -1381,7 +1399,7 @@ export default function PainelPage() {
 
             {tab === "clientes" ? (
               <ClientesTab
-                accounts={selectedAccounts}
+                accounts={selectedAccountsAll}
                 bindings={bindings}
                 onPatch={patchBinding}
                 onRefresh={loadAccounts}

@@ -15,6 +15,8 @@ export interface ClienteBinding {
   wa_group_id: string | null;
   wa_group_name: string | null;
   address: string | null;
+  // Etapa 131: cliente ativo (padrão) ou desativado. Ausente/null = ativo.
+  active?: boolean | null;
 }
 
 type ClienteBindingPatch = Partial<ClienteBinding>;
@@ -88,6 +90,7 @@ export function ClientesTab({
   }, [accounts, bindings, search]);
 
   const configAccount = configId ? accounts.find((a) => a.account_id === configId) ?? null : null;
+  const inactiveCount = accounts.filter((a) => bindings[a.account_id]?.active === false).length;
 
   if (accounts.length === 0) {
     return <p className="text-sm text-zinc-500">Nenhuma conta selecionada.</p>;
@@ -125,6 +128,7 @@ export function ClientesTab({
           {filtered.length === accounts.length
             ? `${accounts.length} clientes`
             : `${filtered.length} de ${accounts.length}`}
+          {inactiveCount > 0 ? ` · ${inactiveCount} desativado(s)` : ""}
         </span>
       </div>
 
@@ -148,15 +152,29 @@ export function ClientesTab({
               {filtered.map((acc) => {
                 const binding = bindings[acc.account_id];
                 const id = acc.account_id;
+                const inactive = binding?.active === false;
                 return (
-                  <tr key={acc.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                  <tr
+                    key={acc.id}
+                    className={`border-b border-zinc-100 last:border-0 dark:border-zinc-800/60 ${inactive ? "opacity-60" : ""}`}
+                  >
                     <td className="px-4 py-2">
-                      <div className="w-40">
-                        <TextCell
-                          value={binding?.client_name ?? null}
-                          placeholder={acc.name}
-                          onSave={(v) => void onPatch(id, { client_name: v })}
-                        />
+                      <div className="flex items-center gap-2">
+                        <div className="w-40">
+                          <TextCell
+                            value={binding?.client_name ?? null}
+                            placeholder={acc.name}
+                            onSave={(v) => void onPatch(id, { client_name: v })}
+                          />
+                        </div>
+                        {inactive ? (
+                          <span
+                            title="Cliente desativado: não aparece em nenhum painel, análise ou automação. Abra ⚙ pra reativar."
+                            className="shrink-0 rounded-full bg-zinc-200 px-2 py-0.5 text-xs font-medium text-zinc-600 dark:bg-zinc-700 dark:text-zinc-300"
+                          >
+                            Desativado
+                          </span>
+                        ) : null}
                       </div>
                     </td>
                     <td className="px-4 py-2">
@@ -261,6 +279,7 @@ function ClienteConfigDialog({
   }
 
   const title = binding?.client_name || account.name;
+  const isActive = binding?.active !== false;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={onClose}>
@@ -283,6 +302,34 @@ function ClienteConfigDialog({
         </div>
 
         <div className="mt-4 space-y-4">
+          <div>
+            <div className="flex items-center justify-between gap-3">
+              <label className="text-xs font-medium text-zinc-500" htmlFor="cliente-ativo">
+                Cliente ativo
+              </label>
+              <button
+                id="cliente-ativo"
+                role="switch"
+                aria-checked={isActive}
+                onClick={() => void onPatch({ active: !isActive })}
+                className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${
+                  isActive ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-700"
+                }`}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                    isActive ? "left-[22px]" : "left-0.5"
+                  }`}
+                />
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              {isActive
+                ? "Ativo: aparece normalmente nos painéis, análises e automações."
+                : "Desativado: só fica o histórico das configurações aqui. A conta some de todos os painéis, análises, alertas e automações até você reativar."}
+            </p>
+          </div>
+
           <div>
             <label className="text-xs font-medium text-zinc-500">ID da conta</label>
             <div className="mt-1 flex items-center gap-2">

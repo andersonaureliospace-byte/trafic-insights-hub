@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { runErrorAudit } from "@/lib/audit/run";
 import type { createClient } from "@/lib/supabase/server";
@@ -23,7 +24,8 @@ async function loadBindings(supabase: Awaited<ReturnType<typeof createClient>>, 
     .select("ad_account_id, client_name")
     .eq("user_id", userId);
   if (error) throw error;
-  const list = (data ?? []) as Binding[];
+  const off = await inactiveAccountIds(supabase, userId);
+  const list = ((data ?? []) as Binding[]).filter((b) => !off.has(b.ad_account_id));
   list.sort((a, b) => (a.client_name || a.ad_account_id).localeCompare(b.client_name || b.ad_account_id, "pt-BR"));
   return list;
 }

@@ -10,6 +10,7 @@ import { getAdAccounts, type AdAccount } from "@/lib/meta/insights";
 import { getRecentSends } from "@/lib/alerts/recent-sends";
 import { publishAlert } from "@/lib/alerts/notifications";
 
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 const COOLDOWN_MS = 24 * 60 * 60 * 1000; // não reavisa a mesma conta antes de 24h
@@ -56,11 +57,13 @@ export async function checkPaymentErrors(
   token: string,
   opts: { send: boolean; bypassCooldown?: boolean } = { send: false },
 ): Promise<CheckPaymentErrorsResult> {
-  const { data: bindings, error: bindingsErr } = await db
+  const off = await inactiveAccountIds(db, userId);
+  const { data: bindingsAll, error: bindingsErr } = await db
     .from("account_bindings")
     .select("ad_account_id, client_name, payment_alert_sent_at")
     .eq("user_id", userId);
   if (bindingsErr) throw bindingsErr;
+  const bindings = (bindingsAll ?? []).filter((b) => !off.has(b.ad_account_id as string));
   if (!bindings || bindings.length === 0) return { statuses: [], sendError: null };
 
   const accounts = await getAdAccounts(token);

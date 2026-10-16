@@ -14,6 +14,7 @@ import { getRecentSends } from "@/lib/alerts/recent-sends";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
 
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 // Etapa 95: saldo usado nos avisos. Conta com "Saldo por fundos" ligado (Etapa 81, ex.:
@@ -58,6 +59,7 @@ export async function checkLowBalances(
   token: string,
   opts: { send: boolean; bypassCooldown?: boolean } = { send: false },
 ): Promise<CheckLowBalancesResult> {
+  const off = await inactiveAccountIds(db, userId);
   const { data: pixRows, error: pixErr } = await db
     .from("pix_accounts")
     .select(
@@ -86,6 +88,7 @@ export async function checkLowBalances(
   const toReset: string[] = [];
 
   for (const p of withThreshold) {
+    if (off.has(p.ad_account_id as string)) continue; // Etapa 131: cliente desativado
     const acc = accountById.get(p.ad_account_id);
     if (!acc) continue;
     const threshold = (p.alert_threshold as number | null) ?? Number(p.base_amount) * 0.2;
@@ -191,6 +194,7 @@ export async function checkFridayLowBalances(
 ): Promise<CheckFridayLowBalancesResult> {
   const applicable = isFridaySP();
 
+  const off = await inactiveAccountIds(db, userId);
   const { data: pixRows, error: pixErr } = await db
     .from("pix_accounts")
     .select(
@@ -217,6 +221,7 @@ export async function checkFridayLowBalances(
   const toReset: string[] = [];
 
   for (const p of pixRows) {
+    if (off.has(p.ad_account_id as string)) continue; // Etapa 131: cliente desativado
     const acc = accountById.get(p.ad_account_id);
     if (!acc) continue;
     const threshold = (p.alert_threshold as number | null) ?? (p.base_amount != null ? Number(p.base_amount) * 0.2 : 0);

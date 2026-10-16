@@ -37,6 +37,7 @@ import { clearQuarantine, loadQuarantine, saveQuarantine } from "@/lib/alerts/ad
 import { publishAlert, type AlertKind } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
 
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 const DATE_PRESET = "last_3d_plus_today" as const;
 const DATE_PRESET_7D = "last_7d" as const;
@@ -101,7 +102,8 @@ export async function checkAndPauseAdSets(
     .select("ad_account_id")
     .eq("user_id", userId);
   if (selectedErr) throw selectedErr;
-  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string);
+  const off = await inactiveAccountIds(db, userId);
+  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
   if (accountIds.length === 0) return { paused: [], reduced: [], sendError: null };
 
   const { data: bindings, error: bindingsErr } = await db

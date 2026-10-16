@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { createServiceClient } from "@/lib/supabase/server";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
@@ -50,7 +51,9 @@ export async function POST(request: Request) {
       const token = cred?.access_token as string | undefined;
       if (!token) throw new Error("Token Meta não configurado.");
 
-      const accountIds = (report.ad_account_ids ?? []) as string[];
+      const off = await inactiveAccountIds(supabase, report.user_id as string);
+      const accountIds = ((report.ad_account_ids ?? []) as string[]).filter((id) => !off.has(id));
+      if (accountIds.length === 0) throw new Error("Todos os clientes desse relatório estão desativados.");
       const { data: bindings } = await supabase
         .from("account_bindings")
         .select("ad_account_id, client_name, cpa_target, monthly_investment")

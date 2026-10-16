@@ -13,6 +13,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import { asanaConfigured, asanaFetch, listSectionTasks, matchTask, type AsanaTask } from "@/lib/asana/priority-sync";
 
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 export const ASANA_PROJECT_GID = "1208798639166829"; // ESTRATEGISTA SPEED DIGITAL (pro link da tarefa)
@@ -61,7 +62,8 @@ export async function syncDescriptionsFromAsana(db: Db, userId: string): Promise
 
   const { data: selected, error: selErr } = await db.from("user_selected_accounts").select("ad_account_id").eq("user_id", userId);
   if (selErr) throw selErr;
-  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string);
+  const off = await inactiveAccountIds(db, userId);
+  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
   if (accountIds.length === 0) return summary;
 
   const [{ data: bindings, error: bindErr }, { data: existing, error: exErr }] = await Promise.all([

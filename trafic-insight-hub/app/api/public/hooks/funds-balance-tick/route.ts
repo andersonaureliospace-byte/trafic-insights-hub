@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { refreshFundsBalance } from "@/lib/meta/funds-balance";
 
 // Etapa 81: endpoint público (chamado pelo n8n, ex.: a cada poucas horas —
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
 
     const entry = { userId, updated: 0, errors: [] as Array<{ ad_account_id: string; error: string }> };
 
+    const off = await inactiveAccountIds(supabase, userId);
     const { data: enabledAccounts, error: accErr } = await supabase
       .from("pix_accounts")
       .select("ad_account_id, funds_balance_amount, funds_balance_watermark")
@@ -53,6 +55,7 @@ export async function POST(request: Request) {
 
     for (const acc of enabledAccounts ?? []) {
       const adAccountId = acc.ad_account_id as string;
+      if (off.has(adAccountId)) continue; // Etapa 131: cliente desativado
       try {
         const { deltaCents, currency, newWatermark } = await refreshFundsBalance(
           token,
