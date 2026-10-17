@@ -2677,6 +2677,9 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Ajuste (132b): o link agora também leva o `business_id` (Business Manager dono da conta, vindo da lista de contas do
     Meta que o Painel já carrega — `registerAccountBusinesses`), igual ao link que o próprio Gerenciador gera. Sem ele o
     Gerenciador redireciona pra descobrir o negócio, e nesse redirecionamento o filtro "vaga" podia se perder.
+    Ajuste (132c): no `date=` do Gerenciador o dia final é EXCLUSIVO (Ontem = 16 → `16_17`), então os períodos que
+    acabam hoje ("Ontem e hoje", "3 dias + hoje") abriam sem o dia de hoje; agora soma 1 dia no fim, e "Ontem e hoje" vai
+    com o nome `last_2_days` (o nome que o Gerenciador usa pra ele).
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

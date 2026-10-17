@@ -1,8 +1,16 @@
-import { resolveRange, todayBrt } from "@/lib/meta/daily-range";
+import { addDaysYmd, resolveRange, todayBrt } from "@/lib/meta/daily-range";
 
 // Etapa 132: períodos do Painel que existem com o MESMO significado no Gerenciador (aparece o nome do período lá);
 // os outros (ex.: "Últimos 3 dias + hoje") vão só com as datas.
-const ADS_MANAGER_PRESET_NAMES = new Set(["today", "yesterday", "last_3d", "last_7d", "this_month"]);
+// Etapa 132c: o nome do período no Gerenciador nem sempre é o mesmo id do Painel ("Ontem e hoje" = `last_2_days` lá).
+const ADS_MANAGER_PRESET_NAMES: Record<string, string> = {
+  today: "today",
+  yesterday: "yesterday",
+  last_3d: "last_3d",
+  last_7d: "last_7d",
+  this_month: "this_month",
+  today_yesterday: "last_2_days",
+};
 
 // Etapa 132b: conta → Business Manager dono. Preenchido pelo Painel quando carrega a lista de contas do Meta (que já
 // traz o `business` de cada uma), pra todo link de "abrir no Gerenciador" sair com o business_id sem mudar as telas.
@@ -31,8 +39,11 @@ export function adsManagerUrl(accountId: string, preset?: string): string {
   const today = todayBrt();
   const key = preset && resolveRange(preset, today) ? preset : "yesterday";
   const range = resolveRange(key, today)!;
-  const label = ADS_MANAGER_PRESET_NAMES.has(key) ? `,${key}` : "";
-  const date = encodeURIComponent(`${range.since}_${range.until}${label}`);
+  const name = ADS_MANAGER_PRESET_NAMES[key];
+  const label = name ? `,${name}` : "";
+  // Etapa 132c: no `date=` do Gerenciador o dia final é EXCLUSIVO (Ontem = 16 → "16_17"; Ontem e hoje = "16_18"). Sem
+  // somar 1 dia, os períodos que acabam hoje abriam sem o dia de hoje.
+  const date = encodeURIComponent(`${range.since}_${addDaysYmd(range.until, 1)}${label}`);
   // %1E (separador de registro) e as aspas já vêm codificados como o próprio Gerenciador gera — por isso o filtro é
   // montado na mão, sem passar por URLSearchParams (que codificaria de novo).
   const filter = "SEARCH_BY_CAMPAIGN_GROUP_NAME-STRING_SET%1ENOT_CONTAINS_ANY%1E[%22vaga%22]";
