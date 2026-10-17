@@ -299,7 +299,7 @@ export function MetasTab({
                   <td className="px-4 py-2">
                     <div className="font-medium text-zinc-900 dark:text-zinc-50">{r.clientName}</div>
                     <a
-                      href={adsManagerUrl(r.accountId)}
+                      href={adsManagerUrl(r.accountId, "this_month")}
                       target="_blank"
                       rel="noopener noreferrer"
                       title="Abrir no Gerenciador de Anúncios"

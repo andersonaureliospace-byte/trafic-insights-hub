@@ -1258,7 +1258,7 @@ export default function PainelPage() {
                             </td>
                             <td className="px-4 py-2">
                               <a
-                                href={adsManagerUrl(acc.account_id)}
+                                href={adsManagerUrl(acc.account_id, preset)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 title={

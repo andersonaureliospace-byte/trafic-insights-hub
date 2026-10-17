@@ -2668,6 +2668,13 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     (`selectedAccounts`); só a aba Clientes enxerga todas (`selectedAccountsAll`). Os dados e configurações da conta ficam
     guardados (nada é apagado); reativar volta tudo na hora. Dá pra usar pra uma pausa curta (ex.: 1 dia): desativa e reativa.
 
+120. **Atalho pro Gerenciador com filtro e período (Etapa 132)** — todo link do nome da conta (`adsManagerUrl` em
+    `lib/meta/ads-manager-link.ts`) agora abre o Gerenciador de Anúncios já com (1) o filtro "nome da campanha NÃO contém
+    'vaga'" e (2) o MESMO período do Painel (Acompanhamento, Análise e Visão Geral seguem o filtro de período da tela;
+    Metas = mês atual; Monitor de CPA = o período escolhido nele). Períodos que existem igual no Gerenciador (Hoje, Ontem,
+    Últimos 3 dias, Últimos 7 dias, Mês atual) vão com o nome; os outros ("Últimos 3 dias + hoje", "Ontem e hoje", "Este
+    mês, até ontem") vão só com as datas (fuso de Brasília). Onde não há período na tela (Clientes, Evolução) abre em "Ontem".
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

@@ -305,7 +305,7 @@ export function MonitorCpaTab({
                   className="grid grid-cols-[130px_1fr_70px_82px] items-center gap-2.5 border-t border-zinc-100 py-1.5 first:border-t-0 dark:border-zinc-800/60 sm:grid-cols-[190px_1fr_74px_96px]"
                 >
                   <a
-                    href={adsManagerUrl(r.accountId)}
+                    href={adsManagerUrl(r.accountId, period)}
                     target="_blank"
                     rel="noopener noreferrer"
                     title="Abrir no Gerenciador de Anúncios"

@@ -1006,7 +1006,7 @@ export function AnaliseTab({
                 <div className="flex flex-wrap items-center gap-2 bg-zinc-50 px-4 py-2 dark:bg-zinc-800/40">
                   <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{g.clientName}</span>
                   <a
-                    href={adsManagerUrl(g.accountId)}
+                    href={adsManagerUrl(g.accountId, preset)}
                     target="_blank"
                     rel="noopener noreferrer"
                     title="Abrir no Gerenciador de Anúncios"
@@ -1342,7 +1342,7 @@ export function AnaliseTab({
                   <div className="flex flex-wrap items-center gap-2 bg-zinc-50 px-4 py-2 dark:bg-zinc-800/40">
                     <span className="text-sm font-medium text-zinc-900 dark:text-zinc-50">{g.clientName}</span>
                     <a
-                      href={adsManagerUrl(g.accountId)}
+                      href={adsManagerUrl(g.accountId, preset)}
                       target="_blank"
                       rel="noopener noreferrer"
                       title="Abrir no Gerenciador de Anúncios"

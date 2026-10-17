@@ -256,7 +256,7 @@ export function VisaoGeral({
           </select>
           {accountId && !searching ? (
             <a
-              href={adsManagerUrl(accountId)}
+              href={adsManagerUrl(accountId, preset)}
               target="_blank"
               rel="noopener noreferrer"
               className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium leading-8 text-zinc-600 hover:text-zinc-900 dark:border-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-100"
