@@ -626,6 +626,315 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 9. Resumo das 7h (contas que precisam de atenção)\n\nTodo dia às 07h05: soma os pontos de cada conta (status, CPA de ontem e dos 2 dias, Invest. diário abaixo do Ritmo, saldo, erro de pagamento, CPL de ontem pior que o status) e manda pro grupo só as contas que precisam de atenção, em ordem de prioridade, com o motivo. Só avisa — não muda nada.",
+        "height": 130,
+        "width": 900,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        2290
+      ],
+      "id": "14bccbd8-dca7-4a24-9332-634b6494cc1c",
+      "name": "Nota - 9. Resumo das 7h (contas que precisam de atenção)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5 7 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2430
+      ],
+      "id": "52e831da-ac16-4e1b-9b9e-83bcbdda8107",
+      "name": "Agenda - Resumo das 7h (07h05)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/morning-summary-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        2430
+      ],
+      "id": "ac76b30d-c7b2-4ab2-81a4-77283a5b1997",
+      "name": "Enviar resumo das 7h",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 10. Conta sem anúncio ativo / sem entrega (o dia todo)\n\nDe hora em hora, das 08h20 às 20h20: avisa conta sem nenhum anúncio ativo (qualquer hora) ou com anúncio ativo mas ZERO gasto hoje depois das 10h. Cada conta/problema avisa só 1x por dia. É leve (2 consultas por conta) e só avisa — não muda nada. Fora de 08h–21h o próprio sistema ignora.",
+        "height": 130,
+        "width": 900,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        2590
+      ],
+      "id": "feab3812-aaa1-46bb-9d18-816ab26e4377",
+      "name": "Nota - 10. Conta sem anúncio ativo / sem entrega (o dia todo)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "20 8-20 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        2730
+      ],
+      "id": "7b392b3e-7077-4cff-baad-c795a22b8a56",
+      "name": "Agenda - Sem anúncio ativo / sem entrega (hora em hora)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/no-delivery-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        2730
+      ],
+      "id": "e1ac61ac-3972-485a-a249-3540bf4a70f3",
+      "name": "Checar conta sem anúncio ativo / sem entrega",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 11. Aumento de investimento (plano de madrugada, aplicação às 06h)\n\n03h45: monta o PLANO (olha os últimos 3 dias sem hoje; não mexe na Meta). 06h01 a 06h11 (a cada 2 min): aplica o plano em fila, um conjunto de cada vez — cada rodada dura ~50s e a seguinte continua de onde parou. Regra: CPA até R$1 acima da meta → +R$10; até R$2 → +R$5; teto R$30 (R$35 se os 7 dias estiverem abaixo da meta). Precisa da migration 0032 rodada.",
+        "height": 150,
+        "width": 900,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        2890
+      ],
+      "id": "350c871d-b1ea-49b3-a0bd-b17768cd4986",
+      "name": "Nota - 11. Aumento de investimento (plano de madrugada, aplicação às 06h)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "45 3 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        3040
+      ],
+      "id": "bdc93a95-b086-483e-9f48-58058a601730",
+      "name": "Agenda - Plano de aumento (03h45)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/budget-plan-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        3040
+      ],
+      "id": "6696259b-19ec-443c-a763-4b8408cc06af",
+      "name": "Montar plano de aumento de investimento",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "1,3,5,7,9,11 6 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        3180
+      ],
+      "id": "a1a7f770-039d-45c0-9e18-ddc514f260c4",
+      "name": "Agenda - Aplicar aumento (06h01 a 06h11)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/budget-apply-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        3180
+      ],
+      "id": "72af1791-8498-44ef-9e28-9121300d5499",
+      "name": "Aplicar aumento de investimento",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 12. Padrão de nomes (ajuste diário de idade e data)\n\n04h30: nos conjuntos ativos das contas IVS em que SÓ a idade e/ou a data do nome estão diferentes, corrige o nome sozinho (os dois dados vêm da própria Meta). O resto fica na aba 'Padrão de nomes' pra você aprovar.",
+        "height": 130,
+        "width": 900,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        3340
+      ],
+      "id": "c48786bd-c230-4833-b0c9-408efcd8b337",
+      "name": "Nota - 12. Padrão de nomes (ajuste diário de idade e data)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 4 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        3480
+      ],
+      "id": "8405af4d-bba1-4532-b169-d56a033e6cf2",
+      "name": "Agenda - Padrão de nomes (04h30)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/naming-fix-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        3480
+      ],
+      "id": "74359937-7b08-470a-a393-217efd0d6e10",
+      "name": "Ajustar idade/data nos nomes dos conjuntos",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
     }
   ],
   "pinData": {},
@@ -734,6 +1043,61 @@
         [
           {
             "node": "Atualizar backup das métricas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Resumo das 7h (07h05)": {
+      "main": [
+        [
+          {
+            "node": "Enviar resumo das 7h",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Sem anúncio ativo / sem entrega (hora em hora)": {
+      "main": [
+        [
+          {
+            "node": "Checar conta sem anúncio ativo / sem entrega",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Plano de aumento (03h45)": {
+      "main": [
+        [
+          {
+            "node": "Montar plano de aumento de investimento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Aplicar aumento (06h01 a 06h11)": {
+      "main": [
+        [
+          {
+            "node": "Aplicar aumento de investimento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Padrão de nomes (04h30)": {
+      "main": [
+        [
+          {
+            "node": "Ajustar idade/data nos nomes dos conjuntos",
             "type": "main",
             "index": 0
           }

@@ -36,6 +36,7 @@ import { decideAdSetAction, needsSevenDayData } from "@/lib/alerts/adset-decisio
 import { clearQuarantine, loadQuarantine, saveQuarantine } from "@/lib/alerts/adset-quarantine";
 import { publishAlert, type AlertKind } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
+import { applyPauseBrake, severityOf, BRAKE_MAX_SHARE } from "@/lib/alerts/pause-brake";
 
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
@@ -77,9 +78,22 @@ export interface ReducedAdSet {
   error?: string;
 }
 
+// Etapa 136: conjunto que passou do limite de pausa mas foi MANTIDO ativo pelo freio de segurança (70% da conta).
+export interface HeldAdSet {
+  ad_account_id: string;
+  client_name: string;
+  adset_id: string;
+  adset_name: string;
+  spend: number;
+  cost_per_conversation: number | null;
+  cost_7d: number | null;
+  cpa_target: number;
+}
+
 export interface CheckAdSetsPauseResult {
   paused: PausedAdSet[];
   reduced: ReducedAdSet[];
+  held: HeldAdSet[];
   sendError: string | null;
 }
 
@@ -104,7 +118,7 @@ export async function checkAndPauseAdSets(
   if (selectedErr) throw selectedErr;
   const off = await inactiveAccountIds(db, userId);
   const accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
-  if (accountIds.length === 0) return { paused: [], reduced: [], sendError: null };
+  if (accountIds.length === 0) return { paused: [], reduced: [], held: [], sendError: null };
 
   const { data: bindings, error: bindingsErr } = await db
     .from("account_bindings")
@@ -113,7 +127,7 @@ export async function checkAndPauseAdSets(
     .in("ad_account_id", accountIds)
     .not("cpa_target", "is", null);
   if (bindingsErr) throw bindingsErr;
-  if (!bindings || bindings.length === 0) return { paused: [], reduced: [], sendError: null };
+  if (!bindings || bindings.length === 0) return { paused: [], reduced: [], held: [], sendError: null };
 
   const quarantine = await loadQuarantine(db, userId);
   const now = new Date();
@@ -125,7 +139,10 @@ export async function checkAndPauseAdSets(
     cost_7d: number | null;
     action: "cut" | "pause";
     repeat: boolean;
+    cpa_target: number;
   }
+  // Etapa 136: quantos conjuntos ativos cada conta tem (base dos 70% do freio de segurança).
+  const activeCountByAccount = new Map<string, number>();
   const candidates: Candidate[] = [];
   const toClear: string[] = [];
 
@@ -136,6 +153,7 @@ export async function checkAndPauseAdSets(
       const clientName = (b.client_name as string | null) || accountId;
       try {
         const rows3 = await getAdSetCostAnalysis(token, accountId, DATE_PRESET);
+        activeCountByAccount.set(accountId, rows3.length);
         // Só busca os 7 dias se algum conjunto da conta precisar da decisão.
         const needs7 = rows3.some((r) => {
           const rec = quarantine.get(r.id);
@@ -171,6 +189,7 @@ export async function checkAndPauseAdSets(
               cost_7d: r7?.cost_per_conversation ?? null,
               action: decision.action,
               repeat: !!rec,
+              cpa_target: cpaTarget,
             });
           }
         }
@@ -182,8 +201,46 @@ export async function checkAndPauseAdSets(
 
   await clearQuarantine(db, userId, toClear);
 
+  // --- Etapa 136: freio de segurança (por conta). Conjunto sem anúncio ativo fica fora do freio (pausa direto). ---
+  const held: HeldAdSet[] = [];
+  const heldIds = new Set<string>();
+  {
+    const byAccount = new Map<string, Candidate[]>();
+    for (const c of candidates) {
+      if (c.action !== "pause") continue;
+      const list = byAccount.get(c.ad_account_id) ?? [];
+      list.push(c);
+      byAccount.set(c.ad_account_id, list);
+    }
+    for (const [accountId, list] of byAccount) {
+      const brake = applyPauseBrake(
+        list.map((c) => ({
+          id: c.adset.id,
+          severity: severityOf(c.adset, c.cpa_target),
+          exempt: !c.adset.has_active_ad,
+        })),
+        activeCountByAccount.get(accountId) ?? list.length,
+      );
+      for (const id of brake.held) heldIds.add(id);
+    }
+    for (const c of candidates) {
+      if (c.action === "pause" && heldIds.has(c.adset.id)) {
+        held.push({
+          ad_account_id: c.ad_account_id,
+          client_name: c.client_name,
+          adset_id: c.adset.id,
+          adset_name: c.adset.name,
+          spend: c.adset.spend,
+          cost_per_conversation: c.adset.cost_per_conversation,
+          cost_7d: c.cost_7d,
+          cpa_target: c.cpa_target,
+        });
+      }
+    }
+  }
+
   // --- Pausas (como sempre: uma de cada vez, com intervalo) ---
-  const toPause = candidates.filter((c) => c.action === "pause");
+  const toPause = candidates.filter((c) => c.action === "pause" && !heldIds.has(c.adset.id));
   let paused: PausedAdSet[] = [];
   if (toPause.length > 0) {
     const results = await setEntitiesStatusSequential(
@@ -288,7 +345,7 @@ export async function checkAndPauseAdSets(
   const cutNotes = reduced.filter((r) => r.kind === "floor" || r.kind === "lifetime");
 
   let sendError: string | null = null;
-  if (opts.send && (pausedOk.length > 0 || cutOk.length > 0 || cutNotes.length > 0)) {
+  if (opts.send && (pausedOk.length > 0 || cutOk.length > 0 || cutNotes.length > 0 || held.length > 0)) {
     try {
       const sections: Array<{ kind: AlertKind; title: string; body: string; count: number }> = [];
       if (pausedOk.length > 0) {
@@ -309,6 +366,26 @@ export async function checkAndPauseAdSets(
           body: lines.join("\n"),
           count: pausedOk.length,
         });
+      }
+      if (held.length > 0) {
+        const heldLines = held.map(
+          (h) =>
+            `• ${h.client_name} — ${h.adset_name}: ${
+              h.cost_per_conversation != null ? `${fmtCurrency(h.cost_per_conversation)}/conversa` : `gasto ${fmtCurrency(h.spend)} sem conversa`
+            } (meta ${fmtCurrency(h.cpa_target)})${h.cost_7d != null ? ` · 7 dias ${fmtCurrency(h.cost_7d)}` : ""}`,
+        );
+        const note = `🛑 Freio de segurança (mais de ${Math.round(BRAKE_MAX_SHARE * 100)}% dos conjuntos da conta passariam do limite): ${held.length} conjunto${
+          held.length > 1 ? "s foram mantidos ativos" : " foi mantido ativo"
+        } por segurança, os menos ruins — a próxima rodada reavalia:\n${heldLines.join("\n")}`;
+        const target = sections.find((s) => s.kind === "adsets-paused");
+        if (target) target.body = `${target.body}\n\n${note}`;
+        else
+          sections.push({
+            kind: "adsets-paused",
+            title: `🛑 Freio de segurança: conjuntos acima do limite mantidos ativos — ${held.length}`,
+            body: note,
+            count: held.length,
+          });
       }
       const cutLines = cutOk.map((r, i) => {
         const where = r.scope === "campaign" ? " (orçamento da campanha)" : "";
@@ -342,5 +419,5 @@ export async function checkAndPauseAdSets(
     }
   }
 
-  return { paused, reduced, sendError };
+  return { paused, reduced, held, sendError };
 }

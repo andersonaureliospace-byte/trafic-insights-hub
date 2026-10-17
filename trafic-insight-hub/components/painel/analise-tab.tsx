@@ -9,6 +9,7 @@ const ANALISE_FRESH_MS = 15 * 60 * 1000;
 import type { AdAccount } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
+import { AumentoProgramado } from "@/components/painel/aumento-programado";
 
 // "Últimos 3 dias + hoje" (padrão recomendado — pega problema recente
 // rápido) já vem primeiro em DATE_PRESETS, junto com os demais períodos
@@ -339,7 +340,7 @@ interface AnaliseFilters {
   noActiveAdOnly: boolean;
 }
 
-export function AnaliseTab({
+function AnaliseTabInner({
   accounts,
   initialFilters,
   onFiltersChange,
@@ -1437,6 +1438,42 @@ export function AnaliseTab({
           {skipped.length} conta(s) sem Meta CPA cadastrada, não avaliada(s) aqui: {skipped.map((s) => s.clientName).join(", ")}.
         </p>
       ) : null}
+    </div>
+  );
+}
+
+// Etapa 139: Análise ganhou uma sub-área "Aumento programado" (plano de aumento de investimento aplicado às 6h) ao lado da
+// análise de sempre. A análise de sempre fica montada (só escondida) pra não perder lista/ação em andamento ao alternar.
+export function AnaliseTab(props: {
+  accounts: AdAccount[];
+  initialFilters?: Record<string, unknown>;
+  onFiltersChange?: (filters: AnaliseFilters) => void;
+}) {
+  const [area, setArea] = useState<"analise" | "aumento">("analise");
+  return (
+    <div className="space-y-3">
+      <div className="inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
+        {([
+          ["analise", "Análise"],
+          ["aumento", "Aumento programado"],
+        ] as const).map(([id, label]) => (
+          <button
+            key={id}
+            onClick={() => setArea(id)}
+            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
+              area === id
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div className={area === "analise" ? "" : "hidden"}>
+        <AnaliseTabInner {...props} />
+      </div>
+      {area === "aumento" ? <AumentoProgramado /> : null}
     </div>
   );
 }

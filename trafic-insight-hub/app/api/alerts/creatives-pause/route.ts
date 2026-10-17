@@ -11,8 +11,8 @@ export async function POST() {
   try {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
-    const { paused, sendError } = await checkAndPauseCreatives(supabase, user.id, token, { send: true });
-    return NextResponse.json({ paused, sendError });
+    const { paused, held, sendError } = await checkAndPauseCreatives(supabase, user.id, token, { send: true });
+    return NextResponse.json({ paused, held, sendError });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

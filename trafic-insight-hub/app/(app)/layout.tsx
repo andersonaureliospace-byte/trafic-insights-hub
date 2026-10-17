@@ -22,7 +22,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
               <NavLink href="/painel">Painel</NavLink>
               <NavLink href="/mensagens">Mensagens</NavLink>
               <NavLink href="/auditoria">Auditoria</NavLink>
-              <NavLink href="/crm">CRM</NavLink>
+              {/* Etapa 135: CRM escondido do menu (não é usado). As telas/rotas continuam no projeto — pra voltar, é só
+                  descomentar a linha abaixo. */}
+              {/* <NavLink href="/crm">CRM</NavLink> */}
               <NavLink href="/configuracoes">Configurações</NavLink>
             </nav>
           </div>

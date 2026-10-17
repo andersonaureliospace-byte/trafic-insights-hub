@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 interface AlertNotification {
   id: string;
@@ -29,6 +29,10 @@ const KIND_LABELS: Record<string, string> = {
   "balance-friday": "Saldo de sexta",
   "payment-error": "Erro no pagamento",
   "manual-check": "Verificação manual",
+  "morning-summary": "Resumo das 7h",
+  "no-delivery": "Conta sem entrega",
+  "budget-increase": "Aumento de investimento",
+  "naming-fix": "Ajuste de nomes",
 };
 
 // Cor da barrinha da esquerda: vermelho = o que também vai pro grupo (urgente); âmbar = o resto.
@@ -54,10 +58,57 @@ function expiresIn(iso: string): string {
 
 // Aba Alertas (Etapa 112) — todas as notificações das verificações automáticas. No grupo do
 // WhatsApp vão só as urgentes; aqui aparece tudo. Some em 72h ou quando clica em OK.
-export function AlertasTab({ onCountChange }: { onCountChange?: (n: number) => void }) {
+// Etapa 135: sem selo vermelho no menu; filtros por CONTA e por JANELA DE TEMPO (data e hora) aqui dentro mesmo.
+// Filtro por conta: a notificação cita o nome do cliente no título/texto — procura o nome ali (sem confundir
+// "IVS CHAPECÓ" com "IVS CHAPECÓ 2": depois do nome não pode vir letra, número nem " 2").
+function norm(s: string): string {
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+function mentionsAccount(n: AlertNotification, name: string): boolean {
+  const hay = norm(`${n.title}\n${n.body}`);
+  const needle = norm(name).trim();
+  if (!needle) return false;
+  let from = 0;
+  for (;;) {
+    const i = hay.indexOf(needle, from);
+    if (i < 0) return false;
+    const rest = hay.slice(i + needle.length);
+    if (!/^(\s?\d|[a-z0-9])/.test(rest)) return true;
+    from = i + 1;
+  }
+}
+// "2026-10-17T07:00" (hora local do navegador) pra comparar com a data do alerta.
+function localInput(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
   const [items, setItems] = useState<AlertNotification[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"todos" | "grupo" | "painel">("todos");
+  const [account, setAccount] = useState("");
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const accountOptions = useMemo(() => [...new Set(accountNames)].sort((a, b) => a.localeCompare(b, "pt-BR")), [accountNames]);
+
+  function quick(kind: "1h" | "24h" | "hoje" | "ontem") {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    if (kind === "1h") {
+      setFrom(localInput(new Date(now.getTime() - 3_600_000)));
+      setTo("");
+    } else if (kind === "24h") {
+      setFrom(localInput(new Date(now.getTime() - 24 * 3_600_000)));
+      setTo("");
+    } else if (kind === "hoje") {
+      setFrom(localInput(startOfToday));
+      setTo("");
+    } else {
+      setFrom(localInput(new Date(startOfToday.getTime() - 24 * 3_600_000)));
+      setTo(localInput(new Date(startOfToday.getTime() - 60_000)));
+    }
+  }
 
   const load = useCallback(async () => {
     setError(null);
@@ -70,11 +121,10 @@ export function AlertasTab({ onCountChange }: { onCountChange?: (n: number) => v
       }
       const list = (d.notifications ?? []) as AlertNotification[];
       setItems(list);
-      onCountChange?.(list.length);
     } catch (e) {
       setError((e as Error).message);
     }
-  }, [onCountChange]);
+  }, []);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carrega os alertas assim que a aba monta
@@ -84,22 +134,28 @@ export function AlertasTab({ onCountChange }: { onCountChange?: (n: number) => v
   }, [load]);
 
   async function ok(id: string) {
-    setItems((prev) => {
-      const next = (prev ?? []).filter((n) => n.id !== id);
-      onCountChange?.(next.length);
-      return next;
-    });
+    setItems((prev) => (prev ?? []).filter((n) => n.id !== id));
     await fetch(`/api/alerts/notifications?id=${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
   async function okAll() {
     if (!confirm("Dar OK em todos os alertas? Eles serão apagados.")) return;
     setItems([]);
-    onCountChange?.(0);
     await fetch("/api/alerts/notifications?all=1", { method: "DELETE" });
   }
 
-  const shown = (items ?? []).filter((n) => (filter === "todos" ? true : filter === "grupo" ? n.sent_to_group : !n.sent_to_group));
+  const fromMs = from ? new Date(from).getTime() : null;
+  const toMs = to ? new Date(to).getTime() + 59_999 : null;
+  const shown = (items ?? []).filter((n) => {
+    if (filter === "grupo" && !n.sent_to_group) return false;
+    if (filter === "painel" && n.sent_to_group) return false;
+    const t = new Date(n.updated_at).getTime();
+    if (fromMs != null && t < fromMs) return false;
+    if (toMs != null && t > toMs) return false;
+    if (account && !mentionsAccount(n, account)) return false;
+    return true;
+  });
+  const hasFilters = !!(account || from || to);
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -137,6 +193,66 @@ export function AlertasTab({ onCountChange }: { onCountChange?: (n: number) => v
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-4 py-2 text-xs dark:border-zinc-800/60">
+        <select
+          value={account}
+          onChange={(e) => setAccount(e.target.value)}
+          className="h-8 max-w-[240px] rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          aria-label="Filtrar por conta"
+        >
+          <option value="">Todas as contas</option>
+          {accountOptions.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+        <label className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
+          De
+          <input
+            type="datetime-local"
+            value={from}
+            onChange={(e) => setFrom(e.target.value)}
+            className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          />
+        </label>
+        <label className="flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
+          até
+          <input
+            type="datetime-local"
+            value={to}
+            onChange={(e) => setTo(e.target.value)}
+            className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          />
+        </label>
+        {(["1h", "24h", "hoje", "ontem"] as const).map((k) => (
+          <button
+            key={k}
+            onClick={() => quick(k)}
+            className="h-7 rounded-full border border-zinc-300 px-2.5 font-medium text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-800"
+          >
+            {k === "1h" ? "Última hora" : k === "24h" ? "Últimas 24h" : k === "hoje" ? "Hoje" : "Ontem"}
+          </button>
+        ))}
+        {hasFilters ? (
+          <button
+            onClick={() => {
+              setAccount("");
+              setFrom("");
+              setTo("");
+            }}
+            className="h-7 rounded-full px-2.5 font-medium text-blue-600 hover:underline dark:text-blue-400"
+          >
+            Limpar filtros
+          </button>
+        ) : null}
+        {hasFilters && items ? (
+          <span className="text-zinc-500 dark:text-zinc-400">
+            {shown.length} de {items.length}
+          </span>
+        ) : null}
+      </div>
+
       <p className="border-b border-zinc-100 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800/60 dark:text-zinc-400">
         Aqui aparecem todas as notificações das verificações automáticas. No grupo do WhatsApp vão só as urgentes
         (CPA acima da meta, Invest. diário em 80% do Ritmo, saldo baixo, saldo de sexta e erro no pagamento). Cada
@@ -146,7 +262,9 @@ export function AlertasTab({ onCountChange }: { onCountChange?: (n: number) => v
       {error ? <p className="px-4 py-3 text-sm text-red-600">{error}</p> : null}
       {items === null && !error ? <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p> : null}
       {items !== null && shown.length === 0 ? (
-        <p className="px-4 py-10 text-center text-sm text-zinc-500">Nenhum alerta aberto. Tudo certo por aqui.</p>
+        <p className="px-4 py-10 text-center text-sm text-zinc-500">
+          {hasFilters ? "Nenhum alerta com esses filtros." : "Nenhum alerta aberto. Tudo certo por aqui."}
+        </p>
       ) : null}
 
       <ul className="divide-y divide-zinc-100 dark:divide-zinc-800/60">

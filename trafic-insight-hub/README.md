@@ -2692,6 +2692,45 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     A rodada seguinte reavalia tudo. Criativo com 48h ou mais não tem essa espera. Se a busca de hoje na Meta falhar, a
     conta é pulada (não decide no escuro). Não muda a tela de Análise nem a regra de Conjuntos.
 
+122. **Alertas com filtros, sem selo vermelho; CRM escondido (Etapa 135)** — a aba Alertas ganhou filtro por conta e por janela de
+    tempo (De/até + atalhos Última hora/24h/Hoje/Ontem) e o contador vermelho do menu saiu. O item CRM saiu do menu lateral
+    (as telas e rotas continuam no código, só não aparecem). Novos tipos de aviso: `morning-summary`, `no-delivery`,
+    `budget-increase`, `naming-fix` (os dois primeiros vão também pro grupo do WhatsApp).
+
+123. **Freio de segurança da pausa automática (Etapa 136)** — `lib/alerts/pause-brake.ts`. Por conta (e por conjunto, no caso de
+    criativos), a automação só pausa até 70% dos itens ativos (ex.: 6 conjuntos, 3 pra pausar → pausa; 6 de 6 → pausa 4 e mantém
+    os 2 menos piores). Sempre pausam direto, sem contar no freio: conjunto sem anúncio ativo e criativo que gastou 3x a meta.
+    O que foi mantido aparece no aviso ("Freio de segurança").
+
+124. **Resumo das 7h — "Contas que precisam de atenção" (Etapa 137)** — `lib/alerts/priority-score.ts` + `morning-summary.ts`, hook
+    `morning-summary-tick`, prévia/envio manual em `/api/alerts/morning-summary` (GET = só mostra, POST = envia). Pontos: status
+    Crítico 3 / Alta 2 / Média 1; CPA crítico ontem 2; crítico ontem e anteontem 3; Invest. diário ÷ Ritmo 70–80% = 1, 60–70% = 2,
+    50–60% = 3, abaixo de 50% = 4; saldo acabando 1; saldo acabou ou erro de pagamento 5; +1 se o CPL de ontem caiu num nível pior
+    que o status da conta (igual ou melhor = 0). Entram só contas com 2 pontos ou mais (`MIN_POINTS`), até 10, em ordem; a mensagem
+    mostra o nome e "Motivo: …" (sem pontos, sem reprovados/nomes fora do padrão).
+
+125. **Alerta "conta sem anúncio ativo / sem entrega" (Etapa 138)** — `lib/alerts/no-delivery*.ts`, hook `no-delivery-tick` (de hora em hora,
+    8h–21h; fora disso ignora), manual em `/api/alerts/no-delivery`. "Sem anúncio ativo" = nenhum anúncio ACTIVE na conta (vale a
+    qualquer hora); "sem entrega" = tem anúncio ativo mas zero gasto e zero impressões hoje a partir das 10h. Cada conta/problema
+    avisa 1x por dia. Só avisa — não muda nada.
+
+126. **Aumento programado de investimento (Etapa 139)** — migration `0032_budget_increase_plan.sql`. `budget-plan-tick` (madrugada) monta
+    o plano; `budget-apply-tick` aplica a partir das 6h em fila (2s entre conjuntos, ~50s por chamada; o n8n chama a cada 2 min até
+    esvaziar), conferindo na Meta na hora se o conjunto continua ativo e o orçamento atual. Regra (`budget-increase-rule.ts`): CPA dos
+    últimos 3 dias SEM hoje até R$1 acima da meta (ou abaixo) → +R$10; até R$2 acima → +R$5; mais que isso, nada. Teto R$30; R$35 se o
+    CPA de 7 dias estiver abaixo da meta (ex.: em R$25 sobe só R$5; com 7 dias bons sobe R$10). Exige 3 conversas ou mais nos 3 dias,
+    conjunto com anúncio ativo, orçamento diário próprio (ABO) e fora da quarentena de 24h. Sem limite por conta. Tela: Análise →
+    "Aumento programado" (plano do dia, refazer, aplicar agora, tirar do plano, histórico).
+
+127. **Aba "Padrão de nomes" (Etapa 140)** — `lib/naming/rules.ts` (regras puras) e `scan.ts`. Campanha: `TIPO | OBJETIVO | UNIDADE`
+    (TIPO só GERAL/EXAME/OFERTA; PROMO, OFERTAS e CREDIARIO são sugeridos como OFERTA; data no fim da unidade é removida). Conjunto:
+    `TIPO | OFERTA | LOCALIZAÇÃO/KM | IDADE | GÊNERO | PLATAFORMA | DIRECIONAMENTO | AND | DATA`, tudo derivado do público e da data
+    de criação na Meta (raio em KM ou cidade; várias cidades = `CIDADE+`; idade `18-65+`; gênero e plataforma só quando é um só —
+    MULHER/HOMEM, INSTA/FACE; `INTERESSES` só quando há interesses; data dd/mm de Brasília). "Cópia" não pode em nenhum nome (campanha,
+    conjunto, anúncio). Escopo: contas exibidas e ativas com "IVS" no nome, só itens ativos, campanhas [VAGA] ignoradas. A aba lista só o
+    que diverge, com sugestão editável; Aceitar renomeia na hora na Meta (sugestão incompleta, ex.: EXAME sem oferta, só libera depois de
+    editar). Quando SÓ idade e/ou data divergem, o `naming-fix-tick` (diário) corrige sozinho e avisa em Alertas; há botão pra rodar na hora.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

@@ -26,7 +26,11 @@ export type AlertKind =
   | "balance-low" // Saldo baixo
   | "balance-friday" // Saldo de sexta
   | "payment-error" // Erro no pagamento
-  | "manual-check"; // Verificação manual pendente
+  | "manual-check" // Verificação manual pendente
+  | "morning-summary" // Resumo das 7h: contas que precisam de atenção (Etapa 137)
+  | "no-delivery" // Conta sem anúncio ativo / sem entrega (Etapa 138)
+  | "budget-increase" // Aumento de investimento aplicado às 6h (Etapa 139)
+  | "naming-fix"; // Ajuste automático de idade/data nos nomes dos conjuntos (Etapa 140)
 
 // Os únicos tipos que também vão pro grupo do WhatsApp (os mais urgentes).
 export const GROUP_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>([
@@ -35,6 +39,8 @@ export const GROUP_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>([
   "balance-low",
   "balance-friday",
   "payment-error",
+  "morning-summary",
+  "no-delivery",
 ]);
 
 // Avisos que se repetem a cada rodada enquanto o problema durar: em vez de empilhar uma

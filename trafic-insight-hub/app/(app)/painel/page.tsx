@@ -11,6 +11,7 @@ import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog
 import { ControleSaldo } from "@/components/painel/controle-saldo";
 import { VisaoGeral } from "@/components/painel/visao-geral";
 import { AlertasTab } from "@/components/painel/alertas-tab";
+import { PadraoNomesTab } from "@/components/painel/padrao-nomes-tab";
 import { AnaliseTab } from "@/components/painel/analise-tab";
 import { ClientesTab } from "@/components/painel/clientes-tab";
 import { CopyTab } from "@/components/painel/copy-tab";
@@ -162,6 +163,7 @@ const TABS = [
   { id: "monitor-cpa", label: "Monitor de CPA" },
   { id: "visao-geral", label: "Visão Geral" },
   { id: "alertas", label: "Alertas" },
+  { id: "padrao-nomes", label: "Padrão de nomes" },
   { id: "saldo", label: "Controle de Saldo" },
   { id: "clientes", label: "Clientes" },
   { id: "demandas", label: "Demandas" },
@@ -173,26 +175,6 @@ type TabId = (typeof TABS)[number]["id"];
 export default function PainelPage() {
   const { options: priorityOptions } = usePriorityOptions();
   const [tab, setTab] = useState<TabId>("visao-geral");
-  // Etapa 112: quantos alertas abertos (bolinha ao lado do nome da aba "Alertas").
-  const [alertCount, setAlertCount] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    async function loadCount() {
-      try {
-        const res = await fetch("/api/alerts/notifications?count=1", { cache: "no-store" });
-        const d = await res.json();
-        if (!cancelled && typeof d.count === "number") setAlertCount(d.count);
-      } catch {
-        // sem rede / tabela ainda não criada: simplesmente sem bolinha
-      }
-    }
-    void loadCount();
-    const t = setInterval(() => void loadCount(), 120_000);
-    return () => {
-      cancelled = true;
-      clearInterval(t);
-    };
-  }, []);
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [allAccounts, setAllAccounts] = useState<AdAccount[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -943,11 +925,6 @@ export default function PainelPage() {
                 }`}
               >
                 {t.label}
-                {t.id === "alertas" && alertCount > 0 ? (
-                  <span className="ml-1.5 inline-flex min-w-5 items-center justify-center rounded-full bg-red-600 px-1.5 text-[11px] font-semibold leading-5 text-white">
-                    {alertCount > 99 ? "99+" : alertCount}
-                  </span>
-                ) : null}
               </button>
             ))}
             {/* Indicador de estado: carregando / erro / tudo certo */}
@@ -1445,7 +1422,7 @@ export default function PainelPage() {
               />
             ) : null}
 
-            {tab === "alertas" ? <AlertasTab onCountChange={setAlertCount} /> : null}
+            {tab === "alertas" ? <AlertasTab accountNames={selectedAccounts.map((a) => bindings[a.account_id]?.client_name || a.name)} /> : null}
 
             {tab === "descricao" ? (
               <DescricaoTab
@@ -1454,6 +1431,7 @@ export default function PainelPage() {
               />
             ) : null}
 
+            {tab === "padrao-nomes" ? <PadraoNomesTab /> : null}
             {tab === "copy" ? <CopyTab accounts={selectedAccounts} bindings={bindings} /> : null}
             </>
             )}
