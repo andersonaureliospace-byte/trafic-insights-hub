@@ -2681,6 +2681,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     acabam hoje ("Ontem e hoje", "3 dias + hoje") abriam sem o dia de hoje; agora soma 1 dia no fim, e "Ontem e hoje" vai
     com o nome `last_2_days` (o nome que o Gerenciador usa pra ele).
 
+121. **Pausa de criativo NOVO espera quando "hoje" já está bom, com teto de 3x (Etapas 133/134)** — caso real
+    (Guaratinguetá, Meta CPA R$4): criativo novo, ontem sem lead e hoje com CPL R$2,98, mas no acumulado "ontem + hoje"
+    ficou acima de Meta CPA + R$4 e foi pausado de manhã (e o conjunto, sem anúncio ativo, 20 min depois). Agora, antes de
+    pausar (`creatives-pause-tick`, `creatives-no-result-tick` e disparo manual), a automação segura a pausa nessa rodada
+    quando TODAS as condições valem (`holdBecauseTodayIsGood` em `lib/alerts/creative-decision.ts`): (1) o anúncio foi
+    criado há MENOS DE 48h (data de criação do próprio anúncio, `created_time`; sem data = não segura); (2) o custo por
+    conversa do acumulado ontem + hoje NÃO passou de 3x a Meta CPA (acima disso pausa mesmo assim, ex.: Meta R$4 → teto
+    R$12); (3) hoje (só hoje) já tem pelo menos 1 conversa e o custo por conversa de hoje está igual ou abaixo da Meta CPA.
+    A rodada seguinte reavalia tudo. Criativo com 48h ou mais não tem essa espera. Se a busca de hoje na Meta falhar, a
+    conta é pulada (não decide no escuro). Não muda a tela de Análise nem a regra de Conjuntos.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

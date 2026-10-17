@@ -11,6 +11,12 @@
 //     "linha verde" de Análise) → só pausa se TAMBÉM estiver R$4+ acima da Meta CPA nos
 //     últimos dois dias + hoje (anteontem, ontem e hoje juntos).
 //  4. Se a busca dos 7 dias (ou dos 2 dias + hoje) falhar, não decide no escuro: pula.
+//  5. (Etapas 133/134) Criativo NOVO (criado há menos de 48h): se HOJE (só hoje) ele já tem conversa e o
+//     custo por conversa de hoje está dentro da Meta CPA, NÃO pausa nesta rodada — o acumulado de ontem +
+//     hoje ainda está pesado por um dia ruim, mas a tendência é boa; espera a próxima rodada (que
+//     reavalia tudo: se hoje continuar bom o acumulado melhora sozinho, se piorar, pausa).
+//     Teto: se o custo por conversa do acumulado (ontem + hoje) passar de 3x a Meta CPA, pausa mesmo
+//     assim. Criativo com 48h ou mais não tem essa espera. Ver `holdBecauseTodayIsGood`.
 
 import { isCreativeFlaggedAbove } from "@/lib/meta/analysis-thresholds";
 
@@ -24,6 +30,41 @@ export type CreativeDecision =
   | { action: "none"; reason: string }
   | { action: "skip"; reason: "no_7d_data" | "no_3d_data" }
   | { action: "pause"; reason: string; goodHistory: boolean };
+
+// Etapas 133/134: espera da pausa de criativo NOVO. Segura a pausa (adia pra próxima rodada) só quando:
+//  - o anúncio foi criado há menos de 48h (NEW_CREATIVE_HOURS) — sem data de criação, não segura;
+//  - o custo por conversa do acumulado ontem + hoje NÃO passou de 3x a Meta CPA (teto, MAX_MULTIPLIER);
+//  - HOJE (só hoje) já tem pelo menos 1 conversa e o custo por conversa de hoje está igual ou abaixo da Meta CPA.
+export const NEW_CREATIVE_HOURS = 48;
+export const NEW_CREATIVE_MAX_MULTIPLIER = 3;
+
+export function isNewCreative(createdTime: string | null | undefined, now: Date): boolean {
+  if (!createdTime) return false;
+  const t = new Date(createdTime).getTime();
+  if (Number.isNaN(t)) return false;
+  return now.getTime() - t < NEW_CREATIVE_HOURS * 3_600_000;
+}
+
+export function holdBecauseTodayIsGood(input: {
+  cpaTarget: number;
+  createdTime: string | null | undefined;
+  now: Date;
+  m2: CreativeMetrics; // ontem + hoje (acumulado)
+  mToday: CreativeMetrics | undefined; // só hoje
+}): boolean {
+  const { cpaTarget, createdTime, now, m2, mToday } = input;
+  if (!isNewCreative(createdTime, now)) return false;
+  // Teto de 3x: custo por conversa do acumulado (sem conversa, o próprio gasto) acima disso → não segura.
+  const cumulative = m2.conversations && m2.conversations > 0 && m2.cost_per_conversation != null ? m2.cost_per_conversation : m2.spend;
+  if (cumulative > cpaTarget * NEW_CREATIVE_MAX_MULTIPLIER) return false;
+  return (
+    !!mToday &&
+    !!mToday.conversations &&
+    mToday.conversations > 0 &&
+    mToday.cost_per_conversation != null &&
+    mToday.cost_per_conversation <= cpaTarget
+  );
+}
 
 // "Linha verde" de Análise: CPA dos últimos 7 dias estritamente abaixo do ideal; sem conversa
 // nos 7 dias não conta como histórico bom.

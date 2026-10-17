@@ -7,6 +7,9 @@
 // + hoje). Criativo com histórico bom nos últimos 7 dias (CPA de 7 dias abaixo do
 // ideal, a "linha verde" de Análise) só é pausado se também estiver R$4+ acima nos
 // últimos dois dias + hoje. Regras puras em lib/alerts/creative-decision.ts.
+// Etapas 133/134: criativo NOVO (< 48h) acima da meta no acumulado de ontem + hoje, mas com HOJE (só hoje) já
+// dentro da meta (com conversa) e o acumulado ainda dentro de 3x a Meta CPA, não é pausado nesta rodada —
+// espera a próxima (holdBecauseTodayIsGood).
 // Etapa 105: existe também uma versão só dos criativos SEM resultado (opts.onlyNoResult),
 // chamada de hora em hora por outro endpoint (creatives-no-result-tick).
 // Sem cooldown: como o critério é "ainda ATIVO e acima do limite", um criativo já
@@ -27,7 +30,7 @@
 
 import type { createClient } from "@/lib/supabase/server";
 import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";
-import { decideCreativePause } from "@/lib/alerts/creative-decision";
+import { decideCreativePause, holdBecauseTodayIsGood } from "@/lib/alerts/creative-decision";
 import { spDate, type DateRangeInput } from "@/lib/meta/client";
 import { setEntitiesStatusSequential } from "@/lib/meta/status";
 import { publishAlert } from "@/lib/alerts/notifications";
@@ -103,10 +106,26 @@ export async function checkAndPauseCreatives(
             (!opts.onlyNoResult || !r.conversations || r.conversations <= 0),
         );
         // Só busca 7 dias / 2 dias + hoje se a conta tiver algum criativo acima do limite.
-        const first = active.filter(
+        const flaggedAll = active.filter(
           (r) =>
             decideCreativePause({ cpaTarget, m2: r, m7: undefined, sevenDayFetched: false, m3: undefined, threeDayFetched: false })
               .action !== "none",
+        );
+        if (flaggedAll.length === 0) return;
+        // Etapa 133: olha só o dia de hoje antes de pausar. Se a busca falhar, não decide no escuro (pula a conta).
+        let rowsToday: CreativeCostRow[];
+        try {
+          const todayStr = spDate(new Date());
+          rowsToday = await getCreativeCostAnalysis(token, accountId, { since: todayStr, until: todayStr });
+        } catch (e) {
+          console.error("creatives-pause hoje err (não decide sem olhar hoje)", accountId, e);
+          return;
+        }
+        const byToday = new Map(rowsToday.map((r) => [r.id, r]));
+        const nowDate = new Date();
+        const first = flaggedAll.filter(
+          (r) =>
+            !holdBecauseTodayIsGood({ cpaTarget, createdTime: r.created_time, now: nowDate, m2: r, mToday: byToday.get(r.id) }),
         );
         if (first.length === 0) return;
         let rows7: CreativeCostRow[] | null = null;

@@ -24,6 +24,8 @@ export interface CreativeCostRow {
   status: string | null;
   // Etapa 127: quando o CONJUNTO do criativo foi criado (ISO) — vem junto da lista de anúncios, sem chamada extra.
   adset_created_time: string | null;
+  // Etapa 134: quando o PRÓPRIO anúncio foi criado (ISO) — usado pela pausa automática (criativo novo, < 48h).
+  created_time: string | null;
 }
 
 type ActionRow = { action_type?: string; value?: string };
@@ -44,6 +46,7 @@ interface AdStatusRow {
   id?: string;
   effective_status?: string;
   status?: string;
+  created_time?: string;
   adset?: { created_time?: string };
 }
 
@@ -75,7 +78,7 @@ export async function getCreativeCostAnalysis(
     // (compartilhadas entre os períodos da mesma rodada e entre Criativos → Conjuntos). Pausar/ativar limpa isso.
     memoMeta(`creative-ads:${tokenTag(token)}:${id}`, 120_000, () =>
       metaGetAll<AdStatusRow>(token, `/${id}/ads`, {
-        fields: "id,effective_status,status,adset{created_time}",
+        fields: "id,effective_status,status,created_time,adset{created_time}",
         limit: "500",
       }),
     ).catch((e) => {
@@ -95,10 +98,12 @@ export async function getCreativeCostAnalysis(
 
   const statusMap = new Map<string, string>();
   const adsetCreatedMap = new Map<string, string>();
+  const adCreatedMap = new Map<string, string>();
   for (const a of adStatusRows) {
     if (!a.id) continue;
     statusMap.set(a.id, a.effective_status || a.status || "");
     if (a.adset?.created_time) adsetCreatedMap.set(a.id, a.adset.created_time);
+    if (a.created_time) adCreatedMap.set(a.id, a.created_time);
   }
 
   // Campanhas de objetivo Tráfego/Reconhecimento/Engajamento etc. (não é o
@@ -147,6 +152,7 @@ export async function getCreativeCostAnalysis(
       cost_per_conversation: costPerConversation,
       status,
       adset_created_time: adsetCreatedMap.get(row.ad_id) ?? null,
+      created_time: adCreatedMap.get(row.ad_id) ?? null,
     });
   }
   return rows;
