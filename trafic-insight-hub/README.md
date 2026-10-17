@@ -2674,6 +2674,9 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Metas = mês atual; Monitor de CPA = o período escolhido nele). Períodos que existem igual no Gerenciador (Hoje, Ontem,
     Últimos 3 dias, Últimos 7 dias, Mês atual) vão com o nome; os outros ("Últimos 3 dias + hoje", "Ontem e hoje", "Este
     mês, até ontem") vão só com as datas (fuso de Brasília). Onde não há período na tela (Clientes, Evolução) abre em "Ontem".
+    Ajuste (132b): o link agora também leva o `business_id` (Business Manager dono da conta, vindo da lista de contas do
+    Meta que o Painel já carrega — `registerAccountBusinesses`), igual ao link que o próprio Gerenciador gera. Sem ele o
+    Gerenciador redireciona pra descobrir o negócio, e nesse redirecionamento o filtro "vaga" podia se perder.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

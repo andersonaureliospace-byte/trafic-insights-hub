@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, priorityRank, type PresetId } from "@/lib/format";
-import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
+import { adsManagerUrl, registerAccountBusinesses } from "@/lib/meta/ads-manager-link";
 import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
 import { CPA_ACCEPTABLE_BAND, METAS_SORTS, compareMetas, computeMetas, metasCalendar, type MetasSort } from "@/lib/meta/metas";
 import { usePriorityOptions } from "@/lib/priority-context";
@@ -300,6 +300,7 @@ export default function PainelPage() {
         if (!raw) return false;
         const saved = JSON.parse(raw) as { at?: number; accounts?: AdAccount[] };
         if (!saved.accounts || saved.accounts.length === 0) return false;
+        registerAccountBusinesses(saved.accounts);
         setAllAccounts(saved.accounts);
         setAccountsError(null);
         const hhmm = saved.at
@@ -319,6 +320,7 @@ export default function PainelPage() {
       } else {
         setAccountsError(null);
         setAccountsStale(null);
+        registerAccountBusinesses(d.accounts ?? []);
         setAllAccounts(d.accounts ?? []);
         try {
           localStorage.setItem(CACHE_KEY, JSON.stringify({ at: Date.now(), accounts: d.accounts ?? [] }));
