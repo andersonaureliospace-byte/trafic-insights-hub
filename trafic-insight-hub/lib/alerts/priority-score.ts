@@ -102,11 +102,13 @@ export function joinReasons(reasons: string[]): string {
   return `${reasons.slice(0, -1).join(", ")} e ${reasons[reasons.length - 1]}`;
 }
 
+// Todas as contas com pontuação, da maior pra menor (inclusive as abaixo do mínimo) — usado só na prévia "todas" pra analisar o corte.
+export function scoreAll(accounts: AccountSignals[]): ScoredAccount[] {
+  return accounts.map(scoreAccount).sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "pt-BR"));
+}
+
 export function rankAccounts(accounts: AccountSignals[]): ScoredAccount[] {
-  return accounts
-    .map(scoreAccount)
-    .filter((a) => a.points >= MIN_POINTS)
-    .sort((a, b) => b.points - a.points || a.name.localeCompare(b.name, "pt-BR"));
+  return scoreAll(accounts).filter((a) => a.points >= MIN_POINTS);
 }
 
 // Texto do resumo (WhatsApp / aba Alertas): só nome + motivo, sem pontos.

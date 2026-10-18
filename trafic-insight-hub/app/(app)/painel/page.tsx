@@ -1153,7 +1153,7 @@ export default function PainelPage() {
                                 name={binding?.client_name || acc.name}
                                 whatsapp={binding?.whatsapp_contact}
                                 monthlyInvestment={binding?.monthly_investment}
-                                attention={attention[acc.account_id.replace(/^act_/, "")]?.reasons ?? null}
+                                attention={attention[acc.account_id.replace(/^act_/, "")] ?? null}
                                 href={adsManagerUrl(acc.account_id, preset)}
                                 linkClassName={
                                   paymentErrorIds.has(acc.account_id)

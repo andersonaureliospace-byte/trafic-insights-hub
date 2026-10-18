@@ -10,7 +10,7 @@ import { checkLowBudget } from "@/lib/alerts/low-budget";
 import { checkLowBalances } from "@/lib/alerts/balance";
 import { checkPaymentErrors } from "@/lib/alerts/payment";
 import { publishAlert } from "@/lib/alerts/notifications";
-import { formatMorningSummary, rankAccounts, type AccountSignals, type ScoredAccount } from "@/lib/alerts/priority-score";
+import { formatMorningSummary, rankAccounts, scoreAll, type AccountSignals, type ScoredAccount } from "@/lib/alerts/priority-score";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { readAttentionSnapshot, saveAttentionSnapshot } from "@/lib/alerts/attention-snapshot";
 
@@ -18,6 +18,7 @@ type Db = Awaited<ReturnType<typeof createClient>>;
 
 export interface MorningSummaryResult {
   ranked: ScoredAccount[];
+  all: ScoredAccount[]; // todas as contas com pontos (inclusive abaixo do mínimo)
   text: string;
   failedSignals: string[]; // sinais que não deu pra buscar (aparece no retorno do hook)
   sendError: string | null;
@@ -31,16 +32,23 @@ function periodCpa(points: Array<{ spend: number; results: number }>): number | 
   return results > 0 ? spend / results : spend;
 }
 
+// Contas que entram no resumo (selecionadas e não desativadas), em ordem fixa — usado pra dividir em lotes.
+export async function summaryAccountIds(db: Db, userId: string): Promise<string[]> {
+  const { data: selected, error: selectedErr } = await db.from("user_selected_accounts").select("ad_account_id").eq("user_id", userId);
+  if (selectedErr) throw selectedErr;
+  const off = await inactiveAccountIds(db, userId);
+  return (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id)).sort();
+}
+
+// `only`: calcula só este lote de contas (a lista guardada é mesclada, não substituída) — evita estourar os 60 s quando são muitas contas.
 export async function buildMorningSummary(
   db: Db,
   userId: string,
   token: string,
-  opts: { send: boolean } = { send: false },
+  opts: { send: boolean; only?: string[] } = { send: false },
 ): Promise<MorningSummaryResult> {
-  const { data: selected, error: selectedErr } = await db.from("user_selected_accounts").select("ad_account_id").eq("user_id", userId);
-  if (selectedErr) throw selectedErr;
-  const off = await inactiveAccountIds(db, userId);
-  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
+  const onlySet = opts.only ? new Set(opts.only) : null;
+  const accountIds = (await summaryAccountIds(db, userId)).filter((id) => !onlySet || onlySet.has(id));
 
   const { data: bindings, error: bindingsErr } = await db
     .from("account_bindings")
@@ -54,7 +62,7 @@ export async function buildMorningSummary(
   const [dailyRes, budgetRes, balanceRes, paymentRes] = await Promise.allSettled([
     // 3 dias sem hoje: [anteontem-1, anteontem, ontem] — ontem é o último ponto.
     getAccountsDailyCpa(token, accountIds, 3, false),
-    checkLowBudget(db, userId, token, { send: false }),
+    checkLowBudget(db, userId, token, { send: false, only: opts.only }),
     checkLowBalances(db, userId, token, { send: false }),
     checkPaymentErrors(db, userId, token, { send: false }),
   ]);
@@ -83,6 +91,7 @@ export async function buildMorningSummary(
     };
   });
 
+  const all = scoreAll(signals);
   const ranked = rankAccounts(signals);
   const dateLabel = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(new Date());
   const msg = formatMorningSummary(ranked, dateLabel);
@@ -91,7 +100,7 @@ export async function buildMorningSummary(
   // Se algum sinal da Meta falhou, só grava quando ainda não existe nenhuma lista (senão a falha apagaria as marcações boas).
   if (failedSignals.length === 0 || (await readAttentionSnapshot(db, userId)).at == null) {
     try {
-      await saveAttentionSnapshot(db, userId, ranked);
+      await saveAttentionSnapshot(db, userId, all.filter((a) => a.points > 0), opts.only); // guarda todas com pontos; o corte (MIN_POINTS) é aplicado na leitura
     } catch (e) {
       console.error("attention snapshot save err", (e as Error).message);
     }
@@ -111,5 +120,5 @@ export async function buildMorningSummary(
       sendError = (e as Error).message;
     }
   }
-  return { ranked, text: msg.groupText, failedSignals, sendError };
+  return { ranked, all, text: msg.groupText, failedSignals, sendError };
 }

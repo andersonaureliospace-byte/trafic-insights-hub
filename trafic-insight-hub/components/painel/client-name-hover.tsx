@@ -24,7 +24,7 @@ export function ClientNameHover({
   href?: string;
   linkClassName?: string;
   // Conta que precisa de atenção (lista do Resumo das 7h): 🚨 na frente do nome + motivos no balão.
-  attention?: string[] | null;
+  attention?: { points: number; reasons: string[] } | null;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number; above: boolean } | null>(null);
@@ -78,7 +78,7 @@ export function ClientNameHover({
           <span className="block font-semibold text-zinc-900 dark:text-zinc-50">{name}</span>
           {attention ? (
             <span className="mt-1 block font-medium text-red-600 dark:text-red-400">
-              🚨 Precisa de atenção{attention.length > 0 ? `: ${attention.join(", ")}` : ""}
+              🚨 Precisa de atenção ({attention.points} pontos){attention.reasons.length > 0 ? `: ${attention.reasons.join(", ")}` : ""}
             </span>
           ) : null}
           <span className="mt-1 block text-zinc-500 dark:text-zinc-400">

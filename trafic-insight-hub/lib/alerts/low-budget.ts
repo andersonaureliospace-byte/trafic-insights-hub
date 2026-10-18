@@ -44,7 +44,7 @@ export async function checkLowBudget(
   db: Db,
   userId: string,
   token: string,
-  opts: { send: boolean } = { send: false },
+  opts: { send: boolean; only?: string[] } = { send: false },
 ): Promise<CheckLowBudgetResult> {
   const { data: selected, error: selectedErr } = await db
     .from("user_selected_accounts")
@@ -52,7 +52,8 @@ export async function checkLowBudget(
     .eq("user_id", userId);
   if (selectedErr) throw selectedErr;
   const off = await inactiveAccountIds(db, userId);
-  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
+  const onlySet = opts.only ? new Set(opts.only) : null; // só estas contas (lote do Resumo das 7h)
+  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id) && (!onlySet || onlySet.has(id)));
   if (accountIds.length === 0) return { statuses: [], sendError: null };
 
   const { data: bindings, error: bindingsErr } = await db
