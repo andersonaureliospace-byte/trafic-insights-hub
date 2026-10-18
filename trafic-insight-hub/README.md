@@ -2818,6 +2818,11 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     (instantâneo; nome, pontos e motivos). `...?todas=1&recalcular=1&lote=1` (depois `lote=2`, `lote=3`…) refaz na Meta 12 contas por vez
     (cabe nos 60 s) e mescla no que já estava guardado. O balão do nome no Painel mostra os pontos da conta.
 
+140. **Corte definido em 7 pontos (Etapa 153)** — olhando a lista real das 24 contas (11, 8, 8, 7×4, 6×4, 5×5, 4, 3×3, 1×2, 0×2), o
+    mínimo subiu de 5 pra `MIN_POINTS = 7` → 7 contas (JI PARANÁ 2, Amparo, Foz do Iguaçu, Chapecó 2 Efapi, Itapetininga, Blumenau - P,
+    Rondonópolis Marechal). Erro no pagamento e saldo zerado passaram de 5 pra 7 pontos (`BLOCKING_POINTS`) pra continuar entrando
+    sozinhos. Vale na hora no Painel (🚨/filtro) e no próximo resumo; o corte é aplicado na leitura (item 139).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

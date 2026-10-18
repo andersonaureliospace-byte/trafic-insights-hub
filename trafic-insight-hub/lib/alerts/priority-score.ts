@@ -7,14 +7,15 @@
 //  Piora do status ........ +1 se o CPL de ontem caiu num nível PIOR que o status atual da conta
 //                           (ex.: status Média, mas o CPL de ontem foi crítico). Manteve ou melhorou = 0.
 //  Investimento (Invest. diário ÷ Ritmo) ... 70–80% 1 · 60–70% 2 · 50–60% 3 · abaixo de 50% 4
-//  Saldo / pagamento ...... saldo acabando 1 · saldo acabou ou erro no pagamento 5 (não soma: vale o maior)
+//  Saldo / pagamento ...... saldo acabando 1 · saldo acabou ou erro no pagamento 7 (não soma: vale o maior; 7 = já entra sozinho no resumo)
 // Só entra no resumo (e ganha o 🚨 / filtro "Atenção" no Painel) conta com pelo menos MIN_POINTS pontos — sem limite de quantidade:
 // se 3 contas estão realmente críticas aparecem 3; se 15 estão, aparecem 15. Pra ficar mais (ou menos) rígido é só mexer em MIN_POINTS.
-// Exemplos com MIN_POINTS = 5: erro no pagamento ou saldo zerado (5) · status Crítica + CPA crítico ontem (3+2) ·
-// status Alta + CPA crítico ontem e anteontem (2+3) · status Alta + investimento abaixo de 50% do ritmo (2+4).
-// Status Crítica sozinho (3) ou Alta + saldo acabando (3) NÃO entram.
+// Com MIN_POINTS = 7 (definido olhando a lista real de 24 contas: 7 passaram, 3 delas com 8+): erro no pagamento ou saldo zerado (7, sozinhos);
+// status Crítica + investimento abaixo de 40% do ritmo (3+4); status Crítica + CPA crítico ontem + investimento em 60% (3+2+2);
+// status Média + CPA crítico ontem e anteontem + investimento muito baixo. Status Crítica + CPA crítico ontem (5) NÃO entra mais sozinho.
 
-export const MIN_POINTS = 5;
+export const MIN_POINTS = 7;
+const BLOCKING_POINTS = 7; // erro no pagamento / saldo zerado: a conta para de entregar — vale o mesmo que o mínimo, então entra sozinho (se subir MIN_POINTS, suba aqui junto)
 
 export type StatusId = "baixa" | "media" | "alta" | "critica";
 
@@ -73,8 +74,8 @@ export function scoreAccount(s: AccountSignals): ScoredAccount {
   };
 
   // Saldo / pagamento (vale o maior: 5 ou 1)
-  if (s.paymentError) add(5, "erro no pagamento");
-  else if (s.balanceEmpty) add(5, "saldo acabou");
+  if (s.paymentError) add(BLOCKING_POINTS, "erro no pagamento");
+  else if (s.balanceEmpty) add(BLOCKING_POINTS, "saldo acabou");
   else if (s.balanceLow) add(1, "saldo acabando");
 
   const target = s.cpaTarget && s.cpaTarget > 0 ? s.cpaTarget : null;
