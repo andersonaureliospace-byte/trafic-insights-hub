@@ -2812,6 +2812,12 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Painel → Desempenho lê dela (`/api/alerts/attention`): 🚨 na frente do nome (o balão mostra os motivos) e novo filtro **Atenção**
     ("Precisam de atenção"), salvo junto com os outros filtros. Se algum sinal da Meta falhar na montagem, a lista anterior é mantida.
 
+139. **Pontos de todas as contas, em lotes de 12 (Etapa 152)** — o Resumo das 7h guarda a pontuação de TODAS as contas com 1+ ponto
+    (`meta_insights_cache`, chave `attention_accounts`); o corte `MIN_POINTS` é aplicado só na leitura (Painel `/api/alerts/attention` e
+    resumo), então mudar o mínimo vale na hora. Pra analisar: `/api/alerts/morning-summary?todas=1` mostra a última lista guardada
+    (instantâneo; nome, pontos e motivos). `...?todas=1&recalcular=1&lote=1` (depois `lote=2`, `lote=3`…) refaz na Meta 12 contas por vez
+    (cabe nos 60 s) e mescla no que já estava guardado. O balão do nome no Painel mostra os pontos da conta.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
