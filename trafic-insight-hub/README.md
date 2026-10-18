@@ -2788,6 +2788,15 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     sempre direto na Meta (sem usar o backup diário); se a Meta falhar, a tela avisa que o número é antigo; e passar o mouse no
     CPA da direita mostra a conta (gasto ÷ conversas) pra conferir.
 
+136. **Ofertas ativas na aba Descrição (Etapa 149)** — a coluna que dizia "Em breve" agora mostra, por conta IVS, o que existiu no MÊS
+    corrente (conjunto com gasto no mês ou ligado agora; campanhas [VAGA] fora), lido pelo nome padronizado do conjunto:
+    **GERAL** ATIVO/INATIVO/INEXISTENTE · **EXAME** ATIVO - oferta / INATIVO - oferta / INEXISTENTE (uma oferta só: a ligada de maior
+    gasto, senão a de maior gasto) · **PROMO** todas as ofertas, inclusive inativas (ou INEXISTENTE) · **BOLETO** ATIVO/INATIVO/INEXISTENTE.
+    Conjunto com CREDIARIO no nome não entra em nenhuma linha. Contas não-IVS mostram "Só contas IVS". Busca em lotes de 6 contas
+    (`/api/analysis/offers`), guardada 1h no navegador; botão ↻ no cabeçalho da coluna atualiza. Regra em `lib/offers/rule.ts`,
+    busca em `lib/offers/scan.ts`. Nomes ainda fora do padrão (ex.: "[POPULAR EXAME ] 18 - 65+") não são reconhecidos até serem
+    corrigidos em Auditoria → Padrão de nomes.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
