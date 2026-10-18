@@ -33,6 +33,14 @@ interface Row {
   cpaTarget: number | null;
   cpa: number | null;
   diff: number | null;
+  spend: number | null; // base do CPA (pra conferir): gasto ÷ conversas
+  results: number | null;
+}
+
+interface MonitorInsight {
+  cost_per_result: number | null;
+  spend?: number;
+  results?: number | null;
 }
 
 function band(diff: number | null): Band | null {
@@ -84,7 +92,8 @@ export function MonitorCpaTab({
   // escolhido (não há estado persistido aqui; o susto era só o valor
   // inicial mesmo, "Ontem", toda vez que a aba é montada de novo).
   const [period, setPeriod] = useState<Period>("today");
-  const [insights, setInsights] = useState<Record<string, { cost_per_result: number | null }>>({});
+  const [insights, setInsights] = useState<Record<string, MonitorInsight>>({});
+  const [staleCache, setStaleCache] = useState(false);
   const [cachedAt, setCachedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshingCache, setRefreshingCache] = useState(false);
@@ -108,7 +117,7 @@ export function MonitorCpaTab({
       return;
     }
     const liveKey = `monitor-cpa:${period}`;
-    const backup = CACHED_PERIODS.has(period) ? null : readTabCache<Record<string, { cost_per_result: number | null }>>(liveKey);
+    const backup = CACHED_PERIODS.has(period) ? null : readTabCache<Record<string, MonitorInsight>>(liveKey);
     if (backup) {
       setInsights(backup.data);
       setCachedAt(null);
@@ -130,6 +139,7 @@ export function MonitorCpaTab({
         if (d.error) throw new Error(d.error);
         setInsights(d.cache?.insights ?? {});
         setCachedAt(d.cache?.computed_at ?? null);
+        setStaleCache(!!d.stale);
       } else {
         const accountIds = accounts.map((a) => a.account_id);
         const res = await fetch("/api/meta/insights", {
@@ -141,6 +151,7 @@ export function MonitorCpaTab({
         if (d.error) throw new Error(d.error);
         setInsights(d.insights ?? {});
         setCachedAt(null);
+        setStaleCache(false);
         setLiveAt(writeTabCache(liveKey, d.insights ?? {}));
       }
     } catch (e) {
@@ -182,6 +193,8 @@ export function MonitorCpaTab({
           cpaTarget,
           cpa,
           diff,
+          spend: insights[a.account_id]?.spend ?? null,
+          results: insights[a.account_id]?.results ?? null,
         };
       })
       .sort((x, y) => {
@@ -232,7 +245,8 @@ export function MonitorCpaTab({
             CPA de cada cliente comparado com o CPA ideal cadastrado, do pior pro melhor.{" "}
             {isCached
               ? cachedAt
-                ? `Dados de ${periodLabel} atualizados automaticamente 1x por dia (última vez às ${fmtTime(cachedAt)}).`
+                ? `Dados de ${periodLabel} direto da Meta, recalculados sozinhos a cada novo dia (última vez às ${fmtTime(cachedAt)}).` +
+                  (staleCache ? " ATENÇÃO: não deu pra atualizar agora — esses números são de outro dia. Clique em Calcular agora." : "")
                 : "Dados desse período ainda não foram calculados pela primeira vez."
               : `Dados salvos${liveAt ? ` (atualizado às ${fmtCacheTime(liveAt)})` : ""} — clique em Atualizar pra buscar de novo na Meta.`}
           </p>
@@ -353,7 +367,14 @@ export function MonitorCpaTab({
                     {r.diff == null ? "—" : fmtCurrencySigned(r.diff)}
                   </div>
 
-                  <div className="text-right text-xs tabular-nums text-zinc-500 dark:text-zinc-400">
+                  <div
+                    className="text-right text-xs tabular-nums text-zinc-500 dark:text-zinc-400"
+                    title={
+                      r.spend != null && r.results
+                        ? `${fmtCurrency(r.spend)} gastos ÷ ${r.results} conversas = ${fmtCurrency(r.cpa)}`
+                        : "Sem conversas no período"
+                    }
+                  >
                     <strong className="font-semibold text-zinc-900 dark:text-zinc-50">{fmtCurrency(r.cpa)}</strong>
                   </div>
                 </div>

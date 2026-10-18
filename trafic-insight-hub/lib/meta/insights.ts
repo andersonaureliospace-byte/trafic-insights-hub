@@ -148,6 +148,9 @@ interface CampaignRow {
 // NÃO são confiáveis — só spend.
 export interface InsightOptions {
   spendOnly?: boolean;
+  // Ignora o backup diário (meta_daily_metrics) e pergunta o período INTEIRO à Meta. Usado no cache do
+  // Monitor de CPA: o número que o gestor confere no Gerenciador tem que sair da Meta, não de uma cópia.
+  skipStore?: boolean;
 }
 
 export async function getAccountInsight(
@@ -288,7 +291,7 @@ export async function getAccountInsight(
     // Etapa 125: os dias FECHADOS do período vêm do backup diário no Supabase (meta_daily_metrics); a Meta
     // só é perguntada pelo que falta — normalmente só o dia de hoje. Sem backup (conta nova, período
     // desconhecido, banco fora do ar) = caminho de sempre: o período inteiro na Meta.
-    const stored = await planFromStore(actId, datePreset).catch(() => null);
+    const stored = opts.skipStore ? null : await planFromStore(actId, datePreset).catch(() => null);
     const fetchIns = () =>
       metaGet<InsRes>(token, `/${id}/insights`, {
         fields: spendOnly

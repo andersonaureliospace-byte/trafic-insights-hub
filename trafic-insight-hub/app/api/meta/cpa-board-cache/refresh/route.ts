@@ -1,26 +1,19 @@
 import { NextResponse } from "next/server";
-import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
-import { refreshCpaBoardCache } from "@/lib/meta/cpa-board-cache";
+import { refreshCpaBoardCacheForUser } from "@/lib/meta/cpa-board-cache";
 
 // Botão "Calcular agora" do Monitor de CPA — só existe pra destravar o
 // primeiro uso (antes do hook diário cpa-board-cache-tick ter rodado pela
 // primeira vez) ou pra forçar um recálculo manual pontual. No dia a dia,
 // quem recalcula o cache é o hook agendado 1x por dia, não este botão.
+export const maxDuration = 60;
+
 export async function POST() {
   try {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
-    const { data: bindings, error: bindingsErr } = await supabase
-      .from("account_bindings")
-      .select("ad_account_id")
-      .eq("user_id", user.id)
-      .not("cpa_target", "is", null);
-    if (bindingsErr) throw bindingsErr;
-    const off = await inactiveAccountIds(supabase, user.id);
-    const accountIds = (bindings ?? []).map((b) => b.ad_account_id as string).filter((id) => !off.has(id));
-    await refreshCpaBoardCache(supabase, user.id, token, accountIds);
-    return NextResponse.json({ ok: true, accounts: accountIds.length });
+    const accounts = await refreshCpaBoardCacheForUser(supabase, user.id, token);
+    return NextResponse.json({ ok: true, accounts });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

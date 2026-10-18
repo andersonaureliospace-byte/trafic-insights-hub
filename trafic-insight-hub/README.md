@@ -2781,6 +2781,13 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     período está abaixo/igual à meta e vermelho quando está acima. Removido o arrastar-e-soltar (coluna ⠿, aviso e gravação da ordem);
     a opção de ordenação virou "Ordem salva". Tirada a linha "Mostrando N conta(s) selecionada(s)… cliente(s) desativado(s)" do topo do Painel.
 
+135. **Monitor de CPA — "Ontem" sempre do dia certo e direto da Meta (Etapa 148)** — caso Itapetininga: o Monitor mostrava CPA R$ 31,40
+    e o Gerenciador, R$ 3,61 (R$ 57,79 ÷ 16 conversas; as campanhas são todas de engajamento/mensagens, o tipo não tinha
+    nada a ver). O número vinha do cache guardado, que a tela mostrava mesmo sendo de outro dia, e do backup diário. Agora: o
+    cache guarda o dia em que foi calculado e, se for de outro dia, é recalculado sozinho ao abrir "Ontem"; o cálculo vai
+    sempre direto na Meta (sem usar o backup diário); se a Meta falhar, a tela avisa que o número é antigo; e passar o mouse no
+    CPA da direita mostra a conta (gasto ÷ conversas) pra conferir.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
