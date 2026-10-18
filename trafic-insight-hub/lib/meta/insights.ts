@@ -31,7 +31,7 @@ import { isVaga, isJobCampaign, EXCLUDED_OBJECTIVES, pickFirstNumeric, lifetimeT
 // mas ainda não entregando por motivo temporário" — contam igual a ACTIVE.
 // DISAPPROVED/PAUSED/CAMPAIGN_PAUSED/ADSET_PAUSED/ARCHIVED/DELETED ficam de
 // fora de propósito (não vão gastar enquanto isso, diferente de Programado).
-const ACTIVE_ISH_STATUSES = [
+export const ACTIVE_ISH_STATUSES = [
   "ACTIVE",
   "PENDING_REVIEW",
   "PREAPPROVED",

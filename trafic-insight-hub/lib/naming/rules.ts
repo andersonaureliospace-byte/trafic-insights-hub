@@ -2,7 +2,12 @@
 //
 // Campanha:  TIPO | OBJETIVO | UNIDADE            (TIPO: só GERAL, EXAME ou OFERTA)
 // Conjunto:  TIPO | OFERTA | LOCALIZAÇÃO OU KM | IDADE | GENERO | PLATAFORMA | DIRECIONAMENTO | AND | DATA
-//   - LOCALIZAÇÃO: km do raio (ex.: 10KM) ou a cidade; mais de uma cidade/ponto → primeiro nome com "+" (ex.: CHAPECÓ+)
+//   - TIPO do conjunto: GERAL, EXAME ou PROMO (na campanha o terceiro tipo é OFERTA; no conjunto é PROMO)
+//   - CREDIARIO / BOLETO: forma de pagamento, vai logo depois do tipo/oferta (GERAL | CREDIARIO; PROMO | OFERTA | BOLETO)
+//   - VDO PROPRIO (vídeo gravado pelo cliente): vai DEPOIS da oferta/pagamento (PROMO | ARMAÇÃO 1 REAL | VDO PROPRIO; GERAL | VDO PROPRIO)
+//   - OFERTA: só em PROMO e EXAME. Em GERAL NÃO leva oferta (some "ARMAÇÃO R$ 49,99", "R$ 49,99", "COBRIMOS OFERTAS"…)
+//   - LOCALIZAÇÃO: se tem raio, só o km (ex.: 8KM — km + cidade vira só o km); só uma cidade → só o nome da cidade;
+//     mais de uma cidade → primeiro nome com "+" (ex.: AMPARO & CIDADES VIZINHAS → AMPARO+). O "+" só quando há mais cidades.
 //   - IDADE: min-max ("18-65+" quando o máximo é 65 ou mais)
 //   - GENERO / PLATAFORMA: só aparecem quando é UM só (MULHER/HOMEM; INSTA/FACE). Ambos → omite.
 //   - DIRECIONAMENTO: só "INTERESSES", e só quando o conjunto tem interesses
@@ -12,8 +17,9 @@
 
 export const CAMPAIGN_TYPES = ["GERAL", "EXAME", "OFERTA"] as const;
 export type CampaignType = (typeof CAMPAIGN_TYPES)[number];
+export const ADSET_TYPES = ["GERAL", "EXAME", "PROMO"] as const;
+export type AdsetType = (typeof ADSET_TYPES)[number];
 export const MANAGER_TAG = "AND";
-export const DEFAULT_OFFER = "R$ 49,99";
 
 // ---------- utilidades ----------
 
@@ -53,8 +59,54 @@ export function mapType(raw: string): CampaignType | null {
   const n = normName(raw).replace(/[^A-Z]/g, "");
   if (n === "GERAL") return "GERAL";
   if (n === "EXAME" || n === "EXAMES") return "EXAME";
-  if (["OFERTA", "OFERTAS", "PROMO", "PROMOCAO", "PROMOCOES", "CREDIARIO", "CREDIARIOS"].includes(n)) return "OFERTA";
+  if (["OFERTA", "OFERTAS", "PROMO", "PROMOCAO", "PROMOCOES"].includes(n)) return "OFERTA";
   return null;
+}
+
+// Tipo do CONJUNTO (GERAL, EXAME ou PROMO). Aceita só a 1ª palavra ("PROMO SETEMBRO" → PROMO, resto = "SETEMBRO").
+export function mapAdsetType(raw: string): { type: AdsetType; rest: string } | null {
+  const words = normName(raw).split(" ");
+  const first = words[0]?.replace(/[^A-Z]/g, "") ?? "";
+  const rest = raw.trim().split(/\s+/).slice(1).join(" ");
+  if (first === "GERAL") return { type: "GERAL", rest };
+  if (first === "EXAME" || first === "EXAMES") return { type: "EXAME", rest };
+  if (["PROMO", "PROMOCAO", "PROMOCOES", "OFERTA", "OFERTAS"].includes(first)) return { type: "PROMO", rest };
+  return null;
+}
+
+// Forma de pagamento (CREDIARIO/BOLETO) e "VDO PROPRIO" (vídeo gravado pelo cliente) — marcas que ficam em posição fixa no nome.
+export type PaymentTag = "CREDIARIO" | "BOLETO";
+const PAYMENT_RE: Array<[RegExp, PaymentTag]> = [
+  [/\bcredi[aá]rios?\b/gi, "CREDIARIO"],
+  [/\bboletos?\b/gi, "BOLETO"],
+];
+const OWN_VIDEO_RE = /\b(vdo|v[ií]deos?)\s+pr[oó]prios?\b/gi;
+export const OWN_VIDEO_TEXT = "VDO PROPRIO";
+
+export function extractTags(text: string): { payment: PaymentTag | null; ownVideo: boolean; rest: string } {
+  let rest = text;
+  let payment: PaymentTag | null = null;
+  let ownVideo = false;
+  for (const [re, tag] of PAYMENT_RE) {
+    if (new RegExp(re.source, "i").test(rest)) {
+      payment = payment ?? tag;
+      rest = rest.replace(re, " ");
+    }
+  }
+  if (new RegExp(OWN_VIDEO_RE.source, "i").test(rest)) {
+    ownVideo = true;
+    rest = rest.replace(OWN_VIDEO_RE, " ");
+  }
+  return { payment, ownVideo, rest: rest.replace(/\s+/g, " ").trim() };
+}
+
+// Textos genéricos que não contam como oferta ("ARMAÇÃO R$ 49,99", "R$ 49,99", "COBRIMOS OFERTAS").
+export function isGenericOffer(text: string): boolean {
+  const n = normName(text);
+  if (!n) return true;
+  if (/COBRIMOS\s+OFERTAS?/.test(n)) return true;
+  if (/^(ARMACAO\s*)?(R\$\s*)?49[,.]\d{2}$/.test(n)) return true;
+  return false;
 }
 
 export function brtDayMonth(iso: string | null | undefined): string | null {
@@ -89,6 +141,11 @@ export function checkCampaignName(name: string, unitName: string | null): NameCh
     parts = splitParts(stripCopy(name));
   }
 
+  // "CREDIARIO | ..." / "BOLETO | ..." no começo: o tipo é GERAL e CREDIARIO/BOLETO vai logo depois (GERAL | CREDIARIO | ...).
+  if (parts[0] && /^(CREDIARIOS?|BOLETOS?)$/.test(normName(parts[0]).replace(/[^A-Z]/g, ""))) {
+    problems.push("TIPO deve ser GERAL — CREDIARIO/BOLETO vai depois do tipo");
+    parts = ["GERAL", ...parts];
+  }
   const type = parts[0] ? mapType(parts[0]) : null;
   if (!type) {
     problems.push("TIPO precisa ser GERAL, EXAME ou OFERTA");
@@ -152,17 +209,12 @@ export function deriveLocation(t: TargetingLike | undefined | null): string | nu
   const pins = geo.custom_locations ?? [];
   const cities = geo.cities ?? [];
   const regions = geo.regions ?? [];
-  if (cities.length === 1) {
-    const km = kmOf(cities[0].radius, cities[0].distance_unit);
-    if (km) return `${km}KM`;
-    return cities[0].name ? cities[0].name.toUpperCase() : null;
-  }
-  if (cities.length > 1) return cities[0].name ? `${cities[0].name.toUpperCase()}+` : null;
-  if (pins.length > 0) {
-    const km = kmOf(pins[0].radius, pins[0].distance_unit);
-    if (km) return `${km}KM${pins.length > 1 ? "+" : ""}`;
-    return pins[0].name ? `${pins[0].name.toUpperCase()}${pins.length > 1 ? "+" : ""}` : null;
-  }
+  // Tem raio (em qualquer cidade ou ponto) → só o km, a cidade some do nome (ex.: "EFAPI 8 km" → 8KM).
+  const kms = [...cities, ...pins].map((x) => kmOf(x.radius, x.distance_unit)).filter((k): k is number => k != null);
+  if (kms.length > 0) return `${kms[0]}KM`;
+  if (cities.length === 1) return cities[0].name ? cities[0].name.toUpperCase() : null;
+  if (cities.length > 1) return cities[0].name ? `${cities[0].name.toUpperCase()}+` : null; // "+" só quando há mais cidades
+  if (pins.length > 0) return pins[0].name ? `${pins[0].name.toUpperCase()}${pins.length > 1 ? "+" : ""}` : null;
   if (regions.length > 0) return regions[0].name ? `${regions[0].name.toUpperCase()}${regions.length > 1 ? "+" : ""}` : null;
   return null;
 }
@@ -196,29 +248,27 @@ export function deriveHasInterests(t: TargetingLike | undefined | null): boolean
 }
 
 interface Part {
-  key: "tipo" | "oferta" | "loc" | "idade" | "genero" | "plataforma" | "direc" | "and" | "data";
+  key: "tipo" | "oferta" | "pagto" | "vdo" | "loc" | "idade" | "genero" | "plataforma" | "direc" | "and" | "data";
   text: string;
 }
 
 const AGE_RE = /^\d{2}\s*-\s*\d{2}\+?$/;
-const DATE_RE = /^\d{1,2}\/\d{1,2}$/;
+const DATE_RE = /^\d{1,2}\/\d{1,2}(\/\d{2,4})?$/;
 const GENDER_WORDS = new Set(["HOMEM", "MULHER", "HOMENS", "MULHERES", "MASCULINO", "FEMININO"]);
 const PLATFORM_WORDS = new Set(["INSTA", "INSTAGRAM", "FACE", "FACEBOOK", "IG", "FB"]);
 
-// Texto da oferta que já existe no nome (o que sobra depois de tirar os pedaços que o sistema consegue derivar sozinho).
-function extractOffer(parts: string[], locNorm: string | null, places: Set<string>): string {
-  const leftovers: string[] = [];
-  for (let i = 1; i < parts.length; i++) {
-    const raw = parts[i];
-    const n = normName(raw);
-    if (AGE_RE.test(n) || DATE_RE.test(n) || GENDER_WORDS.has(n) || PLATFORM_WORDS.has(n)) continue;
-    if (n === "INTERESSES" || n === "INTERESSE" || n === "AND" || n === "ANDERSON") continue;
-    if (locNorm && n.replace(/\+$/, "") === locNorm.replace(/\+$/, "")) continue;
-    if (/^\d+\s*KM\+?$/.test(n)) continue;
-    if (places.has(n.replace(/\+$/, ""))) continue; // cidade/região que o conjunto segmenta (nome antigo com a localização)
-    leftovers.push(raw);
-  }
-  return leftovers.join(" ").trim();
+// Fica como pista de OFERTA só o que o sistema não consegue derivar sozinho (idade, data, gênero, localização… saem).
+function isOfferPart(raw: string, locNorm: string | null, places: Set<string>): boolean {
+  const n = normName(raw);
+  if (!n) return false;
+  if (AGE_RE.test(n) || DATE_RE.test(n) || GENDER_WORDS.has(n) || PLATFORM_WORDS.has(n)) return false;
+  if (n === "INTERESSES" || n === "INTERESSE" || n === "AND" || n === "ANDERSON") return false;
+  if (locNorm && n.replace(/\+$/, "") === locNorm.replace(/\+$/, "")) return false;
+  if (/\b\d+\s*KM\b/.test(n)) return false; // "8KM", "EFAPI 8 km"
+  if (/VIZINH/.test(n) || n.includes("&")) return false; // "AMPARO & CIDADES VIZINHAS"
+  if (places.has(n.replace(/\+$/, ""))) return false; // cidade/região que o conjunto segmenta
+  if (isGenericOffer(raw)) return false; // "ARMAÇÃO R$ 49,99", "R$ 49,99", "COBRIMOS OFERTAS"
+  return true;
 }
 
 export interface AdsetFacts {
@@ -235,36 +285,56 @@ export function expectedAdsetParts(facts: AdsetFacts): { parts: Part[]; needsInp
 
   const loc = deriveLocation(facts.targeting);
   const locNorm = loc ? normName(loc) : null;
-
-  let tipo: string | null = cur[0] ? mapType(cur[0]) : null;
-  if (!tipo) {
-    tipo = "GERAL";
-    needsInput = true;
-    notes.push("Não deu pra saber o TIPO (GERAL, EXAME ou OFERTA) — confira");
-  }
   const places = new Set<string>();
   const geo = facts.targeting?.geo_locations;
   for (const x of [...(geo?.cities ?? []), ...(geo?.custom_locations ?? []), ...(geo?.regions ?? [])]) {
     if (x.name) places.add(normName(x.name));
   }
-  let offer = extractOffer(cur, locNorm, places);
-  // nome antigo sem tipo reconhecido: a 1ª parte também é pista de oferta
-  if (!mapType(cur[0] ?? "") && cur[0]) offer = `${cur[0]} ${offer}`.trim();
-  if (!offer) {
-    if (tipo === "EXAME") {
-      needsInput = true;
-      offer = "OFERTA DO EXAME";
-      notes.push("EXAME precisa da oferta do exame no nome");
-    } else {
-      offer = DEFAULT_OFFER;
-    }
+
+  // 0) CREDIARIO/BOLETO e VDO PROPRIO saem do texto (viram marcas em posição fixa)
+  let payment: PaymentTag | null = null;
+  let ownVideo = false;
+  const cleaned = cur.map((raw) => {
+    const t = extractTags(raw);
+    payment = payment ?? t.payment;
+    ownVideo = ownVideo || t.ownVideo;
+    return t.rest;
+  });
+
+  // 1) TIPO (GERAL, EXAME ou PROMO) + pistas de oferta que já estão no nome
+  const mapped = cleaned[0] ? mapAdsetType(cleaned[0]) : null;
+  const offerBits: string[] = [];
+  if (mapped?.rest && isOfferPart(mapped.rest, locNorm, places)) offerBits.push(mapped.rest);
+  if (!mapped && cleaned[0] && isOfferPart(cleaned[0], locNorm, places)) offerBits.push(cleaned[0]);
+  for (let i = 1; i < cleaned.length; i++) if (cleaned[i] && isOfferPart(cleaned[i], locNorm, places)) offerBits.push(cleaned[i]);
+  const offer = offerBits.join(" ").trim();
+
+  let tipo: AdsetType;
+  if (mapped) tipo = mapped.type;
+  else if (!offer) tipo = "GERAL";
+  else {
+    tipo = "PROMO";
+    notes.push("TIPO deduzido como PROMO (o nome antigo não dizia) — confira");
   }
 
   const date = brtDayMonth(facts.createdTime);
-  const parts: Part[] = [
-    { key: "tipo", text: tipo },
-    { key: "oferta", text: offer },
-  ];
+  const parts: Part[] = [{ key: "tipo", text: tipo }];
+
+  // 2) OFERTA: GERAL não leva; PROMO e EXAME precisam
+  if (tipo !== "GERAL") {
+    if (offer) parts.push({ key: "oferta", text: offer });
+    else {
+      needsInput = true;
+      parts.push({ key: "oferta", text: tipo === "EXAME" ? "OFERTA DO EXAME" : "OFERTA" });
+      notes.push(`${tipo} precisa da oferta no nome`);
+    }
+  }
+
+  // 2b) forma de pagamento e vídeo próprio: logo depois da oferta (nessa ordem)
+  if (payment) parts.push({ key: "pagto", text: payment });
+  if (ownVideo) parts.push({ key: "vdo", text: OWN_VIDEO_TEXT });
+
+  // 3) localização, idade, gênero, plataforma, direcionamento, AND, data
   if (loc) parts.push({ key: "loc", text: loc });
   else {
     needsInput = true;
@@ -304,6 +374,8 @@ export function checkAdsetName(facts: AdsetFacts): NameCheck {
     const labels: Record<Part["key"], string> = {
       tipo: "TIPO",
       oferta: "OFERTA",
+      pagto: "PAGAMENTO",
+      vdo: "VDO PROPRIO",
       loc: "LOCALIZAÇÃO",
       idade: "IDADE",
       genero: "GÊNERO",

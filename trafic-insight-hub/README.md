@@ -2730,6 +2730,18 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     conjunto, anúncio). Escopo: contas exibidas e ativas com "IVS" no nome, só itens ativos, campanhas [VAGA] ignoradas. A aba lista só o
     que diverge, com sugestão editável; Aceitar renomeia na hora na Meta (sugestão incompleta, ex.: EXAME sem oferta, só libera depois de
     editar). Quando SÓ idade e/ou data divergem, o `naming-fix-tick` (diário) corrige sozinho e avisa em Alertas; há botão pra rodar na hora.
+    Etapa 140b (ajustes depois de ver a tela): no CONJUNTO o tipo é GERAL, EXAME ou PROMO (OFERTA/OFERTAS/CREDIARIO viram PROMO; a
+    campanha continua GERAL/EXAME/OFERTA); GERAL NÃO leva oferta (some "ARMAÇÃO R$ 49,99", "R$ 49,99", "COBRIMOS OFERTAS" e
+    qualquer oferta antiga), PROMO e EXAME levam; localização: se há raio → só o km (km + cidade vira só `8KM`), uma cidade → só a
+    cidade, várias cidades → `PRIMEIRA+` (ex.: AMPARO & CIDADES VIZINHAS → AMPARO+). Cada item tem o link "Abrir no Gerenciador"
+    (`adsManagerEntityUrl`), há "Aceitar todos" (geral e por conta; sugestão incompleta só entra depois de editada) e a varredura
+    agora pega o que está LIGADO (ativo + programado/em análise, a mesma lista `ACTIVE_ISH_STATUSES` do Invest. diário).
+    Etapa 140c: CREDIARIO e BOLETO não são tipo — ficam logo depois do tipo/oferta (`GERAL | CREDIARIO`, `PROMO | OFERTA | BOLETO`;
+    em campanha, "CREDIARIO | …" vira `GERAL | CREDIARIO | …`); `VDO PROPRIO` (vídeo gravado pelo cliente) fica DEPOIS da oferta/pagamento
+    (`PROMO | ARMAÇÃO 1 REAL | VDO PROPRIO`, `GERAL | VDO PROPRIO`, `GERAL | CREDIARIO | VDO PROPRIO`). Nomes personalizados de propósito:
+    botão "Manter personalizado" (tabela `naming_exceptions`, migration `0033_naming_exceptions.sql`) — o item sai da lista e nem a aba
+    nem o ajuste automático de idade/data mexem mais nele; aceitar um nome EDITADO que continua fora da regra também guarda o item como
+    personalizado. Seção "Personalizados" no fim da aba, com "Voltar ao padrão".
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

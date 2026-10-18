@@ -54,6 +54,16 @@ export function adsManagerUrl(accountId: string, preset?: string): string {
   );
 }
 
+// Etapa 140b: link direto pra UMA campanha, conjunto ou anúncio no Gerenciador (aba "Padrão de nomes" → conferir antes de aceitar).
+export function adsManagerEntityUrl(accountId: string, entity: "campaign" | "adset" | "ad", entityId: string): string {
+  const numericId = accountId.replace(/^act_/, "");
+  const businessId = businessByAccount.get(numericId);
+  const business = businessId ? `&business_id=${encodeURIComponent(businessId)}` : "";
+  const tab = entity === "campaign" ? "campaigns" : entity === "adset" ? "adsets" : "ads";
+  const selected = entity === "campaign" ? "selected_campaign_ids" : entity === "adset" ? "selected_adset_ids" : "selected_ad_ids";
+  return `https://adsmanager.facebook.com/adsmanager/manage/${tab}?act=${numericId}${business}&${selected}=${encodeURIComponent(entityId)}&nav_source=no_referrer`;
+}
+
 // Link direto pra Cobranças e Pagamentos (billing hub) de uma conta — usado
 // só em Controle de Saldo, que é justamente a tela que trata de saldo/
 // pagamento. `business_id` vem do campo `business` da conta no Graph API

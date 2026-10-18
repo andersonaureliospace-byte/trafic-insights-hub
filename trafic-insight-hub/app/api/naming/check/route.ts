@@ -10,10 +10,11 @@ export async function GET(request: Request) {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
     const account = new URL(request.url).searchParams.get("account") || undefined;
-    const { items, failedAccounts, accounts } = await scanAllNames(supabase, user.id, token, account);
+    const { items, failedAccounts, accounts, kept } = await scanAllNames(supabase, user.id, token, account);
     return NextResponse.json({
       items,
       failedAccounts,
+      kept,
       accounts: accounts.map((a) => ({ ad_account_id: a.ad_account_id, client_name: a.client_name })),
     });
   } catch (e) {
