@@ -12,7 +12,7 @@ import { checkPaymentErrors } from "@/lib/alerts/payment";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { formatMorningSummary, rankAccounts, type AccountSignals, type ScoredAccount } from "@/lib/alerts/priority-score";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
-import { saveAttentionSnapshot } from "@/lib/alerts/attention-snapshot";
+import { readAttentionSnapshot, saveAttentionSnapshot } from "@/lib/alerts/attention-snapshot";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -88,8 +88,8 @@ export async function buildMorningSummary(
   const msg = formatMorningSummary(ranked, dateLabel);
 
   // Guarda a lista pro Painel marcar as contas (🚨 + filtro "Atenção"). Falhar aqui não derruba o resumo.
-  // Só grava se os sinais principais foram buscados — senão uma falha da Meta apagaria as marcações.
-  if (failedSignals.length === 0) {
+  // Se algum sinal da Meta falhou, só grava quando ainda não existe nenhuma lista (senão a falha apagaria as marcações boas).
+  if (failedSignals.length === 0 || (await readAttentionSnapshot(db, userId)).at == null) {
     try {
       await saveAttentionSnapshot(db, userId, ranked);
     } catch (e) {

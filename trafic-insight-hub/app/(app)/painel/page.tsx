@@ -199,12 +199,30 @@ export default function PainelPage() {
   // Filtro "Atenção": só as contas que o Resumo das 7h marcou como críticas (mesma lista/pontuação — lib/alerts/priority-score.ts).
   const [attentionFilter, setAttentionFilter] = useState<"all" | "attention">("all");
   const [attention, setAttention] = useState<Record<string, { points: number; reasons: string[] }>>({});
+  const [attentionAt, setAttentionAt] = useState<string | null>(null);
+  const [attentionLoading, setAttentionLoading] = useState(false);
   useEffect(() => {
     let cancelled = false;
+    type Snap = { at?: string | null; accounts?: Record<string, { points: number; reasons: string[] }> };
+    const apply = (d: Snap | null) => {
+      if (cancelled || !d) return;
+      if (d.accounts) setAttention(d.accounts);
+      setAttentionAt(d.at ?? null);
+    };
     fetch("/api/alerts/attention")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { accounts?: Record<string, { points: number; reasons: string[] }> } | null) => {
-        if (!cancelled && d?.accounts) setAttention(d.accounts);
+      .then(async (d: Snap | null) => {
+        apply(d);
+        // Ainda não existe lista (primeira vez / resumo das 7h ainda não rodou): calcula agora, sem enviar nada.
+        if (!cancelled && d && !d.at) {
+          setAttentionLoading(true);
+          try {
+            const r = await fetch("/api/alerts/attention", { method: "POST" });
+            apply(r.ok ? ((await r.json()) as Snap) : null);
+          } finally {
+            if (!cancelled) setAttentionLoading(false);
+          }
+        }
       })
       .catch(() => {});
     return () => {
@@ -1030,12 +1048,21 @@ export default function PainelPage() {
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Atenção</span>
                     <select
+                      title={
+                        attentionLoading
+                          ? "Calculando a lista de contas que precisam de atenção…"
+                          : attentionAt
+                            ? `Lista do Resumo das 7h, calculada em ${new Date(attentionAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
+                            : "Lista ainda não calculada"
+                      }
                       value={attentionFilter}
                       onChange={(e) => setAttentionFilter(e.target.value as "all" | "attention")}
                       className="h-7 rounded-md border border-zinc-300 bg-transparent px-2 text-xs dark:border-zinc-700"
                     >
                       <option value="all">Todos</option>
-                      <option value="attention">🚨 Precisam de atenção</option>
+                      <option value="attention">
+                        {attentionLoading ? "🚨 Calculando…" : `🚨 Precisam de atenção (${Object.keys(attention).length})`}
+                      </option>
                     </select>
                   </div>
                 </div>
