@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, priorityRank, type PresetId } from "@/lib/format";
 import { adsManagerUrl, registerAccountBusinesses } from "@/lib/meta/ads-manager-link";
-import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
+import { ritmoFromInsight, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
 import { CPA_ACCEPTABLE_BAND, METAS_SORTS, compareMetas, computeMetas, metasCalendar, type MetasSort } from "@/lib/meta/metas";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
@@ -15,7 +15,6 @@ import { EvolucaoTab } from "@/components/painel/evolucao-tab";
 import { MonitorCpaTab } from "@/components/painel/monitor-cpa-tab";
 import { PIN_BLUR, PinCell } from "@/components/painel/pin-cell";
 import { MetasTab } from "@/components/painel/metas-tab";
-import { EditClientDialog } from "@/components/painel/edit-client-dialog";
 import { InlineNumber } from "@/components/painel/inline-number";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
 import { ClientNameHover } from "@/components/painel/client-name-hover";
@@ -234,7 +233,6 @@ export default function PainelPage() {
   useEffect(() => {
     pinnedRef.current = pinnedIds;
   }, [pinnedIds]);
-  const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [draggedAccountId, setDraggedAccountId] = useState<string | null>(null);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   // Contas com saldo baixo / erro no pagamento (Etapa 39) — só pra colorir o
@@ -817,8 +815,6 @@ export default function PainelPage() {
     void persistOrder(next);
   }
 
-  const editingRow = editingAccountId ? allRows.find((r) => r.acc.account_id === editingAccountId) : undefined;
-
   // Etapa 119: não bloqueia mais a tela inteira enquanto as contas carregam — o menu lateral fica
   // sempre visível e só a área de conteúdo mostra "Carregando…" ou o erro.
   const accountsReady = selectedIds !== null && allAccounts !== null && bindingsLoaded;
@@ -1089,8 +1085,9 @@ export default function PainelPage() {
                         >
                           Otimizado
                         </th>
-                        <th className="px-4 py-2 font-medium">Cliente</th>
-                        <th className="px-4 py-2 font-medium">Conta</th>
+                        <th className="px-4 py-2 font-medium" title="Clique no nome pra abrir a conta no Gerenciador de Anúncios">
+                          Cliente
+                        </th>
                         <th className="px-4 py-2 font-medium">Status</th>
                         <th className="px-4 py-2 text-right font-medium">Valor usado</th>
                         <th
@@ -1112,13 +1109,6 @@ export default function PainelPage() {
                         >
                           Invest. diário
                         </th>
-                        <th
-                          className="px-4 py-2 text-right font-medium"
-                          title="Quanto investir por dia pra alcançar o Ideal até hoje, contando o que já foi gasto hoje: dentro de 80%–120% do ideal = investimento diário normal (Investimento mensal ÷ dias do mês); fora da faixa, ajusta pela diferença pro ideal, limitada a ±50% do normal"
-                        >
-                          Ritmo
-                        </th>
-                        <th className="px-4 py-2 font-medium"></th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1167,30 +1157,15 @@ export default function PainelPage() {
                                 name={binding?.client_name || acc.name}
                                 whatsapp={binding?.whatsapp_contact}
                                 monthlyInvestment={binding?.monthly_investment}
-                              />
-                            </td>
-                            <td className="px-4 py-2">
-                              <a
                                 href={adsManagerUrl(acc.account_id, preset)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                title={
-                                  paymentErrorIds.has(acc.account_id)
-                                    ? "Conta com erro no pagamento"
-                                    : lowBalanceIds.has(acc.account_id)
-                                      ? "Saldo baixo"
-                                      : "Abrir no Gerenciador de Anúncios"
-                                }
-                                className={`underline decoration-dotted underline-offset-2 ${
+                                linkClassName={
                                   paymentErrorIds.has(acc.account_id)
                                     ? "text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
                                     : lowBalanceIds.has(acc.account_id)
                                       ? "text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300"
-                                      : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
-                                }`}
-                              >
-                                {acc.name}
-                              </a>
+                                      : "text-zinc-900 hover:underline dark:text-zinc-50"
+                                }
+                              />
                             </td>
                             <td className="px-4 py-2">
                               <select
@@ -1260,20 +1235,6 @@ export default function PainelPage() {
                                 );
                               })()}
                             </td>
-                            <td
-                              className={`px-4 py-2 text-right tabular-nums ${blur}`}
-                              title={ritmoTooltip(binding?.monthly_investment, monthlyInsights[acc.account_id])}
-                            >
-                              {fmtCurrency(rowRitmo)}
-                            </td>
-                            <td className="px-4 py-2 text-right">
-                              <button
-                                onClick={() => setEditingAccountId(acc.account_id)}
-                                className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium dark:border-zinc-700"
-                              >
-                                Editar
-                              </button>
-                            </td>
                           </tr>
                         );
                       })}
@@ -1342,15 +1303,6 @@ export default function PainelPage() {
         onClose={() => setPickerOpen(false)}
         selectedIds={selectedIds ?? []}
         onSave={saveSelectedAccounts}
-      />
-
-      <EditClientDialog
-        open={editingAccountId !== null}
-        onClose={() => setEditingAccountId(null)}
-        accountId={editingAccountId}
-        clientName={editingRow?.clientName ?? ""}
-        binding={editingRow?.binding}
-        onPatch={patchBinding}
       />
     </div>
   );

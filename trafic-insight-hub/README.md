@@ -2770,6 +2770,11 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     ideal até hoje, em % da meta do mês, pra cima ou pra baixo, da maior pra menor) e **CPA** (quanto está acima do CPA ideal,
     da maior diferença pra menor).
 
+133. **Tabela de Desempenho mais limpa (Etapa 146)** — saíram as colunas Editar (edição fica em Configurações → Clientes; a janela
+    `edit-client-dialog.tsx` foi apagada), Ritmo e Conta. O nome do cliente ficou mais largo (não corta mais) e virou o link pro
+    Gerenciador de Anúncios, com a cor do saldo (vermelho = erro de pagamento, laranja = saldo baixo). O balão com WhatsApp /
+    Investimento mensal / Invest. diário médio continua igual.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

@@ -13,10 +13,15 @@ export function ClientNameHover({
   name,
   whatsapp,
   monthlyInvestment,
+  href,
+  linkClassName,
 }: {
   name: string;
   whatsapp: string | null | undefined;
   monthlyInvestment: number | null | undefined;
+  // Opcionais: quando vêm, o nome vira link pro Gerenciador de Anúncios (cor = formatação condicional de saldo/pagamento).
+  href?: string;
+  linkClassName?: string;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number; above: boolean } | null>(null);
@@ -41,9 +46,20 @@ export function ClientNameHover({
       ref={ref}
       onMouseEnter={show}
       onMouseLeave={() => setPos(null)}
-      className="inline-block max-w-[9rem] cursor-default truncate align-middle text-sm"
+      className="inline-block max-w-[18rem] cursor-default truncate align-middle text-sm"
     >
-      {name}
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={linkClassName ?? "text-zinc-900 hover:underline dark:text-zinc-50"}
+        >
+          {name}
+        </a>
+      ) : (
+        name
+      )}
       {pos ? (
         <span
           role="tooltip"
