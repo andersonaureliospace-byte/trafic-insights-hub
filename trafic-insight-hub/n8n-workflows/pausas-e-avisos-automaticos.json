@@ -935,6 +935,75 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 13. Ofertas ativas (retrato fixo, ~05h20 e ~12h00)\n\nÀs 05h20 e às 12h00 (repete a cada 6 min por mais 2 vezes, só nas contas que ainda faltam): lê na Meta os conjuntos do mês de cada conta IVS (GERAL / EXAME / PROMO / BOLETO, ativo/inativo/inexistente) e guarda o resultado. A coluna 'Ofertas ativas' (Auditoria → Descrição) só mostra esse retrato.",
+        "height": 130,
+        "width": 900,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        3640
+      ],
+      "id": "d4d8098c-f9c5-4085-aca3-777e4b83c5c3",
+      "name": "Nota - 13. Ofertas ativas (retrato fixo, ~05h20 e ~12h00)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "20,26,32 5 * * *"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "0,6,12 12 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        3780
+      ],
+      "id": "550edcd5-412d-4ad3-9715-f14e2df585b5",
+      "name": "Agenda - Ofertas ativas (05h20 e 12h00)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/offers-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        3780
+      ],
+      "id": "46048017-e5fc-45f4-843c-24642934b353",
+      "name": "Atualizar retrato das ofertas ativas",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
     }
   ],
   "pinData": {},
@@ -1098,6 +1167,17 @@
         [
           {
             "node": "Ajustar idade/data nos nomes dos conjuntos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Ofertas ativas (05h20 e 12h00)": {
+      "main": [
+        [
+          {
+            "node": "Atualizar retrato das ofertas ativas",
             "type": "main",
             "index": 0
           }

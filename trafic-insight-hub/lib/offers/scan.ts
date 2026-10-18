@@ -5,6 +5,7 @@ import type { createClient } from "@/lib/supabase/server";
 import { metaGetAll } from "@/lib/meta/client";
 import { ACTIVE_ISH_STATUSES } from "@/lib/meta/insights";
 import { namingAccounts } from "@/lib/naming/scan";
+import { readOffersSnapshot, saveOffersSnapshot } from "@/lib/offers/snapshot";
 import { summarizeOffers, type OfferAdset, type OffersSummary } from "@/lib/offers/rule";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
@@ -73,4 +74,53 @@ export async function offersForAccounts(db: Db, userId: string, token: string, r
   };
   await Promise.all(Array.from({ length: Math.min(CONCURRENCY, todo.length) }, worker));
   return { offers, failed, notIvs };
+}
+
+// Automação (hook offers-tick): recalcula as contas IVS cujo retrato tem mais de STALE_HOURS horas e grava no Supabase,
+// em lotes (salva a cada lote). Se o prazo da função acabar, o que sobrou fica pra próxima chamada (o n8n repete a cada 6 min).
+const STALE_HOURS = 3;
+
+export interface OffersTickResult {
+  done: number;
+  failed: string[];
+  pending: number;
+  total: number;
+}
+
+export async function runOffersTick(
+  db: Db,
+  userId: string,
+  token: string,
+  opts: { force?: boolean; deadlineMs?: number } = {},
+): Promise<OffersTickResult> {
+  const ivs = (await namingAccounts(db, userId)).map((a) => a.ad_account_id.replace(/^act_/, ""));
+  const snap = await readOffersSnapshot(db, userId);
+  const limit = Date.now() - STALE_HOURS * 60 * 60 * 1000;
+  const todo = ivs.filter((id) => {
+    if (opts.force) return true;
+    const at = snap.accounts[id]?.at;
+    return !at || Date.parse(at) < limit;
+  });
+  let done = 0;
+  const failed: string[] = [];
+  for (let i = 0; i < todo.length; i += CONCURRENCY) {
+    if (opts.deadlineMs && Date.now() > opts.deadlineMs) break;
+    const batch = todo.slice(i, i + CONCURRENCY);
+    const fresh: Record<string, OffersSummary> = {};
+    await Promise.all(
+      batch.map(async (id) => {
+        try {
+          fresh[id] = await offersForAccount(token, id);
+        } catch (e) {
+          console.error("offers tick err", id, (e as Error).message);
+          failed.push(id);
+        }
+      }),
+    );
+    if (Object.keys(fresh).length > 0) {
+      await saveOffersSnapshot(db, userId, fresh);
+      done += Object.keys(fresh).length;
+    }
+  }
+  return { done, failed, pending: Math.max(0, todo.length - done - failed.length), total: ivs.length };
 }

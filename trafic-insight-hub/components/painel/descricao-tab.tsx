@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
-import { fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client-cache";
 import type { OffersSummary, OfferStatus } from "@/lib/offers/rule";
 
 interface DescRow {
@@ -68,6 +67,12 @@ function OffersCell({ s }: { s: OffersSummary }) {
   );
 }
 
+const normId = (id: string) => id.replace(/^act_/, "");
+
+function fmtBrt(ms: number): string {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(ms));
+}
+
 function sameText(a: string, b: string): boolean {
   const n = (x: string) => x.replace(/\r\n?/g, "\n").trimEnd();
   return n(a) === n(b);
@@ -93,62 +98,62 @@ export function DescricaoTab({
   const [busy, setBusy] = useState<Record<string, boolean>>({});
   const [rowMsg, setRowMsg] = useState<Record<string, { ok: boolean; text: string }>>({});
   const [query, setQuery] = useState("");
-  // Ofertas ativas (Meta): guardadas no navegador por 1h; o ↻ da coluna busca de novo.
-  const [offers, setOffers] = useState<Record<string, OffersSummary>>({});
-  const [notIvs, setNotIvs] = useState<Set<string>>(new Set());
+  // Ofertas ativas: retrato FIXO no Supabase, refeito pela automação (~5h20 e ~12h). O ↻ da coluna recalcula na hora.
+  const [offers, setOffers] = useState<Record<string, { at: string; summary: OffersSummary }>>({});
+  const [ivsIds, setIvsIds] = useState<Set<string>>(new Set());
+  const [offersLoaded, setOffersLoaded] = useState(false);
   const [offersLoading, setOffersLoading] = useState(false);
   const [offersError, setOffersError] = useState<string | null>(null);
-  const [offersAt, setOffersAt] = useState<number | null>(null);
 
   const accountIdsKey = accounts.map((a) => a.account_id).join(",");
-  const loadOffers = useCallback(
-    async (force: boolean) => {
-      const ids = accountIdsKey ? accountIdsKey.split(",") : [];
-      if (ids.length === 0) return;
-      const cached = readTabCache<{ offers: Record<string, OffersSummary>; notIvs: string[] }>("descricao-ofertas");
-      if (cached) {
-        setOffers(cached.data.offers);
-        setNotIvs(new Set(cached.data.notIvs));
-        setOffersAt(cached.at);
-        if (!force && isFresh(cached) && ids.every((id) => cached.data.offers[id] || cached.data.notIvs.includes(id))) return;
-      }
-      setOffersLoading(true);
-      setOffersError(null);
-      const acc: Record<string, OffersSummary> = {};
-      const skip: string[] = [];
-      const failed: string[] = [];
-      try {
-        for (let i = 0; i < ids.length; i += 6) {
-          const res = await fetch("/api/analysis/offers", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ accountIds: ids.slice(i, i + 6) }),
-          });
-          const d = await res.json();
-          if (d.error) throw new Error(d.error);
-          Object.assign(acc, d.offers ?? {});
-          skip.push(...(d.notIvs ?? []));
-          failed.push(...(d.failed ?? []));
-          setOffers((prev) => ({ ...prev, ...(d.offers ?? {}) }));
-          setNotIvs((prev) => new Set([...prev, ...(d.notIvs ?? [])]));
-        }
-        // Conta que falhou agora mantém o que já tinha guardado; o resto vira o novo backup.
-        const merged = { ...(cached?.data.offers ?? {}), ...acc };
-        setOffersAt(writeTabCache("descricao-ofertas", { offers: merged, notIvs: skip }));
-        if (failed.length > 0) setOffersError(`${failed.length} conta(s) não carregaram (limite da Meta) — clique em ↻ pra tentar de novo.`);
-      } catch (e) {
-        setOffersError((e as Error).message);
-      } finally {
-        setOffersLoading(false);
-      }
-    },
-    [accountIdsKey],
-  );
+  const loadOffers = useCallback(async () => {
+    try {
+      const res = await fetch("/api/analysis/offers", { cache: "no-store" });
+      const d = await res.json();
+      if (d.error) throw new Error(d.error);
+      setOffers(d.accounts ?? {});
+      setIvsIds(new Set<string>(d.ivsIds ?? []));
+      setOffersLoaded(true);
+    } catch (e) {
+      setOffersError((e as Error).message);
+    }
+  }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- mostra o backup das ofertas e só busca na Meta se estiver velho
-    void loadOffers(false);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- lê o retrato das ofertas assim que a aba monta
+    void loadOffers();
   }, [loadOffers]);
+
+  async function refreshOffers() {
+    const ids = (accountIdsKey ? accountIdsKey.split(",") : []).map(normId).filter((id) => ivsIds.has(id));
+    if (ids.length === 0) return;
+    setOffersLoading(true);
+    setOffersError(null);
+    let failed = 0;
+    try {
+      for (let i = 0; i < ids.length; i += 6) {
+        const res = await fetch("/api/analysis/offers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ accountIds: ids.slice(i, i + 6) }),
+        });
+        const d = await res.json();
+        if (d.error) throw new Error(d.error);
+        failed += (d.failed ?? []).length;
+        setOffers((prev) => ({ ...prev, ...(d.accounts ?? {}) }));
+      }
+      if (failed > 0) setOffersError(`${failed} conta(s) não carregaram (limite da Meta) — clique em ↻ pra tentar de novo.`);
+    } catch (e) {
+      setOffersError((e as Error).message);
+    } finally {
+      setOffersLoading(false);
+    }
+  }
+
+  const offersAt = useMemo(() => {
+    const times = Object.values(offers).map((o) => Date.parse(o.at)).filter((t) => Number.isFinite(t));
+    return times.length ? Math.max(...times) : null;
+  }, [offers]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -339,18 +344,18 @@ export function DescricaoTab({
                 <th className="w-52 px-4 py-2 font-medium">Cliente</th>
                 <th className="px-4 py-2 font-medium">Descrição (Asana)</th>
                 <th className="w-64 px-4 py-2 font-medium">
-                  <span title="Conjuntos do mês corrente, direto da Meta: GERAL e BOLETO ativo/inativo/inexistente; EXAME com a oferta (uma só); PROMO com todas as ofertas">
+                  <span title="Conjuntos do mês corrente, lidos da Meta pela automação (~5h20 e ~12h): GERAL e BOLETO (inclui crediário) ativo/inativo/inexistente; EXAME com a oferta (uma só); PROMO com todas as ofertas">
                     Ofertas ativas
                   </span>{" "}
                   <button
-                    onClick={() => void loadOffers(true)}
+                    onClick={() => void refreshOffers()}
                     disabled={offersLoading}
                     className="rounded border border-zinc-300 px-1.5 py-0.5 text-[11px] font-medium normal-case text-zinc-600 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
                   >
                     {offersLoading ? "…" : "↻"}
                   </button>
                   {offersAt && !offersLoading ? (
-                    <span className="mt-0.5 block text-[10px] font-normal normal-case text-zinc-400">às {fmtCacheTime(offersAt)}</span>
+                    <span className="mt-0.5 block text-[10px] font-normal normal-case text-zinc-400">atualizado {fmtBrt(offersAt)}</span>
                   ) : null}
                 </th>
               </tr>
@@ -433,12 +438,12 @@ export function DescricaoTab({
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      {offers[c.accountId] ? (
-                        <OffersCell s={offers[c.accountId]} />
-                      ) : notIvs.has(c.accountId) ? (
+                      {offers[normId(c.accountId)] ? (
+                        <OffersCell s={offers[normId(c.accountId)].summary} />
+                      ) : offersLoaded && !ivsIds.has(normId(c.accountId)) ? (
                         <span className="text-xs text-zinc-400">Só contas IVS.</span>
                       ) : (
-                        <span className="text-xs text-zinc-400">{offersLoading ? "Buscando na Meta…" : "—"}</span>
+                        <span className="text-xs text-zinc-400">{offersLoading ? "Buscando na Meta…" : "Ainda não calculado — clique em ↻ ou espere a próxima automação."}</span>
                       )}
                     </td>
                   </tr>

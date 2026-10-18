@@ -2792,10 +2792,16 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     corrente (conjunto com gasto no mês ou ligado agora; campanhas [VAGA] fora), lido pelo nome padronizado do conjunto:
     **GERAL** ATIVO/INATIVO/INEXISTENTE · **EXAME** ATIVO - oferta / INATIVO - oferta / INEXISTENTE (uma oferta só: a ligada de maior
     gasto, senão a de maior gasto) · **PROMO** todas as ofertas, inclusive inativas (ou INEXISTENTE) · **BOLETO** ATIVO/INATIVO/INEXISTENTE.
-    Conjunto com CREDIARIO no nome não entra em nenhuma linha. Contas não-IVS mostram "Só contas IVS". Busca em lotes de 6 contas
-    (`/api/analysis/offers`), guardada 1h no navegador; botão ↻ no cabeçalho da coluna atualiza. Regra em `lib/offers/rule.ts`,
+    BOLETO e CREDIARIO são a mesma coisa (os dois caem na linha BOLETO). Contas não-IVS mostram "Só contas IVS". Busca em lotes de 6 contas
+    (`/api/analysis/offers`); botão ↻ no cabeçalho da coluna atualiza na hora (ver item 137 — o retrato agora é fixo). Regra em `lib/offers/rule.ts`,
     busca em `lib/offers/scan.ts`. Nomes ainda fora do padrão (ex.: "[POPULAR EXAME ] 18 - 65+") não são reconhecidos até serem
     corrigidos em Auditoria → Padrão de nomes.
+
+137. **Ofertas ativas: retrato fixo por automação (Etapa 150)** — a coluna não busca mais na Meta a cada abertura: lê um retrato
+    guardado no Supabase (`meta_insights_cache`, chave `offers_snapshot`, sem SQL novo), refeito pelo hook `offers-tick`
+    (n8n: 05h20 e 12h00, repetindo +6 e +12 min; cada chamada só refaz as contas com retrato de mais de 3 h, em lotes, e continua
+    na chamada seguinte se o prazo da função acabar; `?force=1` refaz tudo). O ↻ da coluna recalcula na hora e atualiza o retrato.
+    A coluna mostra "atualizado dd/mm hh:mm". Novo gatilho no fluxo `n8n-workflows/pausas-e-avisos-automaticos.json` (item 13).
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

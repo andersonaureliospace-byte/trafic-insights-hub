@@ -4,8 +4,8 @@
 //   GERAL  → ATIVO / INATIVO / INEXISTENTE
 //   EXAME  → ATIVO - OFERTA / INATIVO - OFERTA / INEXISTENTE (só UMA oferta: a ligada de maior gasto; senão a de maior gasto)
 //   PROMO  → todas as ofertas (inclusive as inativas), ou INEXISTENTE
-//   BOLETO → ATIVO / INATIVO / INEXISTENTE (qualquer conjunto com a marca BOLETO no nome)
-// Conjunto com CREDIARIO no nome não entra em nenhuma linha. Campanha [VAGA] fica fora.
+//   BOLETO → ATIVO / INATIVO / INEXISTENTE (qualquer conjunto com a marca BOLETO ou CREDIARIO no nome — são a mesma coisa)
+// Campanha [VAGA] fica fora.
 
 import { extractTags, mapAdsetType, normName, splitParts } from "@/lib/naming/rules";
 
@@ -70,8 +70,7 @@ export function summarizeOffers(adsets: OfferAdset[]): OffersSummary {
   for (const a of adsets) {
     const p = parseAdsetName(a.name);
     if (!p) continue;
-    if (p.payment === "CREDIARIO") continue;
-    if (p.payment === "BOLETO") {
+    if (p.payment) {
       boleto.push(a);
       continue;
     }
