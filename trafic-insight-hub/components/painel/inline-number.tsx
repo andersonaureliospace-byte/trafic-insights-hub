@@ -8,6 +8,7 @@ export function InlineNumber({
   placeholder = "—",
   width = "w-24",
   align = "right",
+  className = "",
 }: {
   value: number | null;
   onSave: (v: number | null) => Promise<void>;
@@ -17,6 +18,8 @@ export function InlineNumber({
   // usado em Clientes — os outros usos continuam com os defaults de sempre.
   width?: string;
   align?: "left" | "right";
+  // Cor/estilo extra (ex.: verde/vermelho conforme o CPA em relação à meta).
+  className?: string;
 }) {
   const [text, setText] = useState(value == null ? "" : String(value));
 
@@ -49,7 +52,7 @@ export function InlineNumber({
       }}
       className={`${width} rounded border border-transparent bg-transparent px-1.5 py-0.5 text-sm tabular-nums outline-none hover:border-zinc-300 focus:border-zinc-900 dark:hover:border-zinc-700 dark:focus:border-zinc-100 ${
         align === "left" ? "text-left" : "text-right"
-      }`}
+      } ${className}`}
     />
   );
 }

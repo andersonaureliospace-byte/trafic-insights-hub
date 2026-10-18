@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AdAccount, AccountInsight } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency, fmtCurrencySigned, priorityRank, type PresetId } from "@/lib/format";
 import { adsManagerUrl, registerAccountBusinesses } from "@/lib/meta/ads-manager-link";
-import { ritmoFromInsight, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
+import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, RITMO_BAND } from "@/lib/meta/ritmo";
 import { CPA_ACCEPTABLE_BAND, METAS_SORTS, compareMetas, computeMetas, metasCalendar, type MetasSort } from "@/lib/meta/metas";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
@@ -114,6 +114,13 @@ type SortMode = "manual" | MetasSort | typeof PRIORITY_CPA_SORT;
 // Etapa 124: só evita disparar a mesma busca 2x seguidas (efeitos re-rodando); quem decide se busca é o
 // backup local (lib/client-cache.ts): entrou na aba com dado recente salvo → não busca.
 const AUTO_RELOAD_MS = 60 * 1000;
+
+// Cor do "Valor usado" pela meta de Investimento mensal (verde dentro, laranja abaixo, vermelho acima).
+const INVEST_STATUS_TEXT = {
+  below: "text-orange-600 dark:text-orange-400",
+  ok: "text-emerald-600 dark:text-emerald-400",
+  above: "text-red-600 dark:text-red-400",
+} as const;
 
 function rowSortKey(row: { binding?: AccountBinding; insight?: AccountInsight }): number {
   return row.binding?.sort_order ?? (1_000_000_000 - (row.insight?.spend ?? 0));
@@ -233,7 +240,6 @@ export default function PainelPage() {
   useEffect(() => {
     pinnedRef.current = pinnedIds;
   }, [pinnedIds]);
-  const [draggedAccountId, setDraggedAccountId] = useState<string | null>(null);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   // Contas com saldo baixo / erro no pagamento (Etapa 39) — só pra colorir o
   // nome da conta em Acompanhamento; quem decide "baixo"/"erro" de verdade é
@@ -636,24 +642,6 @@ export default function PainelPage() {
     }
   }
 
-  // Reordenação por arrastar-e-soltar (Acompanhamento) — grava sort_order de
-  // cada conta atrelado ao usuário no Supabase (não usa localStorage/sessionStorage:
-  // precisa valer igual em qualquer navegador/computador que o usuário abra).
-  async function persistOrder(orderedAccountIds: string[]) {
-    setBindings((prev) => {
-      const next = { ...prev };
-      orderedAccountIds.forEach((id, index) => {
-        next[id] = { ...(next[id] ?? defaultBinding(id)), sort_order: index };
-      });
-      return next;
-    });
-    await fetch("/api/account-bindings/reorder", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order: orderedAccountIds }),
-    });
-  }
-
   async function patchPix(accountId: string, patch: PixPatch) {
     const current = pixAccounts[accountId] ?? {
       ad_account_id: accountId,
@@ -790,29 +778,8 @@ export default function PainelPage() {
       ? 0
       : selectedAccounts.filter((a) => !monthlyInsights[a.account_id] || monthlyInsights[a.account_id]?.insights_failed)
           .length;
-  const reorderEnabled =
-    !hasPinned &&
-    sortMode === "manual" &&
-    search.trim() === "" &&
-    priorityFilter === "all" &&
-    cpaFilter === "all" &&
-    investFilter === "all" &&
-    optimizedFilter === "all";
-
   function togglePin(id: string) {
     setPinnedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
-  }
-
-  function handleRowDrop(targetAccountId: string) {
-    if (!draggedAccountId || draggedAccountId === targetAccountId) return;
-    const ids = rows.map((r) => r.acc.account_id);
-    const from = ids.indexOf(draggedAccountId);
-    const to = ids.indexOf(targetAccountId);
-    if (from === -1 || to === -1) return;
-    const next = [...ids];
-    next.splice(from, 1);
-    next.splice(to, 0, draggedAccountId);
-    void persistOrder(next);
   }
 
   // Etapa 119: não bloqueia mais a tela inteira enquanto as contas carregam — o menu lateral fica
@@ -836,14 +803,6 @@ export default function PainelPage() {
             <h1 className="mt-1 text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
               Visão geral das suas contas
             </h1>
-            <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-              {accountsReady
-                ? `Mostrando ${selectedAccounts.length} conta(s) selecionada(s).` +
-                  (selectedAccountsAll.length > selectedAccounts.length
-                    ? ` ${selectedAccountsAll.length - selectedAccounts.length} cliente(s) desativado(s) — veja em Configurações → Clientes.`
-                    : "")
-                : "Carregando contas…"}
-            </p>
           </div>
           <button
             onClick={() => setPickerOpen(true)}
@@ -956,7 +915,7 @@ export default function PainelPage() {
                       onChange={(e) => setSortMode(e.target.value as SortMode)}
                       className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
                     >
-                      <option value="manual">Ordem personalizada (arrastar)</option>
+                      <option value="manual">Ordem salva</option>
                       <option value={PRIORITY_CPA_SORT}>Prioridade + maior diferença do CPA (maior → menor)</option>
                       {METAS_SORTS.map((s) => (
                         <option key={s.id} value={s.id}>
@@ -1064,18 +1023,10 @@ export default function PainelPage() {
                   </p>
                 ) : null}
 
-                {!reorderEnabled ? (
-                  <p className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-                    Para arrastar e reordenar os clientes, limpe a busca, as contas fixadas, volte a ordenação pra Ordem personalizada e limpe os filtros de Status/CPA/
-                    Investimento/Otimizado — a reordenação vale para a lista completa.
-                  </p>
-                ) : null}
-
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
-                        <th className="w-6 px-2 py-2 font-medium"></th>
                         <th className="px-4 py-2 font-medium" title="Fixa a conta no topo e foca só nela">
                           Fixar
                         </th>
@@ -1089,25 +1040,30 @@ export default function PainelPage() {
                           Cliente
                         </th>
                         <th className="px-4 py-2 font-medium">Status</th>
-                        <th className="px-4 py-2 text-right font-medium">Valor usado</th>
                         <th
                           className="px-4 py-2 text-right font-medium"
                           title="Conversas iniciadas — o mesmo Resultado que aparece no Gerenciador de Anúncios, campo results da Meta (o que também gera o CPA)"
                         >
                           Leads
                         </th>
-                        <th className="px-4 py-2 text-right font-medium">CPA</th>
                         <th
                           className="px-4 py-2 text-right font-medium"
-                          title="Editável aqui ou em Clientes — os dois ficam sincronizados"
+                          title="Cor pela meta de Investimento mensal (gasto do mês até agora × ideal até hoje): verde = dentro, laranja = abaixo, vermelho = acima"
                         >
-                          CPA ideal
+                          Valor usado
                         </th>
                         <th
                           className="px-4 py-2 text-right font-medium"
-                          title="Abaixo: diferença entre o orçamento diário já configurado e o Ritmo (Invest. diário − Ritmo)"
+                          title="Editável aqui ou em Configurações → Clientes — os dois ficam sincronizados. Verde = CPA abaixo ou igual à meta, vermelho = CPA acima da meta"
                         >
-                          Invest. diário
+                          CPA ideal
+                        </th>
+                        <th className="px-4 py-2 text-right font-medium">CPA</th>
+                        <th
+                          className="px-4 py-2 text-right font-medium"
+                          title="Orçamento diário já configurado. Abaixo: diferença pro quanto precisa investir por dia pra alcançar o ideal do mês (dentro de 80%–120% do ideal = investimento diário normal; fora da faixa, ajusta pela diferença, limitada a ±50% do normal)"
+                        >
+                          Ritmo
                         </th>
                       </tr>
                     </thead>
@@ -1120,29 +1076,10 @@ export default function PainelPage() {
                         return (
                           <tr
                             key={acc.id}
-                            draggable={reorderEnabled}
-                            onDragStart={() => setDraggedAccountId(acc.account_id)}
-                            onDragOver={(e) => {
-                              if (reorderEnabled) e.preventDefault();
-                            }}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              handleRowDrop(acc.account_id);
-                              setDraggedAccountId(null);
-                            }}
-                            onDragEnd={() => setDraggedAccountId(null)}
                             className={`group border-b border-zinc-100 last:border-0 dark:border-zinc-800/60 ${
-                              draggedAccountId === acc.account_id ? "opacity-40" : ""
-                            } ${isPinned ? "bg-amber-50/70 dark:bg-amber-950/30" : ""}`}
+                              isPinned ? "bg-amber-50/70 dark:bg-amber-950/30" : ""
+                            }`}
                           >
-                            <td
-                              className={`px-2 py-2 text-zinc-300 dark:text-zinc-600 ${
-                                reorderEnabled ? "cursor-grab select-none" : ""
-                              }`}
-                              title={reorderEnabled ? "Arraste para reordenar" : undefined}
-                            >
-                              {reorderEnabled ? "⠿" : ""}
-                            </td>
                             <td className="px-4 py-2">
                               <PinCell pinned={isPinned} onToggle={() => togglePin(acc.account_id)} />
                             </td>
@@ -1190,8 +1127,49 @@ export default function PainelPage() {
                                 ))}
                               </select>
                             </td>
-                            <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>{fmtCurrency(insight?.spend ?? 0)}</td>
                             <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>{insight?.results ?? "—"}</td>
+                            <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
+                              {(() => {
+                                // Cor pela meta de investimento MENSAL (mesma conta da aba Metas), mesmo com o período
+                                // da tabela sendo outro (ex.: Hoje) — o número mostrado continua sendo o do período.
+                                const mIns = monthlyInsights[acc.account_id];
+                                const monthly = binding?.monthly_investment ?? null;
+                                const st =
+                                  monthly != null && monthly > 0 && mIns && !mIns.insights_failed
+                                    ? computeMetas(
+                                        { invested: mIns.spend, monthlyTarget: monthly, cpa: null, cpaTarget: null },
+                                        metasCal.elapsedDays,
+                                        metasCal.daysInMonth,
+                                      ).investStatus
+                                    : null;
+                                const color = st ? INVEST_STATUS_TEXT[st] : "";
+                                return <span className={`font-semibold ${color}`}>{fmtCurrency(insight?.spend ?? 0)}</span>;
+                              })()}
+                            </td>
+                            <td className="px-4 py-2 tabular-nums">
+                              {(() => {
+                                const cpaActual = insight?.cost_per_result;
+                                const cpaTarget = binding?.cpa_target;
+                                const color =
+                                  cpaActual != null && cpaTarget != null
+                                    ? cpaActual > cpaTarget
+                                      ? "text-red-600 dark:text-red-400"
+                                      : "text-emerald-600 dark:text-emerald-400"
+                                    : "";
+                                return (
+                                  <div className={`flex items-center justify-center gap-1 font-semibold ${color}`}>
+                                    <span className="text-xs opacity-70">R$</span>
+                                    <InlineNumber
+                                      value={binding?.cpa_target ?? null}
+                                      onSave={(v) => patchBinding(acc.account_id, { cpa_target: v })}
+                                      width="w-10"
+                                      align="left"
+                                      className={`font-semibold ${color}`}
+                                    />
+                                  </div>
+                                );
+                              })()}
+                            </td>
                             <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
                               {(() => {
                                 const cpaActual = insight?.cost_per_result;
@@ -1208,18 +1186,7 @@ export default function PainelPage() {
                                 );
                               })()}
                             </td>
-                            <td className="px-4 py-2 tabular-nums">
-                              <div className="flex items-center justify-center gap-1">
-                                <span className="text-xs text-zinc-400">R$</span>
-                                <InlineNumber
-                                  value={binding?.cpa_target ?? null}
-                                  onSave={(v) => patchBinding(acc.account_id, { cpa_target: v })}
-                                  width="w-10"
-                                  align="left"
-                                />
-                              </div>
-                            </td>
-                            <td className={`px-4 py-2 text-right tabular-nums ${blur}`}>
+                            <td className={`px-4 py-2 text-right tabular-nums ${blur}`} title={ritmoTooltip(binding?.monthly_investment, monthlyInsights[acc.account_id])}>
                               {(() => {
                                 const diff = rowRitmo != null ? (insight?.daily_budget ?? 0) - rowRitmo : null;
                                 const colorClass = ritmoColorClass(rowRitmo, insight?.daily_budget);

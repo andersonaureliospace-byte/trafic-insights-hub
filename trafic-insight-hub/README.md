@@ -2775,6 +2775,12 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Gerenciador de Anúncios, com a cor do saldo (vermelho = erro de pagamento, laranja = saldo baixo). O balão com WhatsApp /
     Investimento mensal / Invest. diário médio continua igual.
 
+134. **Desempenho: colunas, cores e sem arrastar (Etapa 147)** — nova ordem: Status | Leads | Valor usado | CPA ideal | CPA | Ritmo
+    (o antigo "Invest. diário" só mudou de nome). **Valor usado** é colorido pela meta de Investimento mensal (gasto do mês até agora ×
+    ideal até hoje, mesma regra da aba Metas): verde dentro, laranja abaixo, vermelho acima. **CPA ideal** fica verde quando o CPA do
+    período está abaixo/igual à meta e vermelho quando está acima. Removido o arrastar-e-soltar (coluna ⠿, aviso e gravação da ordem);
+    a opção de ordenação virou "Ordem salva". Tirada a linha "Mostrando N conta(s) selecionada(s)… cliente(s) desativado(s)" do topo do Painel.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
