@@ -27,8 +27,8 @@ export interface MetasInput {
   monthlyTarget: number | null; // Investimento mensal cadastrado
   cpa: number | null; // CPA do dia 01 até agora (com hoje)
   cpaTarget: number | null; // CPA ideal cadastrado
-  dailyBudget: number; // orçamento diário atual (Invest. diário)
-  ritmo: number | null; // quanto precisa investir por dia daqui pra frente
+  dailyBudget?: number; // orçamento diário atual (Invest. diário) — só Desempenho usa
+  ritmo?: number | null; // quanto precisa investir por dia daqui pra frente — só Desempenho usa
 }
 
 export interface MetasRow {
@@ -37,6 +37,9 @@ export interface MetasRow {
   idealUntilToday: number | null; // Investimento mensal ÷ dias do mês × dia de hoje // Investimento mensal ÷ dias do mês × dia de hoje
   pctOfTarget: number | null; // investido ÷ meta mensal (0-1+)
   investDiff: number | null; // investido − ideal (R$; negativo = faltou)
+  // (investido − ideal) ÷ meta mensal: diferença em "pontos" da meta do mês (ex.: 0,07 = 7 pontos
+  // acima; negativo = atrás). Base mensal, comparável entre clientes de tamanhos diferentes.
+  investGap: number | null;
   // Invest. diário − Ritmo (R$): a diferença mostrada embaixo de Invest. diário.
   // Negativa = orçamento diário abaixo do que precisa; positiva = acima.
   dailyDiff: number | null;
@@ -63,13 +66,14 @@ export function metasCalendar(now: Date = new Date()): {
 
 export function computeMetas(input: MetasInput, elapsedDays: number, daysInMonth: number): MetasRow {
   const { invested, monthlyTarget, cpa, cpaTarget, dailyBudget, ritmo } = input;
-  const dailyDiff = ritmo != null ? dailyBudget - ritmo : null;
+  const dailyDiff = ritmo != null && dailyBudget != null ? dailyBudget - ritmo : null;
 
   const hasMonthly = monthlyTarget != null && monthlyTarget > 0;
   const idealUntilToday =
     hasMonthly ? (monthlyTarget / daysInMonth) * elapsedDays : null;
   const pctOfTarget = hasMonthly ? invested / monthlyTarget : null;
   const investDiff = idealUntilToday != null ? invested - idealUntilToday : null;
+  const investGap = hasMonthly && investDiff != null ? investDiff / monthlyTarget : null;
   const investRatio = idealUntilToday != null && idealUntilToday > 0 ? invested / idealUntilToday : null;
   let investStatus: InvestStatus | null = null;
   if (investRatio != null) {
@@ -89,6 +93,7 @@ export function computeMetas(input: MetasInput, elapsedDays: number, daysInMonth
     idealUntilToday,
     pctOfTarget,
     investDiff,
+    investGap,
     dailyDiff,
     investRatio,
     investStatus,
@@ -99,7 +104,16 @@ export function computeMetas(input: MetasInput, elapsedDays: number, daysInMonth
   };
 }
 
-export type MetasSort = "critical" | "cpa" | "invest_above" | "invest_below";
+export type MetasSort = "critical" | "cpa" | "invest" | "invest_above" | "invest_below";
+
+// Opções da aba Metas (a de Desempenho continua usando METAS_SORTS, com Invest. diário × Ritmo).
+// Tudo na base MENSAL: investimento = diferença entre o investido e o ideal até hoje, em % da meta
+// do mês (pra cima ou pra baixo, só importa o tamanho); CPA = quanto está acima do CPA ideal.
+export const METAS_TAB_SORTS: { id: MetasSort; label: string }[] = [
+  { id: "critical", label: "Padrão (mais fora da meta → mais tranquilas)" },
+  { id: "invest", label: "Investimento (maior diferença → menor)" },
+  { id: "cpa", label: "CPA (maior diferença acima da meta → menor)" },
+];
 
 export const METAS_SORTS: { id: MetasSort; label: string }[] = [
   { id: "critical", label: "Mais crítica (CPA alto + investimento fora)" },
@@ -123,8 +137,7 @@ function criticalScore(r: MetasRow): number {
   if (r.cpaStatus == null && r.investStatus == null) return MISSING;
   const group = cpaBad && investBad ? 3 : cpaBad || investBad ? 2 : 1;
   const cpaPart = r.cpaDiff != null && r.cpaTarget ? Math.max(r.cpaDiff, 0) / r.cpaTarget : 0;
-  const investPart =
-    r.investDiff != null && r.idealUntilToday ? Math.abs(r.investDiff) / r.idealUntilToday : 0;
+  const investPart = r.investGap != null ? Math.abs(r.investGap) : 0;
   return group * 1000 + cpaPart + investPart;
 }
 
@@ -149,6 +162,8 @@ export function metasSortKey(r: MetasRow, sort: MetasSort): number {
       return criticalScore(r);
     case "cpa":
       return r.cpaDiff ?? MISSING;
+    case "invest":
+      return r.investGap != null ? Math.abs(r.investGap) : MISSING;
     case "invest_above":
       return r.dailyDiff ?? MISSING;
     case "invest_below":

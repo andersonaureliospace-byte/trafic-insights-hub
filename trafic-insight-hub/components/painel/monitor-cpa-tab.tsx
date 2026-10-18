@@ -14,17 +14,16 @@ import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 // lib/meta/cpa-board-cache.ts), sem bater na Meta a cada abertura da aba.
 const WARNING_BAND = 2;
 
-type Period = "today" | "yesterday" | "today_yesterday" | "last_3d" | "this_month";
+// Etapa 142: só 3 períodos (Últimos 3 dias e Este mês saíram a pedido). "Hoje" abre sempre selecionado.
+type Period = "today" | "yesterday" | "today_yesterday";
 
 const PERIODS: { id: Period; label: string }[] = [
   { id: "today", label: "Hoje" },
   { id: "yesterday", label: "Ontem" },
   { id: "today_yesterday", label: "Hoje e ontem" },
-  { id: "last_3d", label: "Últimos 3 dias" },
-  { id: "this_month", label: "Este mês" },
 ];
 
-const CACHED_PERIODS = new Set<Period>(["yesterday", "last_3d"]);
+const CACHED_PERIODS = new Set<Period>(["yesterday"]);
 
 type Band = "good" | "warning" | "critical";
 

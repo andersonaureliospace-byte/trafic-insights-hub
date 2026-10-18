@@ -5,9 +5,8 @@ import { fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
-import { ritmoFromInsight, ritmoTooltip, ritmoColorClass, ritmoAcceleratedDays } from "@/lib/meta/ritmo";
 import {
-  METAS_SORTS,
+  METAS_TAB_SORTS,
   computeMetas,
   metasCalendar,
   compareMetas,
@@ -37,8 +36,6 @@ interface MetasInsight {
 
 interface Row {
   accountId: string;
-  dailyBudget: number;
-  ritmo: number | null;
   accountName: string;
   clientName: string;
   metas: MetasRow;
@@ -165,20 +162,17 @@ export function MetasTab({
   }, [load]);
 
   // Calendário só é calculado no cliente, no momento do render da aba — dias
-  // decorridos do mês (contando hoje) e dias reais do mês, mesma base do Ritmo.
+  // decorridos do mês (contando hoje) e dias reais do mês.
   const { elapsedDays, daysInMonth } = useMemo(() => metasCalendar(), []);
+  const todayPct = Math.round((elapsedDays / daysInMonth) * 100);
 
   const rows = useMemo<Row[]>(() => {
     const q = search.trim().toLowerCase();
     const built = accounts
       .map<Row>((acc) => {
         const ins = insights[acc.account_id];
-        const dailyBudget = ins?.daily_budget ?? 0;
-        const rowRitmo = ritmoFromInsight(monthlyTargets[acc.account_id] ?? null, ins);
         return {
           accountId: acc.account_id,
-          dailyBudget,
-          ritmo: rowRitmo,
           accountName: acc.name,
           clientName: clientNames[acc.account_id] ?? acc.name,
           metas: computeMetas(
@@ -187,8 +181,6 @@ export function MetasTab({
               monthlyTarget: monthlyTargets[acc.account_id] ?? null,
               cpa: ins?.cost_per_result ?? null,
               cpaTarget: cpaTargets[acc.account_id] ?? null,
-              dailyBudget,
-              ritmo: rowRitmo,
             },
             elapsedDays,
             daysInMonth,
@@ -218,7 +210,7 @@ export function MetasTab({
             onChange={(e) => setSort(e.target.value as MetasSort)}
             className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-sm dark:border-zinc-700"
           >
-            {METAS_SORTS.map((s) => (
+            {METAS_TAB_SORTS.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.label}
               </option>
@@ -244,7 +236,7 @@ export function MetasTab({
       {failedCount > 0 ? (
         <p className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
           {failedCount} conta(s) não carregaram o gasto do mês (provável limite de requisições da Meta). Os números delas
-          estão incompletos e o Ritmo fica em —. Clique em Atualizar pra tentar de novo.
+          estão incompletos. Clique em Atualizar pra tentar de novo.
           {firstFailError ? ` Motivo da Meta: ${firstFailError}` : ""}
         </p>
       ) : null}
@@ -265,20 +257,8 @@ export function MetasTab({
               </th>
               <th className="px-4 py-2 text-right font-medium">Investimento atual</th>
               <th className="px-4 py-2 text-right font-medium">Ideal até hoje</th>
-              <th className="px-4 py-2 font-medium" title="Investimento atual ÷ Investimento mensal cadastrado; o tracinho marca o ideal até hoje">
-                % de investimento
-              </th>
-              <th
-                className="px-4 py-2 text-right font-medium"
-                title="Orçamento diário atual dos conjuntos/campanhas ativos. Abaixo: diferença entre o orçamento diário já configurado e o Ritmo (Invest. diário − Ritmo)"
-              >
-                Invest. diário
-              </th>
-              <th
-                className="px-4 py-2 text-right font-medium"
-                title="Quanto investir por dia pra alcançar o Ideal até hoje, contando o que já foi gasto hoje: dentro de 80%–120% do ideal = investimento diário normal (Investimento mensal ÷ dias do mês); fora da faixa, ajusta pela diferença pro ideal, limitada a ±50% do normal"
-              >
-                Ritmo
+              <th className="px-4 py-2 font-medium" title={`Investimento atual ÷ Investimento mensal cadastrado. Entre parênteses: quanto do mês já passou (dia ${elapsedDays} de ${daysInMonth} = ${todayPct}%) — é onde fica o tracinho da barra`}>
+                % de investimento ({todayPct}%)
               </th>
               <th className="px-4 py-2 text-right font-medium" title="Abaixo: diferença pro CPA ideal">
                 CPA atual
@@ -322,41 +302,6 @@ export function MetasTab({
                     <InvestCell m={m} elapsedDays={elapsedDays} daysInMonth={daysInMonth} />
                   </td>
                   <td className={"px-4 py-2 text-right tabular-nums"}>
-                    {(() => {
-                      const diff = r.ritmo != null ? r.dailyBudget - r.ritmo : null;
-                      const color = ritmoColorClass(r.ritmo, r.dailyBudget);
-                      return (
-                        <>
-                          <div className={`text-base font-semibold ${color}`}>{fmtCurrency(r.dailyBudget)}</div>
-                          {diff != null ? (
-                            <div className={`text-xs opacity-70 ${color}`}>{fmtCurrencySigned(diff)}</div>
-                          ) : null}
-                        </>
-                      );
-                    })()}
-                  </td>
-                  <td
-                    className={"px-4 py-2 text-right tabular-nums"}
-                    title={ritmoTooltip(monthlyTargets[r.accountId] ?? null, insights[r.accountId])}
-                  >
-                    {(() => {
-                      const monthly = monthlyTargets[r.accountId] ?? null;
-                      const ins = insights[r.accountId];
-                      const days =
-                        monthly != null && ins && !ins.insights_failed ? ritmoAcceleratedDays(monthly, ins.spend) : 0;
-                      return days > 0 ? (
-                        <>
-                          <div className="font-semibold text-orange-600 dark:text-orange-400">{fmtCurrency(r.ritmo)}</div>
-                          <div className="text-xs text-orange-600 opacity-80 dark:text-orange-400">
-                            acelerar · {days} {days === 1 ? "dia" : "dias"}
-                          </div>
-                        </>
-                      ) : (
-                        fmtCurrency(r.ritmo)
-                      );
-                    })()}
-                  </td>
-                  <td className={"px-4 py-2 text-right tabular-nums"}>
                     <div className={`text-base font-semibold ${cpaColor}`}>{fmtCurrency(m.cpa)}</div>
                     {m.cpaDiff != null ? (
                       <div className={`text-xs opacity-70 ${cpaColor}`}>{fmtCurrencySigned(m.cpaDiff)}</div>
@@ -370,7 +315,7 @@ export function MetasTab({
             })}
             {rows.length === 0 && !loading ? (
               <tr>
-                <td colSpan={11} className="px-4 py-8 text-center text-sm text-zinc-500">
+                <td colSpan={7} className="px-4 py-8 text-center text-sm text-zinc-500">
                   Nenhuma conta encontrada.
                 </td>
               </tr>

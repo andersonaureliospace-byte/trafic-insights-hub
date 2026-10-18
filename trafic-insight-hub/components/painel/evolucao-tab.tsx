@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client-cache";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency } from "@/lib/format";
+import { usePriorityOptions } from "@/lib/priority-context";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 
 // Quadro simples de evolução do CPA diário por cliente — período fixo em
@@ -80,11 +81,16 @@ export function EvolucaoTab({
   accounts,
   clientNames,
   cpaTargets,
+  priorities,
 }: {
   accounts: AdAccount[];
   clientNames: Record<string, string>;
   cpaTargets: Record<string, number | null>;
+  // Etapa 143: Status (prioridade) de cada conta — alimenta o filtro de Status.
+  priorities: Record<string, string | null>;
 }) {
+  const { options: priorityOptions } = usePriorityOptions();
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [daily, setDaily] = useState<Record<string, DailyCpaPoint[]>>({});
   const [month, setMonth] = useState<Record<string, DailyCpaPoint>>({});
   const [loading, setLoading] = useState(false);
@@ -107,6 +113,12 @@ export function EvolucaoTab({
       return cb - ca;
     });
   }, [accounts, month]);
+
+  // Etapa 143: filtro de Status só esconde linhas na tela (não refaz a busca na Meta).
+  const visibleAccounts = useMemo(
+    () => (statusFilter === "all" ? sortedAccounts : sortedAccounts.filter((a) => (priorities[a.account_id] ?? "") === statusFilter)),
+    [sortedAccounts, statusFilter, priorities],
+  );
 
   // Etapa 124: backup no navegador — entrar na aba mostra o salvo e só busca na Meta se não tem nada
   // recente (1h); o ↻ Atualizar (force) sempre busca. Falhou? O salvo continua na tela.
@@ -174,6 +186,22 @@ export function EvolucaoTab({
             Ordenado pelo CPA do mês, do maior pro menor.
           </p>
         </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Status</span>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-8 rounded-md border border-zinc-300 bg-transparent px-2 text-xs dark:border-zinc-700"
+            >
+              <option value="all">Todos</option>
+              {priorityOptions.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </div>
         <button
           onClick={() => void load(true)}
           disabled={loading}
@@ -181,6 +209,7 @@ export function EvolucaoTab({
         >
           {loading ? "Atualizando…" : "↻ Atualizar"}
         </button>
+        </div>
       </div>
 
       {error ? (
@@ -205,7 +234,14 @@ export function EvolucaoTab({
               </tr>
             </thead>
             <tbody>
-              {sortedAccounts.map((acc) => {
+              {visibleAccounts.length === 0 ? (
+                <tr>
+                  <td colSpan={3 + dates.length} className="px-4 py-6 text-center text-sm text-zinc-500">
+                    Nenhum cliente com esse status.
+                  </td>
+                </tr>
+              ) : null}
+              {visibleAccounts.map((acc) => {
                 const points = daily[acc.account_id] ?? [];
                 const pointByDate = new Map(points.map((p) => [p.date, p]));
                 const cpaTarget = cpaTargets[acc.account_id];

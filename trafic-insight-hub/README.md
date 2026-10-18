@@ -2753,6 +2753,23 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     sempre, que continuam rodando sozinhas de hora em hora pelo n8n). As telas fora do Painel carregam contas/vínculos pelo hook
     `lib/hooks/use-accounts-data.ts`.
 
+129. **Monitor de CPA com 3 períodos (Etapa 142)** — só Hoje (abre sempre nele), Ontem e Hoje e ontem; Últimos 3 dias e Este mês
+    saíram da tela (o cálculo diário em cache no servidor não mudou).
+
+130. **Filtro de Status em Evolução (Etapa 143)** — caixa "Status" (Todos / Inauguração / Baixa / Média / Alta / Crítica, com os rótulos
+    de Configurações → Status) no topo da tela Evolução; só esconde linhas, não busca de novo na Meta.
+
+131. **Painel enxuto (Etapa 144)** — removidos da aba Desempenho o botão "Atualizar status em massa" (o status já é atualizado
+    sozinho pelo n8n, segunda e quinta 01h) e o "Grupo de foco" (barra, estado e salvamento no filtro). Apagados
+    `bulk-status-dialog.tsx` e `focus-groups-bar.tsx`; a rotina automática e a rota `/api/focus-groups` ficaram no lugar.
+
+132. **Aba Metas simplificada (Etapa 145)** — saíram as colunas Invest. diário e Ritmo (continuam em Desempenho). O cabeçalho
+    ficou "% de investimento (55%)": o número entre parênteses é quanto do mês já passou (dia de hoje ÷ dias do mês, ex.: dia 17
+    de 31 = 55%), onde fica o tracinho da barra. Ordenação nova, sempre na base mensal: **Padrão** (mais fora da meta → mais
+    tranquilas: CPA alto + investimento fora, depois só um dos dois, depois ok), **Investimento** (diferença entre o investido e o
+    ideal até hoje, em % da meta do mês, pra cima ou pra baixo, da maior pra menor) e **CPA** (quanto está acima do CPA ideal,
+    da maior diferença pra menor).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

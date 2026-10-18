@@ -15,8 +15,6 @@ import { EvolucaoTab } from "@/components/painel/evolucao-tab";
 import { MonitorCpaTab } from "@/components/painel/monitor-cpa-tab";
 import { PIN_BLUR, PinCell } from "@/components/painel/pin-cell";
 import { MetasTab } from "@/components/painel/metas-tab";
-import { FocusGroupsBar, type FocusGroup } from "@/components/painel/focus-groups-bar";
-import { BulkStatusDialog } from "@/components/painel/bulk-status-dialog";
 import { EditClientDialog } from "@/components/painel/edit-client-dialog";
 import { InlineNumber } from "@/components/painel/inline-number";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
@@ -236,9 +234,6 @@ export default function PainelPage() {
   useEffect(() => {
     pinnedRef.current = pinnedIds;
   }, [pinnedIds]);
-  const [focusGroups, setFocusGroups] = useState<FocusGroup[]>([]);
-  const [activeFocusGroupId, setActiveFocusGroupId] = useState<string | null>(null);
-  const [bulkStatusOpen, setBulkStatusOpen] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [draggedAccountId, setDraggedAccountId] = useState<string | null>(null);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
@@ -364,10 +359,6 @@ export default function PainelPage() {
         for (const p of d.pixAccounts ?? []) map[p.ad_account_id] = p;
         setPixAccounts(map);
       });
-
-    fetch("/api/focus-groups")
-      .then((r) => r.json())
-      .then((d) => setFocusGroups(d.groups ?? []));
   }, [loadAccounts, loadBindings]);
 
   // Etapa 39: assim que a aba/filtros salvos chegam do Supabase, aplica uma
@@ -390,8 +381,6 @@ export default function PainelPage() {
     if (a.sortMode === "manual" || a.sortMode === PRIORITY_CPA_SORT || METAS_SORTS.some((s) => s.id === a.sortMode)) setSortMode(a.sortMode as SortMode);
     setPinnedIds(strList(a.pinnedIds));
     if (typeof a.preset === "string") setPreset(a.preset as PresetId);
-    if (typeof a.activeFocusGroupId === "string" || a.activeFocusGroupId === null)
-      setActiveFocusGroupId((a.activeFocusGroupId as string | null) ?? null);
   }, [uiState]);
 
   // Salva a aba ativa + os filtros de Acompanhamento sempre que mudam (com
@@ -410,7 +399,6 @@ export default function PainelPage() {
         pinnedIds,
         sortMode,
         preset,
-        activeFocusGroupId,
       },
     });
   }, [
@@ -423,7 +411,6 @@ export default function PainelPage() {
     pinnedIds,
     sortMode,
     preset,
-    activeFocusGroupId,
     patchUiState,
   ]);
 
@@ -479,15 +466,6 @@ export default function PainelPage() {
     }
     void loadAlertStatuses();
   }, [loadAlertStatuses, tab]);
-
-  async function saveFocusGroups(groups: FocusGroup[]) {
-    setFocusGroups(groups);
-    await fetch("/api/focus-groups", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ groups }),
-    });
-  }
 
   // Etapa 131: TODAS as contas exibidas, inclusive as de clientes desativados — só a aba Clientes usa (pra poder reativar).
   const selectedAccountsAll = useMemo(() => {
@@ -723,20 +701,9 @@ export default function PainelPage() {
     });
   }, [selectedAccounts, bindings, insights]);
 
-  const activeFocusGroup = useMemo(
-    () => focusGroups.find((g) => g.id === activeFocusGroupId) ?? null,
-    [focusGroups, activeFocusGroupId],
-  );
-
-  const focusFilteredRows = useMemo(() => {
-    if (!activeFocusGroup) return allRows;
-    const set = new Set(activeFocusGroup.accountIds);
-    return allRows.filter((r) => set.has(r.acc.account_id));
-  }, [allRows, activeFocusGroup]);
-
   const rows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return focusFilteredRows
+    return allRows
       .filter(
         (r) =>
           !q || r.clientName.toLowerCase().includes(q) || r.acc.name.toLowerCase().includes(q),
@@ -803,7 +770,7 @@ export default function PainelPage() {
     sortMode,
     metasCal,
     pinnedIds,
-    focusFilteredRows,
+    allRows,
     search,
     priorityFilter,
     cpaFilter,
@@ -813,7 +780,7 @@ export default function PainelPage() {
   ]);
 
   // Arrastar só faz sentido reordenando a lista completa e visível — com
-  // busca, grupo de foco ou qualquer um dos 4 filtros (Status/CPA/
+  // busca ou qualquer um dos 4 filtros (Status/CPA/
   // Investimento/Otimizado) ativos, a posição de um item na tela não bate com sua
   // posição "de verdade" entre todas as contas, então desabilita.
   const hasPinned = selectedAccounts.some((a) => pinnedIds.includes(a.account_id));
@@ -829,7 +796,6 @@ export default function PainelPage() {
     !hasPinned &&
     sortMode === "manual" &&
     search.trim() === "" &&
-    activeFocusGroupId === null &&
     priorityFilter === "all" &&
     cpaFilter === "all" &&
     investFilter === "all" &&
@@ -983,13 +949,6 @@ export default function PainelPage() {
                     Acompanhamento de Resultados {loadingInsights ? "· atualizando…" : ""}
                   </h2>
                   <div className="flex flex-wrap items-center gap-2">
-                    <FocusGroupsBar
-                      accounts={selectedAccounts}
-                      groups={focusGroups}
-                      activeGroupId={activeFocusGroupId}
-                      onGroupsChange={saveFocusGroups}
-                      onActiveGroupChange={setActiveFocusGroupId}
-                    />
                     <input
                       value={search}
                       onChange={(e) => setSearch(e.target.value)}
@@ -1038,12 +997,6 @@ export default function PainelPage() {
                         atualizado às {fmtCacheTime(insightsAt)}
                       </span>
                     ) : null}
-                    <button
-                      onClick={() => setBulkStatusOpen(true)}
-                      className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium dark:border-zinc-700"
-                    >
-                      Atualizar status em massa
-                    </button>
                   </div>
                 </div>
 
@@ -1117,7 +1070,7 @@ export default function PainelPage() {
 
                 {!reorderEnabled ? (
                   <p className="border-b border-zinc-200 bg-zinc-50 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
-                    Para arrastar e reordenar os clientes, limpe a busca, o grupo de foco, as contas fixadas, volte a ordenação pra Ordem personalizada e limpe os filtros de Status/CPA/
+                    Para arrastar e reordenar os clientes, limpe a busca, as contas fixadas, volte a ordenação pra Ordem personalizada e limpe os filtros de Status/CPA/
                     Investimento/Otimizado — a reordenação vale para a lista completa.
                   </p>
                 ) : null}
@@ -1335,6 +1288,7 @@ export default function PainelPage() {
                 accounts={selectedAccounts}
                 clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
                 cpaTargets={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.binding?.cpa_target ?? null]))}
+                priorities={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.binding?.priority ?? null]))}
               />
             ) : null}
 
@@ -1388,21 +1342,6 @@ export default function PainelPage() {
         onClose={() => setPickerOpen(false)}
         selectedIds={selectedIds ?? []}
         onSave={saveSelectedAccounts}
-      />
-
-      <BulkStatusDialog
-        open={bulkStatusOpen}
-        onClose={() => setBulkStatusOpen(false)}
-        candidates={rows.map((r) => ({
-          accountId: r.acc.account_id,
-          clientName: r.clientName,
-          cpaTarget: r.binding?.cpa_target ?? null,
-          priority: r.binding?.priority ?? null,
-        }))}
-        reorderEnabled={reorderEnabled}
-        onDone={() => setSortMode(PRIORITY_CPA_SORT)}
-        onApply={(accountId, priority) => patchBinding(accountId, { priority })}
-        onReorder={persistOrder}
       />
 
       <EditClientDialog

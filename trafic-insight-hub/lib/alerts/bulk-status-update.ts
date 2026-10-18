@@ -2,7 +2,7 @@
 // segunda e quinta às 01h, sempre com o CPA dos últimos 3 dias SEM contar
 // hoje (getAccountsDailyCpa com includeToday=false). MESMA lógica de
 // classificação do botão manual "Atualizar status em massa" de Acompanhamento
-// (components/painel/bulk-status-dialog.tsx: classify()) — duplicada aqui de
+// (a antiga tela de status em massa, já removida: classify()) — duplicada aqui de
 // propósito, já que aquele arquivo é "use client" e não dá pra importar num
 // endpoint de servidor.
 //
@@ -33,7 +33,7 @@ import { describeAsanaSync, syncAsanaPriorities, type AsanaSyncSummary } from "@
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
-// Mesma função de components/painel/bulk-status-dialog.tsx — mantenha as
+// Mesma regra da antiga tela de status em massa (removida) — mantenha as
 // duas em sincronia se o critério mudar de novo.
 function classify(cpa: number, target: number): string {
   const diff = cpa - target;
