@@ -26,7 +26,7 @@ export async function GET() {
   }
 }
 
-// Mescla só as chaves de topo (tab, acompanhamento, analise, visaoGeral) —
+// Mescla só as chaves de topo (tab, acompanhamento, analise) —
 // cada uma delas é sempre mandada por inteiro por quem chama, então não
 // precisa de merge profundo.
 export async function PATCH(request: Request) {

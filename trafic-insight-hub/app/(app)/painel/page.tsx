@@ -9,14 +9,8 @@ import { CPA_ACCEPTABLE_BAND, METAS_SORTS, compareMetas, computeMetas, metasCale
 import { usePriorityOptions } from "@/lib/priority-context";
 import { ContasExibidasDialog } from "@/components/painel/contas-exibidas-dialog";
 import { ControleSaldo } from "@/components/painel/controle-saldo";
-import { VisaoGeral } from "@/components/painel/visao-geral";
-import { AlertasTab } from "@/components/painel/alertas-tab";
-import { PadraoNomesTab } from "@/components/painel/padrao-nomes-tab";
 import { AnaliseTab } from "@/components/painel/analise-tab";
-import { ClientesTab } from "@/components/painel/clientes-tab";
 import { CopyTab } from "@/components/painel/copy-tab";
-import { DemandasTab } from "@/components/painel/demandas-tab";
-import { DescricaoTab } from "@/components/painel/descricao-tab";
 import { EvolucaoTab } from "@/components/painel/evolucao-tab";
 import { MonitorCpaTab } from "@/components/painel/monitor-cpa-tab";
 import { PIN_BLUR, PinCell } from "@/components/painel/pin-cell";
@@ -152,29 +146,23 @@ function cpaDiffColorClass(diff: number | null): string {
 // Subgrupos na lateral — cada um só busca dados do Meta (o que pesa nas
 // requisições) enquanto estiver ativo. Trocar de aba não deixa nada
 // "grudado" buscando em segundo plano.
-// A aba "Geral" (KPIs soltos, redundante com "Visão Geral") foi removida a
-// pedido — por isso a aba inicial (num acesso novo, sem estado salvo ainda)
-// é "Visão Geral". Ordem da lateral a pedido (Etapa 39).
+// Etapa 141: menu enxuto, nesta ordem. Saíram: Visão Geral e Demandas (excluídas), Clientes (foi pra Configurações) e
+// Alertas / Padrão de nomes / Descrição (foram pra Auditoria). "Acompanhamento" virou "Desempenho" e
+// "Acompanhamento de metas" virou "Metas" (os ids internos continuam os mesmos, pra não perder o estado salvo).
 const TABS = [
-  { id: "acompanhamento", label: "Acompanhamento" },
-  { id: "metas", label: "Acompanhamento de metas" },
+  { id: "acompanhamento", label: "Desempenho" },
   { id: "analise", label: "Análise" },
-  { id: "evolucao", label: "Evolução" },
-  { id: "monitor-cpa", label: "Monitor de CPA" },
-  { id: "visao-geral", label: "Visão Geral" },
-  { id: "alertas", label: "Alertas" },
-  { id: "padrao-nomes", label: "Padrão de nomes" },
   { id: "saldo", label: "Controle de Saldo" },
-  { id: "clientes", label: "Clientes" },
-  { id: "demandas", label: "Demandas" },
-  { id: "descricao", label: "Descrição" },
+  { id: "metas", label: "Metas" },
+  { id: "monitor-cpa", label: "Monitor de CPA" },
+  { id: "evolucao", label: "Evolução" },
   { id: "copy", label: "Copy" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
 export default function PainelPage() {
   const { options: priorityOptions } = usePriorityOptions();
-  const [tab, setTab] = useState<TabId>("visao-geral");
+  const [tab, setTab] = useState<TabId>("acompanhamento");
   const [selectedIds, setSelectedIds] = useState<string[] | null>(null);
   const [allAccounts, setAllAccounts] = useState<AdAccount[] | null>(null);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -389,7 +377,8 @@ export default function PainelPage() {
     if (uiState === null || uiHydrated.current) return;
     uiHydrated.current = true;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- restaura a aba/filtros salvos assim que o estado do Supabase chega, uma única vez (uiHydrated evita repetir)
-    if (typeof uiState.tab === "string") setTab(uiState.tab as TabId);
+    // Etapa 141: aba salva que não existe mais (Visão Geral, Demandas, Clientes…) cai em Desempenho.
+    if (typeof uiState.tab === "string" && TABS.some((t) => t.id === uiState.tab)) setTab(uiState.tab as TabId);
     const a = (uiState.acompanhamento ?? {}) as Record<string, unknown>;
     if (typeof a.search === "string") setSearch(a.search);
     if (typeof a.priorityFilter === "string") setPriorityFilter(a.priorityFilter);
@@ -441,13 +430,6 @@ export default function PainelPage() {
   const handleAnaliseFiltersChange = useCallback(
     (filters: { mode: string; subPanel: string; preset: string; search: string }) => {
       patchUiState({ analise: filters });
-    },
-    [patchUiState],
-  );
-
-  const handleVisaoGeralFiltersChange = useCallback(
-    (filters: { accountId: string; level: string; preset: string }) => {
-      patchUiState({ visaoGeral: filters });
     },
     [patchUiState],
   );
@@ -874,7 +856,6 @@ export default function PainelPage() {
   // Etapa 119: não bloqueia mais a tela inteira enquanto as contas carregam — o menu lateral fica
   // sempre visível e só a área de conteúdo mostra "Carregando…" ou o erro.
   const accountsReady = selectedIds !== null && allAccounts !== null && bindingsLoaded;
-  const needsAccounts = tab !== "alertas";
   const statusLoading = loadingAccounts || metaPending > 0 || selectedIds === null;
   const failedLabels = Object.entries(metaFailed).filter(([, v]) => v).map(([k]) => k);
   const statusErrors = [
@@ -897,7 +878,7 @@ export default function PainelPage() {
               {accountsReady
                 ? `Mostrando ${selectedAccounts.length} conta(s) selecionada(s).` +
                   (selectedAccountsAll.length > selectedAccounts.length
-                    ? ` ${selectedAccountsAll.length - selectedAccounts.length} cliente(s) desativado(s) — veja em Clientes.`
+                    ? ` ${selectedAccountsAll.length - selectedAccounts.length} cliente(s) desativado(s) — veja em Configurações → Clientes.`
                     : "")
                 : "Carregando contas…"}
             </p>
@@ -982,11 +963,11 @@ export default function PainelPage() {
                 </button>
               </div>
             ) : null}
-            {needsAccounts && !accountsReady ? (
+            {!accountsReady ? (
               <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
                 {accountsError ? "As contas não carregaram." : "Carregando contas…"} O menu ao lado continua funcionando.
               </div>
-            ) : needsAccounts && (tab === "clientes" ? selectedAccountsAll.length === 0 : selectedAccounts.length === 0) ? (
+            ) : selectedAccounts.length === 0 ? (
               <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
                 Nenhuma conta selecionada.{" "}
                 <button onClick={() => setPickerOpen(true)} className="font-medium text-zinc-900 underline dark:text-zinc-100">
@@ -1376,16 +1357,6 @@ export default function PainelPage() {
               />
             ) : null}
 
-            {tab === "clientes" ? (
-              <ClientesTab
-                accounts={selectedAccountsAll}
-                bindings={bindings}
-                onPatch={patchBinding}
-                onRefresh={loadAccounts}
-                refreshing={loadingAccounts}
-              />
-            ) : null}
-
             {tab === "saldo" ? (
               <ControleSaldo
                 accounts={selectedAccounts}
@@ -1398,15 +1369,6 @@ export default function PainelPage() {
               />
             ) : null}
 
-            {tab === "visao-geral" ? (
-              <VisaoGeral
-                accounts={selectedAccounts}
-                preset={preset}
-                initialFilters={uiState?.visaoGeral}
-                onFiltersChange={handleVisaoGeralFiltersChange}
-              />
-            ) : null}
-
             {tab === "analise" ? (
               <AnaliseTab
                 accounts={selectedAccounts}
@@ -1415,23 +1377,6 @@ export default function PainelPage() {
               />
             ) : null}
 
-            {tab === "demandas" ? (
-              <DemandasTab
-                accounts={selectedAccounts}
-                clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
-              />
-            ) : null}
-
-            {tab === "alertas" ? <AlertasTab accountNames={selectedAccounts.map((a) => bindings[a.account_id]?.client_name || a.name)} /> : null}
-
-            {tab === "descricao" ? (
-              <DescricaoTab
-                accounts={selectedAccounts}
-                clientNames={Object.fromEntries(allRows.map((r) => [r.acc.account_id, r.clientName]))}
-              />
-            ) : null}
-
-            {tab === "padrao-nomes" ? <PadraoNomesTab /> : null}
             {tab === "copy" ? <CopyTab accounts={selectedAccounts} bindings={bindings} /> : null}
             </>
             )}

@@ -2743,6 +2743,16 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     nem o ajuste automático de idade/data mexem mais nele; aceitar um nome EDITADO que continua fora da regra também guarda o item como
     personalizado. Seção "Personalizados" no fim da aba, com "Voltar ao padrão".
 
+128. **Menu reorganizado (Etapa 141)** — Painel agora tem só: Desempenho (era Acompanhamento), Análise, Controle de Saldo, Metas (era
+    Acompanhamento de metas), Monitor de CPA, Evolução e Copy (nessa ordem; os ids internos não mudaram, então filtros salvos
+    continuam valendo; aba salva que não existe mais cai em Desempenho). **Visão Geral** foi excluída de vez (tela `visao-geral.tsx`,
+    rota `/api/meta/breakdown` e `lib/meta/breakdown.ts`). **Demandas** saiu do Painel (tela `demandas-tab.tsx` excluída) — o
+    backend (`/api/demands`, hooks `demand-*`, grupo de demandas em Configurações → WhatsApp) continua no projeto, parado.
+    **Clientes** foi pra Configurações (nova sub-aba "Clientes"). **Alertas, Padrão de nomes e Descrição** foram pra Auditoria,
+    que agora tem as sub-abas Alertas | Padrão de nomes | Descrição | Verificações (as verificações de localização/erros de
+    sempre, que continuam rodando sozinhas de hora em hora pelo n8n). As telas fora do Painel carregam contas/vínculos pelo hook
+    `lib/hooks/use-accounts-data.ts`.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

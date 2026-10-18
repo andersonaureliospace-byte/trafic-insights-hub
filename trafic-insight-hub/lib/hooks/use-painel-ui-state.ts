@@ -13,7 +13,6 @@ export interface PainelUiState {
   tab?: string;
   acompanhamento?: Record<string, unknown>;
   analise?: Record<string, unknown>;
-  visaoGeral?: Record<string, unknown>;
 }
 
 // Debounce — não manda uma requisição a cada tecla digitada num campo de
