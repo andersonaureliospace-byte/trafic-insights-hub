@@ -12,6 +12,7 @@ import { checkPaymentErrors } from "@/lib/alerts/payment";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { formatMorningSummary, rankAccounts, type AccountSignals, type ScoredAccount } from "@/lib/alerts/priority-score";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
+import { saveAttentionSnapshot } from "@/lib/alerts/attention-snapshot";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -69,6 +70,7 @@ export async function buildMorningSummary(
     const twoDays = points.slice(-2);
     const bal = balances.get(id);
     return {
+      id,
       name: (b?.client_name as string | null) || id,
       status: (b?.priority as string | null) ?? null,
       cpaTarget: (b?.cpa_target as number | null) ?? null,
@@ -84,6 +86,16 @@ export async function buildMorningSummary(
   const ranked = rankAccounts(signals);
   const dateLabel = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit" }).format(new Date());
   const msg = formatMorningSummary(ranked, dateLabel);
+
+  // Guarda a lista pro Painel marcar as contas (🚨 + filtro "Atenção"). Falhar aqui não derruba o resumo.
+  // Só grava se os sinais principais foram buscados — senão uma falha da Meta apagaria as marcações.
+  if (failedSignals.length === 0) {
+    try {
+      await saveAttentionSnapshot(db, userId, ranked);
+    } catch (e) {
+      console.error("attention snapshot save err", (e as Error).message);
+    }
+  }
 
   let sendError: string | null = null;
   if (opts.send) {

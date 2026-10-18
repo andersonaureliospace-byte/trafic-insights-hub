@@ -8,10 +8,13 @@
 //                           (ex.: status Média, mas o CPL de ontem foi crítico). Manteve ou melhorou = 0.
 //  Investimento (Invest. diário ÷ Ritmo) ... 70–80% 1 · 60–70% 2 · 50–60% 3 · abaixo de 50% 4
 //  Saldo / pagamento ...... saldo acabando 1 · saldo acabou ou erro no pagamento 5 (não soma: vale o maior)
-// Só entra no resumo conta com pelo menos MIN_POINTS pontos.
+// Só entra no resumo (e ganha o 🚨 / filtro "Atenção" no Painel) conta com pelo menos MIN_POINTS pontos — sem limite de quantidade:
+// se 3 contas estão realmente críticas aparecem 3; se 15 estão, aparecem 15. Pra ficar mais (ou menos) rígido é só mexer em MIN_POINTS.
+// Exemplos com MIN_POINTS = 5: erro no pagamento ou saldo zerado (5) · status Crítica + CPA crítico ontem (3+2) ·
+// status Alta + CPA crítico ontem e anteontem (2+3) · status Alta + investimento abaixo de 50% do ritmo (2+4).
+// Status Crítica sozinho (3) ou Alta + saldo acabando (3) NÃO entram.
 
-export const MIN_POINTS = 2;
-export const MAX_ACCOUNTS_IN_SUMMARY = 10;
+export const MIN_POINTS = 5;
 
 export type StatusId = "baixa" | "media" | "alta" | "critica";
 
@@ -33,6 +36,7 @@ function asStatus(v: string | null | undefined): StatusId | null {
 }
 
 export interface AccountSignals {
+  id?: string; // id da conta (usado só pra marcar a conta no Painel)
   name: string;
   status: string | null; // account_bindings.priority
   cpaTarget: number | null;
@@ -46,6 +50,7 @@ export interface AccountSignals {
 }
 
 export interface ScoredAccount {
+  id?: string;
   name: string;
   points: number;
   reasons: string[];
@@ -89,7 +94,7 @@ export function scoreAccount(s: AccountSignals): ScoredAccount {
   }
 
   reasons.sort((a, b) => b.weight - a.weight);
-  return { name: s.name, points, reasons: reasons.map((r) => r.text) };
+  return { id: s.id, name: s.name, points, reasons: reasons.map((r) => r.text) };
 }
 
 export function joinReasons(reasons: string[]): string {
@@ -107,13 +112,11 @@ export function rankAccounts(accounts: AccountSignals[]): ScoredAccount[] {
 // Texto do resumo (WhatsApp / aba Alertas): só nome + motivo, sem pontos.
 export function formatMorningSummary(ranked: ScoredAccount[], dateLabel: string): { title: string; body: string; groupText: string } {
   if (ranked.length === 0) {
-    const t = `☀️ Nenhuma conta precisa de atenção hoje (${dateLabel})`;
+    const t = `☀️ Nenhuma conta em situação crítica hoje (${dateLabel})`;
     return { title: t, body: "", groupText: t };
   }
-  const shown = ranked.slice(0, MAX_ACCOUNTS_IN_SUMMARY);
-  const lines = shown.map((a) => `• ${a.name}\nMotivo: ${capitalize(joinReasons(a.reasons))}`);
-  const rest = ranked.length - shown.length;
-  const body = `${lines.join("\n\n")}${rest > 0 ? `\n\n+ ${rest} conta${rest > 1 ? "s" : ""} com menos urgência` : ""}`;
+  const lines = ranked.map((a) => `• ${a.name}\nMotivo: ${capitalize(joinReasons(a.reasons))}`);
+  const body = lines.join("\n\n");
   const title = `☀️ Contas que precisam de atenção (${dateLabel})`;
   return { title, body, groupText: `*Contas que precisam de atenção* — ${dateLabel}\n\n${body}` };
 }

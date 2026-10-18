@@ -2803,6 +2803,15 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     na chamada seguinte se o prazo da função acabar; `?force=1` refaz tudo). O ↻ da coluna recalcula na hora e atualiza o retrato.
     A coluna mostra "atualizado dd/mm hh:mm". Novo gatilho no fluxo `n8n-workflows/pausas-e-avisos-automaticos.json` (item 13).
 
+138. **Resumo das 7h só com as críticas + 🚨 e filtro "Atenção" no Painel (Etapa 151)** — antes o resumo usava mínimo de 2 pontos e
+    mostrava no máximo 10 contas. Agora o mínimo é `MIN_POINTS = 5` (em `lib/alerts/priority-score.ts`) e **não há mais teto**: aparecem
+    todas as contas com 5+ pontos, sejam 3 ou 15. Entram, por exemplo: erro no pagamento ou saldo zerado; status Crítica + CPA crítico
+    ontem; status Alta + CPA crítico ontem e anteontem; status Alta + investimento abaixo de 50% do ritmo. Não entram: só status
+    Crítica, ou Alta + saldo acabando. Pra ficar mais/menos rígido, basta mudar o número de `MIN_POINTS`. Cada vez que o resumo roda
+    (hook das 7h, prévia ou envio manual) a lista é guardada em `meta_insights_cache` (chave `attention_accounts`, sem SQL novo) e o
+    Painel → Desempenho lê dela (`/api/alerts/attention`): 🚨 na frente do nome (o balão mostra os motivos) e novo filtro **Atenção**
+    ("Precisam de atenção"), salvo junto com os outros filtros. Se algum sinal da Meta falhar na montagem, a lista anterior é mantida.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

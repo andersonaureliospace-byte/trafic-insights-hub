@@ -196,6 +196,21 @@ export default function PainelPage() {
   // Filtro da coluna "Otimizado" (Etapa 36) — mesmo padrão dos outros 3:
   // começa fixo em "Todos".
   const [optimizedFilter, setOptimizedFilter] = useState<"all" | "optimized" | "pending">("all");
+  // Filtro "Atenção": só as contas que o Resumo das 7h marcou como críticas (mesma lista/pontuação — lib/alerts/priority-score.ts).
+  const [attentionFilter, setAttentionFilter] = useState<"all" | "attention">("all");
+  const [attention, setAttention] = useState<Record<string, { points: number; reasons: string[] }>>({});
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/alerts/attention")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { accounts?: Record<string, { points: number; reasons: string[] }> } | null) => {
+        if (!cancelled && d?.accounts) setAttention(d.accounts);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   // Etapa 83: Acompanhamento de metas tem a própria coluna Otimizado e o próprio
   // filtro Otimizado/Pendente — não compartilha nada com os de Acompanhamento.
   // Etapa 86: contas fixadas (botão Fixar) — uma lista por aba, salvas no
@@ -381,6 +396,7 @@ export default function PainelPage() {
     if (a.investFilter === "all" || a.investFilter === "low" || a.investFilter === "high") setInvestFilter(a.investFilter);
     if (a.optimizedFilter === "all" || a.optimizedFilter === "optimized" || a.optimizedFilter === "pending")
       setOptimizedFilter(a.optimizedFilter);
+    if (a.attentionFilter === "all" || a.attentionFilter === "attention") setAttentionFilter(a.attentionFilter);
     const strList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
     if (a.sortMode === "manual" || a.sortMode === PRIORITY_CPA_SORT || METAS_SORTS.some((s) => s.id === a.sortMode)) setSortMode(a.sortMode as SortMode);
     setPinnedIds(strList(a.pinnedIds));
@@ -400,6 +416,7 @@ export default function PainelPage() {
         cpaFilter,
         investFilter,
         optimizedFilter,
+        attentionFilter,
         pinnedIds,
         sortMode,
         preset,
@@ -412,6 +429,7 @@ export default function PainelPage() {
     cpaFilter,
     investFilter,
     optimizedFilter,
+    attentionFilter,
     pinnedIds,
     sortMode,
     preset,
@@ -714,6 +732,7 @@ export default function PainelPage() {
         const isOptimized = !!r.binding?.optimized;
         return optimizedFilter === "optimized" ? isOptimized : !isOptimized;
       })
+      .filter((r) => attentionFilter === "all" || !!attention[r.acc.account_id.replace(/^act_/, "")])
       .sort((a, b) => {
         if (sortMode === "manual") return rowSortKey(a) - rowSortKey(b);
         if (sortMode === PRIORITY_CPA_SORT) {
@@ -762,6 +781,8 @@ export default function PainelPage() {
     cpaFilter,
     investFilter,
     optimizedFilter,
+    attentionFilter,
+    attention,
     monthlyInsights,
   ]);
 
@@ -1006,6 +1027,17 @@ export default function PainelPage() {
                       <option value="pending">Pendente</option>
                     </select>
                   </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Atenção</span>
+                    <select
+                      value={attentionFilter}
+                      onChange={(e) => setAttentionFilter(e.target.value as "all" | "attention")}
+                      className="h-7 rounded-md border border-zinc-300 bg-transparent px-2 text-xs dark:border-zinc-700"
+                    >
+                      <option value="all">Todos</option>
+                      <option value="attention">🚨 Precisam de atenção</option>
+                    </select>
+                  </div>
                 </div>
 
                 {failedAccounts > 0 ? (
@@ -1094,6 +1126,7 @@ export default function PainelPage() {
                                 name={binding?.client_name || acc.name}
                                 whatsapp={binding?.whatsapp_contact}
                                 monthlyInvestment={binding?.monthly_investment}
+                                attention={attention[acc.account_id.replace(/^act_/, "")]?.reasons ?? null}
                                 href={adsManagerUrl(acc.account_id, preset)}
                                 linkClassName={
                                   paymentErrorIds.has(acc.account_id)

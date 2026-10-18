@@ -15,6 +15,7 @@ export function ClientNameHover({
   monthlyInvestment,
   href,
   linkClassName,
+  attention,
 }: {
   name: string;
   whatsapp: string | null | undefined;
@@ -22,6 +23,8 @@ export function ClientNameHover({
   // Opcionais: quando vêm, o nome vira link pro Gerenciador de Anúncios (cor = formatação condicional de saldo/pagamento).
   href?: string;
   linkClassName?: string;
+  // Conta que precisa de atenção (lista do Resumo das 7h): 🚨 na frente do nome + motivos no balão.
+  attention?: string[] | null;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{ x: number; y: number; above: boolean } | null>(null);
@@ -48,6 +51,7 @@ export function ClientNameHover({
       onMouseLeave={() => setPos(null)}
       className="inline-block max-w-[18rem] cursor-default truncate align-middle text-sm"
     >
+      {attention ? <span aria-label="Precisa de atenção">🚨 </span> : null}
       {href ? (
         <a
           href={href}
@@ -72,6 +76,11 @@ export function ClientNameHover({
           className="pointer-events-none z-50 w-max max-w-[16rem] whitespace-normal rounded-md border border-zinc-200 bg-white px-3 py-2 text-xs shadow-md dark:border-zinc-700 dark:bg-zinc-900"
         >
           <span className="block font-semibold text-zinc-900 dark:text-zinc-50">{name}</span>
+          {attention ? (
+            <span className="mt-1 block font-medium text-red-600 dark:text-red-400">
+              🚨 Precisa de atenção{attention.length > 0 ? `: ${attention.join(", ")}` : ""}
+            </span>
+          ) : null}
           <span className="mt-1 block text-zinc-500 dark:text-zinc-400">
             WhatsApp: <span className="text-zinc-800 dark:text-zinc-200">{wa ? wa : "não cadastrado"}</span>
           </span>
