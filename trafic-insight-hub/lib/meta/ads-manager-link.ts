@@ -6,7 +6,8 @@ import { addDaysYmd, resolveRange, todayBrt } from "@/lib/meta/daily-range";
 const ADS_MANAGER_PRESET_NAMES: Record<string, string> = {
   today: "today",
   yesterday: "yesterday",
-  last_3d: "last_3d",
+  // last_3d NÃO entra aqui de propósito: o Gerenciador não conhece esse nome de período e abre "Erro: falha ao carregar componente"
+  // (testado em 19/10). "Últimos 3 dias" vai só com as datas.
   last_7d: "last_7d",
   this_month: "this_month",
   today_yesterday: "last_2_days",

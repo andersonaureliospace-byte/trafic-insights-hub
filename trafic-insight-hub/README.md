@@ -2827,6 +2827,10 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     (ou focar com Tab) abre um balão pequeno com o que cada cor significa (verde/laranja/vermelho e os limites: 2% da meta mensal,
     R$ 2,50 de CPA, ±R$ 10 de Ritmo). Componente `components/painel/color-legend.tsx`; substituiu os `title` antigos dessas colunas.
 
+142. **Correção do link "Últimos 3 dias" pro Gerenciador (Etapa 155)** — com o período "Últimos 3 dias" do Painel o link abria o Gerenciador
+    com "Erro: falha ao carregar componente": o nome `last_3d` no `date=` não existe lá. Testado no Chrome: `yesterday`, `last_7d`,
+    `last_2_days` e `this_month` abrem normal; só `last_3d` quebra. Agora esse período vai só com as datas (`lib/meta/ads-manager-link.ts`).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
