@@ -80,11 +80,6 @@ interface PixRow {
   notes: string | null;
   alert_threshold: number | null;
   friday_multiplier: number | null;
-  manual_check_mode: string | null;
-  manual_check_weekdays: number[] | null;
-  manual_check_interval_days: number | null;
-  manual_check_repeat: boolean | null;
-  manual_check_next_at: string | null;
   // Etapa 73: destino do envio de Pix por WhatsApp — ver
   // components/painel/personalizar-alertas-dialog.tsx.
   pix_target_type: "grupo" | "numero" | null;
@@ -689,11 +684,6 @@ export default function PainelPage() {
       notes: null,
       alert_threshold: null,
       friday_multiplier: null,
-      manual_check_mode: null,
-      manual_check_weekdays: null,
-      manual_check_interval_days: null,
-      manual_check_repeat: true,
-      manual_check_next_at: null,
       pix_target_type: "grupo" as const,
       pix_target_number: null,
       funds_balance_enabled: false,

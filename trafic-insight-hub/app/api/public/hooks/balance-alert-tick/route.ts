@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkLowBalances, checkFridayLowBalances } from "@/lib/alerts/balance";
 import { checkPaymentErrors } from "@/lib/alerts/payment";
-import { checkManualReviews } from "@/lib/alerts/manual-check";
 
 // Endpoint público chamado pelo n8n (ex.: a cada 3-6 horas — saldo não
 // muda de minuto a minuto) pra checar saldo baixo em todas as contas
@@ -11,9 +10,8 @@ import { checkManualReviews } from "@/lib/alerts/manual-check";
 // Configurações > WhatsApp. Respeita o cooldown de 24h por conta (ao
 // contrário do "Verificar agora" manual da tela de Avisos). Etapa 38: as
 // duas checagens (saldo e pagamento) ficam no mesmo hook de propósito, pra
-// não exigir um segundo workflow no n8n. Etapa 63: entram mais duas — saldo
-// de sexta-feira (2x/3x o limite, Pix/Híbrida) e verificação manual
-// pendente (qualquer tipo de conta) — pelo mesmo motivo.
+// não exigir um segundo workflow no n8n. Etapa 63: entra também o saldo
+// de sexta-feira (2x/3x o limite, Pix/Híbrida) — pelo mesmo motivo.
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;
 
@@ -38,7 +36,6 @@ export async function POST(request: Request) {
     balance?: { alerted: number; error?: string };
     payment?: { alerted: number; error?: string };
     friday?: { alerted: number; error?: string };
-    manualCheck?: { alerted: number; error?: string };
     error?: string;
   }> = [];
   for (const cred of creds ?? []) {
@@ -66,16 +63,6 @@ export async function POST(request: Request) {
       entry.friday = { alerted: statuses.filter((s) => s.alerted).length, ...(sendError ? { error: sendError } : {}) };
     } catch (e) {
       entry.friday = { alerted: 0, error: (e as Error).message };
-    }
-
-    try {
-      const { statuses, sendError } = await checkManualReviews(supabase, userId, { send: true });
-      entry.manualCheck = {
-        alerted: statuses.filter((s) => s.alerted).length,
-        ...(sendError ? { error: sendError } : {}),
-      };
-    } catch (e) {
-      entry.manualCheck = { alerted: 0, error: (e as Error).message };
     }
 
     results.push(entry);

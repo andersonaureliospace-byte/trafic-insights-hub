@@ -1004,6 +1004,71 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 14. Saldo para amanhã (19h, segunda a sexta)\n\nÀs 19h de segunda a sexta: para cada conta Pix ou Híbrida, calcula Saldo − Ritmo (gasto previsto de amanhã). Se der menos que o limite de alerta da conta, manda uma mensagem (grupo do WhatsApp + aba Alertas) para você antecipar o Pix e programar o disparo para o dia seguinte. Contas que já têm Pix enviado agora ou programado não entram.",
+        "height": 130,
+        "width": 900,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        3920
+      ],
+      "id": "394e00cd-cd71-4d29-b499-0955327ee4cb",
+      "name": "Nota - 14. Saldo para amanhã (19h, seg-sex)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 19 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        4060
+      ],
+      "id": "e294c384-83f7-4853-abb9-7a822556aeb7",
+      "name": "Agenda - Saldo para amanhã (19h, seg-sex)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/balance-evening-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        4060
+      ],
+      "id": "cfc6eab3-ad7b-4ec3-a9ff-30e8feb99e86",
+      "name": "Avisar saldo para amanhã",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
     }
   ],
   "pinData": {},
@@ -1178,6 +1243,17 @@
         [
           {
             "node": "Atualizar retrato das ofertas ativas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Saldo para amanhã (19h, seg-sex)": {
+      "main": [
+        [
+          {
+            "node": "Avisar saldo para amanhã",
             "type": "main",
             "index": 0
           }

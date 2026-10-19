@@ -35,12 +35,6 @@ interface PaymentStatus {
   hasError: boolean;
 }
 
-interface ManualCheckStatus {
-  ad_account_id: string;
-  next_at: string;
-  due: boolean;
-}
-
 interface Reason {
   key: string;
   label: string;
@@ -73,12 +67,6 @@ interface PixSend {
 interface Row {
   acc: AdAccount;
   reasons: Reason[];
-  hasManualDue: boolean;
-}
-
-function fmtDateBR(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
 }
 
 // Etapa 79: sub-abas de Controle de Saldo — Pendências primeiro (é o mais
@@ -98,6 +86,12 @@ const TABS: { id: TabId; label: string }[] = [
 // boleto" só pra Boleto, Cartão não tem ação específica nenhuma) — mesma
 // regra vale tanto dentro do subgrupo do próprio tipo quanto misturada em
 // Pendências.
+function fmtDateBR(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+}
+
 function actionForType(type: string | null | undefined): "pix" | "boleto" | "none" {
   if (type === "pix" || type === "hybrid") return "pix";
   if (type === "boleto") return "boleto";
@@ -114,8 +108,6 @@ function ContasTable({
   clientNames,
   pixByAccount,
   emptyMessage,
-  verifyingId,
-  onVerify,
   onOpenPix,
   onOpenBoleto,
 }: {
@@ -124,8 +116,6 @@ function ContasTable({
   clientNames: Record<string, string>;
   pixByAccount: Record<string, PixRow>;
   emptyMessage: string;
-  verifyingId: string | null;
-  onVerify: (accountId: string) => void;
   onOpenPix: (acc: AdAccount) => void;
   onOpenBoleto: (accountId: string) => void;
 }) {
@@ -161,7 +151,7 @@ function ContasTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map(({ acc, reasons, hasManualDue }) => {
+          {rows.map(({ acc, reasons }) => {
             const funds = availableFunds(acc);
             const pix = pixByAccount[acc.account_id];
             const notes = pix?.notes;
@@ -238,15 +228,6 @@ function ContasTable({
                 <td className="max-w-[220px] px-4 py-2 text-zinc-600 dark:text-zinc-300">{notes || "—"}</td>
                 <td className="px-4 py-2">
                   <div className="flex flex-wrap gap-1.5">
-                    {hasManualDue ? (
-                      <button
-                        onClick={() => onVerify(acc.account_id)}
-                        disabled={verifyingId === acc.account_id}
-                        className="h-7 rounded-md border border-zinc-300 px-2 text-xs font-medium disabled:opacity-50 dark:border-zinc-700"
-                      >
-                        {verifyingId === acc.account_id ? "Marcando…" : "Marcar como verificado"}
-                      </button>
-                    ) : null}
                     {action === "pix" ? (
                       <button
                         onClick={() => onOpenPix(acc)}
@@ -276,7 +257,7 @@ function ContasTable({
 
 // Etapa 63: Controle de Saldo virou um quadro de monitoramento orientado a
 // alerta — toda conta selecionada é checada (saldo baixo, sexta-feira de fim
-// de semana, erro no pagamento e verificação manual). Etapa 79: reorganizado
+// de semana e erro no pagamento). Etapa 79: reorganizado
 // em sub-abas — "Pendências" junta só quem tem algo pendente (qualquer Tipo
 // de conta), e Pix/Híbrida/Boleto/Cartão mostram TODAS as contas daquele
 // tipo (pendente ou não), pra classificar e acompanhar cada uma. Ajustar
@@ -306,9 +287,7 @@ export function ControleSaldo({
   const [balanceStatuses, setBalanceStatuses] = useState<BalanceStatus[] | null>(null);
   const [fridayStatuses, setFridayStatuses] = useState<FridayBalanceStatus[] | null>(null);
   const [paymentStatuses, setPaymentStatuses] = useState<PaymentStatus[] | null>(null);
-  const [manualStatuses, setManualStatuses] = useState<ManualCheckStatus[] | null>(null);
   const [loadingStatuses, setLoadingStatuses] = useState(false);
-  const [verifyingId, setVerifyingId] = useState<string | null>(null);
 
   // Etapa 71: envio de boleto por e-mail (upload do PDF → dispara pro n8n,
   // que manda de verdade pelo Gmail — ver app/api/boletos/send/route.ts).
@@ -331,7 +310,7 @@ export function ControleSaldo({
   const [pixHistory, setPixHistory] = useState<PixSend[] | null>(null);
   const [pixHistoryOpen, setPixHistoryOpen] = useState(false);
 
-  // Etapa 124: backup no navegador dos 4 status. Entrar na aba mostra o salvo e só busca (4 consultas à Meta)
+  // Etapa 124: backup no navegador dos 3 status. Entrar na aba mostra o salvo e só busca (3 consultas à Meta)
   // se não há nada recente (1h); ↻ Atualizar e qualquer ação (verificar, boleto, Pix) buscam de novo (force).
   // Se a Meta falhar, o salvo continua na tela.
   const [statusesAt, setStatusesAt] = useState<number | null>(null);
@@ -340,38 +319,33 @@ export function ControleSaldo({
       balance: BalanceStatus[];
       friday: FridayBalanceStatus[];
       payment: PaymentStatus[];
-      manual: ManualCheckStatus[];
     };
     const backup = readTabCache<Saved>("saldo-status");
     if (backup) {
       setBalanceStatuses(backup.data.balance);
       setFridayStatuses(backup.data.friday);
       setPaymentStatuses(backup.data.payment);
-      setManualStatuses(backup.data.manual);
       setStatusesAt(backup.at);
       if (!force && isFresh(backup)) return;
     }
     setLoadingStatuses(true);
     try {
-      const [balanceRes, fridayRes, paymentRes, manualRes] = await Promise.all([
+      const [balanceRes, fridayRes, paymentRes] = await Promise.all([
         fetch("/api/alerts/balance").then((r) => r.json()),
         fetch("/api/alerts/balance-friday").then((r) => r.json()),
         fetch("/api/alerts/payment").then((r) => r.json()),
-        fetch("/api/alerts/manual-check").then((r) => r.json()),
       ]);
-      const okAll = balanceRes.statuses && fridayRes.statuses && paymentRes.statuses && manualRes.statuses;
+      const okAll = balanceRes.statuses && fridayRes.statuses && paymentRes.statuses;
       if (!okAll && backup) return; // Meta falhou: mantém o salvo
       setBalanceStatuses(balanceRes.statuses ?? []);
       setFridayStatuses(fridayRes.statuses ?? []);
       setPaymentStatuses(paymentRes.statuses ?? []);
-      setManualStatuses(manualRes.statuses ?? []);
       if (okAll) {
         setStatusesAt(
           writeTabCache<Saved>("saldo-status", {
             balance: balanceRes.statuses,
             friday: fridayRes.statuses,
             payment: paymentRes.statuses,
-            manual: manualRes.statuses,
           }),
         );
       }
@@ -380,7 +354,6 @@ export function ControleSaldo({
         setBalanceStatuses((v) => v ?? []);
         setFridayStatuses((v) => v ?? []);
         setPaymentStatuses((v) => v ?? []);
-        setManualStatuses((v) => v ?? []);
       }
     } finally {
       setLoadingStatuses(false);
@@ -391,17 +364,6 @@ export function ControleSaldo({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial dos 4 status (usa o backup se recente)
     void loadStatuses(false);
   }, [loadStatuses]);
-
-  async function handleVerify(accountId: string) {
-    setVerifyingId(accountId);
-    await fetch("/api/alerts/manual-check/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ad_account_id: accountId }),
-    });
-    await loadStatuses(true);
-    setVerifyingId(null);
-  }
 
   async function handleRefresh() {
     onRefresh();
@@ -475,9 +437,8 @@ export function ControleSaldo({
   const balanceById = new Map((balanceStatuses ?? []).map((s) => [s.ad_account_id, s]));
   const fridayById = new Map((fridayStatuses ?? []).map((s) => [s.ad_account_id, s]));
   const paymentById = new Map((paymentStatuses ?? []).map((s) => [s.ad_account_id, s]));
-  const manualById = new Map((manualStatuses ?? []).map((s) => [s.ad_account_id, s]));
 
-  const statusesLoaded = balanceStatuses !== null && fridayStatuses !== null && paymentStatuses !== null && manualStatuses !== null;
+  const statusesLoaded = balanceStatuses !== null && fridayStatuses !== null && paymentStatuses !== null;
 
   // Etapa 96: o formulário de boleto só lista contas com Tipo = Boleto.
   const sortedAccountsForBoleto = accounts
@@ -492,7 +453,6 @@ export function ControleSaldo({
       const payment = paymentById.get(acc.account_id);
       const balance = balanceById.get(acc.account_id);
       const friday = fridayById.get(acc.account_id);
-      const manual = manualById.get(acc.account_id);
 
       if (payment?.hasError) {
         reasons.push({ key: "payment", label: payment.reason ?? "Erro no pagamento", tone: "red" });
@@ -511,22 +471,21 @@ export function ControleSaldo({
           tone: "amber",
         });
       }
-      if (manual?.due) {
-        reasons.push({
-          key: "manual",
-          label: `Verificação manual pendente (desde ${fmtDateBR(manual.next_at)})`,
-          tone: "amber",
-        });
-      }
-
-      return { acc, reasons, hasManualDue: !!manual?.due };
+      return { acc, reasons };
     })
     .sort((a, b) => b.reasons.length - a.reasons.length);
 
   const pendingRows = allRows.filter((row) => row.reasons.length > 0);
   const rowsByType = (type: string) => allRows.filter((row) => pixByAccount[row.acc.account_id]?.payment_type === type);
-  const pixRows = rowsByType("pix");
-  const hybridRows = rowsByType("hybrid");
+  // Contas com "Saldo por fundos" ligado (Pix ou Híbrida) ficam numa subseção própria da aba Pix e saem da lista normal
+  // (e da aba Híbrida), pra nenhuma aparecer duas vezes.
+  const hasFunds = (row: Row) => !!pixByAccount[row.acc.account_id]?.funds_balance_enabled;
+  const fundsRows = allRows.filter((row) => {
+    const t = pixByAccount[row.acc.account_id]?.payment_type;
+    return (t === "pix" || t === "hybrid") && hasFunds(row);
+  });
+  const pixRows = rowsByType("pix").filter((row) => !hasFunds(row));
+  const hybridRows = rowsByType("hybrid").filter((row) => !hasFunds(row));
   const boletoRows = rowsByType("boleto");
   const cardRows = rowsByType("card");
   const unclassifiedCount = accounts.filter((a) => !pixByAccount[a.account_id]?.payment_type).length;
@@ -555,8 +514,6 @@ export function ControleSaldo({
     insights,
     clientNames,
     pixByAccount,
-    verifyingId,
-    onVerify: (id: string) => void handleVerify(id),
     onOpenPix: openPixDialog,
     onOpenBoleto: openBoletoForm,
   };
@@ -605,7 +562,7 @@ export function ControleSaldo({
             t.id === "pendencias"
               ? pendingRows.length
               : t.id === "pix"
-                ? pixRows.length
+                ? pixRows.length + fundsRows.length
                 : t.id === "hybrid"
                   ? hybridRows.length
                   : t.id === "boleto"
@@ -707,11 +664,34 @@ export function ControleSaldo({
           />
         )
       ) : tab === "pix" ? (
-        <ContasTable rows={pixRows} emptyMessage="Nenhuma conta classificada como Pix ainda — veja em Configurações." {...contasTableProps} />
+        <div>
+          <h3 className="px-4 pt-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+            Pix <span className="text-xs font-normal text-zinc-400">· {pixRows.length}</span>
+          </h3>
+          <ContasTable
+            rows={pixRows}
+            emptyMessage="Nenhuma conta classificada como Pix (sem saldo por fundos) — veja em Configurações."
+            {...contasTableProps}
+          />
+          <div className="mt-2 border-t border-zinc-200 dark:border-zinc-800">
+            <h3 className="px-4 pt-3 text-sm font-semibold text-zinc-900 dark:text-zinc-50">
+              Saldo por fundos <span className="text-xs font-normal text-zinc-400">· {fundsRows.length}</span>
+            </h3>
+            <p className="px-4 pt-1 text-xs text-zinc-500 dark:text-zinc-400">
+              Contas (Pix ou Híbrida) com &quot;Saldo por fundos&quot; ligado em Configurações — o saldo mostrado é o dos fundos
+              (saldo inicial + Pix − cobranças da Meta), não o da Meta.
+            </p>
+            <ContasTable
+              rows={fundsRows}
+              emptyMessage="Nenhuma conta com Saldo por fundos ligado — ative em Configurações."
+              {...contasTableProps}
+            />
+          </div>
+        </div>
       ) : tab === "hybrid" ? (
         <ContasTable
           rows={hybridRows}
-          emptyMessage="Nenhuma conta classificada como Híbrida ainda — veja em Configurações."
+          emptyMessage="Nenhuma conta Híbrida (sem saldo por fundos) — as com fundos ficam em Pix → Saldo por fundos."
           {...contasTableProps}
         />
       ) : tab === "boleto" ? (

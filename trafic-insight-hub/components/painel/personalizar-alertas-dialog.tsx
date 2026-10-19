@@ -6,16 +6,6 @@ import { PAYMENT_TYPES } from "@/lib/format";
 import { billingHubUrl } from "@/lib/meta/ads-manager-link";
 import { InlineNumber } from "@/components/painel/inline-number";
 
-const WEEKDAYS = [
-  { id: 0, label: "Domingo", short: "Dom" },
-  { id: 1, label: "Segunda", short: "Seg" },
-  { id: 2, label: "Terça", short: "Ter" },
-  { id: 3, label: "Quarta", short: "Qua" },
-  { id: 4, label: "Quinta", short: "Qui" },
-  { id: 5, label: "Sexta", short: "Sex" },
-  { id: 6, label: "Sábado", short: "Sáb" },
-] as const;
-
 export interface PixRow {
   ad_account_id: string;
   // Etapa 79: "Tipo de conta" — Pix/Híbrida/Boleto/Cartão (ver
@@ -26,11 +16,6 @@ export interface PixRow {
   notes: string | null;
   alert_threshold: number | null;
   friday_multiplier: number | null;
-  manual_check_mode: string | null;
-  manual_check_weekdays: number[] | null; // um ou mais dias (0-6), Etapa 67
-  manual_check_interval_days: number | null;
-  manual_check_repeat: boolean | null;
-  manual_check_next_at: string | null;
   // Etapa 73: destino do envio de PIX por WhatsApp (botão "Enviar Pix" em
   // Controle de Saldo) — "grupo" reaproveita o grupo já vinculado ao cliente
   // (Painel → Clientes); "numero" manda direto pra um número fixo. Raramente
@@ -52,18 +37,12 @@ export interface PixRow {
 
 export type PixPatch = Partial<Omit<PixRow, "ad_account_id">>;
 
-function fmtDateBR(iso: string | null): string {
-  if (!iso) return "—";
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
-}
-
 // Etapa 63: quadro de configuração das rotinas/alertas por conta. Etapa 79:
 // deixou de ser um modal avulso ("Personalizar alertas") e virou a própria
 // sub-aba "Configurações" de Controle de Saldo — é aqui que toda conta
 // (inclusive quem ainda não tem Tipo de conta nenhum) é classificada em
 // Pix/Híbrida/Boleto/Cartão, além do valor base, "Alertar quando <",
-// Observação, sexta-feira e verificação manual.
+// Observação e sexta-feira.
 export function PersonalizarAlertasPanel({
   accounts,
   clientNames,
@@ -153,7 +132,6 @@ export function PersonalizarAlertasPanel({
                           <th className="px-4 py-1.5 text-right font-medium">Valor base</th>
                           <th className="px-4 py-1.5 text-right font-medium">Alertar quando &lt;</th>
                           <th className="px-4 py-1.5 font-medium">Sexta (fim de semana)</th>
-                          <th className="px-4 py-1.5 font-medium">Verificação manual</th>
                           <th className="px-4 py-1.5 font-medium">Observação</th>
                           <th
                             className="px-4 py-1.5 font-medium"
@@ -166,7 +144,6 @@ export function PersonalizarAlertasPanel({
                       <tbody>
                         {rows.map((acc) => {
                           const pix = pixByAccount[acc.account_id];
-                          const mode = pix?.manual_check_mode ?? "";
                           return (
                             <tr key={acc.id} className="border-t border-zinc-100 align-top dark:border-zinc-800/60">
                               <td className="px-4 py-2">
@@ -255,86 +232,6 @@ export function PersonalizarAlertasPanel({
                                 ) : (
                                   <span className="text-xs text-zinc-400">—</span>
                                 )}
-                              </td>
-                              <td className="px-4 py-2">
-                                <div className="flex flex-col gap-1">
-                                  <select
-                                    value={mode}
-                                    onChange={(e) =>
-                                      void onPatch(acc.account_id, {
-                                        manual_check_mode: e.target.value || null,
-                                      })
-                                    }
-                                    className="rounded border border-zinc-200 bg-transparent px-1 py-0.5 text-xs dark:border-zinc-700"
-                                  >
-                                    <option value="">Nenhuma</option>
-                                    <option value="weekday">Dia fixo da semana</option>
-                                    <option value="interval">Daqui X dias</option>
-                                  </select>
-                                  {mode === "weekday" ? (
-                                    <div className="flex flex-wrap gap-1">
-                                      {WEEKDAYS.map((w) => {
-                                        const selected = (pix?.manual_check_weekdays ?? []).includes(w.id);
-                                        return (
-                                          <button
-                                            key={w.id}
-                                            type="button"
-                                            title={w.label}
-                                            onClick={() => {
-                                              const current = pix?.manual_check_weekdays ?? [];
-                                              const next = selected
-                                                ? current.filter((d) => d !== w.id)
-                                                : [...current, w.id].sort((a, b) => a - b);
-                                              void onPatch(acc.account_id, { manual_check_weekdays: next });
-                                            }}
-                                            className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
-                                              selected
-                                                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
-                                                : "border border-zinc-200 text-zinc-500 dark:border-zinc-700 dark:text-zinc-400"
-                                            }`}
-                                          >
-                                            {w.short}
-                                          </button>
-                                        );
-                                      })}
-                                    </div>
-                                  ) : null}
-                                  {mode === "interval" ? (
-                                    <div className="flex items-center gap-1 text-xs text-zinc-500">
-                                      <span>a cada</span>
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        defaultValue={pix?.manual_check_interval_days ?? ""}
-                                        onBlur={(e) => {
-                                          const v = e.target.value ? Number(e.target.value) : null;
-                                          if (v !== (pix?.manual_check_interval_days ?? null)) {
-                                            void onPatch(acc.account_id, { manual_check_interval_days: v });
-                                          }
-                                        }}
-                                        className="w-14 rounded border border-zinc-200 bg-transparent px-1 py-0.5 text-xs outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
-                                      />
-                                      <span>dias</span>
-                                    </div>
-                                  ) : null}
-                                  {mode ? (
-                                    <label className="flex items-center gap-1.5 text-xs text-zinc-500">
-                                      <input
-                                        type="checkbox"
-                                        checked={pix?.manual_check_repeat ?? true}
-                                        onChange={(e) =>
-                                          void onPatch(acc.account_id, { manual_check_repeat: e.target.checked })
-                                        }
-                                      />
-                                      Repetir (desmarque pra pausar após verificar)
-                                    </label>
-                                  ) : null}
-                                  {mode && pix?.manual_check_next_at ? (
-                                    <span className="text-xs text-zinc-400">
-                                      Próxima: {fmtDateBR(pix.manual_check_next_at)}
-                                    </span>
-                                  ) : null}
-                                </div>
                               </td>
                               <td className="px-4 py-2">
                                 <input

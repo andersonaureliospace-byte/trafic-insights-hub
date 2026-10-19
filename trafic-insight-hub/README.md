@@ -2831,6 +2831,18 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     com "Erro: falha ao carregar componente": o nome `last_3d` no `date=` não existe lá. Testado no Chrome: `yesterday`, `last_7d`,
     `last_2_days` e `this_month` abrem normal; só `last_3d` quebra. Agora esse período vai só com as datas (`lib/meta/ads-manager-link.ts`).
 
+143. **Controle de Saldo: sem verificação manual, subseção "Saldo por fundos" e aviso das 19h (Etapa 156)** — três ajustes:
+    (1) a verificação manual foi removida por completo (botão, rotas `/api/alerts/manual-check` e `/verify`, campos no
+    "Personalizar alertas" e o aviso `manual-check`); as colunas `manual_check_*` continuam no banco, sem uso e sem problema;
+    (2) na sub-aba Pix, abaixo da tabela normal, nova subseção "Saldo por fundos" com qualquer conta (Pix ou Híbrida) que tenha
+    o saldo por fundos ligado — essas contas saem da tabela de cima e da aba Híbrida, então nenhuma aparece duas vezes;
+    (3) nova automação de segunda a sexta às 19h (`balance-evening-tick`): para cada conta Pix/Híbrida calcula Saldo − Ritmo
+    (gasto previsto de amanhã; sem Ritmo usa o orçamento diário) e, se ficar abaixo do limite de alerta da conta, manda uma
+    mensagem "Saldo para amanhã" (grupo do WhatsApp + aba Alertas) listando as contas, pra você antecipar o Pix e programar o
+    disparo. Contas com Pix enviado há pouco ou já programado pra frente não entram. Prévia sem enviar: abrir
+    `/api/alerts/balance-evening` logado. No n8n é o item 14 do fluxo "Pausas e avisos automáticos" (cron `0 19 * * 1-5`).
+    Arquivos: `lib/alerts/balance-evening.ts`, `app/api/public/hooks/balance-evening-tick/route.ts`, `app/api/alerts/balance-evening/route.ts`.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

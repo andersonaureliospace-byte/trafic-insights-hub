@@ -21,7 +21,7 @@ type Db = Awaited<ReturnType<typeof createClient>>;
 // Híbrida) usa esse valor — o mesmo que aparece na coluna Saldo da tela — e não o
 // `balance` bruto da Meta (valor a pagar), que nessas contas é baixo mesmo com fundos
 // de sobra (ex.: R$ 50,08 de "a pagar" contra R$ 1.002,43 de fundos).
-function effectiveBalance(
+export function effectiveBalance(
   acc: Parameters<typeof availableFunds>[0],
   p: { funds_balance_enabled?: boolean | null; funds_balance_amount?: number | null },
 ): number {

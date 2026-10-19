@@ -25,8 +25,8 @@ export type AlertKind =
   | "bulk-status" // Status em massa
   | "balance-low" // Saldo baixo
   | "balance-friday" // Saldo de sexta
+  | "balance-evening" // Saldo das 19h: saldo − Ritmo de amanhã abaixo do limite (Etapa 156)
   | "payment-error" // Erro no pagamento
-  | "manual-check" // Verificação manual pendente
   | "morning-summary" // Resumo das 7h: contas que precisam de atenção (Etapa 137)
   | "no-delivery" // Conta sem anúncio ativo / sem entrega (Etapa 138)
   | "budget-increase" // Aumento de investimento aplicado às 6h (Etapa 139)
@@ -38,6 +38,7 @@ export const GROUP_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>([
   "low-budget",
   "balance-low",
   "balance-friday",
+  "balance-evening",
   "payment-error",
   "morning-summary",
   "no-delivery",
