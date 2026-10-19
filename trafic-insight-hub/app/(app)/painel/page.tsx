@@ -18,6 +18,7 @@ import { MetasTab } from "@/components/painel/metas-tab";
 import { InlineNumber } from "@/components/painel/inline-number";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
 import { ClientNameHover } from "@/components/painel/client-name-hover";
+import { ColorLegend } from "@/components/painel/color-legend";
 import { usePainelUiState } from "@/lib/hooks/use-painel-ui-state";
 import { FRESH_MS, fmtCacheTime, isFresh, readTabCache, writeTabCache } from "@/lib/client-cache";
 
@@ -1105,24 +1106,54 @@ export default function PainelPage() {
                         >
                           Leads
                         </th>
-                        <th
-                          className="px-4 py-2 text-right font-medium"
-                          title="Cor pela meta de Investimento mensal (gasto do mês até agora × ideal até hoje): verde = dentro, laranja = abaixo, vermelho = acima"
-                        >
+                        <th className="px-4 py-2 text-right font-medium">
                           Valor usado
+                          <ColorLegend
+                            title="Valor usado"
+                            intro="Gasto do mês até agora comparado com o ideal até hoje (investimento mensal ÷ dias do mês × dia de hoje)."
+                            items={[
+                              { color: "green", label: "Dentro da meta (até 2% da meta mensal de diferença)" },
+                              { color: "orange", label: "Abaixo: mais de 2% da meta mensal atrasado" },
+                              { color: "red", label: "Acima: mais de 2% da meta mensal adiantado" },
+                              { color: "none", label: "Sem cor: investimento mensal não cadastrado" },
+                            ]}
+                          />
                         </th>
-                        <th
-                          className="px-4 py-2 text-right font-medium"
-                          title="Editável aqui ou em Configurações → Clientes — os dois ficam sincronizados. Verde = CPA abaixo ou igual à meta, vermelho = CPA acima da meta"
-                        >
+                        <th className="px-4 py-2 text-right font-medium">
                           CPA ideal
+                          <ColorLegend
+                            title="CPA ideal (meta)"
+                            intro="Compara o CPA do período com a meta do cliente."
+                            items={[
+                              { color: "green", label: "CPA igual ou abaixo da meta" },
+                              { color: "red", label: "CPA acima da meta" },
+                            ]}
+                            note="Editável aqui ou em Configurações → Clientes; os dois ficam sincronizados."
+                          />
                         </th>
-                        <th className="px-4 py-2 text-right font-medium">CPA</th>
-                        <th
-                          className="px-4 py-2 text-right font-medium"
-                          title="Orçamento diário já configurado. Abaixo: diferença pro quanto precisa investir por dia pra alcançar o ideal do mês (dentro de 80%–120% do ideal = investimento diário normal; fora da faixa, ajusta pela diferença, limitada a ±50% do normal)"
-                        >
+                        <th className="px-4 py-2 text-right font-medium">
+                          CPA
+                          <ColorLegend
+                            title="CPA"
+                            intro="O valor pequeno embaixo é o CPA menos o CPA ideal."
+                            items={[
+                              { color: "green", label: "Abaixo do ideal" },
+                              { color: "orange", label: "Até R$ 2,50 acima do ideal" },
+                              { color: "red", label: "Mais de R$ 2,50 acima do ideal" },
+                            ]}
+                          />
+                        </th>
+                        <th className="px-4 py-2 text-right font-medium">
                           Ritmo
+                          <ColorLegend
+                            title="Ritmo"
+                            intro="Em cima: orçamento diário configurado. Embaixo: orçamento diário menos o que precisa investir por dia pra fechar a meta do mês."
+                            items={[
+                              { color: "green", label: "Dentro de ±R$ 10 do necessário" },
+                              { color: "orange", label: "Orçamento mais de R$ 10 abaixo do necessário (precisa investir mais)" },
+                              { color: "red", label: "Orçamento mais de R$ 10 acima do necessário (gastando mais rápido)" },
+                            ]}
+                          />
                         </th>
                       </tr>
                     </thead>

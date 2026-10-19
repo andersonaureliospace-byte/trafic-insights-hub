@@ -2823,6 +2823,10 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Rondonópolis Marechal). Erro no pagamento e saldo zerado passaram de 5 pra 7 pontos (`BLOCKING_POINTS`) pra continuar entrando
     sozinhos. Vale na hora no Painel (🚨/filtro) e no próximo resumo; o corte é aplicado na leitura (item 139).
 
+141. **Legenda das cores no Desempenho (Etapa 154)** — um "i" discreto ao lado de Valor usado, CPA ideal, CPA e Ritmo; ao passar o mouse
+    (ou focar com Tab) abre um balão pequeno com o que cada cor significa (verde/laranja/vermelho e os limites: 2% da meta mensal,
+    R$ 2,50 de CPA, ±R$ 10 de Ritmo). Componente `components/painel/color-legend.tsx`; substituiu os `title` antigos dessas colunas.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
