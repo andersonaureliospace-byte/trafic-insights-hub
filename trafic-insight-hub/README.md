@@ -2843,6 +2843,10 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     `/api/alerts/balance-evening` logado. No n8n é o item 14 do fluxo "Pausas e avisos automáticos" (cron `0 19 * * 1-5`).
     Arquivos: `lib/alerts/balance-evening.ts`, `app/api/public/hooks/balance-evening-tick/route.ts`, `app/api/alerts/balance-evening/route.ts`.
 
+144. **Filtro por conta em Alertas voltou a listar os clientes (Etapa 157)** — a lista do filtro dependia das contas carregadas da Meta (lenta)
+    e ficava só com "Todas as contas". Agora os nomes vêm direto do cadastro de clientes (`/api/account-bindings`, só clientes ativos),
+    aparecendo na hora (`components/painel/alertas-tab.tsx`).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

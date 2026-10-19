@@ -90,7 +90,24 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
   const [account, setAccount] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const accountOptions = useMemo(() => [...new Set(accountNames)].sort((a, b) => a.localeCompare(b, "pt-BR")), [accountNames]);
+  // Nomes dos clientes vêm direto do banco (rápido). Antes dependiam da lista da Meta, que demora e deixava o filtro vazio.
+  const [boundNames, setBoundNames] = useState<string[]>([]);
+  useEffect(() => {
+    fetch("/api/account-bindings", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { bindings?: Array<{ client_name?: string | null; active?: boolean | null }> }) =>
+        setBoundNames(
+          (d.bindings ?? [])
+            .filter((b) => b.active !== false && b.client_name && b.client_name.trim())
+            .map((b) => (b.client_name as string).trim()),
+        ),
+      )
+      .catch(() => {});
+  }, []);
+  const accountOptions = useMemo(
+    () => [...new Set([...accountNames, ...boundNames])].sort((a, b) => a.localeCompare(b, "pt-BR")),
+    [accountNames, boundNames],
+  );
 
   function quick(kind: "1h" | "24h" | "hoje" | "ontem") {
     const now = new Date();
