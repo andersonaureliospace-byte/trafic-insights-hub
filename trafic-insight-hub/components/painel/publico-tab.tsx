@@ -32,6 +32,11 @@ interface Snapshot {
 }
 
 const BATCH = 4;
+// "Failed to fetch" = o navegador nem chegou no servidor (internet caiu, ou o site estava sendo publicado naquele instante).
+const netMsg = (e: unknown) => {
+  const m = (e as Error)?.message ?? String(e);
+  return /failed to fetch|networkerror|load failed/i.test(m) ? "Sem conexão com o servidor agora (internet ou publicação em andamento). Tente de novo em instantes." : m;
+};
 const PERIODS: Array<{ id: PeriodMode; label: string }> = [
   { id: "auto", label: "Período automático" },
   { id: "7", label: "7 dias" },
@@ -89,8 +94,8 @@ export function PublicoTab({ focusAccountId }: { focusAccountId?: string } = {})
       setAccounts(d.accounts ?? []);
       setSnap(d.snapshot ?? null);
     } catch (e) {
-      setError((e as Error).message);
-      setAccounts([]);
+      setError(netMsg(e));
+      setAccounts((prev) => prev ?? []); // não apaga a lista que já estava na tela — o botão continua valendo
     }
   }, []);
 
@@ -117,7 +122,7 @@ export function PublicoTab({ focusAccountId }: { focusAccountId?: string } = {})
         if (d.error) errs.push(d.error);
         errs.push(...(d.errors ?? []));
       } catch (e) {
-        errs.push((e as Error).message);
+        errs.push(netMsg(e));
       }
       setProgress({ done: Math.min(i + BATCH, list.length), total: list.length });
     }
