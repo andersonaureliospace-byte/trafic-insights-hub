@@ -31,8 +31,11 @@
 import type { createClient } from "@/lib/supabase/server";
 import { getAdSetCostAnalysis, type AdSetCostRow } from "@/lib/meta/adset-cost-analysis";
 import { setEntitiesStatusSequential } from "@/lib/meta/status";
-import { applyBudgetCut, getAdSetBudgetInfo } from "@/lib/meta/budget";
-import { decideAdSetAction, needsSevenDayData } from "@/lib/alerts/adset-decision";
+import { applyBudgetCut, getAdSetBudgetInfo, setAdSetDailyBudget, BIG_BUDGET_CENTS, STANDBY_BUDGET_CENTS } from "@/lib/meta/budget";
+import { allAdsActive, decideAdSetAction, isNewAdSet, needsSevenDayData, passesCutGate } from "@/lib/alerts/adset-decision";
+import { isWeekendBR, loadStandby, putAdsetOnStandby, standbyStepDone, type StandbyRecord } from "@/lib/alerts/weekend";
+import { logAutoPauses } from "@/lib/alerts/pause-log";
+import { spDate } from "@/lib/meta/client";
 import { clearQuarantine, loadQuarantine, saveQuarantine } from "@/lib/alerts/adset-quarantine";
 import { publishAlert, type AlertKind } from "@/lib/alerts/notifications";
 import { fmtCurrency } from "@/lib/format";
@@ -90,11 +93,43 @@ export interface HeldAdSet {
   cpa_target: number;
 }
 
+// Etapa 158: conjunto ABO com orçamento acima de R$25 e CPA de ontem + hoje R$4+ acima da meta → orçamento vai pra R$10.
+export interface ToTenAdSet {
+  ad_account_id: string;
+  client_name: string;
+  adset_id: string;
+  adset_name: string;
+  from: number;
+  spend: number;
+  cost_per_conversation: number | null;
+  cpa_target: number;
+}
+
+// Etapa 158: fim de semana — passo 1 (reduzir pra R$10 / standby) de um conjunto acima da meta.
+export interface StandbyPut {
+  client_name: string;
+  adset_name: string;
+  outcome: "standby" | "no_cut" | "error";
+  from?: number;
+  to?: number;
+  note?: string;
+}
+
+// Etapa 158: conjunto sem anúncio ativo e sem gasto — não pausa, só avisa.
+export interface NoSpendAdSet {
+  adset_id: string;
+  client_name: string;
+  adset_name: string;
+}
+
 export interface CheckAdSetsPauseResult {
   paused: PausedAdSet[];
   reduced: ReducedAdSet[];
   held: HeldAdSet[];
   sendError: string | null;
+  toTen?: ToTenAdSet[];
+  standbyPut?: StandbyPut[];
+  noSpend?: NoSpendAdSet[];
 }
 
 const toMetrics = (r: AdSetCostRow) => ({
@@ -131,6 +166,22 @@ export async function checkAndPauseAdSets(
 
   const quarantine = await loadQuarantine(db, userId);
   const now = new Date();
+  // Etapa 158: fim de semana (sábado/domingo) tem o passo "reduzir pra R$10" antes de pausar. Sem a tabela do standby
+  // (migration 0034), o fim de semana segue sem esse passo (e sem pausar por desempenho, pra não pular direto pro fim da escada).
+  const weekend = isWeekendBR(now);
+  let standby = new Map<string, StandbyRecord>();
+  let standbyOk = true;
+  if (weekend) {
+    try {
+      standby = await loadStandby(db, userId);
+    } catch (e) {
+      standbyOk = false;
+      console.error("adsets-pause standby err", (e as Error).message);
+    }
+  }
+  const toTen: ToTenAdSet[] = [];
+  const standbyPut: StandbyPut[] = [];
+  const noSpend: NoSpendAdSet[] = [];
 
   interface Candidate {
     ad_account_id: string;
@@ -169,9 +220,79 @@ export async function checkAndPauseAdSets(
           }
         }
         const by7 = new Map((rows7 ?? []).map((r) => [r.id, r]));
+        // Etapa 158: ontem + hoje, só quando algum conjunto pode estar na regra "acima de R$25 → R$10" (gastou R$25+ no período).
+        let by2 = new Map<string, AdSetCostRow>();
+        if (!weekend && rows3.some((r) => r.has_active_ad && r.spend >= 25 && !isNewAdSet(r.created_time, now))) {
+          try {
+            by2 = new Map((await getAdSetCostAnalysis(token, accountId, "today_yesterday")).map((r) => [r.id, r]));
+          } catch (e) {
+            console.error("adsets-pause ontem+hoje err (sem a regra de R$25 nesta conta)", accountId, e);
+          }
+        }
         for (const r of rows3) {
           const rec = quarantine.get(r.id);
           const r7 = by7.get(r.id);
+          // Etapa 158: conjunto com menos de 24h nunca é mexido.
+          if (isNewAdSet(r.created_time, now)) continue;
+          const inQuarantine = !!rec && new Date(rec.quarantine_until).getTime() > now.getTime();
+
+          // Etapa 158 — orçamento diário acima de R$25 e CPA ontem + hoje R$4+ acima da meta: vai pra R$10 (só ABO).
+          const r2 = by2.get(r.id);
+          if (!weekend && !inQuarantine && r.has_active_ad && r2 && passesCutGate(toMetrics(r2), cpaTarget)) {
+            const infoRes = await getAdSetBudgetInfo(token, r.id);
+            if (infoRes.ok && infoRes.info.scope === "adset" && infoRes.info.currentCents > BIG_BUDGET_CENTS) {
+              const setRes = await setAdSetDailyBudget(token, r.id, STANDBY_BUDGET_CENTS);
+              if (setRes.ok) {
+                await saveQuarantine(db, userId, {
+                  adset_id: r.id,
+                  ad_account_id: accountId,
+                  campaign_id: infoRes.info.campaignId,
+                  budget_scope: "adset",
+                  cuts: (rec?.cuts ?? 0) + 1,
+                  from: infoRes.info.currentCents / 100,
+                  to: STANDBY_BUDGET_CENTS / 100,
+                });
+                toTen.push({
+                  ad_account_id: accountId,
+                  client_name: clientName,
+                  adset_id: r.id,
+                  adset_name: r.name,
+                  from: infoRes.info.currentCents / 100,
+                  spend: r2.spend,
+                  cost_per_conversation: r2.cost_per_conversation,
+                  cpa_target: cpaTarget,
+                });
+                continue;
+              }
+              console.error("adsets-pause R$25→R$10 err", r.id, setRes.error);
+            }
+          }
+
+          // Etapa 158 — fim de semana, passo 1: acima da meta → reduz pra R$10 (standby). Só passa pro passo seguinte
+          // (pausar) 6h depois. Sem registro do standby (tabela ausente), não pausa por desempenho no fim de semana.
+          if (weekend && r.has_active_ad && !inQuarantine && passesCutGate(toMetrics(r), cpaTarget)) {
+            if (!standbyOk) continue;
+            const sb = standby.get(r.id);
+            if (!sb) {
+              const out = await putAdsetOnStandby(db, userId, token, {
+                adset_id: r.id,
+                ad_account_id: accountId,
+                client_name: clientName,
+                adset_name: r.name,
+                reason: "acima da meta (fim de semana)",
+              });
+              standbyPut.push(
+                out.kind === "standby"
+                  ? { client_name: clientName, adset_name: r.name, outcome: "standby", from: out.from, to: out.to }
+                  : out.kind === "no_cut"
+                    ? { client_name: clientName, adset_name: r.name, outcome: "no_cut", note: out.why }
+                    : { client_name: clientName, adset_name: r.name, outcome: "error", note: out.error },
+              );
+              continue;
+            }
+            if (!standbyStepDone(sb, now)) continue;
+          }
+
           const decision = decideAdSetAction({
             cpaTarget,
             now,
@@ -179,7 +300,11 @@ export async function checkAndPauseAdSets(
             m7: r7 ? toMetrics(r7) : undefined,
             sevenDayFetched: rows7 !== null,
             quarantineUntil: rec ? new Date(rec.quarantine_until) : null,
+            createdTime: r.created_time,
+            adsAllActive: allAdsActive(r.ads),
+            weekend,
           });
+          if (decision.action === "notify_no_spend") noSpend.push({ adset_id: r.id, client_name: clientName, adset_name: r.name });
           if (decision.action === "clear") toClear.push(r.id);
           if (decision.action === "cut" || decision.action === "pause") {
             candidates.push({
@@ -269,6 +394,25 @@ export async function checkAndPauseAdSets(
       userId,
       paused.filter((p) => p.ok).map((p) => p.adset_id),
     );
+    // Etapa 158: registro das pausas por desempenho (o backup da rodada seguinte confere e reativa se melhorou).
+    const candById = new Map(toPause.map((c) => [c.adset.id, c]));
+    await logAutoPauses(
+      db,
+      userId,
+      paused
+        .filter((p) => p.ok && p.has_active_ad)
+        .map((p) => ({
+          entity_type: "adset" as const,
+          entity_id: p.adset_id,
+          ad_account_id: p.ad_account_id,
+          client_name: p.client_name,
+          entity_name: p.adset_name,
+          spend: p.spend,
+          conversations: candById.get(p.adset_id)?.adset.conversations ?? null,
+          cpa: p.cost_per_conversation,
+          reason: "desempenho",
+        })),
+    );
   }
 
   // --- Cortes de R$10 + quarentena ---
@@ -345,9 +489,56 @@ export async function checkAndPauseAdSets(
   const cutNotes = reduced.filter((r) => r.kind === "floor" || r.kind === "lifetime");
 
   let sendError: string | null = null;
-  if (opts.send && (pausedOk.length > 0 || cutOk.length > 0 || cutNotes.length > 0 || held.length > 0)) {
+  // Etapa 158: avisos "sem gasto" só uma vez por dia por conjunto (a rodada é de 3 em 3 horas).
+  let noSpendNew: NoSpendAdSet[] = [];
+  if (opts.send && noSpend.length > 0) {
+    noSpendNew = await filterNewNoSpend(db, userId, noSpend);
+  }
+  if (
+    opts.send &&
+    (pausedOk.length > 0 || cutOk.length > 0 || cutNotes.length > 0 || held.length > 0 || toTen.length > 0 || standbyPut.length > 0 || noSpendNew.length > 0)
+  ) {
     try {
       const sections: Array<{ kind: AlertKind; title: string; body: string; count: number }> = [];
+      if (toTen.length > 0) {
+        sections.push({
+          kind: "adsets-cut",
+          title: `📉 Orçamento reduzido pra R$10 (orçamento acima de R$25 e CPA ontem + hoje R$4+ acima da meta; quarentena de 24h) — ${toTen.length} conjunto${toTen.length > 1 ? "s" : ""}`,
+          body: toTen
+            .map(
+              (t, i) =>
+                `${i + 1}. ${t.client_name} — ${t.adset_name}: ${fmtCurrency(t.from)} → ${fmtCurrency(STANDBY_BUDGET_CENTS / 100)} · ontem + hoje ${
+                  t.cost_per_conversation != null ? `${fmtCurrency(t.cost_per_conversation)}/conversa` : `gasto ${fmtCurrency(t.spend)}`
+                } (meta ${fmtCurrency(t.cpa_target)})`,
+            )
+            .join("\n"),
+          count: toTen.length,
+        });
+      }
+      if (standbyPut.length > 0) {
+        sections.push({
+          kind: "adsets-cut",
+          title: `🌙 Fim de semana: conjuntos acima da meta — primeiro reduzo o orçamento (standby R$10); se não melhorar, pausa criativo e depois o conjunto — ${standbyPut.length}`,
+          body: standbyPut
+            .map((o, i) =>
+              o.outcome === "standby"
+                ? `${i + 1}. ${o.client_name} — ${o.adset_name}: ${fmtCurrency(o.from ?? 0)} → ${fmtCurrency(o.to ?? 0)}`
+                : o.outcome === "no_cut"
+                  ? `${i + 1}. ${o.client_name} — ${o.adset_name}: não reduzi (${o.note ?? "sem orçamento diário no conjunto"})`
+                  : `${i + 1}. ${o.client_name} — ${o.adset_name}: erro ao reduzir (${o.note ?? "erro"}) — tento de novo na próxima rodada`,
+            )
+            .join("\n"),
+          count: standbyPut.length,
+        });
+      }
+      if (noSpendNew.length > 0) {
+        sections.push({
+          kind: "adsets-no-spend",
+          title: `⚠️ Conjuntos ativos sem anúncio ativo e sem gasto (não pausei, só aviso) — ${noSpendNew.length}`,
+          body: noSpendNew.map((n, i) => `${i + 1}. ${n.client_name} — ${n.adset_name}`).join("\n"),
+          count: noSpendNew.length,
+        });
+      }
       if (pausedOk.length > 0) {
         const lines = pausedOk.map((p, i) => {
           if (!p.has_active_ad) return `${i + 1}. ${p.client_name} — ${p.adset_name}: sem anúncio ativo`;
@@ -419,5 +610,34 @@ export async function checkAndPauseAdSets(
     }
   }
 
-  return { paused, reduced, held, sendError };
+  return { paused, reduced, held, sendError, toTen, standbyPut, noSpend };
+}
+
+// Quais conjuntos "sem gasto" ainda não foram avisados hoje (guarda os ids do dia em meta_insights_cache).
+async function filterNewNoSpend(db: Db, userId: string, list: NoSpendAdSet[]): Promise<NoSpendAdSet[]> {
+  const key = `adsets_no_spend:${spDate(new Date())}`;
+  let seen = new Set<string>();
+  try {
+    const { data } = await db.from("meta_insights_cache").select("payload").eq("user_id", userId).eq("cache_key", key).maybeSingle();
+    const ids = (data?.payload as { ids?: string[] } | undefined)?.ids;
+    if (Array.isArray(ids)) seen = new Set(ids);
+  } catch {
+    // sem cache: avisa de novo (melhor repetir que calar)
+  }
+  const fresh = list.filter((n) => !seen.has(n.adset_id));
+  if (fresh.length === 0) return [];
+  try {
+    await db.from("meta_insights_cache").upsert(
+      {
+        user_id: userId,
+        cache_key: key,
+        payload: { ids: [...seen, ...fresh.map((n) => n.adset_id)] },
+        expires_at: new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString(),
+      },
+      { onConflict: "user_id,cache_key" },
+    );
+  } catch (e) {
+    console.error("no-spend cache err", (e as Error).message);
+  }
+  return fresh;
 }

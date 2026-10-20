@@ -127,3 +127,19 @@ export async function applyBudgetCut(token: string, info: AdSetBudgetInfo): Prom
     return { ok: false, error: (e as Error).message };
   }
 }
+
+// Etapa 158: define o orçamento diário do conjunto (ABO) num valor fixo — usado pelo "acima de R$25 vira R$10"
+// (lib/alerts/adsets-pause.ts), pelo standby de fim de semana (R$10) e pela volta de segunda 05h (R$15).
+// Só mexe no orçamento do PRÓPRIO conjunto; campanha (CBO) nunca é alterada por aqui.
+export const STANDBY_BUDGET_CENTS = 1000; // R$10
+export const RESUME_BUDGET_CENTS = 1500; // R$15
+export const BIG_BUDGET_CENTS = 2500; // "acima de R$25"
+
+export async function setAdSetDailyBudget(token: string, adsetId: string, cents: number): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await metaPost(token, `/${adsetId}`, { daily_budget: String(Math.round(cents)) });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message };
+  }
+}

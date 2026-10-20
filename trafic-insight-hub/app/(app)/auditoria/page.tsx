@@ -4,6 +4,7 @@ import { useState } from "react";
 import { LocationAudit } from "@/components/auditoria/location-audit";
 import { ErrorAudit } from "@/components/auditoria/error-audit";
 import { AlertasSection } from "@/components/auditoria/alertas-section";
+import { StandbySection } from "@/components/auditoria/standby-section";
 import { DescricaoSection } from "@/components/auditoria/descricao-section";
 import { PadraoNomesTab } from "@/components/painel/padrao-nomes-tab";
 
@@ -11,6 +12,7 @@ import { PadraoNomesTab } from "@/components/painel/padrao-nomes-tab";
 // de sempre (localização + erros — que também rodam sozinhas de hora em hora no n8n).
 const TABS = [
   { id: "alertas", label: "Alertas" },
+  { id: "standby", label: "Standby" },
   { id: "padrao-nomes", label: "Padrão de nomes" },
   { id: "descricao", label: "Descrição" },
   { id: "verificacoes", label: "Verificações" },
@@ -42,6 +44,7 @@ export default function AuditoriaPage() {
       </div>
 
       {tab === "alertas" ? <AlertasSection /> : null}
+      {tab === "standby" ? <StandbySection /> : null}
       {tab === "padrao-nomes" ? <PadraoNomesTab /> : null}
       {tab === "descricao" ? <DescricaoSection /> : null}
       {tab === "verificacoes" ? (

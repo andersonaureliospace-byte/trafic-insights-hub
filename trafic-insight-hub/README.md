@@ -2847,6 +2847,20 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     e ficava só com "Todas as contas". Agora os nomes vêm direto do cadastro de clientes (`/api/account-bindings`, só clientes ativos),
     aparecendo na hora (`components/painel/alertas-tab.tsx`).
 
+145. **Pausas automáticas: travas novas, backup e fim de semana com standby (Etapa 158)** — precisa rodar a migration `0034_pause_backup_and_standby.sql`.
+    Conjuntos (`lib/alerts/adset-decision.ts` + `adsets-pause.ts`): (1) nunca pausa conjunto com menos de 24h; (2) nunca pausa por desempenho
+    conjunto com TODOS os criativos ativos (primeiro pausa criativo, depois o conjunto); (3) conjunto sem anúncio ativo e sem gasto não é
+    pausado, só avisa na aba Alertas (1x por dia, tipo "Conjunto sem gasto"); (4) orçamento diário (ABO) acima de R$25 e CPA de ontem + hoje
+    R$4+ acima da meta → orçamento vai pra R$10 e quarentena de 24h (CBO não mexe).
+    Backup (`lib/alerts/pause-backup.ts`, hook `pause-backup-tick`, 1º nó de cada rodada de pausas no n8n): revisa o que o sistema pausou nas
+    últimas 6h (registro em `auto_pause_log`) e reativa conjunto/criativo que ganhou conversa, teve o custo por conversa reduzido e já está
+    dentro do limite (R$4 da meta). Só reativa quem ainda está pausado; aviso "Reativado (backup)" na aba Alertas.
+    Fim de semana (sábado/domingo, `lib/alerts/weekend.ts`): a escada é 1º reduzir o orçamento do conjunto pra R$10 (standby, criativos intocados),
+    2º pausar o criativo caro (6h depois, se não melhorou), 3º pausar o conjunto. Sábado e domingo 00h30 o hook `weekend-standby-tick` põe em
+    standby os conjuntos de bom desempenho (CPA dos 7 dias abaixo da meta) ou com mais de 3 dias ativos (orçamento R$10). Segunda 05h o hook
+    `weekend-release-tick` devolve todos pra R$15. Tela nova: Auditoria → Standby (`/api/standby`).
+    No n8n: itens 1 (agora com Backup), 15 (standby sáb/dom) e 16 (volta segunda 05h).
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

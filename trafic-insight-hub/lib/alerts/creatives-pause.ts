@@ -38,6 +38,9 @@ import { applyPauseBrake, isTripleOverTarget, severityOf, BRAKE_MAX_SHARE } from
 import { spDate, type DateRangeInput } from "@/lib/meta/client";
 import { setEntitiesStatusSequential } from "@/lib/meta/status";
 import { publishAlert } from "@/lib/alerts/notifications";
+import { isWeekendBR, loadStandby, putAdsetOnStandby, standbyStepDone, type StandbyRecord } from "@/lib/alerts/weekend";
+import { logAutoPauses } from "@/lib/alerts/pause-log";
+import { STANDBY_BUDGET_CENTS } from "@/lib/meta/budget";
 import { fmtCurrency } from "@/lib/format";
 
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
@@ -110,12 +113,28 @@ export async function checkAndPauseCreatives(
   if (!bindings || bindings.length === 0) return { paused: [], held: [], sendError: null };
 
   const nowDate = new Date();
+  // Etapa 158: no fim de semana a escada é 1º reduzir o orçamento do conjunto (R$10), 2º pausar o criativo (6h depois,
+  // se não melhorou), 3º pausar o conjunto (lib/alerts/adsets-pause.ts). Sem a tabela do standby, não pausa criativo
+  // por desempenho no fim de semana (não pula o passo 1).
+  const weekend = isWeekendBR(nowDate);
+  let standby = new Map<string, StandbyRecord>();
+  let standbyOk = true;
+  if (weekend) {
+    try {
+      standby = await loadStandby(db, userId);
+    } catch (e) {
+      standbyOk = false;
+      console.error("creatives-pause standby err", (e as Error).message);
+    }
+  }
+  const standbyLines: string[] = [];
   const flagged: {
     ad_account_id: string;
     client_name: string;
     ad_id: string;
     ad_name: string;
     spend: number;
+    conversations: number | null;
     cost_per_conversation: number | null;
     good_history: boolean;
     cpa_target: number;
@@ -194,6 +213,53 @@ export async function checkAndPauseCreatives(
           if (decision.action !== "pause") continue;
           toPause.push({ r, goodHistory: decision.goodHistory });
         }
+        // Etapa 158: fim de semana — passo 1 (reduzir o conjunto pra R$10) antes de pausar criativo.
+        if (weekend) {
+          const kept: typeof toPause = [];
+          if (standbyOk) {
+            for (const t of toPause) {
+              const adsetId = t.r.adset_id;
+              if (!adsetId) {
+                kept.push(t);
+                continue;
+              }
+              const sb = standby.get(adsetId);
+              if (!sb) {
+                const out = await putAdsetOnStandby(db, userId, token, {
+                  adset_id: adsetId,
+                  ad_account_id: accountId,
+                  client_name: clientName,
+                  adset_name: t.r.adset_name ?? adsetId,
+                  reason: "acima da meta (fim de semana)",
+                });
+                standby.set(adsetId, {
+                  adset_id: adsetId,
+                  ad_account_id: accountId,
+                  client_name: clientName,
+                  adset_name: t.r.adset_name ?? adsetId,
+                  campaign_id: null,
+                  kind: out.kind === "standby" ? "standby" : "no_cut",
+                  reason: "acima da meta (fim de semana)",
+                  from_budget: null,
+                  to_budget: null,
+                  started_at: new Date().toISOString(),
+                });
+                standbyLines.push(
+                  out.kind === "standby"
+                    ? `• ${clientName} — ${t.r.adset_name ?? adsetId}: ${fmtCurrency(out.from)} → ${fmtCurrency(out.to)} (criativo caro "${t.r.name}" fica; se não melhorar, pausa depois)`
+                    : out.kind === "no_cut"
+                      ? `• ${clientName} — ${t.r.adset_name ?? adsetId}: não reduzi (${out.why})`
+                      : `• ${clientName} — ${t.r.adset_name ?? adsetId}: erro ao reduzir (${out.error}) — tento de novo na próxima rodada`,
+                );
+                continue;
+              }
+              if (!standbyStepDone(sb, nowDate)) continue;
+              kept.push(t);
+            }
+          }
+          toPause.length = 0;
+          toPause.push(...kept);
+        }
         // Etapa 136: freio de segurança por conjunto (70%).
         const groups = new Map<string, typeof toPause>();
         for (const t of toPause) {
@@ -216,6 +282,7 @@ export async function checkAndPauseCreatives(
               ad_id: t.r.id,
               ad_name: t.r.name,
               spend: t.r.spend,
+              conversations: t.r.conversations,
               cost_per_conversation: t.r.cost_per_conversation,
               cpa_target: cpaTarget,
             };
@@ -264,7 +331,39 @@ export async function checkAndPauseCreatives(
 
   const pausedOk = paused.filter((p) => p.ok).sort((a, b) => b.spend - a.spend);
 
+  // Etapa 158: registro das pausas (o backup da rodada seguinte reativa quem melhorou).
+  if (pausedOk.length > 0) {
+    const convById = new Map(flagged.map((f) => [f.ad_id, f.conversations]));
+    await logAutoPauses(
+      db,
+      userId,
+      pausedOk.map((p) => ({
+        entity_type: "ad" as const,
+        entity_id: p.ad_id,
+        ad_account_id: p.ad_account_id,
+        client_name: p.client_name,
+        entity_name: p.ad_name,
+        spend: p.spend,
+        conversations: convById.get(p.ad_id) ?? null,
+        cpa: p.cost_per_conversation,
+        reason: "desempenho",
+      })),
+    );
+  }
+
   let sendError: string | null = null;
+  if (opts.send && standbyLines.length > 0) {
+    try {
+      await publishAlert(db, userId, {
+        kind: "adsets-cut",
+        title: `🌙 Fim de semana: criativo acima da meta — primeiro reduzo o orçamento do conjunto pra ${fmtCurrency(STANDBY_BUDGET_CENTS / 100)} (standby) — ${standbyLines.length}`,
+        body: standbyLines.join("\n"),
+        count: standbyLines.length,
+      });
+    } catch (e) {
+      sendError = (e as Error).message;
+    }
+  }
   // Etapa 136: o que o freio manteve ativo vai junto no mesmo alerta (ou num alerta só dele, se nada foi pausado).
   const heldLines = heldAll.map(
     (h) =>

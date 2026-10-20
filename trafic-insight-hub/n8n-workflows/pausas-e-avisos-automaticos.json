@@ -19,8 +19,8 @@
     },
     {
       "parameters": {
-        "content": "## 1. Pausas automáticas (Criativos → Conjuntos)\n\n01h10, 04h10, 07h10, 11h10, 13h40, 16h10, 19h10 e 22h10 (Brasília). Primeiro pausa os criativos acima da meta (inclui os sem resultado) e logo depois os conjuntos (sem anúncio ativo / acima da meta). Um fluxo só: o segundo nó começa quando o primeiro termina.",
-        "height": 120,
+        "content": "## 1. Pausas automáticas (Backup → Criativos → Conjuntos)\n\n01h10, 04h10, 07h10, 11h10, 13h40, 16h10, 19h10 e 22h10 (Brasília). Primeiro o BACKUP: reativa o que foi pausado nas últimas 6h e ganhou conversa depois (custo voltou pra dentro do limite). Depois pausa os criativos acima da meta e, em seguida, os conjuntos (nunca conjunto com menos de 24h nem com todos os criativos ativos; sem gasto só avisa; orçamento acima de R$25 com CPA ontem + hoje R$4+ acima vai pra R$10). No sábado e domingo: 1º reduz o orçamento (R$10), 2º pausa criativo, 3º pausa conjunto. Um fluxo só: cada nó começa quando o anterior termina.",
+        "height": 160,
         "width": 900,
         "color": 4
       },
@@ -78,7 +78,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        300,
+        600,
         60
       ],
       "id": "1cf97a87-5325-493c-ab75-647ca0460e11",
@@ -108,7 +108,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        600,
+        900,
         60
       ],
       "id": "2e9048b9-8181-425e-9bab-5f6137122ef5",
@@ -1069,6 +1069,166 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/pause-backup-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        60
+      ],
+      "id": "35cd6c60-f37c-46b4-a2c4-f7acbd446806",
+      "name": "Backup: reativar o que melhorou",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## 15. Standby de fim de semana (sábado e domingo, 00h30)\n\nConjuntos de bom desempenho (CPA dos 7 dias abaixo da meta) ou com mais de 3 dias ativos têm o orçamento reduzido pra R$10 (criativos intocados) e aparecem em Auditoria → Standby. Roda 3 vezes (00h30, 00h40, 00h50) pra dar tempo de todas as contas — o que já foi feito é pulado.",
+        "height": 130,
+        "width": 900,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        4120
+      ],
+      "id": "7645db9e-5958-4f37-a4e9-bdc5e9bc3af5",
+      "name": "Nota - 15. Standby de fim de semana (sáb e dom 00h30)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30,40,50 0 * * 6,0"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        4260
+      ],
+      "id": "98968876-63fc-493f-87ff-538241cea792",
+      "name": "Agenda - Standby de fim de semana (sáb e dom 00h30)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/weekend-standby-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        4260
+      ],
+      "id": "3d7613f5-b02e-4f5b-afee-356a6868d025",
+      "name": "Colocar conjuntos em standby (R$10)",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 16. Volta do standby (segunda, 05h)\n\nTodo conjunto em standby volta pra R$15 e sai da lista Standby. Roda 05h00 e 05h20 (o que já voltou é pulado). Conjunto pausado ou já com R$15+ só sai da lista.",
+        "height": 130,
+        "width": 900,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        4420
+      ],
+      "id": "b7540298-bf3e-427e-b25d-8aa3fed2db07",
+      "name": "Nota - 16. Volta do standby (segunda 05h)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0,20 5 * * 1"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        4560
+      ],
+      "id": "6473b2cc-8999-48de-929c-082f9c517756",
+      "name": "Agenda - Volta do standby (segunda 05h)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/weekend-release-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        4560
+      ],
+      "id": "9417f4e6-6030-428b-ae4d-e7d14ff4bb8c",
+      "name": "Voltar conjuntos do standby pra R$15",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
     }
   ],
   "pinData": {},
@@ -1077,7 +1237,7 @@
       "main": [
         [
           {
-            "node": "Pausar criativos acima da meta (e sem resultado)",
+            "node": "Backup: reativar o que melhorou",
             "type": "main",
             "index": 0
           }
@@ -1254,6 +1414,39 @@
         [
           {
             "node": "Avisar saldo para amanhã",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Backup: reativar o que melhorou": {
+      "main": [
+        [
+          {
+            "node": "Pausar criativos acima da meta (e sem resultado)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Standby de fim de semana (sáb e dom 00h30)": {
+      "main": [
+        [
+          {
+            "node": "Colocar conjuntos em standby (R$10)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Volta do standby (segunda 05h)": {
+      "main": [
+        [
+          {
+            "node": "Voltar conjuntos do standby pra R$15",
             "type": "main",
             "index": 0
           }

@@ -21,6 +21,12 @@
 //  é um conjunto criado há menos de 3h ainda sem anúncio, ou quando a conferência falhou: aí não pausa.
 //  Conjunto com anúncio ATIVO nunca é pausado por "falta de anúncio".
 //
+// Etapa 158 (pedido do Anderson) — travas novas, valem pra TODA pausa de conjunto:
+//  - conjunto com menos de 24h nunca é pausado (nem mexido);
+//  - conjunto com TODOS os criativos ativos nunca é pausado por desempenho: primeiro pausa criativo, depois o conjunto;
+//  - conjunto sem gasto (zerado) e sem anúncio ativo NÃO é pausado: só avisa na aba Alertas ("notify_no_spend");
+//  - fim de semana (weekend): não corta R$10 — o passo de reduzir pra R$10 (standby) é feito por lib/alerts/weekend.ts.
+//
 // Etapa 122 (pedido do Anderson) — regra de DESEMPENHO só mexe quando há resultado e o CPA está
 // pelo menos R$4 acima do ideal (ADSET_CUT_EXTRA). Conjunto sem resultado (nenhuma conversa) ou com
 // CPA abaixo de ideal + R$4: não mexe em nada (nem corta, nem pausa) — e se estava em quarentena, só
@@ -42,7 +48,8 @@ export type AdSetDecision =
   | { action: "skip"; reason: "quarantine" | "no_7d_data" }
   | { action: "clear"; reason: string }
   | { action: "cut"; reason: string }
-  | { action: "pause"; reason: string };
+  | { action: "pause"; reason: string }
+  | { action: "notify_no_spend"; reason: string }; // Etapa 158: só avisa, não pausa
 
 // "Acima do ideal" literal (pra decisão pós-quarentena): custo por conversa maior que a Meta
 // CPA; sem conversa, o próprio gasto maior que a Meta CPA (mesma ideia do diffFor de Análise).
@@ -80,6 +87,21 @@ export function needsSevenDayData(m3: AdSetMetrics, cpaTarget: number, quarantin
   return passesCutGate(m3, cpaTarget);
 }
 
+export const NEW_ADSET_HOURS = 24;
+
+export function isNewAdSet(createdTime: string | null | undefined, now: Date): boolean {
+  if (!createdTime) return false;
+  const t = new Date(createdTime).getTime();
+  if (Number.isNaN(t)) return false;
+  return now.getTime() - t < NEW_ADSET_HOURS * 3_600_000;
+}
+
+// Todos os criativos do conjunto (os que aparecem na análise) estão ATIVOS — nenhum foi pausado ainda.
+export function allAdsActive(ads: ReadonlyArray<{ status: string | null }> | undefined): boolean {
+  if (!ads || ads.length === 0) return false;
+  return ads.every((a) => (a.status ?? "").toUpperCase() === "ACTIVE");
+}
+
 export function decideAdSetAction(input: {
   cpaTarget: number;
   now: Date;
@@ -87,12 +109,20 @@ export function decideAdSetAction(input: {
   m7: AdSetMetrics | undefined; // últimos 7 dias (undefined = conjunto sem dado nos 7 dias)
   sevenDayFetched: boolean; // false = a busca de 7 dias falhou (não decide no escuro)
   quarantineUntil: Date | null; // null = nunca entrou em quarentena (sem registro)
+  createdTime?: string | null; // Etapa 158: data de criação do conjunto
+  adsAllActive?: boolean; // Etapa 158: todos os criativos do conjunto estão ativos
+  weekend?: boolean; // Etapa 158: sábado/domingo
 }): AdSetDecision {
   const { cpaTarget, now, m3, m7, sevenDayFetched, quarantineUntil } = input;
+
+  // Etapa 158: conjunto com menos de 24h nunca é pausado.
+  if (isNewAdSet(input.createdTime, now)) return { action: "none", reason: "conjunto com menos de 24h — não mexe" };
 
   if (!m3.has_active_ad) {
     // Etapas 104/122: anúncio em outro status vivo, conjunto novo ou conferência que falhou — não pausa.
     if (m3.has_pending_ad) return { action: "none", reason: "tem anúncio em análise/processando/outro status (ou conjunto novo) — não pausa" };
+    // Etapa 158: sem gasto nenhum → só avisa.
+    if (!(m3.spend > 0)) return { action: "notify_no_spend", reason: "sem anúncio ativo e sem gasto — só avisa" };
     return { action: "pause", reason: "sem anúncio ativo" };
   }
 
@@ -110,9 +140,14 @@ export function decideAdSetAction(input: {
   if (!sevenDayFetched) return { action: "skip", reason: "no_7d_data" };
 
   if (isBelowIdeal7d(m7, cpaTarget)) {
+    if (input.weekend) return { action: "none", reason: "fim de semana: o corte é o standby (R$10), não corta de novo" };
     return { action: "cut", reason: hasRecord ? "ainda R$4+ acima nos 3 dias, mas 7 dias abaixo do ideal — corta de novo" : "R$4+ acima nos 3 dias e 7 dias abaixo do ideal — corta em vez de pausar" };
   }
   // 7 dias NÃO abaixo do ideal: pausa — depois da quarentena direto; na primeira vez só se passou do limite de sempre.
+  // Etapa 158: nunca pausa conjunto com todos os criativos ativos — antes disso, pausa criativo.
+  if (input.adsAllActive && (hasRecord || isFlaggedAbove3d(m3, cpaTarget))) {
+    return { action: "none", reason: "todos os criativos ainda ativos — o conjunto só pausa depois que algum criativo for pausado" };
+  }
   if (hasRecord) return { action: "pause", reason: "R$4+ acima nos 3 dias e 7 dias não abaixo do ideal após a quarentena" };
   if (isFlaggedAbove3d(m3, cpaTarget)) return { action: "pause", reason: "acima do limite (2x + R$1) e 7 dias não está abaixo do ideal" };
   return { action: "none", reason: "R$4+ acima, mas 7 dias não abaixo do ideal e ainda sem passar do limite de pausa" };

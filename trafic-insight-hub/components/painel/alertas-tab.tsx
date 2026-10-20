@@ -33,6 +33,9 @@ const KIND_LABELS: Record<string, string> = {
   "no-delivery": "Conta sem entrega",
   "budget-increase": "Aumento de investimento",
   "naming-fix": "Ajuste de nomes",
+  "adsets-no-spend": "Conjunto sem gasto",
+  "pause-backup": "Reativado (backup)",
+  "weekend-standby": "Standby de fim de semana",
 };
 
 // Cor da barrinha da esquerda: vermelho = o que também vai pro grupo (urgente); âmbar = o resto.

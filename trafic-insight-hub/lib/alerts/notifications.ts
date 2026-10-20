@@ -30,7 +30,10 @@ export type AlertKind =
   | "morning-summary" // Resumo das 7h: contas que precisam de atenção (Etapa 137)
   | "no-delivery" // Conta sem anúncio ativo / sem entrega (Etapa 138)
   | "budget-increase" // Aumento de investimento aplicado às 6h (Etapa 139)
-  | "naming-fix"; // Ajuste automático de idade/data nos nomes dos conjuntos (Etapa 140)
+  | "naming-fix" // Ajuste automático de idade/data nos nomes dos conjuntos (Etapa 140)
+  | "adsets-no-spend" // Conjunto sem anúncio ativo e sem gasto: só avisa, não pausa (Etapa 158)
+  | "pause-backup" // Backup: conjuntos/criativos reativados porque melhoraram (Etapa 158)
+  | "weekend-standby"; // Fim de semana: conjuntos em standby (R$10) e a volta de segunda (Etapa 158)
 
 // Os únicos tipos que também vão pro grupo do WhatsApp (os mais urgentes).
 export const GROUP_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>([
