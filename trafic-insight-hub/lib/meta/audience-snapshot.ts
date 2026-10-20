@@ -17,7 +17,8 @@ export interface AudienceAccount {
   accountId: string;
   clientName: string;
   cpaTarget: number | null;
-  rows: AudRow[];
+  rows: AudRow[]; // janela de 14 dias (também é o que os retratos antigos têm)
+  windows?: Record<string, AudRow[]>; // Etapa 167: "7", "14" e "30" dias
   computedFor: string; // dia do cálculo (Brasília) — os números vão até o dia anterior
   error?: string;
 }
@@ -72,7 +73,8 @@ export async function computeAudienceAccounts(db: Db, userId: string, token: str
       const a = known.get(id);
       if (!a) return;
       try {
-        out.push({ ...a, rows: await getAccountAudience(token, id), computedFor: today });
+        const windows = await getAccountAudience(token, id);
+        out.push({ ...a, rows: windows["14"] ?? [], windows, computedFor: today });
       } catch (e) {
         out.push({ ...a, rows: [], computedFor: today, error: (e as Error).message.slice(0, 200) });
       }
@@ -91,7 +93,7 @@ export async function refreshAudienceForUser(
   const all = (await audienceAccounts(db, userId)).map((a) => a.accountId);
   const snap = await readAudienceSnapshot(db, userId);
   const today = todayBrt();
-  const todo = all.filter((id) => opts.force || !snap?.accounts[id] || snap.accounts[id].computedFor !== today || snap.accounts[id].error);
+  const todo = all.filter((id) => opts.force || !snap?.accounts[id] || snap.accounts[id].computedFor !== today || snap.accounts[id].error || !snap.accounts[id].windows);
   let done = 0;
   for (let i = 0; i < todo.length; i += BATCH) {
     if (Date.now() > opts.deadlineMs - 15_000) break;

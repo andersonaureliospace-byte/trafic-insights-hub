@@ -2930,6 +2930,14 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     (regra pura), `audience-map.ts` (Meta), `audience-snapshot.ts`, `app/api/analysis/audience/route.ts`, `app/api/public/hooks/audience-tick/route.ts`,
     `components/painel/publico-tab.tsx`, `components/painel/analise-tab.tsx`.
 
+    **Etapa 167 — faixa sugerida por volume:** "Melhor faixa" virou **"Faixa sugerida"**, calculada pelo VOLUME de conversas iniciadas (não pelo custo): sempre faixas da Meta
+    seguidas (sem pular), no mínimo 2 e ideal 3 (esticando pra 4+ só se a vizinha tem 60%+ da mais forte; ponta com menos de 25% da mais forte é cortada, sem passar de 2);
+    se as faixas têm volume parecido (menor com 60%+ da maior, ou diferença de até 2 conversas) sugere **todas**, inclusive as zeradas (a tabela agora sempre mostra 18-24 até 65+).
+    A coluna Total destaca as conversas e as faixas sugeridas ganham ★. Melhor gênero e melhor combinação continuam pelo menor CPA (mín. 3 conversas). **Período:** seletor
+    Automático (14 dias; passa pra 30 se o tipo teve menos de 20 conversas em 14 — `AUTO_MIN_CONV`), 7, 14 ou 30 dias. O retrato guarda as 3 janelas por conta (`windows` em
+    `audience:v1`; 3 consultas por conta na Meta); retratos antigos (só 14 dias) são refeitos pelo hook na próxima rodada e o seletor avisa se faltar. Regra pura em
+    `lib/meta/audience-summary.ts` (`suggestAgeRange`, `chooseRows`).
+
 150. **Modo Foco — nova aba "Foco" no menu de cima (Etapas 165 e 166)** (`/foco`): uma conta só, tudo numa tela, pra otimizar com várias abas do navegador abertas.
     **Topo:** seletor de conta com busca por nome (digitar filtra, setas + Enter), botão **Otimizado / Pendente**, "↻ Atualizar", hora da última busca e link
     "Gerenciador". A conta escolhida fica no endereço (`?conta=…`) e é lembrada, então cada aba do navegador pode ficar com uma conta diferente.
