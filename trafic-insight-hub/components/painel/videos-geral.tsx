@@ -560,9 +560,9 @@ function VideosDaConta({ items, lean = false }: { items: AccountSummary["items"]
           <th className="px-3 py-1 font-medium">Situação</th>
           <th className="px-3 py-1 text-right font-medium">CPA 7 dias</th>
           <th className="px-3 py-1 text-right font-medium">CPA mês</th>
-          <th className="px-3 py-1 text-right font-medium">Gasto 30d</th>
+          {lean ? null : <th className="px-3 py-1 text-right font-medium">Gasto 30d</th>}
           {lean ? null : <th className="px-3 py-1 text-right font-medium">Conv. 30d</th>}
-          <th className="px-3 py-1 text-right font-medium">Último anúncio</th>
+          {lean ? null : <th className="px-3 py-1 text-right font-medium">Último anúncio</th>}
         </tr>
       </thead>
       <tbody>
@@ -592,9 +592,9 @@ function VideosDaConta({ items, lean = false }: { items: AccountSummary["items"]
             </td>
             <td className="px-3 py-1.5 text-right tabular-nums">{cpaTxt(i.cpa7d)}</td>
             <td className="px-3 py-1.5 text-right tabular-nums">{cpaTxt(i.cpaMonth)}</td>
-            <td className="px-3 py-1.5 text-right tabular-nums">{fmtCurrency(i.spend30)}</td>
+            {lean ? null : <td className="px-3 py-1.5 text-right tabular-nums">{fmtCurrency(i.spend30)}</td>}
             {lean ? null : <td className="px-3 py-1.5 text-right tabular-nums">{i.conv30}</td>}
-            <td className="px-3 py-1.5 text-right text-zinc-500 dark:text-zinc-400">{dayTxt(i.daysSinceCreated)}</td>
+            {lean ? null : <td className="px-3 py-1.5 text-right text-zinc-500 dark:text-zinc-400">{dayTxt(i.daysSinceCreated)}</td>}
           </tr>
         ))}
       </tbody>

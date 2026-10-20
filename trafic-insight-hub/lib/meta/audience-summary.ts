@@ -58,6 +58,12 @@ export const STD_AGES = ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"];
 
 export const GENDER_LABEL: Record<AudGender, string> = { female: "Mulher", male: "Homem", unknown: "Não informado" };
 
+// Faixa "Unknown" (a Meta não soube a idade) vai por último.
+const ageIdx = (age: string) => {
+  const i = AGE_ORDER.indexOf(age);
+  return i < 0 ? 99 : i;
+};
+
 const mkCell = (spend: number, conv: number): Cell => ({ spend, conv, cpa: conv > 0 ? spend / conv : null });
 
 function best<T extends Cell>(items: T[]): T | null {
@@ -151,7 +157,7 @@ export function summarizeAudience(rows: AudRow[], type: AudType): AudienceSummar
       share: spend > 0 ? (c.spend / spend) * 100 : 0,
       convShare: conv > 0 ? (c.conv / conv) * 100 : 0,
     }))
-    .sort((a, b) => AGE_ORDER.indexOf(a.age) - AGE_ORDER.indexOf(b.age));
+    .sort((a, b) => ageIdx(a.age) - ageIdx(b.age));
   const genders = [...byGender.entries()]
     .map(([gender, c]) => ({ gender, ...mkCell(c.spend, c.conv), share: spend > 0 ? (c.spend / spend) * 100 : 0 }))
     .sort((a, b) => b.spend - a.spend);

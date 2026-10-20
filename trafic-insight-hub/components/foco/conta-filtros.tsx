@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fmtCurrency, priorityRank } from "@/lib/format";
+import { priorityRank } from "@/lib/format";
 import { PRIORITY_CPA_SORT, type FocoSort, cacheLabel, readDesempenhoCache } from "@/components/foco/conta-filtros-data";
 import { METAS_SORTS, compareMetas, computeMetas, metasCalendar, type CpaStatus } from "@/lib/meta/metas";
 import { RITMO_BAND, ritmoColorClass, ritmoFromInsight } from "@/lib/meta/ritmo";
@@ -31,7 +31,9 @@ const CPA_TEXT: Record<CpaStatus, string> = {
 };
 const selCls = "h-7 w-full min-w-0 rounded-md border border-zinc-300 bg-transparent px-1.5 text-xs disabled:opacity-40 dark:border-zinc-700";
 const lblCls = "mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-zinc-400";
-const COLS = "grid-cols-[minmax(0,1fr)_4.4rem_3.4rem_3.4rem]";
+// Colunas fixas: Nome ocupa o que sobra; Status centralizado; CPA e Ritmo alinhados à direita (cabeçalho e valores com o mesmo recuo).
+const COLS = "grid-cols-[minmax(0,1fr)_4.6rem_3.2rem_3.6rem]";
+const num = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; value: string; onChoose: (id: string) => void }) {
   const { options: priorityOptions } = usePriorityOptions();
@@ -234,8 +236,8 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
       </div>
 
       <div className={`grid ${COLS} shrink-0 gap-x-1.5 border-b border-zinc-100 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-zinc-400 dark:border-zinc-800`}>
-        <span>Nome</span>
-        <span>Status</span>
+        <span>Cliente</span>
+        <span className="text-center">Status</span>
         <span className="text-right">CPA</span>
         <span className="text-right">Ritmo</span>
       </div>
@@ -264,7 +266,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
                     {o.name}
                   </span>
                 </span>
-                <span>
+                <span className="text-center">
                   {p ? (
                     <span className="inline-block max-w-full truncate rounded-full px-1.5 py-0.5 align-middle text-[10px] font-medium" style={{ backgroundColor: `${p.color}26`, color: p.color }}>
                       {p.label}
@@ -273,8 +275,8 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
                     <span className="text-xs text-zinc-300 dark:text-zinc-600">—</span>
                   )}
                 </span>
-                <span className={`text-right text-xs tabular-nums ${i?.cpaStatus ? CPA_TEXT[i.cpaStatus] : "text-zinc-400"}`}>{i?.cpa != null ? fmtCurrency(i.cpa) : "—"}</span>
-                <span className={`text-right text-xs tabular-nums ${i?.ritmo != null ? i.ritmoCls : "text-zinc-400"}`}>{i?.ritmo != null ? fmtCurrency(i.ritmo) : "—"}</span>
+                <span className={`text-right text-xs tabular-nums ${i?.cpaStatus ? CPA_TEXT[i.cpaStatus] : "text-zinc-400"}`}>{i?.cpa != null ? num(i.cpa) : "—"}</span>
+                <span className={`text-right text-xs tabular-nums ${i?.ritmo != null ? i.ritmoCls : "text-zinc-400"}`}>{i?.ritmo != null ? num(i.ritmo) : "—"}</span>
               </button>
             </li>
           );

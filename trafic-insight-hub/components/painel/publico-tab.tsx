@@ -6,6 +6,7 @@ import {
   AUTO_MIN_CONV,
   GENDER_LABEL,
   MIN_CONV,
+  STD_AGES,
   chooseRows,
   mergeRows,
   summarizeAudience,
@@ -312,6 +313,10 @@ export function PublicoTab({ focusAccountId }: { focusAccountId?: string } = {})
   );
 }
 
+const MALE_COLOR = "#5b3fc4";
+const FEMALE_COLOR = "#2fcfcf";
+const CHART_H = 120;
+
 function TypeCard({
   type,
   sum,
@@ -343,31 +348,33 @@ function TypeCard({
     );
   }
   const genders = (["female", "male"] as const).map((g) => ({ g, cell: sum.genders.find((x) => x.gender === g) }));
+  const chip = "rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300";
   return (
     <div className="rounded-lg border border-zinc-200 p-3 dark:border-zinc-800">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
         <h3 className="text-sm font-semibold">{name}</h3>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
           <span title={widened ? `Poucas conversas em 14 dias (menos de ${AUTO_MIN_CONV}) — usando 30 dias.` : undefined} className={widened ? "font-medium text-amber-700 dark:text-amber-400" : ""}>
             {days} dias{widened ? " (poucos dados em 14)" : ""}
           </span>{" "}
-          · {fmtCurrency(sum.total.spend)} · {sum.total.conv} conversas · CPA <span className={cpaCls(sum.total.cpa, target)}>{cpaTxt(sum.total)}</span>
+          · {sum.total.conv} conversas{lean ? "" : ` · ${fmtCurrency(sum.total.spend)}`} · CPA{" "}
+          <span className={cpaCls(sum.total.cpa, target)}>{cpaTxt(sum.total)}</span>
           {target != null && !lean ? ` (meta ${fmtCurrency(target)})` : ""}
         </span>
       </div>
-      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-        <span
-          title="Sugerida pelo volume de conversas iniciadas, em faixas seguidas (mínimo 2, ideal 3)."
-          className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-        >
+      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+        <span title="Sugerida pelo volume de conversas iniciadas, em faixas seguidas (mínimo 2, ideal 3)." className={chip}>
           Faixa sugerida: {sum.ageRange?.label ?? "poucos dados"}
         </span>
-        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Melhor gênero: {genderTxt(sum.bestGender)}</span>
-        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">Melhor combinação: {comboTxt(sum.bestCombo)}</span>
+        <span className={chip}>Melhor gênero: {genderTxt(sum.bestGender)}</span>
+        <span className={chip}>Melhor combinação: {comboTxt(sum.bestCombo)}</span>
       </div>
       {missing ? <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">Esse período ainda não foi calculado nesta conta — mostrando 14 dias. Clique em "Atualizar agora".</p> : null}
-      {compact ? null : (
-        <table className="mt-3 w-full text-sm">
+      {compact ? null : <AgeChart sum={sum} />}
+      {compact || lean ? null : (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs text-zinc-500 dark:text-zinc-400">Ver tabela detalhada (CPA por faixa e gênero)</summary>
+        <table className="mt-2 w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase tracking-wide text-zinc-400">
               <th className="px-2 py-1 font-medium">Faixa</th>
@@ -382,7 +389,7 @@ function TypeCard({
               const inRange = !!sum.ageRange?.ages.includes(a.age);
               return (
               <tr key={a.age} className="border-t border-zinc-100 dark:border-zinc-800/60">
-                <td className={`px-2 py-1.5 font-medium ${inRange ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{a.age}{inRange ? " ★" : ""}</td>
+                <td className={`px-2 py-1.5 font-medium ${inRange ? "text-emerald-700 dark:text-emerald-400" : ""}`}>{a.age === "Unknown" ? "Sem idade" : a.age}{inRange ? " ★" : ""}</td>
                 {(["female", "male"] as const).map((g) => (
                   <CellView key={g} cell={sum.cells[`${a.age}|${g}`]} target={target} best={sum.bestCombo?.age === a.age && sum.bestCombo.gender === g} />
                 ))}
@@ -401,7 +408,100 @@ function TypeCard({
             </tr>
           </tbody>
         </table>
+        </details>
       )}
+    </div>
+  );
+}
+
+// Gráfico no estilo do Gerenciador do Facebook: por faixa etária, barras lado a lado de Homens (roxo) e Mulheres (verde-água), em CONVERSAS iniciadas.
+// As faixas da sugestão ficam com fundo verde e ★. Passar o mouse numa faixa abre os detalhes (conversas, %, gasto e CPA de cada gênero).
+function AgeChart({ sum }: { sum: AudienceSummary }) {
+  const [hover, setHover] = useState<string | null>(null);
+  const data = STD_AGES.map((age) => ({ age, m: sum.cells[`${age}|male`], f: sum.cells[`${age}|female`] }));
+  const max = Math.max(1, ...data.flatMap((d) => [d.m?.conv ?? 0, d.f?.conv ?? 0]));
+  const totalConv = sum.total.conv;
+  const pct = (n: number) => (totalConv > 0 ? Math.round((n / totalConv) * 100) : 0);
+  const legend = [
+    { label: "Homens", color: MALE_COLOR, cell: sum.genders.find((g) => g.gender === "male") },
+    { label: "Mulheres", color: FEMALE_COLOR, cell: sum.genders.find((g) => g.gender === "female") },
+  ];
+  return (
+    <div className="mt-3">
+      <div className="relative" style={{ height: CHART_H + 22 }}>
+        <div className="pointer-events-none absolute inset-x-0 top-0" style={{ height: CHART_H }}>
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="absolute inset-x-0 border-t border-zinc-100 dark:border-zinc-800" style={{ top: `${(i * 100) / 3}%` }} />
+          ))}
+        </div>
+        <div className="absolute inset-0 grid grid-cols-6">
+          {data.map((d, idx) => {
+            const inRange = !!sum.ageRange?.ages.includes(d.age);
+            return (
+              <div
+                key={d.age}
+                onMouseEnter={() => setHover(d.age)}
+                onMouseLeave={() => setHover((h) => (h === d.age ? null : h))}
+                className={`relative flex flex-col ${inRange ? "bg-emerald-50 dark:bg-emerald-950/30" : ""} ${hover === d.age ? "bg-zinc-100 dark:bg-zinc-800/60" : ""}`}
+              >
+                <div className="flex items-end justify-center gap-0.5 px-1" style={{ height: CHART_H }}>
+                  {[
+                    { c: d.m, color: MALE_COLOR },
+                    { c: d.f, color: FEMALE_COLOR },
+                  ].map((b, k) => (
+                    <div key={k} className="flex w-1/2 max-w-[1.6rem] flex-col items-center justify-end">
+                      <span className="h-3.5 text-[10px] leading-[14px] tabular-nums text-zinc-500 dark:text-zinc-400">{b.c && b.c.conv > 0 ? b.c.conv : ""}</span>
+                      <div className="w-full rounded-t-sm" style={{ backgroundColor: b.color, height: b.c && b.c.conv > 0 ? Math.max(2, ((b.c.conv / max) * (CHART_H - 16))) : 0 }} />
+                    </div>
+                  ))}
+                </div>
+                <div className={`pt-1 text-center text-xs ${inRange ? "font-semibold text-emerald-700 dark:text-emerald-400" : "text-zinc-500 dark:text-zinc-400"}`}>
+                  {d.age}
+                  {inRange ? " ★" : ""}
+                </div>
+                {hover === d.age ? (
+                  <div
+                    className={`pointer-events-none absolute top-1 z-20 w-48 rounded-md border border-zinc-200 bg-white p-2 text-xs shadow-lg dark:border-zinc-700 dark:bg-zinc-900 ${idx < 3 ? "left-full ml-1" : "right-full mr-1"}`}
+                  >
+                    <p className="font-semibold">Faixa etária de {d.age}</p>
+                    {[
+                      { label: "Homens", color: MALE_COLOR, c: d.m },
+                      { label: "Mulheres", color: FEMALE_COLOR, c: d.f },
+                    ].map((g) => (
+                      <div key={g.label} className="mt-1.5">
+                        <p className="flex items-center gap-1.5 font-medium">
+                          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: g.color }} />
+                          {g.label}
+                        </p>
+                        <p className="pl-4 text-zinc-500 dark:text-zinc-400">
+                          {g.c?.conv ?? 0} conversas · {pct(g.c?.conv ?? 0)}%
+                        </p>
+                        <p className="pl-4 text-zinc-500 dark:text-zinc-400">
+                          {g.c && g.c.spend > 0 ? `${fmtCurrency(g.c.spend)} · CPA ${cpaTxt(g.c)}` : "sem gasto"}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-xs">
+        {legend.map((l) => (
+          <div key={l.label}>
+            <p className="flex items-center gap-1.5 font-medium">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: l.color }} />
+              {l.label}
+            </p>
+            <p className="pl-4 text-zinc-500 dark:text-zinc-400">
+              {pct(l.cell?.conv ?? 0)}% · {l.cell?.conv ?? 0} conv
+            </p>
+            <p className="pl-4 text-zinc-500 dark:text-zinc-400">CPA {l.cell ? cpaTxt(l.cell) : "—"}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

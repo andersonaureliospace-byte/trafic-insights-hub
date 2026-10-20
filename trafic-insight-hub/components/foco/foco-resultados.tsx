@@ -5,8 +5,8 @@ import { fmtCurrency } from "@/lib/format";
 import { CPA_ACCEPTABLE_BAND } from "@/lib/meta/metas";
 import type { DailyCpaPoint } from "@/lib/meta/daily-cpa";
 
-// Modo Foco — quadro "Acompanhamento de Resultados" de UMA conta: os mesmos números do Desempenho (Leads, Valor usado, CPA e a diferença pro CPA ideal)
-// em vários períodos. Só mostra; quem busca os dados é a página.
+// Modo Foco — quadro "Acompanhamento de Resultados" de UMA conta: os mesmos números do Desempenho (Leads, Valor usado e CPA, com a diferença pro CPA ideal
+// pequena embaixo do CPA) em vários períodos. Só mostra; quem busca os dados é a página.
 
 function shift(iso: string, n: number): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -72,7 +72,6 @@ export function FocoResultados({
           <th className="px-3 py-1.5 text-right font-medium">Leads</th>
           <th className="px-3 py-1.5 text-right font-medium">Valor usado</th>
           <th className="px-3 py-1.5 text-right font-medium">CPA</th>
-          <th className="px-3 py-1.5 text-right font-medium" title="CPA menos o CPA ideal">Dif.</th>
         </tr>
       </thead>
       <tbody>
@@ -83,9 +82,14 @@ export function FocoResultados({
               <td className="px-3 py-2 font-medium">{label}</td>
               <td className="px-3 py-2 text-right tabular-nums">{a.results}</td>
               <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(a.spend)}</td>
-              <td className={`px-3 py-2 text-right font-semibold tabular-nums ${cpaCls(a.cpa, cpaTarget)}`}>{a.cpa != null ? fmtCurrency(a.cpa) : "—"}</td>
-              <td className={`px-3 py-2 text-right text-xs tabular-nums ${cpaCls(a.cpa, cpaTarget)}`}>
-                {diff != null ? `${diff > 0 ? "+" : "−"}${fmtCurrency(Math.abs(diff))}` : "—"}
+              <td className="px-3 py-1.5 text-right tabular-nums">
+                <div className={`font-semibold ${cpaCls(a.cpa, cpaTarget)}`}>{a.cpa != null ? fmtCurrency(a.cpa) : "—"}</div>
+                {diff != null ? (
+                  <div className={`text-[11px] leading-tight ${cpaCls(a.cpa, cpaTarget)}`} title="CPA menos o CPA ideal">
+                    {diff > 0 ? "+" : "−"}
+                    {fmtCurrency(Math.abs(diff))}
+                  </div>
+                ) : null}
               </td>
             </tr>
           );

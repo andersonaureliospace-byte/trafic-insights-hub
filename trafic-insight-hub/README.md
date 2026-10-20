@@ -2938,6 +2938,11 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     `audience:v1`; 3 consultas por conta na Meta); retratos antigos (só 14 dias) são refeitos pelo hook na próxima rodada e o seletor avisa se faltar. Regra pura em
     `lib/meta/audience-summary.ts` (`suggestAgeRange`, `chooseRows`).
 
+    **Etapa 170 — gráfico:** cada cartão (Geral/Exame) agora tem um gráfico no estilo do Gerenciador do Facebook: por faixa etária (18-24 a 65+), barras de Homens (roxo) e Mulheres (verde-água) em
+    CONVERSAS; as faixas da sugestão ficam com fundo verde e ★; passar o mouse abre os detalhes da faixa (conversas, %, gasto e CPA de cada gênero); legenda embaixo com % / conversas / CPA por gênero.
+    Os três chips verdes (faixa sugerida, melhor gênero, melhor combinação) continuam. A tabela detalhada ficou numa seção recolhida ("Ver tabela detalhada") na Análise e some no Foco; a faixa
+    "Unknown" da Meta aparece como "Sem idade" no fim da tabela. Código: `AgeChart` em `components/painel/publico-tab.tsx`.
+
 150. **Modo Foco — nova aba "Foco" no menu de cima (Etapas 165, 166 e 169)** (`/foco`): uma conta só, tudo numa tela, pra otimizar com várias abas do navegador abertas.
     **Painel lateral (Etapa 169):** à esquerda, lista vertical de clientes — Nome | Status | CPA | Ritmo (bolinha verde = otimizada hoje, 🚨 = precisa de atenção) — com busca por nome e os
     mesmos filtros do Desempenho: Status, Otimizado, CPA (alto), Investimento (baixo/alto), Atenção (lista do Resumo das 7h) e Ordem (Ordem salva, Prioridade + diferença do CPA e as ordens
@@ -2953,8 +2958,10 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     **Vídeos (Geral)** e **Melhor público**, já presos na conta (leem os retratos guardados; textos enxutos, sem repetir informação). Busca na Meta só 2 chamadas por conta
     (`/api/meta/daily-cpa` e `/api/meta/insights` do mês) ao escolher/atualizar. Cada quadro rola sozinho. Arquivos: `app/(app)/foco/page.tsx`,
     `components/foco/{foco-resultados,foco-metas,foco-ofertas,conta-filtros (painel lateral),conta-filtros-data}.tsx`; `VideosGeral` e `PublicoTab` ganharam `focusAccountId`;
-    **Metas (Etapa 168):** o quadro mostra o **WhatsApp** do cliente (o mesmo do balão do nome no Desempenho) logo abaixo do Orçamento diário, e o **CPA ideal** ganhou destaque
-    (caixa azul grande ao lado do CPA do mês); também mostra o **Ritmo médio** (Investimento mensal ÷ dias do mês) abaixo do Orçamento diário.
+    **Limpeza visual (Etapa 170):** *Resultados* sem a coluna Dif. (a diferença pro CPA ideal ficou pequena embaixo do CPA, na mesma cor); *Vídeos (Geral)* no Foco sem Gasto 30d e Último anúncio;
+    *Metas* reorganizado em 4 blocos com a mesma hierarquia (rótulo → número grande → linha de apoio): Investimento do mês (barra + ideal até hoje), CPA do mês × **CPA ideal** (caixa azul) com a
+    etiqueta "R$ x acima/abaixo do ideal" (passar o mouse mostra as faixas de cor), Orçamento e ritmo (orçamento diário com a diferença, ritmo, ritmo médio; a conta detalhada do ritmo aparece só ao passar o
+    mouse no número) e WhatsApp; na lista lateral, CPA e Ritmo ficam alinhados à direita (sem "R$") e o Status centralizado.
     `OffersCell` (descricao-tab) agora é exportado; link "Foco" em `app/(app)/layout.tsx`. Sem migration e sem n8n.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
