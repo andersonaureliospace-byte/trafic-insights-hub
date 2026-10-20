@@ -2869,6 +2869,10 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     também pra descobrir por que a duplicação dava erro. Arquivos: `lib/meta/duplicate.ts`, `app/api/analysis/duplicate/route.ts`,
     `components/painel/duplicar-conjunto-dialog.tsx`.
 
+    Etapa 159b: no 1º teste a Meta recusou a cópia nativa ("The click attribution window is optional… use one of these supported windows: 1 days") —
+    ela reaplica a janela de atribuição padrão, que não vale pra conjuntos de conversas. Nesse caso o conjunto é CRIADO a partir dos dados do
+    original (segmentação, otimização, objeto promovido…) já com atribuição de 1 dia de clique, e a janelinha avisa que usou esse método.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

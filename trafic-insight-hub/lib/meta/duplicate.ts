@@ -67,6 +67,63 @@ export async function getDuplicateInfo(token: string, adsetId: string): Promise<
   };
 }
 
+// Etapa 159b: a cópia nativa da Meta (/copies) recusa conjuntos de conversas com "The click attribution window is optional…
+// use one of these supported windows: 1 days" — ela reaplica a janela de atribuição padrão (7 dias de clique) que não vale pra esse
+// objetivo. Nesse caso o conjunto é CRIADO a partir dos dados do original, já com a janela certa (1 dia de clique).
+const ATTRIBUTION_ERR = /attribution window/i;
+const FALLBACK_ATTRIBUTION = JSON.stringify([{ event_type: "CLICK_THROUGH", window_days: 1 }]);
+
+interface FullAdset {
+  account_id?: string;
+  campaign_id?: string;
+  daily_budget?: string;
+  billing_event?: string;
+  optimization_goal?: string;
+  bid_strategy?: string;
+  bid_amount?: string;
+  promoted_object?: unknown;
+  targeting?: unknown;
+  destination_type?: string;
+  is_dynamic_creative?: boolean;
+  pacing_type?: string[];
+  dsa_beneficiary?: string;
+  dsa_payor?: string;
+}
+
+async function createAdsetFromOriginal(token: string, adsetId: string, newName: string, budgetCents?: number | null): Promise<string> {
+  const o = await metaGet<FullAdset>(token, `/${adsetId}`, {
+    fields:
+      "account_id,campaign_id,daily_budget,billing_event,optimization_goal,bid_strategy,bid_amount,promoted_object,targeting,destination_type,is_dynamic_creative,pacing_type,dsa_beneficiary,dsa_payor",
+  });
+  if (!o.account_id) throw new Error("A Meta não devolveu a conta do conjunto original.");
+  const params: Record<string, string> = {
+    name: newName,
+    status: "PAUSED",
+    attribution_spec: FALLBACK_ATTRIBUTION,
+  };
+  const put = (k: string, v: unknown) => {
+    if (v == null || v === "") return;
+    params[k] = typeof v === "object" ? JSON.stringify(v) : String(v);
+  };
+  put("campaign_id", o.campaign_id);
+  put("billing_event", o.billing_event);
+  put("optimization_goal", o.optimization_goal);
+  put("bid_strategy", o.bid_strategy);
+  put("bid_amount", o.bid_amount);
+  put("promoted_object", o.promoted_object);
+  put("targeting", o.targeting);
+  put("destination_type", o.destination_type);
+  put("is_dynamic_creative", o.is_dynamic_creative);
+  put("pacing_type", o.pacing_type);
+  put("dsa_beneficiary", o.dsa_beneficiary);
+  put("dsa_payor", o.dsa_payor);
+  const cents = budgetCents != null && budgetCents > 0 ? Math.round(budgetCents) : o.daily_budget ? Number(o.daily_budget) : null;
+  if (cents) params.daily_budget = String(cents);
+  const res = await metaPost<{ id?: string }>(token, `/act_${o.account_id}/adsets`, params);
+  if (!res.id) throw new Error("A Meta respondeu sem o id do conjunto novo.");
+  return res.id;
+}
+
 export interface DuplicateResult {
   ok: boolean;
   newAdsetId?: string;
@@ -89,8 +146,9 @@ export async function duplicateAdSet(
 ): Promise<DuplicateResult> {
   const out: DuplicateResult = { ok: false, copiedAds: [], failedAds: [], warnings: [] };
 
-  // 1) o conjunto
+  // 1) o conjunto — cópia nativa; se a Meta recusar por causa da janela de atribuição, cria a partir do original.
   let newId: string | null = null;
+  let createdDirect = false;
   try {
     const info = await metaGet<AdsetFields>(token, `/${p.adsetId}`, { fields: "campaign_id" });
     const params: Record<string, string> = { deep_copy: "false", status_option: "PAUSED", rename_options: NO_RENAME };
@@ -98,8 +156,20 @@ export async function duplicateAdSet(
     const res = await metaPost<CopyResponse>(token, `/${p.adsetId}/copies`, params);
     newId = res.copied_adset_id ?? res.ad_object_ids?.find((o) => o.ad_object_type === "ad_set")?.copied_id ?? res.ad_object_ids?.[0]?.copied_id ?? null;
   } catch (e) {
-    out.error = `Não consegui copiar o conjunto: ${(e as Error).message}`;
-    return out;
+    const msg = (e as Error).message;
+    if (ATTRIBUTION_ERR.test(msg)) {
+      try {
+        newId = await createAdsetFromOriginal(token, p.adsetId, p.newName, p.dailyBudgetCents);
+        createdDirect = true;
+        out.warnings.push("A cópia nativa da Meta recusou a janela de atribuição; criei o conjunto a partir do original com atribuição de 1 dia de clique.");
+      } catch (e2) {
+        out.error = `Não consegui copiar o conjunto: ${msg} — e o método alternativo também falhou: ${(e2 as Error).message}`;
+        return out;
+      }
+    } else {
+      out.error = `Não consegui copiar o conjunto: ${msg}`;
+      return out;
+    }
   }
   if (!newId) {
     out.error = "A Meta respondeu sem o id do conjunto novo. Confira no Gerenciador se a cópia foi criada.";
@@ -107,8 +177,10 @@ export async function duplicateAdSet(
   }
   out.newAdsetId = newId;
 
-  // 2) nome e orçamento
-  try {
+  // 2) nome e orçamento (o método alternativo já cria com os dois)
+  if (createdDirect) {
+    out.newName = p.newName;
+  } else try {
     const patch: Record<string, string> = { name: p.newName };
     if (p.dailyBudgetCents != null && p.dailyBudgetCents > 0) patch.daily_budget = String(Math.round(p.dailyBudgetCents));
     await metaPost(token, `/${newId}`, patch);
