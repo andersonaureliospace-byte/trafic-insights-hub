@@ -108,6 +108,17 @@ const CONTA_FILTERS: Array<{ id: "todos" | AccountVideoTag; label: string }> = [
   { id: "caro", label: "Com vídeo caro" },
 ];
 
+// Com uma conta escolhida, os filtros passam a contar VÍDEOS daquela conta.
+const CONTA_VIDEO_LABELS: Record<"todos" | AccountVideoTag, string> = {
+  todos: "Todos os vídeos",
+  reativar: "Bom pra reativar",
+  repetido: "Repetido",
+  nunca: "Nunca usado",
+  parado: "Parado",
+  pouco: "Pouco testado",
+  caro: "Caro",
+};
+
 const FILTERS: Array<{ id: "todos" | VideoTag; label: string }> = [
   { id: "todos", label: "Todos" },
   { id: "alta", label: "Alta performance, parado" },
@@ -137,6 +148,7 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
   const [filter, setFilter] = useState<"todos" | VideoTag>("todos");
   const [filterConta, setFilterConta] = useState<"todos" | AccountVideoTag>("todos");
   const [q, setQ] = useState("");
+  const [contaSel, setContaSel] = useState(""); // conta escolhida no seletor ("" = todas)
   const [open, setOpen] = useState<Set<string>>(new Set());
   const run = useRef(0);
 
@@ -214,15 +226,15 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
   }, [videos, filter, q]);
 
   const contas = useMemo(() => (data ? summarizeAccounts(data.accounts) : []), [data]);
+  const selectedConta = useMemo(() => contas.find((a) => a.accountId === contaSel) ?? null, [contas, contaSel]);
+  // Sem conta escolhida: os números são de CONTAS (quantas contas têm vídeo naquela situação). Com conta escolhida: são de VÍDEOS dessa conta.
   const contaCounts = useMemo(() => {
+    if (selectedConta) return { todos: selectedConta.items.length, ...selectedConta.counts } as Record<string, number>;
     const c: Record<string, number> = { todos: contas.length };
     for (const a of contas) for (const t of Object.keys(a.counts) as AccountVideoTag[]) if (a.counts[t] > 0) c[t] = (c[t] ?? 0) + 1;
     return c;
-  }, [contas]);
-  const contasShown = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return contas.filter((a) => (filterConta === "todos" || a.counts[filterConta] > 0) && (!needle || a.clientName.toLowerCase().includes(needle)));
-  }, [contas, filterConta, q]);
+  }, [contas, selectedConta]);
+  const contasShown = useMemo(() => contas.filter((a) => filterConta === "todos" || a.counts[filterConta] > 0), [contas, filterConta]);
 
   function toggle(key: string) {
     setOpen((prev) => {
@@ -239,7 +251,7 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
         <div>
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Vídeos de Geral</h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            {mode === "conta" ? "Cada conta com Meta CPA e a situação dos vídeos do banco nela." : "Cada vídeo do banco e como ele está em todas as contas."} Só leitura — nada é alterado.
+            {mode === "conta" ? (selectedConta ? `Vídeos do banco em ${selectedConta.clientName} (meta ${fmtCurrency(selectedConta.cpaTarget)}).` : "Cada conta com Meta CPA e a situação dos vídeos do banco nela.") : "Cada vídeo do banco e como ele está em todas as contas."} Só leitura — nada é alterado.
             {data?.computedFor ? ` Números até ontem (${untilTxt(data.computedFor)}), atualizados de madrugada${snapshotAt ? ` — calculado ${atTxt(snapshotAt)}` : ""}. "Ativo" é a situação no momento do cálculo.` : ""}
           </p>
         </div>
@@ -260,12 +272,27 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
               </button>
             ))}
           </div>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder={mode === "conta" ? "Buscar conta" : "Buscar vídeo"}
-            className="h-8 w-48 rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-          />
+          {mode === "conta" ? (
+            <select
+              value={selectedConta ? contaSel : ""}
+              onChange={(e) => setContaSel(e.target.value)}
+              className="h-8 w-56 rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            >
+              <option value="">Todas as contas</option>
+              {contas.map((a) => (
+                <option key={a.accountId} value={a.accountId}>
+                  {a.clientName}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar vídeo"
+              className="h-8 w-48 rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+            />
+          )}
           <button
             onClick={() => void recalc()}
             disabled={loading}
@@ -303,7 +330,7 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
                     : "border border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-400"
                 }`}
               >
-                {f.label} ({contaCounts[f.id] ?? 0})
+                {selectedConta ? CONTA_VIDEO_LABELS[f.id] : f.label} ({contaCounts[f.id] ?? 0})
               </button>
             ))}
       </div>
@@ -325,7 +352,13 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
           Ainda não há retrato guardado. Ele é calculado de madrugada; para ter agora, clique em "Calcular agora".
         </p>
       ) : mode === "conta" ? (
-        <PorConta contas={contasShown} filter={filterConta} open={open} toggle={toggle} />
+        selectedConta ? (
+          <div className="px-4 py-2">
+            <VideosDaConta items={selectedConta.items.filter((i) => filterConta === "todos" || i.tags.includes(filterConta))} />
+          </div>
+        ) : (
+          <PorConta contas={contasShown} filter={filterConta} open={open} toggle={toggle} />
+        )
       ) : shown.length === 0 ? (
         <p className="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400">Nenhum vídeo nessa situação.</p>
       ) : (

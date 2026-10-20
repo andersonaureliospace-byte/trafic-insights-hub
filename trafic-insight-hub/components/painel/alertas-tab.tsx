@@ -36,6 +36,7 @@ const KIND_LABELS: Record<string, string> = {
   "adsets-no-spend": "Conjunto sem gasto",
   "pause-backup": "Reativado (backup)",
   "weekend-standby": "Standby de fim de semana",
+  "exam-missing": "Sem exame ativo",
 };
 
 // Cor da barrinha da esquerda: vermelho = o que também vai pro grupo (urgente); âmbar = o resto.

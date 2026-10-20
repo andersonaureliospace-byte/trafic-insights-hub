@@ -33,7 +33,8 @@ export type AlertKind =
   | "naming-fix" // Ajuste automático de idade/data nos nomes dos conjuntos (Etapa 140)
   | "adsets-no-spend" // Conjunto sem anúncio ativo e sem gasto: só avisa, não pausa (Etapa 158)
   | "pause-backup" // Backup: conjuntos/criativos reativados porque melhoraram (Etapa 158)
-  | "weekend-standby"; // Fim de semana: conjuntos em standby (R$10) e a volta de segunda (Etapa 158)
+  | "weekend-standby" // Fim de semana: conjuntos em standby (R$10) e a volta de segunda (Etapa 158)
+  | "exam-missing"; // Conta que precisa de EXAME sem nenhum conjunto de EXAME ativo (Etapa 163)
 
 // Os únicos tipos que também vão pro grupo do WhatsApp (os mais urgentes).
 export const GROUP_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>([

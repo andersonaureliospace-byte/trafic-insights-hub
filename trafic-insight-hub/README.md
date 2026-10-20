@@ -2903,6 +2903,22 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     topo ("Com vídeo bom pra reativar" etc.) mostram só as contas com aquela situação e, ao abrir, só os vídeos dela. A busca procura pelo nome da
     conta. Código: `summarizeAccounts` em `lib/meta/video-summary.ts` e `PorConta` em `components/painel/videos-geral.tsx`.
 
+    Etapa 162b: em "Por conta" a busca virou um SELETOR de conta ("Todas as contas" + cada conta). Com uma conta escolhida, a lista de contas some, os
+    31 vídeos dela aparecem direto e os filtros passam a contar VÍDEOS daquela conta (Todos os vídeos, Bom pra reativar, Repetido, Nunca usado,
+    Parado, Pouco testado, Caro); sem conta escolhida, os números continuam sendo de contas.
+
+148. **Análise → "Exame" (Etapa 163)** — quarto botão da Análise. Mostra quais contas PRECISAM de conjunto de EXAME ativo e se têm algum agora.
+    Regra: entre os anúncios ATIVOS da conta (o que já exige conjunto e campanha ligados), vale o conjunto cujo nome começa com EXAME (mesmo leitor
+    de nomes da aba Descrição; boleto/crediário não conta; campanha [VAGA] fica de fora). "Precisa de exame?" é escolha por conta (Sim/Não na
+    própria tela, grava em `account_bindings.needs_exam`; clicar de novo na opção marcada volta ao padrão: contas IVS precisam, as outras não).
+    **Rotina automática** (hook `exam-check-tick`, n8n item 18: 09h05, 12h05, 15h05 e 18h05 — nos intervalos das outras): confere só as contas
+    que precisam; sem exame ativo, grava um aviso em Alertas (tipo "Sem exame ativo", 1x por dia por conta; não vai pro grupo do WhatsApp — pra
+    mandar também, incluir `"exam-missing"` em GROUP_KINDS de `lib/alerts/notifications.ts`). Conta com erro na Meta não gera aviso falso.
+    A tela abre lendo o último retrato (`meta_insights_cache`, chave `exam_status:v1`), com filtros Sem exame ativo / Com exame ativo / Não precisa
+    / Todas, lista os conjuntos de exame ativos e tem o botão "Conferir agora". **Precisa rodar o SQL `supabase/migrations/0035_needs_exam.sql`**
+    pra guardar a escolha Sim/Não (sem ele a tela e a rotina funcionam com o padrão). Arquivos: `lib/exam/rule.ts`, `lib/exam/check.ts`,
+    `app/api/analysis/exam/route.ts`, `app/api/public/hooks/exam-check-tick/route.ts`, `components/painel/exame-tab.tsx`, `components/painel/analise-tab.tsx`.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

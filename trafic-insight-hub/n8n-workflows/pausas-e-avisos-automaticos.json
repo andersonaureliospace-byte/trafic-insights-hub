@@ -1294,6 +1294,71 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 18. Conta sem conjunto de EXAME ativo (09h05, 12h05, 15h05 e 18h05)\n\nPara cada conta que PRECISA de exame (Análise → Exame), olha os anúncios ativos e confere pelo nome do conjunto se há algum de EXAME. Sem nenhum, avisa em Alertas (1x por dia por conta). Só avisa, não altera nada.",
+        "height": 130,
+        "width": 900,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        5020
+      ],
+      "id": "5047b1df-95c4-4565-8614-197dfd07afea",
+      "name": "Nota - 18. Conta sem exame ativo"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "5 9,12,15,18 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        5160
+      ],
+      "id": "276d62fe-71ca-4c9e-992a-d25d8400ada9",
+      "name": "Agenda - Conta sem exame ativo (09h05, 12h05, 15h05, 18h05)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/exam-check-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        5160
+      ],
+      "id": "5a08b08e-65d7-4c19-99ba-24aaef666614",
+      "name": "Conferir contas sem exame ativo",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
     }
   ],
   "pinData": {},
@@ -1523,6 +1588,17 @@
         [
           {
             "node": "Atualizar retrato dos vídeos de Geral",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Conta sem exame ativo (09h05, 12h05, 15h05, 18h05)": {
+      "main": [
+        [
+          {
+            "node": "Conferir contas sem exame ativo",
             "type": "main",
             "index": 0
           }
