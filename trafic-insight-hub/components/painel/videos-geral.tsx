@@ -249,13 +249,19 @@ export function VideosGeral({ accounts, focusAccountId }: { accounts: Array<{ ac
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Vídeos de Geral</h2>
+        {focus ? (
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            {focus ? "Vídeos do banco nessa conta." : mode === "conta" ? (selectedConta ? `Vídeos do banco em ${selectedConta.clientName} (meta ${fmtCurrency(selectedConta.cpaTarget)}).` : "Cada conta com Meta CPA e a situação dos vídeos do banco nela.") : "Cada vídeo do banco e como ele está em todas as contas."} {focus ? "" : " Só leitura — nada é alterado."}
-            {data?.computedFor ? ` Números até ontem (${untilTxt(data.computedFor)}), atualizados de madrugada${snapshotAt ? ` — calculado ${atTxt(snapshotAt)}` : ""}. "Ativo" é a situação no momento do cálculo.` : ""}
+            {data?.computedFor ? `Até ontem (${untilTxt(data.computedFor)})${snapshotAt ? ` · calculado ${atTxt(snapshotAt)}` : ""}` : ""}
           </p>
-        </div>
+        ) : (
+        <div>
+            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Vídeos de Geral</h2>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              {focus ? "Vídeos do banco nessa conta." : mode === "conta" ? (selectedConta ? `Vídeos do banco em ${selectedConta.clientName} (meta ${fmtCurrency(selectedConta.cpaTarget)}).` : "Cada conta com Meta CPA e a situação dos vídeos do banco nela.") : "Cada vídeo do banco e como ele está em todas as contas."} {focus ? "" : " Só leitura — nada é alterado."}
+              {data?.computedFor ? ` Números até ontem (${untilTxt(data.computedFor)}), atualizados de madrugada${snapshotAt ? ` — calculado ${atTxt(snapshotAt)}` : ""}. "Ativo" é a situação no momento do cálculo.` : ""}
+            </p>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           {focus ? null : (
           <div className="inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
@@ -357,7 +363,7 @@ export function VideosGeral({ accounts, focusAccountId }: { accounts: Array<{ ac
       ) : mode === "conta" ? (
         selectedConta ? (
           <div className="px-4 py-2">
-            <VideosDaConta items={selectedConta.items.filter((i) => filterConta === "todos" || i.tags.includes(filterConta))} />
+            <VideosDaConta items={selectedConta.items.filter((i) => filterConta === "todos" || i.tags.includes(filterConta))} lean={focus} />
           </div>
         ) : (
           focus ? (
@@ -543,7 +549,7 @@ function PorConta({
   );
 }
 
-function VideosDaConta({ items }: { items: AccountSummary["items"] }) {
+function VideosDaConta({ items, lean = false }: { items: AccountSummary["items"]; lean?: boolean }) {
   if (items.length === 0) return <p className="py-2 text-sm text-zinc-500">Nenhum vídeo nessa situação.</p>;
   return (
     <table className="w-full text-sm">
@@ -555,7 +561,7 @@ function VideosDaConta({ items }: { items: AccountSummary["items"] }) {
           <th className="px-3 py-1 text-right font-medium">CPA 7 dias</th>
           <th className="px-3 py-1 text-right font-medium">CPA mês</th>
           <th className="px-3 py-1 text-right font-medium">Gasto 30d</th>
-          <th className="px-3 py-1 text-right font-medium">Conv. 30d</th>
+          {lean ? null : <th className="px-3 py-1 text-right font-medium">Conv. 30d</th>}
           <th className="px-3 py-1 text-right font-medium">Último anúncio</th>
         </tr>
       </thead>
@@ -587,7 +593,7 @@ function VideosDaConta({ items }: { items: AccountSummary["items"] }) {
             <td className="px-3 py-1.5 text-right tabular-nums">{cpaTxt(i.cpa7d)}</td>
             <td className="px-3 py-1.5 text-right tabular-nums">{cpaTxt(i.cpaMonth)}</td>
             <td className="px-3 py-1.5 text-right tabular-nums">{fmtCurrency(i.spend30)}</td>
-            <td className="px-3 py-1.5 text-right tabular-nums">{i.conv30}</td>
+            {lean ? null : <td className="px-3 py-1.5 text-right tabular-nums">{i.conv30}</td>}
             <td className="px-3 py-1.5 text-right text-zinc-500 dark:text-zinc-400">{dayTxt(i.daysSinceCreated)}</td>
           </tr>
         ))}

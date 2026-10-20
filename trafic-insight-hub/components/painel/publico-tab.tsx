@@ -135,13 +135,19 @@ export function PublicoTab({ focusAccountId }: { focusAccountId?: string } = {})
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-        <div>
-          <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Melhor público</h2>
+        {focus ? (
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            {focus ? "Faixa etária e gênero com o menor custo por conversa — GERAL e EXAME." : "Faixa etária e gênero com o menor custo por conversa em GERAL e EXAME (tipo pelo nome do conjunto)."}
-            {since && until ? ` Últimos ${AUDIENCE_DAYS} dias fechados (${dmy(since)} a ${dmy(until)}), atualizados de madrugada${snap ? ` — calculado ${atTxt(snap.computed_at)}` : ""}.` : ""}{focus ? "" : " Só leitura."}
+            {since && until ? `${dmy(since)} a ${dmy(until)}${snap ? ` · calculado ${atTxt(snap.computed_at)}` : ""}` : ""}
           </p>
-        </div>
+        ) : (
+        <div>
+            <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Melhor público</h2>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+              {focus ? "Faixa etária e gênero com o menor custo por conversa — GERAL e EXAME." : "Faixa etária e gênero com o menor custo por conversa em GERAL e EXAME (tipo pelo nome do conjunto)."}
+              {since && until ? ` Últimos ${AUDIENCE_DAYS} dias fechados (${dmy(since)} a ${dmy(until)}), atualizados de madrugada${snap ? ` — calculado ${atTxt(snap.computed_at)}` : ""}.` : ""}{focus ? "" : " Só leitura."}
+            </p>
+          </div>
+        )}
         <div className="flex items-center gap-2">
           {focus ? null : (
           <select
@@ -179,9 +185,9 @@ export function PublicoTab({ focusAccountId }: { focusAccountId?: string } = {})
       ) : focus && !selected ? (
         <p className="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400">Sem retrato dessa conta ainda. Clique em "Atualizar agora".</p>
       ) : selected && selectedAcc ? (
-        <div className="grid gap-4 p-4 lg:grid-cols-2">
+        <div className={`grid gap-3 ${focus ? "p-3 2xl:grid-cols-2" : "p-4 lg:grid-cols-2"}`}>
           {TYPES.map((t) => (
-            <TypeCard key={t} type={t} sum={summarizeAudience(selected.rows, t)} target={selectedAcc.cpaTarget} />
+            <TypeCard key={t} type={t} sum={summarizeAudience(selected.rows, t)} target={selectedAcc.cpaTarget} lean={focus} />
           ))}
         </div>
       ) : (
@@ -254,7 +260,7 @@ export function PublicoTab({ focusAccountId }: { focusAccountId?: string } = {})
   );
 }
 
-function TypeCard({ type, sum, target, title, compact }: { type: AudType; sum: AudienceSummary; target: number | null; title?: string; compact?: boolean }) {
+function TypeCard({ type, sum, target, title, compact, lean = false }: { type: AudType; sum: AudienceSummary; target: number | null; title?: string; compact?: boolean; lean?: boolean }) {
   const name = title ?? (type === "GERAL" ? "Geral" : "Exame");
   if (sum.total.spend <= 0) {
     return (
@@ -271,7 +277,7 @@ function TypeCard({ type, sum, target, title, compact }: { type: AudType; sum: A
         <h3 className="text-sm font-semibold">{name}</h3>
         <span className="text-xs text-zinc-500 dark:text-zinc-400">
           {fmtCurrency(sum.total.spend)} · {sum.total.conv} conversas · CPA <span className={cpaCls(sum.total.cpa, target)}>{cpaTxt(sum.total)}</span>
-          {target != null ? ` (meta ${fmtCurrency(target)})` : ""}
+          {target != null && !lean ? ` (meta ${fmtCurrency(target)})` : ""}
         </span>
       </div>
       <div className="mt-2 flex flex-wrap gap-2 text-xs">
@@ -287,7 +293,7 @@ function TypeCard({ type, sum, target, title, compact }: { type: AudType; sum: A
               <th className="px-2 py-1 text-right font-medium">Mulher</th>
               <th className="px-2 py-1 text-right font-medium">Homem</th>
               <th className="px-2 py-1 text-right font-medium">Total</th>
-              <th className="px-2 py-1 text-right font-medium">% gasto</th>
+              {lean ? null : <th className="px-2 py-1 text-right font-medium">% gasto</th>}
             </tr>
           </thead>
           <tbody>
@@ -298,7 +304,7 @@ function TypeCard({ type, sum, target, title, compact }: { type: AudType; sum: A
                   <CellView key={g} cell={sum.cells[`${a.age}|${g}`]} target={target} best={sum.bestCombo?.age === a.age && sum.bestCombo.gender === g} />
                 ))}
                 <CellView cell={a} target={target} best={sum.bestAge === a.age} />
-                <td className="px-2 py-1.5 text-right tabular-nums text-zinc-500">{a.share.toFixed(0)}%</td>
+                {lean ? null : <td className="px-2 py-1.5 text-right tabular-nums text-zinc-500">{a.share.toFixed(0)}%</td>}
               </tr>
             ))}
             <tr className="border-t border-zinc-200 dark:border-zinc-700">
@@ -307,7 +313,7 @@ function TypeCard({ type, sum, target, title, compact }: { type: AudType; sum: A
                 <CellView key={g} cell={cell} target={target} best={sum.bestGender === g} />
               ))}
               <CellView cell={sum.total} target={target} best={false} />
-              <td />
+              {lean ? null : <td />}
             </tr>
           </tbody>
         </table>

@@ -2930,16 +2930,22 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     (regra pura), `audience-map.ts` (Meta), `audience-snapshot.ts`, `app/api/analysis/audience/route.ts`, `app/api/public/hooks/audience-tick/route.ts`,
     `components/painel/publico-tab.tsx`, `components/painel/analise-tab.tsx`.
 
-150. **Modo Foco — nova aba "Foco" no menu de cima (Etapa 165)** (`/foco`): uma conta só, tudo numa tela, pra otimizar com várias abas do navegador abertas.
-    Seletor de conta no topo (clientes ativos que aparecem no Painel); a conta escolhida fica no endereço (`?conta=…`) e é lembrada, então cada
-    aba do navegador pode ficar com uma conta diferente. Depois de escolher, aparecem os quadros: **Acompanhamento de Resultados** na metade de cima
-    (tabela por período — Hoje, Ontem, Ontem e hoje, 3 e 7 dias + hoje, Mês atual — com Leads, Valor usado, CPA e diferença pro CPA ideal, e o CPA/leads/valor de cada
-    um dos últimos 14 dias; mesma régua de cores: verde no ideal ou abaixo, laranja até R$ 2,50, vermelho acima) e, embaixo, **Acompanhamento de metas**
-    (investimento do mês × meta mensal com marcador do ideal até hoje, CPA do mês × CPA ideal, Invest. diário × Ritmo) ao lado de **Análise**, com
-    botão para alternar entre **Vídeos (Geral)** e **Melhor público** já presos na conta (leem os retratos guardados; o Atualizar de cada um refaz só essa conta).
-    Busca na Meta só 2 chamadas por conta (`/api/meta/daily-cpa` e `/api/meta/insights` do mês) ao escolher/atualizar. Cada quadro rola sozinho. Arquivos:
-    `app/(app)/foco/page.tsx`, `components/foco/foco-resultados.tsx`, `components/foco/foco-metas.tsx`; `VideosGeral` e `PublicoTab` ganharam a opção `focusAccountId`;
-    link "Foco" em `app/(app)/layout.tsx`. Sem migration e sem n8n.
+150. **Modo Foco — nova aba "Foco" no menu de cima (Etapas 165 e 166)** (`/foco`): uma conta só, tudo numa tela, pra otimizar com várias abas do navegador abertas.
+    **Topo:** seletor de conta com busca por nome (digitar filtra, setas + Enter), botão **Otimizado / Pendente**, "↻ Atualizar", hora da última busca e link
+    "Gerenciador". A conta escolhida fica no endereço (`?conta=…`) e é lembrada, então cada aba do navegador pode ficar com uma conta diferente.
+    **Filtros da lista de contas (Etapa 166):** botão "Filtros" abre os mesmos do Desempenho — Status, CPA (alto), Investimento (baixo/alto), Otimizado, Atenção
+    (lista do Resumo das 7h) e Ordem (Ordem salva, Prioridade + maior diferença do CPA, e as ordens de metas). Filtram só os NOMES no seletor; **nada é buscado na Meta**.
+    CPA, Investimento e as ordens por número usam o que o Desempenho já deixou salvo neste navegador (`tih_cache_v1:acomp-insights:*` mais recente + `acomp-mensal`);
+    sem isso ficam desativados (abrir o Desempenho uma vez resolve). Abre sozinho enquanto não há conta escolhida; a conta aberta nunca some do seletor.
+    **Otimizado / Pendente:** grava a mesma marcação da coluna Otimizado do Desempenho (`PATCH /api/account-bindings`, vale só pro dia) e avisa o Painel aberto em
+    outra aba na hora (`BroadcastChannel "trafic-bindings"`); o Painel também relê as marcações ao voltar pra aba (no máx. a cada 15s).
+    **Quadros:** em cima, **Acompanhamento de Resultados** (tabela por período — Hoje, Ontem, Ontem e hoje, 3 e 7 dias + hoje, Mês atual — com Leads, Valor usado, CPA e
+    diferença pro CPA ideal; o quadro dos 14 dias foi retirado), **Acompanhamento de metas** (investimento do mês × meta, CPA do mês × CPA ideal, Invest. diário × Ritmo)
+    e **Ofertas ativas** (o mesmo quadro de Auditoria → Descrição, só da conta; ↻ refaz só ela; contas fora do IVS mostram "Só contas IVS"). Embaixo, dois quadros separados:
+    **Vídeos (Geral)** e **Melhor público**, já presos na conta (leem os retratos guardados; textos enxutos, sem repetir informação). Busca na Meta só 2 chamadas por conta
+    (`/api/meta/daily-cpa` e `/api/meta/insights` do mês) ao escolher/atualizar. Cada quadro rola sozinho. Arquivos: `app/(app)/foco/page.tsx`,
+    `components/foco/{foco-resultados,foco-metas,foco-ofertas,conta-picker,conta-filtros,conta-filtros-data}.tsx`; `VideosGeral` e `PublicoTab` ganharam `focusAccountId`;
+    `OffersCell` (descricao-tab) agora é exportado; link "Foco" em `app/(app)/layout.tsx`. Sem migration e sem n8n.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

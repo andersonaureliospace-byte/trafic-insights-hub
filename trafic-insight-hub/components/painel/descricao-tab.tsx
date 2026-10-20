@@ -34,7 +34,7 @@ const STATUS_CLASS: Record<OfferStatus, string> = {
 };
 
 // Coluna "Ofertas ativas" (Etapa 149): GERAL / EXAME / PROMO / BOLETO do mês corrente, direto da Meta.
-function OffersCell({ s }: { s: OffersSummary }) {
+export function OffersCell({ s, size = "xs" }: { s: OffersSummary; size?: "xs" | "sm" }) {
   const line = (label: string, status: OfferStatus, extra?: string | null) => (
     <p className="leading-5">
       <span className="font-medium text-zinc-700 dark:text-zinc-200">{label}:</span>{" "}
@@ -43,7 +43,7 @@ function OffersCell({ s }: { s: OffersSummary }) {
     </p>
   );
   return (
-    <div className="space-y-0.5 text-xs">
+    <div className={`space-y-0.5 ${size === "sm" ? "text-sm" : "text-xs"}`}>
       {line("GERAL", s.geral)}
       {line("EXAME", s.exame.status, s.exame.status === "INEXISTENTE" ? null : s.exame.offer)}
       <p className="leading-5">

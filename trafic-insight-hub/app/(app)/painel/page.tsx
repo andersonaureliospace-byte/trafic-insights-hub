@@ -358,13 +358,36 @@ export default function PainelPage() {
     }
   }, []);
 
+  // Etapa 166: o modo Foco avisa (mesmo navegador) quando muda uma marcação — aplica na hora, sem esperar voltar pra esta aba.
+  useEffect(() => {
+    if (typeof BroadcastChannel === "undefined") return;
+    const ch = new BroadcastChannel("trafic-bindings");
+    ch.onmessage = (e: MessageEvent) => {
+      const m = e.data as { accountId?: string; patch?: Partial<AccountBinding> } | null;
+      const id = m?.accountId;
+      if (!id || !m?.patch) return;
+      setBindings((prev) => ({ ...prev, [id]: { ...(prev[id] ?? defaultBinding(id)), ...m.patch } }));
+    };
+    return () => ch.close();
+  }, []);
+
   useEffect(() => {
     function checkNewDay() {
       if (bindingsDayRef.current && bindingsDayRef.current !== brtDay()) void loadBindings();
     }
     const t = setInterval(checkNewDay, 60_000);
+    // Etapa 166: voltar pra esta aba relê os vínculos (barato, só Supabase) — pega o que foi marcado em outra aba (ex.: Otimizado no Foco).
+    let lastReload = 0;
+    const reloadOnReturn = () => {
+      if (Date.now() - lastReload < 15_000) return;
+      lastReload = Date.now();
+      void loadBindings();
+    };
     const onVisible = () => {
-      if (document.visibilityState === "visible") checkNewDay();
+      if (document.visibilityState === "visible") {
+        checkNewDay();
+        reloadOnReturn();
+      }
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("focus", checkNewDay);
