@@ -27,10 +27,12 @@ export function FocoMetas({
   insight,
   cpaTarget,
   monthlyTarget,
+  whatsapp,
 }: {
   insight: AccountInsight | null;
   cpaTarget: number | null;
   monthlyTarget: number | null;
+  whatsapp?: string | null;
 }) {
   const { elapsedDays, daysInMonth } = useMemo(() => metasCalendar(), []);
   if (!insight || insight.insights_failed) {
@@ -87,17 +89,18 @@ export function FocoMetas({
           <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">CPA do mês</p>
           {m.cpaStatus ? <span className={`text-xs font-medium ${CPA_TEXT[m.cpaStatus]}`}>{CPA_LABEL[m.cpaStatus]}</span> : null}
         </div>
-        <p className="mt-1 text-sm">
+        <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1">
           <span className={`text-lg font-semibold tabular-nums ${m.cpaStatus ? CPA_TEXT[m.cpaStatus] : ""}`}>{m.cpa != null ? fmtCurrency(m.cpa) : "—"}</span>
-          <span className="text-zinc-500">
-            {" "}
-            · CPA ideal {cpaTarget != null ? fmtCurrency(cpaTarget) : "não cadastrado"}
-            {m.cpaDiff != null ? ` · diferença ${fmtCurrencySigned(m.cpaDiff)}` : ""}
+          <span className="inline-flex items-baseline gap-1.5 rounded-md bg-sky-100 px-2.5 py-1 text-sky-900 ring-1 ring-sky-300 dark:bg-sky-950 dark:text-sky-100 dark:ring-sky-700">
+            <span className="text-xs font-semibold uppercase tracking-wide">CPA ideal</span>
+            <span className="text-lg font-bold tabular-nums">{cpaTarget != null ? fmtCurrency(cpaTarget) : "não cadastrado"}</span>
           </span>
-        </p>
+          {m.cpaDiff != null ? <span className="text-xs text-zinc-500 dark:text-zinc-400">diferença {fmtCurrencySigned(m.cpaDiff)}</span> : null}
+        </div>
       </section>
 
-      <section title={ritmoTooltip(monthlyTarget, insight)}>
+      <section>
+        <div title={ritmoTooltip(monthlyTarget, insight)}>
         <p className="text-xs font-medium uppercase tracking-wide text-zinc-400">Invest. diário × Ritmo</p>
         {rit == null ? (
           <p className="mt-1 text-sm text-zinc-500">Sem Investimento mensal cadastrado — não dá pra calcular o Ritmo.</p>
@@ -110,6 +113,11 @@ export function FocoMetas({
             {m.dailyDiff != null ? <span className={`ml-1 text-xs ${ritmoColorClass(rit, insight.daily_budget)}`}>({fmtCurrencySigned(m.dailyDiff)})</span> : null}
           </p>
         )}
+        </div>
+        <p className="mt-2 text-sm">
+          <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">WhatsApp</span>{" "}
+          <span className="font-semibold text-zinc-900 dark:text-zinc-50">{whatsapp?.trim() ? whatsapp.trim() : <span className="font-normal text-zinc-500">não cadastrado</span>}</span>
+        </p>
       </section>
     </div>
   );

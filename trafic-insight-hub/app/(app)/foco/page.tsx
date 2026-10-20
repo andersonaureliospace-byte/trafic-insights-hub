@@ -23,6 +23,7 @@ interface Opt {
   optimized: boolean;
   priority: string | null;
   sortOrder: number | null;
+  whatsapp: string | null;
 }
 interface Binding {
   ad_account_id: string;
@@ -32,6 +33,7 @@ interface Binding {
   optimized?: boolean;
   priority?: string | null;
   sort_order?: number | null;
+  whatsapp_contact?: string | null;
   active?: boolean;
 }
 
@@ -84,6 +86,7 @@ export default function FocoPage() {
             optimized: !!x.optimized,
             priority: x.priority ?? null,
             sortOrder: x.sort_order ?? null,
+            whatsapp: x.whatsapp_contact ?? null,
           }))
           .sort((x, y) => x.name.localeCompare(y.name, "pt-BR"));
         setOpts(list);
@@ -261,7 +264,7 @@ export default function FocoPage() {
               <FocoResultados daily={daily} month={month} cpaTarget={opt.cpaTarget} />
             </Quadro>
             <Quadro title="Acompanhamento de metas" className="min-h-[16rem]">
-              <FocoMetas insight={insight} cpaTarget={opt.cpaTarget} monthlyTarget={opt.monthlyInvestment} />
+              <FocoMetas insight={insight} cpaTarget={opt.cpaTarget} monthlyTarget={opt.monthlyInvestment} whatsapp={opt.whatsapp} />
             </Quadro>
             <Quadro title="Ofertas ativas" className="min-h-[16rem]">
               <FocoOfertas accountId={opt.id} />
