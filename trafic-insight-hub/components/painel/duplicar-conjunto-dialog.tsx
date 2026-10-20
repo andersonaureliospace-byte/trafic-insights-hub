@@ -31,6 +31,7 @@ interface Result {
   copiedAds: Array<{ sourceId: string; newId: string | null }>;
   failedAds: Array<{ id: string; name: string; error: string }>;
   warnings: string[];
+  notes?: string[];
   error?: string;
 }
 
@@ -217,6 +218,9 @@ export function DuplicarConjuntoDialog({ adset, onClose }: { adset: DuplicateAds
                 <b>{f.name}</b>: {f.error}
               </p>
             ))}
+            {(result.notes ?? []).length > 0 ? (
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">{(result.notes ?? []).join(" ")}</p>
+            ) : null}
             {result.warnings.map((w, i) => (
               <p key={i} className="rounded-md bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
                 {w}

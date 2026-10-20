@@ -150,7 +150,8 @@ export interface DuplicateResult {
   newName?: string;
   copiedAds: Array<{ sourceId: string; newId: string | null }>;
   failedAds: Array<{ id: string; name: string; error: string }>;
-  warnings: string[];
+  warnings: string[]; // problemas de verdade (algo não ficou como pedido)
+  notes: string[]; // só informação sobre o método usado
   error?: string; // falha na cópia do conjunto (nada foi criado)
 }
 
@@ -164,7 +165,7 @@ export async function duplicateAdSet(
   token: string,
   p: { adsetId: string; adIds: Array<{ id: string; name: string }>; newName: string; dailyBudgetCents?: number | null },
 ): Promise<DuplicateResult> {
-  const out: DuplicateResult = { ok: false, copiedAds: [], failedAds: [], warnings: [] };
+  const out: DuplicateResult = { ok: false, copiedAds: [], failedAds: [], warnings: [], notes: [] };
 
   // 1) o conjunto — cópia nativa; se a Meta recusar por causa da janela de atribuição, cria a partir do original.
   let newId: string | null = null;
@@ -181,7 +182,7 @@ export async function duplicateAdSet(
       try {
         newId = await createAdsetFromOriginal(token, p.adsetId, p.newName, p.dailyBudgetCents);
         createdDirect = true;
-        out.warnings.push("A cópia nativa da Meta recusou a janela de atribuição; criei o conjunto a partir do original com atribuição de 1 dia de clique.");
+        out.notes.push("Conjunto criado a partir do original, com atribuição de 1 dia de clique (a cópia nativa da Meta recusa a janela de atribuição).");
       } catch (e2) {
         out.error = `Não consegui copiar o conjunto: ${msg} — e o método alternativo também falhou: ${(e2 as Error).message}`;
         return out;
@@ -248,7 +249,7 @@ export async function duplicateAdSet(
     out.warnings.push(`Não consegui conferir os nomes dos criativos novos: ${(e as Error).message}`);
   }
 
-  if (usedAdFallback) out.warnings.push("A cópia nativa dos criativos foi recusada pela Meta; criei os anúncios reaproveitando o criativo do original (mesmo anúncio, sem reenviar o criativo).");
+  if (usedAdFallback) out.notes.push("Anúncios criados reaproveitando o criativo do original (a cópia nativa da Meta recusa esse criativo).");
   out.ok = true;
   return out;
 }
