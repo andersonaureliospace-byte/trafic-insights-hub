@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { priorityRank } from "@/lib/format";
+import { DATE_PRESETS, priorityRank } from "@/lib/format";
 import { PRIORITY_CPA_SORT, type FocoSort, cacheLabel, readDesempenhoCache } from "@/components/foco/conta-filtros-data";
 import { METAS_SORTS, compareMetas, computeMetas, metasCalendar, type CpaStatus } from "@/lib/meta/metas";
 import { RITMO_BAND, ritmoColorClass, ritmoFromInsight } from "@/lib/meta/ritmo";
@@ -44,9 +44,13 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
   const [optimized, setOptimized] = useState<"all" | "optimized" | "pending">("all");
   const [attentionF, setAttentionF] = useState<"all" | "attention">("all");
   const [sort, setSort] = useState<FocoSort>("manual");
+  const [period, setPeriod] = useState(""); // "" = o período salvo mais recente
   const [attention, setAttention] = useState<Att>({});
   const [cache, setCache] = useState<ReturnType<typeof readDesempenhoCache>>(null);
   const cal = useMemo(() => metasCalendar(), []);
+  // Período dos números (CPA, Ritmo, filtros): só os que o Desempenho já carregou; os outros ficam desativados.
+  const periodId = period && cache?.periods[period] ? period : (cache?.latest ?? "");
+  const insightsAll = useMemo(() => cache?.periods[periodId]?.data ?? {}, [cache, periodId]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- lê o backup local do Desempenho uma vez ao abrir
@@ -65,7 +69,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
 
   // Números de cada conta que aparecem na lista (CPA, Ritmo) — vêm só do backup do Desempenho.
   const info = useMemo(() => {
-    const ins = cache?.insights ?? {};
+    const ins = insightsAll;
     const mon = cache?.monthly ?? {};
     const m = new Map<string, { cpa: number | null; cpaStatus: CpaStatus | null; ritmo: number | null; ritmoCls: string }>();
     for (const o of opts) {
@@ -84,10 +88,10 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
       });
     }
     return m;
-  }, [opts, cache, cal]);
+  }, [opts, cache, cal, insightsAll]);
 
   const list = useMemo(() => {
-    const ins = cache?.insights ?? {};
+    const ins = insightsAll;
     const needle = flat(q.trim());
     const metasOf = (o: FiltroOpt) =>
       computeMetas(
@@ -140,7 +144,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         }
         return compareMetas(metasOf(a), metasOf(b), sort) || a.name.localeCompare(b.name, "pt-BR");
       });
-  }, [opts, q, priority, cpa, invest, optimized, attentionF, attention, sort, cache, cal, info]);
+  }, [opts, q, priority, cpa, invest, optimized, attentionF, attention, sort, cache, cal, info, insightsAll]);
 
   const activeCount = [q.trim() !== "", priority !== "all", cpa !== "all", invest !== "all", optimized !== "all", attentionF !== "all"].filter(Boolean).length;
   const noData = !cache;
@@ -198,7 +202,19 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
               <option value="attention">🚨 Atenção ({Object.keys(attention).length})</option>
             </select>
           </label>
-          <label>
+          <label title={noData ? noDataHint : "Período dos números da lista (CPA, Ritmo e filtros). Só aparecem os que o Desempenho já carregou neste navegador."}>
+            <span className={lblCls}>Período</span>
+            <select value={periodId} onChange={(e) => setPeriod(e.target.value)} disabled={noData} className={selCls}>
+              {noData ? <option value="">—</option> : null}
+              {DATE_PRESETS.map((p) => (
+                <option key={p.id} value={p.id} disabled={!cache?.periods[p.id]}>
+                  {p.label}
+                  {cache?.periods[p.id] ? "" : " (sem dados)"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="col-span-2">
             <span className={lblCls}>Ordem</span>
             <select value={sort} onChange={(e) => setSort(e.target.value as FocoSort)} className={selCls}>
               <option value="manual">Ordem salva</option>
@@ -214,8 +230,8 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
           </label>
         </div>
         <div className="flex items-center justify-between gap-2 text-xs text-zinc-400">
-          <span title={cache ? `Números do Desempenho salvos às ${cacheLabel(cache.at)}` : noDataHint}>
-            {list.length} de {opts.length} clientes{cache ? ` · ${cacheLabel(cache.at)}` : ""}
+          <span title={cache ? `Números do Desempenho salvos às ${cacheLabel(cache.periods[periodId]?.at ?? cache.at)}` : noDataHint}>
+            {list.length} de {opts.length} clientes{cache ? ` · ${cacheLabel(cache.periods[periodId]?.at ?? cache.at)}` : ""}
           </span>
           {activeCount > 0 ? (
             <button

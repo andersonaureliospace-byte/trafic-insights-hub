@@ -2,7 +2,7 @@ import { fmtCacheTime } from "@/lib/client-cache";
 import type { MetasSort } from "@/lib/meta/metas";
 import type { AccountInsight } from "@/lib/meta/insights";
 
-// Lê (sem buscar nada na Meta) os números que o Desempenho já deixou salvos neste navegador: o período mais recente + o gasto do mês.
+// Lê (sem buscar nada na Meta) os números que o Desempenho já deixou salvos neste navegador: cada período que ele já carregou + o gasto do mês.
 
 export const PRIORITY_CPA_SORT = "priority_cpa" as const;
 export type FocoSort = "manual" | MetasSort | typeof PRIORITY_CPA_SORT;
@@ -10,7 +10,8 @@ export type FocoSort = "manual" | MetasSort | typeof PRIORITY_CPA_SORT;
 const PREFIX = "tih_cache_v1:";
 
 export interface DesempenhoCache {
-  insights: Record<string, AccountInsight>;
+  periods: Record<string, { at: number; data: Record<string, AccountInsight> }>; // por id do período (last_7d, today…)
+  latest: string | null; // período salvo mais recente
   monthly: Record<string, AccountInsight>;
   at: number;
 }
@@ -18,7 +19,8 @@ export interface DesempenhoCache {
 export function readDesempenhoCache(): DesempenhoCache | null {
   try {
     if (typeof window === "undefined") return null;
-    let best: { at: number; data: Record<string, AccountInsight> } | null = null;
+    const periods: DesempenhoCache["periods"] = {};
+    let latest: string | null = null;
     let monthly: { at: number; data: Record<string, AccountInsight> } | null = null;
     for (let i = 0; i < window.localStorage.length; i++) {
       const k = window.localStorage.key(i);
@@ -32,13 +34,15 @@ export function readDesempenhoCache(): DesempenhoCache | null {
       if (typeof p.at !== "number" || !p.data || typeof p.data !== "object") continue;
       const item = { at: p.at, data: p.data as Record<string, AccountInsight> };
       if (isPeriod) {
-        if (!best || item.at > best.at) best = item;
+        const id = name.slice("acomp-insights:".length);
+        periods[id] = item;
+        if (!latest || item.at > periods[latest].at) latest = id;
       } else {
         monthly = item;
       }
     }
-    if (!best && !monthly) return null;
-    return { insights: best?.data ?? {}, monthly: monthly?.data ?? {}, at: Math.max(best?.at ?? 0, monthly?.at ?? 0) };
+    if (!latest && !monthly) return null;
+    return { periods, latest, monthly: monthly?.data ?? {}, at: Math.max(latest ? periods[latest].at : 0, monthly?.at ?? 0) };
   } catch {
     return null;
   }
