@@ -124,6 +124,26 @@ async function createAdsetFromOriginal(token: string, adsetId: string, newName: 
   return res.id;
 }
 
+// Etapa 159c: a cópia nativa de ANÚNCIO também falha às vezes ("O recurso de inclusão do campo de aprimoramentos padrão no criativo foi
+// descontinuado…") porque reenvia o criativo com um campo que a Meta aposentou. Alternativa: criar o anúncio novo APONTANDO pro mesmo
+// criativo do original (creative_id) — o criativo não é reenviado, então esse campo nem entra. É o que o Gerenciador faz ao duplicar.
+async function createAdFromOriginal(token: string, adId: string, newAdsetId: string): Promise<string> {
+  const o = await metaGet<{ account_id?: string; name?: string; creative?: { id?: string }; tracking_specs?: unknown }>(token, `/${adId}`, {
+    fields: "account_id,name,creative{id},tracking_specs",
+  });
+  if (!o.account_id || !o.creative?.id) throw new Error("A Meta não devolveu a conta ou o criativo do anúncio original.");
+  const params: Record<string, string> = {
+    name: o.name ?? adId,
+    adset_id: newAdsetId,
+    creative: JSON.stringify({ creative_id: o.creative.id }),
+    status: "ACTIVE", // fica ativo dentro do conjunto pausado: ativar o conjunto já liga tudo
+  };
+  if (o.tracking_specs) params.tracking_specs = typeof o.tracking_specs === "string" ? o.tracking_specs : JSON.stringify(o.tracking_specs);
+  const res = await metaPost<{ id?: string }>(token, `/act_${o.account_id}/ads`, params);
+  if (!res.id) throw new Error("A Meta respondeu sem o id do anúncio novo.");
+  return res.id;
+}
+
 export interface DuplicateResult {
   ok: boolean;
   newAdsetId?: string;
@@ -190,6 +210,7 @@ export async function duplicateAdSet(
   }
 
   // 3) os criativos escolhidos
+  let usedAdFallback = false;
   for (let i = 0; i < p.adIds.length; i++) {
     const ad = p.adIds[i];
     try {
@@ -201,7 +222,14 @@ export async function duplicateAdSet(
       const copied = res.copied_ad_id ?? res.ad_object_ids?.find((o) => o.ad_object_type === "ad")?.copied_id ?? res.ad_object_ids?.[0]?.copied_id ?? null;
       out.copiedAds.push({ sourceId: ad.id, newId: copied });
     } catch (e) {
-      out.failedAds.push({ id: ad.id, name: ad.name, error: (e as Error).message });
+      // Cópia nativa recusada: cria o anúncio apontando pro mesmo criativo do original.
+      try {
+        const created = await createAdFromOriginal(token, ad.id, newId);
+        out.copiedAds.push({ sourceId: ad.id, newId: created });
+        usedAdFallback = true;
+      } catch (e2) {
+        out.failedAds.push({ id: ad.id, name: ad.name, error: `${(e as Error).message} — e o método alternativo também falhou: ${(e2 as Error).message}` });
+      }
     }
     if (i < p.adIds.length - 1) await sleep(DELAY_MS);
   }
@@ -220,6 +248,7 @@ export async function duplicateAdSet(
     out.warnings.push(`Não consegui conferir os nomes dos criativos novos: ${(e as Error).message}`);
   }
 
+  if (usedAdFallback) out.warnings.push("A cópia nativa dos criativos foi recusada pela Meta; criei os anúncios reaproveitando o criativo do original (mesmo anúncio, sem reenviar o criativo).");
   out.ok = true;
   return out;
 }

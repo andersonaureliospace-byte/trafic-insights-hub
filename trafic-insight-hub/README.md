@@ -2873,6 +2873,10 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     ela reaplica a janela de atribuição padrão, que não vale pra conjuntos de conversas. Nesse caso o conjunto é CRIADO a partir dos dados do
     original (segmentação, otimização, objeto promovido…) já com atribuição de 1 dia de clique, e a janelinha avisa que usou esse método.
 
+    Etapa 159c: no 2º teste o conjunto foi criado, mas a cópia nativa de cada anúncio falhou ("O recurso de inclusão do campo de aprimoramentos
+    padrão no criativo foi descontinuado"): a Meta aposentou esse campo e a cópia o reenvia. Agora, se a cópia nativa do anúncio falhar, o anúncio
+    é criado apontando pro MESMO criativo do original (`creative_id`, mais os `tracking_specs`), sem reenviar o criativo — o que o Gerenciador faz.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
