@@ -1229,6 +1229,71 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 17. Vídeos de Geral — retrato diário (05h40)\n\nRecalcula o mapa de vídeos de Geral (Análise → Vídeos (Geral)) com os números até ontem, pra a tela abrir sem esperar a Meta. Roda 05h40, 05h45, 05h50 e 05h55 (cada chamada continua as contas que faltam; as já feitas hoje são puladas).",
+        "height": 130,
+        "width": 900,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        4720
+      ],
+      "id": "8647e00e-e8e5-4342-9b42-3b1b3b421e7f",
+      "name": "Nota - 17. Vídeos de Geral (retrato 05h40)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "40,45,50,55 5 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        4860
+      ],
+      "id": "9f28b427-c86d-4726-95d2-4f94f3d5c203",
+      "name": "Agenda - Vídeos de Geral (05h40)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/videos-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        4860
+      ],
+      "id": "eac31b24-7141-4fa9-84d5-f95e3ec87a44",
+      "name": "Atualizar retrato dos vídeos de Geral",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
     }
   ],
   "pinData": {},
@@ -1447,6 +1512,17 @@
         [
           {
             "node": "Voltar conjuntos do standby pra R$15",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Vídeos de Geral (05h40)": {
+      "main": [
+        [
+          {
+            "node": "Atualizar retrato dos vídeos de Geral",
             "type": "main",
             "index": 0
           }

@@ -2877,6 +2877,23 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     padrão no criativo foi descontinuado"): a Meta aposentou esse campo e a cópia o reenvia. Agora, se a cópia nativa do anúncio falhar, o anúncio
     é criado apontando pro MESMO criativo do original (`creative_id`, mais os `tracking_specs`), sem reenviar o criativo — o que o Gerenciador faz.
 
+147. **Análise → "Vídeos (Geral)" (Etapa 160)** — terceiro botão da Análise (ao lado de Análise e Aumento). Mapa dos 31 vídeos do banco de
+    GERAL, cruzando todas as contas com meta cadastrada. Só LÊ da Meta (não altera nada). O vídeo é identificado pelo NOME do anúncio
+    ("GERAL | NOME DO VÍDEO", sem acento/maiúscula, ignora sufixos como "- Cópia"); nomes antigos tipo "[ADS Geral Branding] AD 14" são ignorados e
+    "GERAL | algo fora da lista" aparece como "Fora do banco". Etiquetas (filtros no topo): **Alta performance parado** (CPA do mês ou dos 7 dias abaixo
+    da meta, com 3+ conversas, em alguma conta, e nenhum anúncio ativo dele em lugar nenhum), **Não usado recentemente** (último anúncio criado há
+    mais de 14 dias ou nunca), **Pouco testado** (usado, mas menos de R$ 30 ou 5 conversas nos últimos 30 dias), **Ativo em 2+ conjuntos** (repetido
+    na mesma conta) e **Fora do banco**. Cada vídeo expande numa tabela por conta (ativo/pausado/nunca usado, CPA 7 dias e do mês, gasto/conversas
+    30 dias). Carrega em lotes de 5 contas. Limites ajustáveis em `lib/meta/video-summary.ts` (RECENT_DAYS, LOW_SPEND_30D, LOW_CONV_30D,
+    GOOD_MIN_CONV); a lista de nomes fica em `lib/meta/video-bank.ts`. Arquivos: `lib/meta/video-bank.ts`, `lib/meta/video-map.ts`,
+    `lib/meta/video-summary.ts`, `app/api/analysis/video-map/route.ts`, `components/painel/videos-geral.tsx`, `components/painel/analise-tab.tsx`.
+
+    Etapa 161: a tela deixou de consultar a Meta ao abrir. Ela lê um RETRATO guardado (`meta_insights_cache`, chave `videos_geral:v1`, sem
+    migration nova) com os números até ONTEM (mês, 7 dias e 30 dias terminam no dia anterior; no dia 1º o "mês" fica vazio por não haver dia
+    fechado). O retrato é refeito de madrugada pelo hook `app/api/public/hooks/videos-tick/route.ts` (n8n, item 17: 05h40, 05h45, 05h50 e 05h55;
+    cada chamada continua as contas que faltam; `?force=1` refaz tudo). O botão "Atualizar agora" da tela refaz na Meta em lotes e guarda o novo
+    retrato. "Ativo agora"/último uso são do momento do cálculo. Arquivos novos: `lib/meta/video-snapshot.ts`, `videos-tick`.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
