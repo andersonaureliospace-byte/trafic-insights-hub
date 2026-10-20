@@ -3,7 +3,6 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fmtCurrency } from "@/lib/format";
 import { addDaysYmd } from "@/lib/meta/daily-range";
-import type { AdAccount } from "@/lib/meta/insights";
 import {
   CARO_MARGEM,
   GOOD_MIN_CONV,
@@ -138,7 +137,8 @@ const atTxt = (iso: string) =>
     .replace(",", " às");
 const dayTxt = (d: number | null) => (d == null ? "nunca" : d <= 0 ? "hoje" : `há ${d} d`);
 
-export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
+// `focusAccountId` (modo Foco): a tela fica presa numa conta só — sem seletor, sem "Por vídeo", só os vídeos dela — e o Atualizar refaz só ela.
+export function VideosGeral({ accounts, focusAccountId }: { accounts: Array<{ account_id: string }>; focusAccountId?: string }) {
   const [data, setData] = useState<Cached | null>(null);
   const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -148,11 +148,12 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
   const [filter, setFilter] = useState<"todos" | VideoTag>("todos");
   const [filterConta, setFilterConta] = useState<"todos" | AccountVideoTag>("todos");
   const [q, setQ] = useState("");
-  const [contaSel, setContaSel] = useState(""); // conta escolhida no seletor ("" = todas)
+  const [contaSel, setContaSel] = useState(focusAccountId ?? ""); // conta escolhida no seletor ("" = todas)
+  const focus = !!focusAccountId;
   const [open, setOpen] = useState<Set<string>>(new Set());
   const run = useRef(0);
 
-  const ids = useMemo(() => accounts.map((a) => a.account_id), [accounts]);
+  const ids = useMemo(() => (focusAccountId ? [focusAccountId] : accounts.map((a) => a.account_id)), [accounts, focusAccountId]);
 
   // Abre lendo o retrato guardado (números até ontem) — NÃO consulta a Meta.
   const readSnapshot = useCallback(async () => {
@@ -251,11 +252,12 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
         <div>
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Vídeos de Geral</h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            {mode === "conta" ? (selectedConta ? `Vídeos do banco em ${selectedConta.clientName} (meta ${fmtCurrency(selectedConta.cpaTarget)}).` : "Cada conta com Meta CPA e a situação dos vídeos do banco nela.") : "Cada vídeo do banco e como ele está em todas as contas."} Só leitura — nada é alterado.
+            {focus ? "Vídeos do banco nessa conta." : mode === "conta" ? (selectedConta ? `Vídeos do banco em ${selectedConta.clientName} (meta ${fmtCurrency(selectedConta.cpaTarget)}).` : "Cada conta com Meta CPA e a situação dos vídeos do banco nela.") : "Cada vídeo do banco e como ele está em todas as contas."} {focus ? "" : " Só leitura — nada é alterado."}
             {data?.computedFor ? ` Números até ontem (${untilTxt(data.computedFor)}), atualizados de madrugada${snapshotAt ? ` — calculado ${atTxt(snapshotAt)}` : ""}. "Ativo" é a situação no momento do cálculo.` : ""}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {focus ? null : (
           <div className="inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
             {([
               ["conta", "Por conta"],
@@ -272,7 +274,8 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
               </button>
             ))}
           </div>
-          {mode === "conta" ? (
+          )}
+          {focus ? null : mode === "conta" ? (
             <select
               value={selectedConta ? contaSel : ""}
               onChange={(e) => setContaSel(e.target.value)}
@@ -357,7 +360,13 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
             <VideosDaConta items={selectedConta.items.filter((i) => filterConta === "todos" || i.tags.includes(filterConta))} />
           </div>
         ) : (
-          <PorConta contas={contasShown} filter={filterConta} open={open} toggle={toggle} />
+          focus ? (
+            <p className="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400">
+              Sem dados de vídeos dessa conta no retrato (a conta precisa ter Meta CPA cadastrada). Clique em Atualizar agora.
+            </p>
+          ) : (
+            <PorConta contas={contasShown} filter={filterConta} open={open} toggle={toggle} />
+          )
         )
       ) : shown.length === 0 ? (
         <p className="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400">Nenhum vídeo nessa situação.</p>
@@ -415,11 +424,13 @@ export function VideosGeral({ accounts }: { accounts: AdAccount[] }) {
         </div>
       )}
 
+      {focus ? null : (
       <p className="border-t border-zinc-100 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800/60 dark:text-zinc-400">
         “Bom” = CPA do mês ou dos 7 dias abaixo da Meta CPA da conta, com {GOOD_MIN_CONV}+ conversas. Só entram anúncios com nome no padrão “GERAL | …”
         (os nomes antigos e os vídeos fora da lista ficam de fora). Limites usados: parado = mais de {RECENT_DAYS} dias; pouco testado = menos de {fmtCurrency(LOW_SPEND_30D)} ou menos de {LOW_CONV_30D} conversas em 30 dias.
         {data && data.errors.length > 0 ? ` Erro em ${data.errors.length} lote(s)/conta(s): ${data.errors[0].slice(0, 100)}` : ""}
       </p>
+      )}
     </div>
   );
 }

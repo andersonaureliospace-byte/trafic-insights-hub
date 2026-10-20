@@ -2930,6 +2930,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     (regra pura), `audience-map.ts` (Meta), `audience-snapshot.ts`, `app/api/analysis/audience/route.ts`, `app/api/public/hooks/audience-tick/route.ts`,
     `components/painel/publico-tab.tsx`, `components/painel/analise-tab.tsx`.
 
+150. **Modo Foco — nova aba "Foco" no menu de cima (Etapa 165)** (`/foco`): uma conta só, tudo numa tela, pra otimizar com várias abas do navegador abertas.
+    Seletor de conta no topo (clientes ativos que aparecem no Painel); a conta escolhida fica no endereço (`?conta=…`) e é lembrada, então cada
+    aba do navegador pode ficar com uma conta diferente. Depois de escolher, aparecem os quadros: **Acompanhamento de Resultados** na metade de cima
+    (tabela por período — Hoje, Ontem, Ontem e hoje, 3 e 7 dias + hoje, Mês atual — com Leads, Valor usado, CPA e diferença pro CPA ideal, e o CPA/leads/valor de cada
+    um dos últimos 14 dias; mesma régua de cores: verde no ideal ou abaixo, laranja até R$ 2,50, vermelho acima) e, embaixo, **Acompanhamento de metas**
+    (investimento do mês × meta mensal com marcador do ideal até hoje, CPA do mês × CPA ideal, Invest. diário × Ritmo) ao lado de **Análise**, com
+    botão para alternar entre **Vídeos (Geral)** e **Melhor público** já presos na conta (leem os retratos guardados; o Atualizar de cada um refaz só essa conta).
+    Busca na Meta só 2 chamadas por conta (`/api/meta/daily-cpa` e `/api/meta/insights` do mês) ao escolher/atualizar. Cada quadro rola sozinho. Arquivos:
+    `app/(app)/foco/page.tsx`, `components/foco/foco-resultados.tsx`, `components/foco/foco-metas.tsx`; `VideosGeral` e `PublicoTab` ganharam a opção `focusAccountId`;
+    link "Foco" em `app/(app)/layout.tsx`. Sem migration e sem n8n.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

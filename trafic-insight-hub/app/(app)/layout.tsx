@@ -20,6 +20,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             </span>
             <nav className="flex flex-wrap items-center gap-0.5">
               <NavLink href="/painel">Painel</NavLink>
+              <NavLink href="/foco">Foco</NavLink>
               <NavLink href="/mensagens">Mensagens</NavLink>
               <NavLink href="/auditoria">Auditoria</NavLink>
               {/* Etapa 135: CRM escondido do menu (não é usado). As telas/rotas continuam no projeto — pra voltar, é só

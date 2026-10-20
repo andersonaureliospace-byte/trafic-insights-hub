@@ -50,10 +50,13 @@ function cpaCls(cpa: number | null, target: number | null): string {
   return "";
 }
 
-export function PublicoTab() {
+// `focusAccountId` (modo Foco): fica preso numa conta só (sem seletor) e o Atualizar refaz só ela.
+export function PublicoTab({ focusAccountId }: { focusAccountId?: string } = {}) {
+  const focus = !!focusAccountId;
   const [accounts, setAccounts] = useState<Acc[] | null>(null);
   const [snap, setSnap] = useState<Snapshot | null>(null);
-  const [sel, setSel] = useState("");
+  const [selState, setSel] = useState("");
+  const sel = focusAccountId ?? selState;
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -77,17 +80,18 @@ export function PublicoTab() {
   }, [read]);
 
   const recalc = useCallback(async () => {
-    if (!accounts || accounts.length === 0) return;
+    const list = focusAccountId ? (accounts ?? []).filter((a) => a.accountId === focusAccountId) : (accounts ?? []);
+    if (list.length === 0) return;
     setLoading(true);
     setError(null);
-    setProgress({ done: 0, total: accounts.length });
+    setProgress({ done: 0, total: list.length });
     const errs: string[] = [];
-    for (let i = 0; i < accounts.length; i += BATCH) {
+    for (let i = 0; i < list.length; i += BATCH) {
       try {
         const res = await fetch("/api/analysis/audience", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ accountIds: accounts.slice(i, i + BATCH).map((a) => a.accountId) }),
+          body: JSON.stringify({ accountIds: list.slice(i, i + BATCH).map((a) => a.accountId) }),
         });
         const d = (await res.json()) as { error?: string; errors?: string[] };
         if (d.error) errs.push(d.error);
@@ -95,13 +99,13 @@ export function PublicoTab() {
       } catch (e) {
         errs.push((e as Error).message);
       }
-      setProgress({ done: Math.min(i + BATCH, accounts.length), total: accounts.length });
+      setProgress({ done: Math.min(i + BATCH, list.length), total: list.length });
     }
     await read();
     setLoading(false);
     setProgress(null);
     if (errs.length > 0) setError(errs[0]);
-  }, [accounts, read]);
+  }, [accounts, focusAccountId, read]);
 
   const entries = useMemo(() => Object.values(snap?.accounts ?? {}).filter((a) => !a.error), [snap]);
   const computedFor = useMemo(() => entries.map((e) => e.computedFor).sort()[0] ?? null, [entries]);
@@ -134,11 +138,12 @@ export function PublicoTab() {
         <div>
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Melhor público</h2>
           <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Faixa etária e gênero com o menor custo por conversa em GERAL e EXAME (tipo pelo nome do conjunto).
-            {since && until ? ` Últimos ${AUDIENCE_DAYS} dias fechados (${dmy(since)} a ${dmy(until)}), atualizados de madrugada${snap ? ` — calculado ${atTxt(snap.computed_at)}` : ""}.` : ""} Só leitura.
+            {focus ? "Faixa etária e gênero com o menor custo por conversa — GERAL e EXAME." : "Faixa etária e gênero com o menor custo por conversa em GERAL e EXAME (tipo pelo nome do conjunto)."}
+            {since && until ? ` Últimos ${AUDIENCE_DAYS} dias fechados (${dmy(since)} a ${dmy(until)}), atualizados de madrugada${snap ? ` — calculado ${atTxt(snap.computed_at)}` : ""}.` : ""}{focus ? "" : " Só leitura."}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {focus ? null : (
           <select
             value={selected || selectedAcc ? sel : ""}
             onChange={(e) => setSel(e.target.value)}
@@ -151,6 +156,7 @@ export function PublicoTab() {
               </option>
             ))}
           </select>
+          )}
           <button
             onClick={() => void recalc()}
             disabled={loading || !accounts || accounts.length === 0}
@@ -170,6 +176,8 @@ export function PublicoTab() {
         <p className="px-4 py-6 text-sm text-zinc-500">Carregando…</p>
       ) : entries.length === 0 ? (
         <p className="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400">Ainda não há retrato guardado. Ele é calculado de madrugada; para ter agora, clique em "Calcular agora".</p>
+      ) : focus && !selected ? (
+        <p className="px-4 py-6 text-sm text-zinc-500 dark:text-zinc-400">Sem retrato dessa conta ainda. Clique em "Atualizar agora".</p>
       ) : selected && selectedAcc ? (
         <div className="grid gap-4 p-4 lg:grid-cols-2">
           {TYPES.map((t) => (
@@ -235,11 +243,13 @@ export function PublicoTab() {
         </>
       )}
 
+      {focus ? null : (
       <p className="border-t border-zinc-100 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800/60 dark:text-zinc-400">
         “Melhor” = menor custo por conversa entre os grupos com pelo menos {MIN_CONV} conversas (amostra menor não conta). Faixas são as da Meta (quem de fato recebeu o anúncio,
         não só a idade configurada no conjunto). Só conjuntos GERAL e EXAME entram — PROMO, boleto/crediário e campanhas [VAGA]/[TRÁFEGO] ficam de fora. Verde = CPA abaixo da meta da conta; vermelho = R$ 4 ou mais acima.
         Clique numa conta da lista para abrir o detalhe dela.
       </p>
+      )}
     </div>
   );
 }
