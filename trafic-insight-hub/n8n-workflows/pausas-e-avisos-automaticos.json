@@ -1359,6 +1359,71 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "content": "## 19. Melhor público — retrato diário (06h30)\n\nRecalcula o retrato da Análise → Melhor público (faixa etária e gênero de GERAL e EXAME nos últimos 14 dias fechados), pra a tela abrir sem esperar a Meta. Roda 06h30, 06h35, 06h40 e 06h45 (cada chamada continua as contas que faltam; as já feitas hoje são puladas). Só lê da Meta.",
+        "height": 130,
+        "width": 900,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        5320
+      ],
+      "id": "6461de15-f480-42c1-b663-ad00a6c77a53",
+      "name": "Nota - 19. Melhor público (retrato 06h30)"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30,35,40,45 6 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        5460
+      ],
+      "id": "43b8c6e6-db71-4bec-ab75-9bbc678b8acb",
+      "name": "Agenda - Melhor público (06h30)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/audience-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        5460
+      ],
+      "id": "48377a04-b2e8-4f28-beb9-d0590496d328",
+      "name": "Atualizar retrato do melhor público",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
     }
   ],
   "pinData": {},
@@ -1599,6 +1664,17 @@
         [
           {
             "node": "Conferir contas sem exame ativo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Melhor público (06h30)": {
+      "main": [
+        [
+          {
+            "node": "Atualizar retrato do melhor público",
             "type": "main",
             "index": 0
           }

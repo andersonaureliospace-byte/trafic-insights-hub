@@ -11,6 +11,7 @@ import { DATE_PRESETS, fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { AumentoProgramado } from "@/components/painel/aumento-programado";
 import { ExameTab } from "@/components/painel/exame-tab";
+import { PublicoTab } from "@/components/painel/publico-tab";
 import { VideosGeral } from "@/components/painel/videos-geral";
 import { DuplicarConjuntoDialog, type DuplicateAdsetInput } from "@/components/painel/duplicar-conjunto-dialog";
 
@@ -1473,7 +1474,7 @@ export function AnaliseTab(props: {
   initialFilters?: Record<string, unknown>;
   onFiltersChange?: (filters: AnaliseFilters) => void;
 }) {
-  const [area, setArea] = useState<"analise" | "aumento" | "videos" | "exame">("analise");
+  const [area, setArea] = useState<"analise" | "aumento" | "videos" | "exame" | "publico">("analise");
   return (
     <div className="space-y-3">
       <div className="inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
@@ -1482,6 +1483,7 @@ export function AnaliseTab(props: {
           ["aumento", "Aumento programado"],
           ["videos", "Vídeos (Geral)"],
           ["exame", "Exame"],
+          ["publico", "Melhor público"],
         ] as const).map(([id, label]) => (
           <button
             key={id}
@@ -1502,6 +1504,7 @@ export function AnaliseTab(props: {
       {area === "aumento" ? <AumentoProgramado /> : null}
       {area === "videos" ? <VideosGeral accounts={props.accounts} /> : null}
       {area === "exame" ? <ExameTab /> : null}
+      {area === "publico" ? <PublicoTab /> : null}
     </div>
   );
 }

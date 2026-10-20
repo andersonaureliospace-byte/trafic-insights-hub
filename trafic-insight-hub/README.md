@@ -2919,6 +2919,17 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     pra guardar a escolha Sim/Não (sem ele a tela e a rotina funcionam com o padrão). Arquivos: `lib/exam/rule.ts`, `lib/exam/check.ts`,
     `app/api/analysis/exam/route.ts`, `app/api/public/hooks/exam-check-tick/route.ts`, `components/painel/exame-tab.tsx`, `components/painel/analise-tab.tsx`.
 
+149. **Análise → "Melhor público" (Etapa 164)** — quinto botão da Análise. Pra GERAL e EXAME (tipo pelo NOME do conjunto; PROMO, boleto/crediário e
+    campanhas [VAGA]/[TRÁFEGO] ficam de fora), mostra qual faixa etária e qual gênero têm o menor custo por conversa nos últimos 14 dias FECHADOS
+    (termina ontem). Dados: insights por conjunto com quebra `age,gender` (faixa que de fato recebeu o anúncio, não a idade configurada). "Melhor" =
+    menor CPA entre os grupos com 3+ conversas (`MIN_CONV` em `lib/meta/audience-summary.ts`). "Todas as contas": cartões da rede toda (Geral e Exame)
+    + tabela por conta (melhor faixa, gênero, combinação e CPA 14d, verde abaixo da meta / vermelho R$ 4+ acima); clicar na conta (ou escolher no seletor)
+    abre o detalhe: tabela faixa × (Mulher, Homem, Total) com CPA, conversas e gasto, ★ na melhor faixa e célula da melhor combinação destacada.
+    Sem consulta à Meta ao abrir: lê o retrato guardado (`meta_insights_cache`, chave `audience:v1`, sem migration), refeito de madrugada pelo hook
+    `audience-tick` (n8n item 19: 06h30, 06h35, 06h40, 06h45; `?force=1` refaz tudo) ou pelo botão "Atualizar agora". Arquivos: `lib/meta/audience-summary.ts`
+    (regra pura), `audience-map.ts` (Meta), `audience-snapshot.ts`, `app/api/analysis/audience/route.ts`, `app/api/public/hooks/audience-tick/route.ts`,
+    `components/painel/publico-tab.tsx`, `components/painel/analise-tab.tsx`.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
