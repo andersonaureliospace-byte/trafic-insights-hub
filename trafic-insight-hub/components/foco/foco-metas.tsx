@@ -114,7 +114,18 @@ export function FocoMetas({
           </p>
         )}
         </div>
-        <p className="mt-2 text-sm">
+        <p className="mt-1 text-sm" title="Investimento mensal ÷ dias do mês (o mesmo do balão do nome no Desempenho)">
+          <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Ritmo médio</span>{" "}
+          {monthlyTarget != null && monthlyTarget > 0 ? (
+            <>
+              <span className="font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">{fmtCurrency(monthlyTarget / daysInMonth)}</span>
+              <span className="text-zinc-500"> por dia</span>
+            </>
+          ) : (
+            <span className="text-zinc-500">não cadastrado</span>
+          )}
+        </p>
+        <p className="mt-1 text-sm">
           <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">WhatsApp</span>{" "}
           <span className="font-semibold text-zinc-900 dark:text-zinc-50">{whatsapp?.trim() ? whatsapp.trim() : <span className="font-normal text-zinc-500">não cadastrado</span>}</span>
         </p>

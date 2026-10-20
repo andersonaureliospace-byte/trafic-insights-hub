@@ -2954,7 +2954,7 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     (`/api/meta/daily-cpa` e `/api/meta/insights` do mês) ao escolher/atualizar. Cada quadro rola sozinho. Arquivos: `app/(app)/foco/page.tsx`,
     `components/foco/{foco-resultados,foco-metas,foco-ofertas,conta-picker,conta-filtros,conta-filtros-data}.tsx`; `VideosGeral` e `PublicoTab` ganharam `focusAccountId`;
     **Metas (Etapa 168):** o quadro mostra o **WhatsApp** do cliente (o mesmo do balão do nome no Desempenho) logo abaixo do Orçamento diário, e o **CPA ideal** ganhou destaque
-    (caixa azul grande ao lado do CPA do mês).
+    (caixa azul grande ao lado do CPA do mês); também mostra o **Ritmo médio** (Investimento mensal ÷ dias do mês) abaixo do Orçamento diário.
     `OffersCell` (descricao-tab) agora é exportado; link "Foco" em `app/(app)/layout.tsx`. Sem migration e sem n8n.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
