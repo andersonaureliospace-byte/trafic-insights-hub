@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { writeTabCache } from "@/lib/client-cache";
 import { DATE_PRESETS, priorityRank } from "@/lib/format";
 import { PRIORITY_CPA_SORT, type FocoSort, cacheLabel, readDesempenhoCache } from "@/components/foco/conta-filtros-data";
 import { METAS_SORTS, compareMetas, computeMetas, metasCalendar, type CpaStatus } from "@/lib/meta/metas";
 import { RITMO_BAND, ritmoColorClass, ritmoFromInsight } from "@/lib/meta/ritmo";
+import type { AccountInsight } from "@/lib/meta/insights";
 import { usePriorityOptions } from "@/lib/priority-context";
 
 // Painel lateral do modo Foco: lista vertical de clientes (Nome | Status | CPA | Ritmo) com busca e os mesmos filtros do Desempenho
 // (Status, CPA, Investimento, Otimizado, Atenção + Ordem). Filtra só a LISTA — nada é buscado na Meta. CPA, Ritmo e os filtros/ordens por número
 // usam o que o Desempenho já deixou salvo neste navegador (sem isso aparecem "—" e esses filtros ficam desativados). Atenção = lista do Resumo das 7h.
+// O botão "↻ Atualizar" é o único que consulta a Meta (todos os clientes, no período escolhido + gasto do mês) e grava no mesmo backup do Desempenho.
 
 export interface FiltroOpt {
   id: string;
@@ -46,6 +49,8 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
   const [sort, setSort] = useState<FocoSort>("manual");
   const [period, setPeriod] = useState(""); // "" = o período salvo mais recente
   const [attention, setAttention] = useState<Att>({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshErr, setRefreshErr] = useState<string | null>(null);
   const [cache, setCache] = useState<ReturnType<typeof readDesempenhoCache>>(null);
   const cal = useMemo(() => metasCalendar(), []);
   // Período dos números (CPA, Ritmo, filtros): só os que o Desempenho já carregou; os outros ficam desativados.
@@ -89,6 +94,40 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
     }
     return m;
   }, [opts, cache, cal, insightsAll]);
+
+  // Busca na Meta os números de TODOS os clientes da lista (mesmas chamadas do Desempenho) e grava no backup local. Só roda quando clica.
+  async function refresh() {
+    if (refreshing || opts.length === 0) return;
+    setRefreshing(true);
+    setRefreshErr(null);
+    const ids = opts.map((o) => o.id);
+    const preset = periodId || "last_7d";
+    const call = async (body: Record<string, unknown>) => {
+      const res = await fetch("/api/meta/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(90_000),
+        body: JSON.stringify({ accountIds: ids, ...body }),
+      });
+      const d = (await res.json()) as { insights?: Record<string, AccountInsight>; error?: string };
+      if (!d.insights) throw new Error(d.error ?? "A Meta não respondeu.");
+      return d.insights;
+    };
+    try {
+      const period = await call({ datePreset: preset });
+      writeTabCache(`acomp-insights:${preset}`, period);
+      setCache(readDesempenhoCache());
+      setPeriod(preset);
+      const month = await call({ datePreset: "this_month", spendOnly: true });
+      writeTabCache("acomp-mensal", month);
+      setCache(readDesempenhoCache());
+    } catch (e) {
+      const m = (e as Error).message;
+      setRefreshErr(/failed to fetch|networkerror|load failed/i.test(m) ? "Sem conexão com o servidor agora. Tente de novo." : m);
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   const list = useMemo(() => {
     const ins = insightsAll;
@@ -154,12 +193,23 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="shrink-0 space-y-2 border-b border-zinc-200 p-2.5 dark:border-zinc-800">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar cliente…"
-          className="h-8 w-full rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
-        />
+        <div className="flex items-center gap-2">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar cliente…"
+            className="h-8 min-w-0 flex-1 rounded-md border border-zinc-300 bg-transparent px-2.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
+          />
+          <button
+            onClick={() => void refresh()}
+            disabled={refreshing || opts.length === 0}
+            title="Busca na Meta os números de todos os clientes da lista (CPA e Ritmo) no período escolhido. Pode levar alguns segundos."
+            className="h-8 shrink-0 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+          >
+            {refreshing ? "Atualizando…" : "↻ Atualizar"}
+          </button>
+        </div>
+        {refreshErr ? <p className="text-xs text-red-600">{refreshErr}</p> : null}
         <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
           <label>
             <span className={lblCls}>Status</span>
