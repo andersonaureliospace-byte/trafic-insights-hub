@@ -99,7 +99,7 @@ export async function getAccountVideoStats(token: string, accountId: string, now
   for (const a of ads) {
     if (!a.name) continue;
     const m = matchVideo(a.name);
-    if (!m) continue;
+    if (!m || !m.inBank) continue; // fora do banco: ignorado
     const s = get(m);
     s.totalAds++;
     if ((a.effective_status ?? "").toUpperCase() === "ACTIVE") {
@@ -112,7 +112,7 @@ export async function getAccountVideoStats(token: string, accountId: string, now
   const addRows = (rows: Awaited<ReturnType<typeof getCreativeCostAnalysis>>, field: "month" | "d7" | "d30") => {
     for (const r of rows) {
       const m = matchVideo(r.name);
-      if (!m) continue;
+      if (!m || !m.inBank) continue;
       const s = get(m);
       s[field].spend += r.spend;
       s[field].conv += r.conversations ?? 0;

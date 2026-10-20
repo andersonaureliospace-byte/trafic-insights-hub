@@ -2894,6 +2894,15 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     cada chamada continua as contas que faltam; `?force=1` refaz tudo). O botão "Atualizar agora" da tela refaz na Meta em lotes e guarda o novo
     retrato. "Ativo agora"/último uso são do momento do cálculo. Arquivos novos: `lib/meta/video-snapshot.ts`, `videos-tick`.
 
+    Etapa 162: a tela ganhou o seletor **Por conta | Por vídeo** (abre em "Por conta"). Anúncios "GERAL | …" que não estão no banco são IGNORADOS
+    (saiu a etiqueta "Fora do banco"; também não entram mais no retrato). "Por conta" lista cada conta com Meta CPA e, em colunas, quantos
+    vídeos do banco estão em cada situação NAQUELA conta: **Reativar** (CPA 7 dias ou do mês abaixo da meta, 3+ conversas, sem anúncio ativo),
+    **Repetido** (ativo em 2+ conjuntos), **Parado** (já usado, sem ativo, último anúncio há mais de 14 dias), **Pouco testado** (<R$ 30 ou
+    <5 conversas em 30 dias), **Caro** (CPA do mês, ou de 30 dias, R$ 4+ acima da meta, 3+ conversas — evitar trazer de volta) e **Nunca usado**
+    (candidato a teste). Clicar na conta abre os 31 vídeos com situação, CPA 7 dias/mês, gasto e conversas 30 dias e último anúncio; os filtros do
+    topo ("Com vídeo bom pra reativar" etc.) mostram só as contas com aquela situação e, ao abrir, só os vídeos dela. A busca procura pelo nome da
+    conta. Código: `summarizeAccounts` em `lib/meta/video-summary.ts` e `PorConta` em `components/painel/videos-geral.tsx`.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
