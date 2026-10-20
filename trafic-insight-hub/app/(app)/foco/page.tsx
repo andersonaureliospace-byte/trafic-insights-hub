@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useContaFiltros } from "@/components/foco/conta-filtros";
-import { ContaPicker } from "@/components/foco/conta-picker";
+import { ContaLateral } from "@/components/foco/conta-filtros";
 import { FocoMetas } from "@/components/foco/foco-metas";
 import { FocoOfertas } from "@/components/foco/foco-ofertas";
 import { FocoResultados } from "@/components/foco/foco-resultados";
@@ -64,7 +63,7 @@ export default function FocoPage() {
   const [error, setError] = useState<string | null>(null);
   const [at, setAt] = useState<number | null>(null);
   const [savingOpt, setSavingOpt] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [listOpen, setListOpen] = useState(true);
   const run = useRef(0);
 
   // Contas dos clientes ativos que aparecem no Painel (só Supabase — barato).
@@ -97,10 +96,7 @@ export default function FocoPage() {
         } catch {
           /* sem armazenamento */
         }
-        if (list.some((o) => o.id === initial)) {
-          setSel(initial);
-          setFiltersOpen(false);
-        }
+        if (list.some((o) => o.id === initial)) setSel(initial);
       } catch (e) {
         setError((e as Error).message);
         setOpts([]);
@@ -110,7 +106,6 @@ export default function FocoPage() {
 
   const choose = useCallback((id: string) => {
     setSel(id);
-    if (id) setFiltersOpen(false);
     try {
       const url = new URL(window.location.href);
       if (id) url.searchParams.set("conta", id);
@@ -191,30 +186,25 @@ export default function FocoPage() {
 
   const opt = useMemo(() => opts?.find((o) => o.id === sel) ?? null, [opts, sel]);
   const optList = useMemo(() => opts ?? [], [opts]);
-  const { list: filtered, bar: filtersBar, activeCount } = useContaFiltros(optList);
-  // A conta aberta continua no seletor mesmo se algum filtro a esconderia.
-  const pickerOptions = useMemo(() => {
-    const base = filtered.map((o) => ({ id: o.id, name: o.name }));
-    if (opt && !base.some((o) => o.id === opt.id)) base.push({ id: opt.id, name: opt.name });
-    return base;
-  }, [filtered, opt]);
 
   return (
-    <div className="flex flex-col gap-3 p-3 lg:h-[calc(100vh-3.6rem)]">
+    <div className="flex flex-col gap-3 p-3 lg:h-[calc(100vh-3.6rem)] lg:flex-row">
+      {listOpen ? (
+        <aside className="flex min-h-0 shrink-0 flex-col max-lg:h-[26rem] lg:w-[21rem]">
+          <ContaLateral opts={optList} value={sel} onChoose={choose} />
+        </aside>
+      ) : null}
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
       <div className="flex shrink-0 flex-wrap items-center gap-3">
-        <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Foco</span>
-        <ContaPicker options={pickerOptions} value={sel} onChange={choose} />
         <button
-          onClick={() => setFiltersOpen((v) => !v)}
-          title="Filtros e ordem da lista de contas (mesmos do Desempenho)"
-          className={`h-9 rounded-md border px-3 text-sm font-medium ${
-            filtersOpen || activeCount > 0
-              ? "border-zinc-900 bg-zinc-900 text-white dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-900"
-              : "border-zinc-300 dark:border-zinc-700"
-          }`}
+          onClick={() => setListOpen((v) => !v)}
+          title={listOpen ? "Esconder a lista de clientes" : "Mostrar a lista de clientes"}
+          className="h-9 rounded-md border border-zinc-300 px-3 text-sm font-medium dark:border-zinc-700"
         >
-          Filtros{activeCount > 0 ? ` (${activeCount})` : ""}
+          {listOpen ? "◀ Lista" : "▶ Lista"}
         </button>
+        <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{opt ? opt.name : "Foco"}</span>
         {opt ? (
           <>
             <button
@@ -251,11 +241,9 @@ export default function FocoPage() {
         {error ? <span className="text-xs text-red-600">{error}</span> : null}
       </div>
 
-      {filtersOpen ? <div className="shrink-0">{filtersBar}</div> : null}
-
       {!opt ? (
         <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-zinc-700">
-          Escolha uma conta para abrir o modo Foco.
+          Escolha um cliente na lista ao lado para abrir o modo Foco.
         </div>
       ) : (
         <div key={opt.id} className="grid min-h-0 flex-1 gap-3 lg:grid-rows-[minmax(0,5fr)_minmax(0,6fr)]">
@@ -284,6 +272,7 @@ export default function FocoPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

@@ -2938,13 +2938,13 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     `audience:v1`; 3 consultas por conta na Meta); retratos antigos (só 14 dias) são refeitos pelo hook na próxima rodada e o seletor avisa se faltar. Regra pura em
     `lib/meta/audience-summary.ts` (`suggestAgeRange`, `chooseRows`).
 
-150. **Modo Foco — nova aba "Foco" no menu de cima (Etapas 165 e 166)** (`/foco`): uma conta só, tudo numa tela, pra otimizar com várias abas do navegador abertas.
-    **Topo:** seletor de conta com busca por nome (digitar filtra, setas + Enter), botão **Otimizado / Pendente**, "↻ Atualizar", hora da última busca e link
-    "Gerenciador". A conta escolhida fica no endereço (`?conta=…`) e é lembrada, então cada aba do navegador pode ficar com uma conta diferente.
-    **Filtros da lista de contas (Etapa 166):** botão "Filtros" abre os mesmos do Desempenho — Status, CPA (alto), Investimento (baixo/alto), Otimizado, Atenção
-    (lista do Resumo das 7h) e Ordem (Ordem salva, Prioridade + maior diferença do CPA, e as ordens de metas). Filtram só os NOMES no seletor; **nada é buscado na Meta**.
-    CPA, Investimento e as ordens por número usam o que o Desempenho já deixou salvo neste navegador (`tih_cache_v1:acomp-insights:*` mais recente + `acomp-mensal`);
-    sem isso ficam desativados (abrir o Desempenho uma vez resolve). Abre sozinho enquanto não há conta escolhida; a conta aberta nunca some do seletor.
+150. **Modo Foco — nova aba "Foco" no menu de cima (Etapas 165, 166 e 169)** (`/foco`): uma conta só, tudo numa tela, pra otimizar com várias abas do navegador abertas.
+    **Painel lateral (Etapa 169):** à esquerda, lista vertical de clientes — Nome | Status | CPA | Ritmo (bolinha verde = otimizada hoje, 🚨 = precisa de atenção) — com busca por nome e os
+    mesmos filtros do Desempenho: Status, Otimizado, CPA (alto), Investimento (baixo/alto), Atenção (lista do Resumo das 7h) e Ordem (Ordem salva, Prioridade + diferença do CPA e as ordens
+    de metas). Clicar num cliente abre ele. O botão "◀ Lista" esconde/mostra o painel. Filtra só os NOMES — **nada é buscado na Meta**: CPA, Ritmo e os filtros/ordens por número usam o que o
+    Desempenho já deixou salvo neste navegador (`tih_cache_v1:acomp-insights:*` mais recente + `acomp-mensal`); sem isso aparecem "—" e esses filtros ficam desativados (abrir o Desempenho uma
+    vez resolve). Substituiu o seletor com busca e a barra de filtros da Etapa 166 (`conta-picker.tsx` ficou sem uso). Topo do conteúdo: nome do cliente, botão **Otimizado / Pendente**,
+    "↻ Atualizar", hora da última busca e link "Gerenciador". A conta escolhida fica no endereço (`?conta=…`) e é lembrada, então cada aba do navegador pode ter um cliente diferente.
     **Otimizado / Pendente:** grava a mesma marcação da coluna Otimizado do Desempenho (`PATCH /api/account-bindings`, vale só pro dia) e avisa o Painel aberto em
     outra aba na hora (`BroadcastChannel "trafic-bindings"`); o Painel também relê as marcações ao voltar pra aba (no máx. a cada 15s).
     **Quadros:** em cima, **Acompanhamento de Resultados** (tabela por período — Hoje, Ontem, Ontem e hoje, 3 e 7 dias + hoje, Mês atual — com Leads, Valor usado, CPA e
@@ -2952,7 +2952,7 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     e **Ofertas ativas** (o mesmo quadro de Auditoria → Descrição, só da conta; ↻ refaz só ela; contas fora do IVS mostram "Só contas IVS"). Embaixo, dois quadros separados:
     **Vídeos (Geral)** e **Melhor público**, já presos na conta (leem os retratos guardados; textos enxutos, sem repetir informação). Busca na Meta só 2 chamadas por conta
     (`/api/meta/daily-cpa` e `/api/meta/insights` do mês) ao escolher/atualizar. Cada quadro rola sozinho. Arquivos: `app/(app)/foco/page.tsx`,
-    `components/foco/{foco-resultados,foco-metas,foco-ofertas,conta-picker,conta-filtros,conta-filtros-data}.tsx`; `VideosGeral` e `PublicoTab` ganharam `focusAccountId`;
+    `components/foco/{foco-resultados,foco-metas,foco-ofertas,conta-filtros (painel lateral),conta-filtros-data}.tsx`; `VideosGeral` e `PublicoTab` ganharam `focusAccountId`;
     **Metas (Etapa 168):** o quadro mostra o **WhatsApp** do cliente (o mesmo do balão do nome no Desempenho) logo abaixo do Orçamento diário, e o **CPA ideal** ganhou destaque
     (caixa azul grande ao lado do CPA do mês); também mostra o **Ritmo médio** (Investimento mensal ÷ dias do mês) abaixo do Orçamento diário.
     `OffersCell` (descricao-tab) agora é exportado; link "Foco" em `app/(app)/layout.tsx`. Sem migration e sem n8n.
