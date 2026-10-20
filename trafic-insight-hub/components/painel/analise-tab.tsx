@@ -10,6 +10,7 @@ import type { AdAccount } from "@/lib/meta/insights";
 import { DATE_PRESETS, fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { AumentoProgramado } from "@/components/painel/aumento-programado";
+import { DuplicarConjuntoDialog, type DuplicateAdsetInput } from "@/components/painel/duplicar-conjunto-dialog";
 
 // "Últimos 3 dias + hoje" (padrão recomendado — pega problema recente
 // rápido) já vem primeiro em DATE_PRESETS, junto com os demais períodos
@@ -385,6 +386,8 @@ function AnaliseTabInner({
   const [creativeError, setCreativeError] = useState<string | null>(null);
 
   const [actingId, setActingId] = useState<string | null>(null);
+  // Etapa 159: conjunto aberto na janelinha "Duplicar".
+  const [dupTarget, setDupTarget] = useState<DuplicateAdsetInput | null>(null);
   const [increasedIds, setIncreasedIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
@@ -1121,7 +1124,24 @@ function AnaliseTabInner({
                               </td>
                         );
                         const actBelowTd = (
-                              <td className="px-4 py-2 text-right">
+                              <td className="whitespace-nowrap px-4 py-2 text-right">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDupTarget({
+                                        id: adset.id,
+                                        name: adset.name,
+                                        accountId: g.accountId,
+                                        cpaTarget: g.cpaTarget,
+                                        ads: adset.ads,
+                                      });
+                                    }}
+                                    onDoubleClick={(e) => e.stopPropagation()}
+                                    title="Duplica esse conjunto (nasce pausado) escolhendo quais criativos vão junto"
+                                    className="mr-2 rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                                  >
+                                    Duplicar
+                                  </button>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -1432,6 +1452,8 @@ function AnaliseTabInner({
           )}
         </div>
       ) : null}
+
+      {dupTarget ? <DuplicarConjuntoDialog adset={dupTarget} onClose={() => setDupTarget(null)} /> : null}
 
       {skipped.length > 0 ? (
         <p className="border-t border-zinc-200 px-4 py-2 text-xs text-zinc-400 dark:border-zinc-800">

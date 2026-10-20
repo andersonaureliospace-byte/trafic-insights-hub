@@ -2861,6 +2861,14 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     `weekend-release-tick` devolve todos pra R$15. Tela nova: Auditoria → Standby (`/api/standby`).
     No n8n: itens 1 (agora com Backup), 15 (standby sáb/dom) e 16 (volta segunda 05h).
 
+146. **Botão "Duplicar" em Análise → CPA abaixo da meta (Etapa 159)** — em cada conjunto, ao lado de "Aumentar +R$2,50". Abre uma janelinha com o nome
+    sugerido (a data "dd/mm" do nome é trocada pela de hoje), o orçamento diário (editável, só quando o orçamento é do conjunto/ABO) e os
+    criativos ATIVOS com o CPA de cada um (os R$4+ acima da meta já vêm desmarcados). A cópia nasce PAUSADA, na mesma campanha, só com os
+    criativos marcados (que herdam o status do original, então ativar o conjunto já ativa tudo). Feita passo a passo pela Graph API
+    (`/copies` do conjunto sem cópia profunda, depois `/copies` de cada criativo) e, se algo falhar, mostra a mensagem exata da Meta — serve
+    também pra descobrir por que a duplicação dava erro. Arquivos: `lib/meta/duplicate.ts`, `app/api/analysis/duplicate/route.ts`,
+    `components/painel/duplicar-conjunto-dialog.tsx`.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
