@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { writeTabCache } from "@/lib/client-cache";
 import { DATE_PRESETS, priorityRank } from "@/lib/format";
 import { PRIORITY_CPA_SORT, type FocoSort, cacheLabel, readDesempenhoCache } from "@/components/foco/conta-filtros-data";
-import { METAS_SORTS, compareMetas, computeMetas, metasCalendar, type CpaStatus, type InvestStatus } from "@/lib/meta/metas";
+import { METAS_SORTS, compareMetas, computeMetas, metasCalendar, type CpaStatus } from "@/lib/meta/metas";
 import { RITMO_BAND, ritmoColorClass, ritmoFromInsight } from "@/lib/meta/ritmo";
 import type { AccountInsight } from "@/lib/meta/insights";
 import { usePriorityOptions } from "@/lib/priority-context";
@@ -31,11 +31,6 @@ const CPA_TEXT: Record<CpaStatus, string> = {
   good: "text-emerald-600 dark:text-emerald-400",
   acceptable: "text-orange-600 dark:text-orange-400",
   high: "text-red-600 dark:text-red-400",
-};
-const INVEST_TEXT: Record<InvestStatus, string> = {
-  below: "text-orange-600 dark:text-orange-400",
-  ok: "text-emerald-600 dark:text-emerald-400",
-  above: "text-red-600 dark:text-red-400",
 };
 const selCls = "h-7 w-full min-w-0 rounded-md border border-zinc-300 bg-transparent px-1.5 text-xs disabled:opacity-40 dark:border-zinc-700";
 const lblCls = "mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-zinc-400";
@@ -82,7 +77,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
   const info = useMemo(() => {
     const ins = insightsAll;
     const mon = cache?.monthly ?? {};
-    const m = new Map<string, { cpa: number | null; cpaStatus: CpaStatus | null; cpaDiff: number | null; ritmo: number | null; ritmoCls: string; invested: number | null; investDiff: number | null; investCls: string }>();
+    const m = new Map<string, { cpa: number | null; cpaStatus: CpaStatus | null; cpaDiff: number | null; ritmo: number | null; ritmoCls: string; budget: number | null; budgetDiff: number | null }>();
     for (const o of opts) {
       const rit = ritmoFromInsight(o.monthlyInvestment, mon[o.id]);
       const daily = ins[o.id]?.daily_budget ?? 0;
@@ -97,11 +92,10 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         cpaDiff: metas.cpaDiff ?? null,
         ritmo: rit,
         ritmoCls: rit != null && ins[o.id] ? ritmoColorClass(rit, daily) : "",
-        // Mesmo jeito da aba Metas (Investimento atual): investido no mês em cima e, embaixo, investido − ideal até hoje
-        // (negativo = falta investir). Cor pelo status de investimento da aba Metas.
-        invested: mon[o.id] && !mon[o.id].insights_failed ? mon[o.id].spend : null,
-        investDiff: mon[o.id] && !mon[o.id].insights_failed ? metas.investDiff : null,
-        investCls: metas.investStatus ? INVEST_TEXT[metas.investStatus] : "",
+        // Mesmo número do quadro "Orçamento e ritmo" do Foco: Invest. diário (orçamento) em cima e, embaixo, Invest. diário − Ritmo
+        // (+ = orçamento acima do que precisa; − = falta). Cor pela regra do Ritmo.
+        budget: ins[o.id] ? daily : null,
+        budgetDiff: rit != null && ins[o.id] ? daily - rit : null,
       });
     }
     return m;
@@ -317,7 +311,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         <span>Cliente</span>
         <span className="text-center">Status</span>
         <span className="text-right">CPA</span>
-        <span className="text-right" title="Investido no mês e, embaixo, quanto falta (−) ou passou (+) do ideal até hoje">Ritmo</span>
+        <span className="text-right" title="Invest. diário (orçamento) e, embaixo, quanto passou (+) ou falta (−) do Ritmo">Ritmo</span>
       </div>
       <ul className="min-h-0 flex-1 overflow-auto">
         {list.length === 0 ? <li className="px-3 py-6 text-center text-sm text-zinc-500">Nenhum cliente com esses filtros.</li> : null}
@@ -358,11 +352,11 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
                   {i?.cpa != null && i.cpaDiff != null ? <span className="block text-[10px] leading-tight opacity-70">{signed(i.cpaDiff)}</span> : null}
                 </span>
                 <span
-                  className={`text-right tabular-nums ${i?.invested != null ? i.investCls : "text-zinc-400"}`}
-                  title={i?.invested != null ? `Investido no mês · embaixo: investido − ideal até hoje (negativo = falta investir)${i.ritmo != null ? ` · ritmo ${num(i.ritmo)}/dia` : ""}` : "Investido no mês"}
+                  className={`text-right tabular-nums ${i?.budget != null ? i.ritmoCls : "text-zinc-400"}`}
+                  title={i?.budget != null ? `Invest. diário (orçamento) · embaixo: diferença pro Ritmo${i.ritmo != null ? ` (ritmo ${num(i.ritmo)}/dia)` : ""}` : "Invest. diário"}
                 >
-                  <span className="block text-xs leading-tight">{i?.invested != null ? num(i.invested) : "—"}</span>
-                  {i?.investDiff != null ? <span className="block text-[10px] leading-tight opacity-70">{signed(i.investDiff)}</span> : null}
+                  <span className="block text-xs leading-tight">{i?.budget != null ? num(i.budget) : "—"}</span>
+                  {i?.budgetDiff != null ? <span className="block text-[10px] leading-tight opacity-70">{signed(i.budgetDiff)}</span> : null}
                 </span>
               </button>
             </li>
