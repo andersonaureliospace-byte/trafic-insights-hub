@@ -250,7 +250,7 @@ export default function FocoPage() {
         <div key={opt.id} className="grid min-h-0 flex-1 gap-3 lg:grid-rows-[minmax(0,11fr)_minmax(0,12fr)]">
           <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <Quadro title="Acompanhamento de Resultados" className="min-h-[16rem]">
-              <FocoResultados daily={daily} month={month} cpaTarget={opt.cpaTarget} />
+              <FocoResultados daily={daily} month={month} cpaTarget={opt.cpaTarget} insight={insight} monthlyTarget={opt.monthlyInvestment} />
             </Quadro>
             <Quadro title="Acompanhamento de metas" className="min-h-[16rem]">
               <FocoMetas insight={insight} cpaTarget={opt.cpaTarget} monthlyTarget={opt.monthlyInvestment} whatsapp={opt.whatsapp} />

@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo } from "react";
-import { fmtCurrency } from "@/lib/format";
+import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
 import { CPA_ACCEPTABLE_BAND } from "@/lib/meta/metas";
 import type { DailyCpaPoint } from "@/lib/meta/daily-cpa";
+import type { AccountInsight } from "@/lib/meta/insights";
+import { ritmoColorClass, ritmoFromInsight, ritmoTooltip } from "@/lib/meta/ritmo";
 
 // Modo Foco — quadro "Acompanhamento de Resultados" de UMA conta: os mesmos números do Desempenho (Leads, Valor usado e CPA, com a diferença pro CPA ideal
 // pequena embaixo do CPA) em vários períodos. Só mostra; quem busca os dados é a página.
@@ -41,10 +43,14 @@ export function FocoResultados({
   daily,
   month,
   cpaTarget,
+  insight,
+  monthlyTarget,
 }: {
   daily: DailyCpaPoint[];
   month: DailyCpaPoint | null;
   cpaTarget: number | null;
+  insight?: AccountInsight | null;
+  monthlyTarget?: number | null;
 }) {
   const today = todayBr();
   const byDate = useMemo(() => new Map(daily.map((p) => [p.date, p])), [daily]);
@@ -64,6 +70,12 @@ export function FocoResultados({
     { label: "Últimos 7 dias + hoje", a: agg(range(0, 7)) },
     { label: "Mês atual", a: month ? { spend: month.spend, results: month.results, cpa: month.cpa } : { spend: 0, results: 0, cpa: null } },
   ];
+  // Rodapé (mesmo jeito do Desempenho do Painel): Invest. diário grande, colorido pelo Ritmo, e embaixo, pequeno, a diferença
+  // (Invest. diário − Ritmo = quanto sobra/falta por dia pra bater a meta do mês). Só aparece com o insight do mês carregado.
+  const budget = insight && !insight.insights_failed ? insight.daily_budget : null;
+  const rit = insight ? ritmoFromInsight(monthlyTarget ?? null, insight) : null;
+  const ritDiff = rit != null && budget != null ? budget - rit : null;
+  const ritCls = ritmoColorClass(rit, budget ?? undefined);
   return (
     <table className="w-full text-sm">
       <thead>
@@ -95,6 +107,23 @@ export function FocoResultados({
           );
         })}
       </tbody>
+      {budget != null ? (
+        <tfoot>
+          <tr className="border-t border-zinc-200 dark:border-zinc-800">
+            <td className="px-3 py-2 font-medium" title={insight ? ritmoTooltip(monthlyTarget ?? null, insight) : undefined}>
+              Invest. diário
+            </td>
+            <td colSpan={3} className="px-3 py-1.5 text-right tabular-nums" title={insight ? ritmoTooltip(monthlyTarget ?? null, insight) : undefined}>
+              <div className={`font-semibold ${ritCls}`}>{fmtCurrency(budget)}</div>
+              {ritDiff != null ? (
+                <div className={`text-[11px] leading-tight ${ritCls}`} title="Invest. diário menos o Ritmo (quanto precisa por dia pra bater a meta do mês)">
+                  {fmtCurrencySigned(ritDiff)} · ritmo {rit != null ? fmtCurrency(rit) : "—"}
+                </div>
+              ) : null}
+            </td>
+          </tr>
+        </tfoot>
+      ) : null}
     </table>
   );
 }
