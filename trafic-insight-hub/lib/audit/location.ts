@@ -127,33 +127,51 @@ interface AdsetLocationRow {
   status?: string;
   effective_status?: string;
   end_time?: string;
+  updated_time?: string;
   targeting?: Targeting;
   campaign?: { name?: string; effective_status?: string };
   ads?: { data?: Array<{ id: string }> };
 }
 
+// Etapa 182: `sinceMs` liga o modo "recentes" — só conjuntos criados/alterados desde esse instante (updated_time),
+// uma chamada leve por conta; usado pelo n8n a cada poucos minutos. Sem `sinceMs` = varredura completa (como antes).
 export async function auditAccountLocation(
   token: string,
   adAccountId: string,
-): Promise<{ issues: AuditLocationIssue[]; checked: number }> {
+  opts?: { sinceMs?: number },
+): Promise<{ issues: AuditLocationIssue[]; checked: number; checkedIds: string[] }> {
   const actId = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`;
-  const rows = await metaGetAll<AdsetLocationRow>(
-    token,
-    `/${actId}/adsets`,
-    {
-      fields:
-        "id,name,status,effective_status,end_time,targeting,campaign{name,effective_status},ads.effective_status(['ACTIVE']).limit(1){id}",
-      effective_status: JSON.stringify(["ACTIVE"]),
-      limit: "200",
-    },
-    5,
-  );
+  const baseParams: Record<string, string> = {
+    fields:
+      "id,name,status,effective_status,end_time,updated_time,targeting,campaign{name,effective_status},ads.effective_status(['ACTIVE']).limit(1){id}",
+    effective_status: JSON.stringify(["ACTIVE"]),
+    limit: "200",
+  };
+  const sinceMs = opts?.sinceMs;
+  let rows: AdsetLocationRow[];
+  if (sinceMs) {
+    try {
+      rows = await metaGetAll<AdsetLocationRow>(
+        token,
+        `/${actId}/adsets`,
+        { ...baseParams, filtering: JSON.stringify([{ field: "updated_time", operator: "GREATER_THAN", value: Math.floor(sinceMs / 1000) }]) },
+        5,
+      );
+    } catch {
+      // Se a Meta recusar o filtro, cai na varredura completa (o corte por updated_time abaixo garante o mesmo resultado).
+      rows = await metaGetAll<AdsetLocationRow>(token, `/${actId}/adsets`, baseParams, 5);
+    }
+  } else {
+    rows = await metaGetAll<AdsetLocationRow>(token, `/${actId}/adsets`, baseParams, 5);
+  }
 
   const issues: AuditLocationIssue[] = [];
+  const checkedIds: string[] = [];
   let checked = 0;
   const now = Date.now();
 
   for (const row of rows) {
+    if (sinceMs && row.updated_time && new Date(row.updated_time).getTime() < sinceMs) continue;
     if (String(row.status ?? "").toUpperCase() !== "ACTIVE") continue;
     if (String(row.effective_status ?? "ACTIVE").toUpperCase() !== "ACTIVE") continue;
     if (String(row.campaign?.effective_status ?? "ACTIVE").toUpperCase() !== "ACTIVE") continue;
@@ -161,6 +179,7 @@ export async function auditAccountLocation(
     if (row.end_time && new Date(row.end_time).getTime() <= now) continue;
 
     checked++;
+    checkedIds.push(row.id);
     const { blocking, expansion, info } = evaluateTargetingDetailed(row.targeting);
     if (blocking.length > 0 || expansion) {
       issues.push({
@@ -174,5 +193,5 @@ export async function auditAccountLocation(
     }
   }
 
-  return { issues, checked };
+  return { issues, checked, checkedIds };
 }

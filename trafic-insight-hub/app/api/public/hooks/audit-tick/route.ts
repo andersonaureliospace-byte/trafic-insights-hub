@@ -11,6 +11,12 @@ import { runLocationAudit, runErrorAudit } from "@/lib/audit/run";
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;
 
+// Etapa 182 — corpo opcional (JSON): { "mode": "recent" | "errors" | "full", "windowMinutes": 45 }
+//  - "recent": SÓ a auditoria de localização, e só nos conjuntos criados/alterados nos últimos `windowMinutes`
+//              (padrão 45) — chamada leve, dá pra rodar a cada poucos minutos, inclusive nos picos;
+//  - "location": só a auditoria de localização, varrendo TODOS os conjuntos ativos;
+//  - "errors": só a auditoria de anúncios com erro;
+//  - "full" (padrão, sem corpo = comportamento antigo): as duas, varrendo todos os conjuntos ativos.
 export async function POST(request: Request) {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
@@ -19,6 +25,17 @@ export async function POST(request: Request) {
   if (request.headers.get("x-webhook-secret") !== secret) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  let mode: "recent" | "location" | "errors" | "full" = "full";
+  let windowMinutes = 45;
+  try {
+    const body = (await request.json()) as { mode?: string; windowMinutes?: number };
+    if (body?.mode === "recent" || body?.mode === "location" || body?.mode === "errors" || body?.mode === "full") mode = body.mode;
+    if (typeof body?.windowMinutes === "number" && body.windowMinutes >= 5 && body.windowMinutes <= 1440) windowMinutes = body.windowMinutes;
+  } catch {
+    /* sem corpo: varredura completa */
+  }
+  const sinceMs = mode === "recent" ? Date.now() - windowMinutes * 60_000 : undefined;
 
   const supabase = createServiceClient();
 
@@ -47,17 +64,19 @@ export async function POST(request: Request) {
         continue;
       }
 
-      const location = await runLocationAudit(supabase, userId, token, list);
-      const errors = await runErrorAudit(supabase, userId, token, list);
+      const location = mode === "errors" ? null : await runLocationAudit(supabase, userId, token, list, { sinceMs });
+      const errors = mode === "recent" || mode === "location" ? null : await runErrorAudit(supabase, userId, token, list);
       results.push({
         userId,
-        location: { pausedCount: location.pausedCount, fixedCount: location.fixedCount ?? 0, failedCount: location.failedCount, checkedAccounts: location.checkedAccounts },
-        errors: { pausedCount: errors.pausedCount, failedCount: errors.failedCount, checkedAccounts: errors.checkedAccounts },
+        location: location
+          ? { pausedCount: location.pausedCount, fixedCount: location.fixedCount ?? 0, failedCount: location.failedCount, checkedAccounts: location.checkedAccounts }
+          : undefined,
+        errors: errors ? { pausedCount: errors.pausedCount, failedCount: errors.failedCount, checkedAccounts: errors.checkedAccounts } : undefined,
       });
     } catch (e) {
       results.push({ userId, error: (e as Error).message });
     }
   }
 
-  return NextResponse.json({ processed: results.length, results });
+  return NextResponse.json({ mode, processed: results.length, results });
 }

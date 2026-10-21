@@ -428,8 +428,8 @@
     },
     {
       "parameters": {
-        "content": "## 6. Auditoria (de hora em hora, com 1 rodada em cada pico)\n\nRoda as duas auditorias (localização do Brasil inteiro / expansão de localização, e anúncios com erro) e pausa o que achar. Minuto 50 de cada hora, EXCETO 08h, 10h e 14h (picos): nos picos roda só às 09h50 e 15h50.",
-        "height": 110,
+        "content": "## 6. Auditoria (conjuntos novos a cada 30 min + varredura completa 2x/dia)\n\nTrês agendas chamam o mesmo hook `audit-tick`, cada uma com um `mode`: (1) a cada 30 min, o dia todo (inclusive picos), só a auditoria de localização nos conjuntos criados/alterados nos últimos 45 min (chamada leve) — pausa Brasil inteiro e desliga a caixa de expansão; (2) 12h50 e 22h50, localização em TODOS os conjuntos ativos (dupla verificação); (3) auditoria de anúncios com erro, minuto 50 de cada hora, EXCETO 08h, 10h e 14h (nos picos só 09h50 e 15h50).",
+        "height": 170,
         "width": 900,
         "color": 3
       },
@@ -440,7 +440,7 @@
         1450
       ],
       "id": "4e239f4a-6426-4340-9e36-9c1fd66137cf",
-      "name": "Nota - 6. Auditoria (de hora em hora, com 1 rodada em cada pico)"
+      "name": "Nota - 6. Auditoria (conjuntos novos a cada 30 min + varredura completa 2x/dia)"
     },
     {
       "parameters": {
@@ -460,7 +460,7 @@
         1570
       ],
       "id": "64e3965f-9e4f-4a92-909b-2822ad5e1832",
-      "name": "Agenda - Auditoria (hora em hora, fora dos picos)"
+      "name": "Agenda - Auditoria de erros (hora em hora, fora dos picos)"
     },
     {
       "parameters": {
@@ -477,7 +477,10 @@
         },
         "options": {
           "timeout": 120000
-        }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"mode\": \"errors\" }"
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -486,7 +489,7 @@
         1570
       ],
       "id": "223dcede-c532-4232-9c51-7d06e41653b1",
-      "name": "Rodar auditoria (localização + erros)",
+      "name": "Rodar auditoria de erros",
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
@@ -502,7 +505,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        1730
+        2070
       ],
       "id": "a447bd14-f44a-4842-88e2-e0498668f248",
       "name": "Nota - 7. Descrições do Asana (horário comercial)"
@@ -522,7 +525,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        1850
+        2190
       ],
       "id": "6c530596-0962-4e45-a697-7953b14d5fd8",
       "name": "Agenda - Descrições do Asana (30 min, seg-sex 08h-18h)",
@@ -549,7 +552,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        1850
+        2190
       ],
       "id": "db50f900-2e43-42e3-91af-1a61d7ccd2f9",
       "name": "Sincronizar descrições do Asana",
@@ -568,7 +571,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        2010
+        2350
       ],
       "id": "c10b4326-e3cb-4f60-89a5-a86caf465548",
       "name": "Nota - 8. Backup das métricas (madrugada)"
@@ -592,7 +595,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        2130
+        2470
       ],
       "id": "46bfb821-5427-4a65-8be5-5854deee029e",
       "name": "Agenda - Backup das métricas (03h00 e 03h25)",
@@ -619,7 +622,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        2130
+        2470
       ],
       "id": "6e11ee96-7ee7-45d1-b8cc-54696e5ea541",
       "name": "Atualizar backup das métricas",
@@ -638,7 +641,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        2290
+        2630
       ],
       "id": "14bccbd8-dca7-4a24-9332-634b6494cc1c",
       "name": "Nota - 9. Resumo das 7h (contas que precisam de atenção)"
@@ -658,7 +661,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        2430
+        2770
       ],
       "id": "52e831da-ac16-4e1b-9b9e-83bcbdda8107",
       "name": "Agenda - Resumo das 7h (07h05)"
@@ -684,7 +687,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        2430
+        2770
       ],
       "id": "ac76b30d-c7b2-4ab2-81a4-77283a5b1997",
       "name": "Enviar resumo das 7h",
@@ -703,7 +706,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        2590
+        2930
       ],
       "id": "feab3812-aaa1-46bb-9d18-816ab26e4377",
       "name": "Nota - 10. Conta sem anúncio ativo / sem entrega (o dia todo)"
@@ -723,7 +726,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        2730
+        3070
       ],
       "id": "7b392b3e-7077-4cff-baad-c795a22b8a56",
       "name": "Agenda - Sem anúncio ativo / sem entrega (hora em hora)"
@@ -749,7 +752,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        2730
+        3070
       ],
       "id": "e1ac61ac-3972-485a-a249-3540bf4a70f3",
       "name": "Checar conta sem anúncio ativo / sem entrega",
@@ -768,7 +771,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        2890
+        3230
       ],
       "id": "350c871d-b1ea-49b3-a0bd-b17768cd4986",
       "name": "Nota - 11. Aumento de investimento (plano de madrugada, aplicação às 06h)"
@@ -788,7 +791,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        3040
+        3380
       ],
       "id": "bdc93a95-b086-483e-9f48-58058a601730",
       "name": "Agenda - Plano de aumento (03h45)"
@@ -814,7 +817,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        3040
+        3380
       ],
       "id": "6696259b-19ec-443c-a763-4b8408cc06af",
       "name": "Montar plano de aumento de investimento",
@@ -837,7 +840,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        3180
+        3520
       ],
       "id": "a1a7f770-039d-45c0-9e18-ddc514f260c4",
       "name": "Agenda - Aplicar aumento (06h01 a 06h11)"
@@ -863,7 +866,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        3180
+        3520
       ],
       "id": "72af1791-8498-44ef-9e28-9121300d5499",
       "name": "Aplicar aumento de investimento",
@@ -882,7 +885,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        3340
+        3680
       ],
       "id": "c48786bd-c230-4833-b0c9-408efcd8b337",
       "name": "Nota - 12. Padrão de nomes (ajuste diário de idade e data)"
@@ -902,7 +905,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        3480
+        3820
       ],
       "id": "8405af4d-bba1-4532-b169-d56a033e6cf2",
       "name": "Agenda - Padrão de nomes (04h30)"
@@ -928,7 +931,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        3480
+        3820
       ],
       "id": "74359937-7b08-470a-a393-217efd0d6e10",
       "name": "Ajustar idade/data nos nomes dos conjuntos",
@@ -947,7 +950,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        3640
+        3980
       ],
       "id": "d4d8098c-f9c5-4085-aca3-777e4b83c5c3",
       "name": "Nota - 13. Ofertas ativas (retrato fixo, ~05h20 e ~12h00)"
@@ -971,7 +974,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        3780
+        4120
       ],
       "id": "550edcd5-412d-4ad3-9715-f14e2df585b5",
       "name": "Agenda - Ofertas ativas (05h20 e 12h00)"
@@ -997,7 +1000,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        3780
+        4120
       ],
       "id": "46048017-e5fc-45f4-843c-24642934b353",
       "name": "Atualizar retrato das ofertas ativas",
@@ -1016,7 +1019,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        3920
+        4260
       ],
       "id": "394e00cd-cd71-4d29-b499-0955327ee4cb",
       "name": "Nota - 14. Saldo para amanhã (19h, seg-sex)"
@@ -1036,7 +1039,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        4060
+        4400
       ],
       "id": "e294c384-83f7-4853-abb9-7a822556aeb7",
       "name": "Agenda - Saldo para amanhã (19h, seg-sex)"
@@ -1062,7 +1065,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        4060
+        4400
       ],
       "id": "cfc6eab3-ad7b-4ec3-a9ff-30e8feb99e86",
       "name": "Avisar saldo para amanhã",
@@ -1111,7 +1114,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        4120
+        4460
       ],
       "id": "7645db9e-5958-4f37-a4e9-bdc5e9bc3af5",
       "name": "Nota - 15. Standby de fim de semana (sáb e dom 00h30)"
@@ -1131,7 +1134,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        4260
+        4600
       ],
       "id": "98968876-63fc-493f-87ff-538241cea792",
       "name": "Agenda - Standby de fim de semana (sáb e dom 00h30)"
@@ -1157,7 +1160,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        4260
+        4600
       ],
       "id": "3d7613f5-b02e-4f5b-afee-356a6868d025",
       "name": "Colocar conjuntos em standby (R$10)",
@@ -1176,7 +1179,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        4420
+        4760
       ],
       "id": "b7540298-bf3e-427e-b25d-8aa3fed2db07",
       "name": "Nota - 16. Volta do standby (segunda 05h)"
@@ -1196,7 +1199,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        4560
+        4900
       ],
       "id": "6473b2cc-8999-48de-929c-082f9c517756",
       "name": "Agenda - Volta do standby (segunda 05h)"
@@ -1222,7 +1225,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        4560
+        4900
       ],
       "id": "9417f4e6-6030-428b-ae4d-e7d14ff4bb8c",
       "name": "Voltar conjuntos do standby pra R$15",
@@ -1241,7 +1244,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        4720
+        5060
       ],
       "id": "8647e00e-e8e5-4342-9b42-3b1b3b421e7f",
       "name": "Nota - 17. Vídeos de Geral (retrato 05h40)"
@@ -1261,7 +1264,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        4860
+        5200
       ],
       "id": "9f28b427-c86d-4726-95d2-4f94f3d5c203",
       "name": "Agenda - Vídeos de Geral (05h40)"
@@ -1287,7 +1290,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        4860
+        5200
       ],
       "id": "eac31b24-7141-4fa9-84d5-f95e3ec87a44",
       "name": "Atualizar retrato dos vídeos de Geral",
@@ -1306,7 +1309,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        5020
+        5360
       ],
       "id": "5047b1df-95c4-4565-8614-197dfd07afea",
       "name": "Nota - 18. Conta sem exame ativo"
@@ -1326,7 +1329,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        5160
+        5500
       ],
       "id": "276d62fe-71ca-4c9e-992a-d25d8400ada9",
       "name": "Agenda - Conta sem exame ativo (09h05, 12h05, 15h05, 18h05)"
@@ -1352,7 +1355,7 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        5160
+        5500
       ],
       "id": "5a08b08e-65d7-4c19-99ba-24aaef666614",
       "name": "Conferir contas sem exame ativo",
@@ -1371,7 +1374,7 @@
       "typeVersion": 1,
       "position": [
         0,
-        5320
+        5660
       ],
       "id": "6461de15-f480-42c1-b663-ad00a6c77a53",
       "name": "Nota - 19. Melhor público (retrato 06h30)"
@@ -1391,7 +1394,7 @@
       "typeVersion": 1.2,
       "position": [
         0,
-        5460
+        5800
       ],
       "id": "43b8c6e6-db71-4bec-ab75-9bbc678b8acb",
       "name": "Agenda - Melhor público (06h30)"
@@ -1417,10 +1420,114 @@
       "typeVersion": 4.2,
       "position": [
         300,
-        5460
+        5800
       ],
       "id": "48377a04-b2e8-4f28-beb9-d0590496d328",
       "name": "Atualizar retrato do melhor público",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/30 * * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1730
+      ],
+      "id": "5b0f6a52-3c1e-4d7a-9a41-0e2a6f1c8d01",
+      "name": "Agenda - Localização (conjuntos novos, a cada 30 min)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/audit-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"mode\": \"recent\", \"windowMinutes\": 45 }"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        1730
+      ],
+      "id": "7c2d9e14-8b3f-4a65-b0d2-4f6e1a9c3b02",
+      "name": "Rodar localização (só conjuntos novos)",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "50 12,22 * * *"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1890
+      ],
+      "id": "a3e8b7d0-2f14-4c96-8d5b-1c7e0f9a4b03",
+      "name": "Agenda - Localização completa (12h50 e 22h50)"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/audit-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"mode\": \"location\" }"
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        1890
+      ],
+      "id": "d9f1c2a8-6e07-4b3d-9a58-3b4c7e1d2f04",
+      "name": "Rodar localização (todos os conjuntos ativos)",
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
@@ -1499,17 +1606,6 @@
         [
           {
             "node": "Atualizar saldo por fundos",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Agenda - Auditoria (hora em hora, fora dos picos)": {
-      "main": [
-        [
-          {
-            "node": "Rodar auditoria (localização + erros)",
             "type": "main",
             "index": 0
           }
@@ -1675,6 +1771,39 @@
         [
           {
             "node": "Atualizar retrato do melhor público",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Auditoria de erros (hora em hora, fora dos picos)": {
+      "main": [
+        [
+          {
+            "node": "Rodar auditoria de erros",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Localização (conjuntos novos, a cada 30 min)": {
+      "main": [
+        [
+          {
+            "node": "Rodar localização (só conjuntos novos)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Localização completa (12h50 e 22h50)": {
+      "main": [
+        [
+          {
+            "node": "Rodar localização (todos os conjuntos ativos)",
             "type": "main",
             "index": 0
           }

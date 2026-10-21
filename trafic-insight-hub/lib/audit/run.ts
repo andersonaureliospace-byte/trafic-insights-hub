@@ -34,6 +34,7 @@ export async function runLocationAudit(
   userId: string,
   token: string,
   bindings: Binding[],
+  opts?: { sinceMs?: number },
 ): Promise<AuditRunSummary & { byAccount: Record<string, AuditLocationIssue[]> }> {
   let pausedCount = 0;
   let failedCount = 0;
@@ -43,12 +44,15 @@ export async function runLocationAudit(
 
   for (const b of bindings) {
     let issues: AuditLocationIssue[] = [];
+    let checkedIds: string[] = [];
     try {
-      const res = await auditAccountLocation(token, b.ad_account_id);
+      const res = await auditAccountLocation(token, b.ad_account_id, { sinceMs: opts?.sinceMs });
       issues = res.issues;
+      checkedIds = res.checkedIds;
     } catch {
-      // Conta inacessível: não gera falso alerta.
+      // Conta inacessível: não gera falso alerta (e não limpa nada da lista).
       issues = [];
+      if (opts?.sinceMs) continue;
     }
 
     // Brasil inteiro: pausa (como sempre). Expansão de público: NUNCA pausa — só desliga a caixa e o conjunto segue ativo.
@@ -107,9 +111,18 @@ export async function runLocationAudit(
     }
 
     // Limpa da tabela os conjuntos dessa conta que não têm mais problema.
+    // Varredura completa: limpa tudo que não está mais na lista. Modo "recentes" (Etapa 182): só limpa os conjuntos
+    // que foram conferidos agora e estão ok — o resto da lista fica pra varredura completa.
     const currentIds = remaining.map((i) => i.adset_id);
-    const del = supabase.from("audit_location_status").delete().eq("user_id", userId).eq("ad_account_id", b.ad_account_id);
-    await (currentIds.length > 0 ? del.not("adset_id", "in", inFilterList(currentIds)) : del);
+    if (opts?.sinceMs) {
+      const okIds = checkedIds.filter((id) => !currentIds.includes(id));
+      if (okIds.length > 0) {
+        await supabase.from("audit_location_status").delete().eq("user_id", userId).eq("ad_account_id", b.ad_account_id).in("adset_id", okIds);
+      }
+    } else {
+      const del = supabase.from("audit_location_status").delete().eq("user_id", userId).eq("ad_account_id", b.ad_account_id);
+      await (currentIds.length > 0 ? del.not("adset_id", "in", inFilterList(currentIds)) : del);
+    }
   }
 
   return { pausedCount, failedCount, fixedCount, checkedAccounts: bindings.length, byAccount };
