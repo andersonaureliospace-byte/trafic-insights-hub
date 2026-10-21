@@ -8,7 +8,7 @@
 // (entity_type "ad"); o conjunto dele não é pausado.
 
 import { metaGetAll } from "@/lib/meta/client";
-import { checkAdsetSafeToPause } from "@/lib/meta/adset-ads-check";
+import { adsetSpendTodayYesterday, checkAdsetSafeToPause, isRecentlyCreated } from "@/lib/meta/adset-ads-check";
 
 export interface AuditErrorIssue {
   entity_id: string;
@@ -18,6 +18,8 @@ export interface AuditErrorIssue {
   adset_id: string | null;
   adset_name: string | null;
   reasons: string[];
+  // Etapa 174: preenchido = o problema é só avisado, o conjunto NÃO é pausado (ex.: "sem gasto de ontem pra hoje").
+  hold?: string;
 }
 
 const AD_ERROR_STATUSES: Record<string, string> = {
@@ -118,7 +120,13 @@ export async function auditAccountErrors(
       // Confere direto na Meta antes de acusar (e pausar): só vale se não há nenhum anúncio "vivo".
       const check = await checkAdsetSafeToPause(token, row.id, row.created_time);
       if (!check.safeToPause) continue;
+      // Etapa 174: conjunto sem anúncio ativo que NÃO gastou de ontem pra hoje (ou cujo gasto não deu pra conferir) não é pausado.
+      // Conjunto novo nessa situação (provavelmente em montagem) nem é avisado; os mais velhos aparecem só como aviso.
+      const spend = await adsetSpendTodayYesterday(token, row.id);
+      const noSpend = spend == null || spend <= 0;
+      if (noSpend && isRecentlyCreated(row.created_time, now)) continue;
       issues.push({
+        hold: noSpend ? (spend == null ? "não consegui conferir o gasto" : "sem gasto de ontem pra hoje") : undefined,
         entity_id: row.id,
         entity_name: row.name || row.id,
         entity_type: "adset",

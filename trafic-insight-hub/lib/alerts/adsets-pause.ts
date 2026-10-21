@@ -232,8 +232,8 @@ export async function checkAndPauseAdSets(
         for (const r of rows3) {
           const rec = quarantine.get(r.id);
           const r7 = by7.get(r.id);
-          // Etapa 158: conjunto com menos de 24h nunca é mexido.
-          if (isNewAdSet(r.created_time, now)) continue;
+          // Etapa 173: por desempenho, conjunto com menos de 48h nunca é mexido. Sem anúncio ativo segue pra decisão (pode ser pausado).
+          if (r.has_active_ad && isNewAdSet(r.created_time, now)) continue;
           const inQuarantine = !!rec && new Date(rec.quarantine_until).getTime() > now.getTime();
 
           // Etapa 158 — orçamento diário acima de R$25 e CPA ontem + hoje R$4+ acima da meta: vai pra R$10 (só ABO).

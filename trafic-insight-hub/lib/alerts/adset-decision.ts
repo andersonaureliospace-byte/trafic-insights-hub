@@ -22,7 +22,8 @@
 //  Conjunto com anúncio ATIVO nunca é pausado por "falta de anúncio".
 //
 // Etapa 158 (pedido do Anderson) — travas novas, valem pra TODA pausa de conjunto:
-//  - conjunto com menos de 24h nunca é pausado (nem mexido);
+//  - conjunto com menos de 48h (Etapa 173; era 24h) nunca é pausado por DESEMPENHO nem tem o orçamento mexido — mesmo com CPA altíssimo. As únicas pausas que valem
+//    antes de 48h são as por ERRO (Auditoria: localização / conjunto sem anúncio ativo) e a de "sem anúncio ativo" daqui;
 //  - conjunto com TODOS os criativos ativos nunca é pausado por desempenho: primeiro pausa criativo, depois o conjunto;
 //  - conjunto sem gasto (zerado) e sem anúncio ativo NÃO é pausado: só avisa na aba Alertas ("notify_no_spend");
 //  - fim de semana (weekend): não corta R$10 — o passo de reduzir pra R$10 (standby) é feito por lib/alerts/weekend.ts.
@@ -87,7 +88,8 @@ export function needsSevenDayData(m3: AdSetMetrics, cpaTarget: number, quarantin
   return passesCutGate(m3, cpaTarget);
 }
 
-export const NEW_ADSET_HOURS = 24;
+// Etapa 173: 48h (era 24h). Conjunto mais novo que isso só é pausado por erro ou por não ter anúncio ativo.
+export const NEW_ADSET_HOURS = 48;
 
 export function isNewAdSet(createdTime: string | null | undefined, now: Date): boolean {
   if (!createdTime) return false;
@@ -115,9 +117,7 @@ export function decideAdSetAction(input: {
 }): AdSetDecision {
   const { cpaTarget, now, m3, m7, sevenDayFetched, quarantineUntil } = input;
 
-  // Etapa 158: conjunto com menos de 24h nunca é pausado.
-  if (isNewAdSet(input.createdTime, now)) return { action: "none", reason: "conjunto com menos de 24h — não mexe" };
-
+  // Sem anúncio ativo (não é questão de desempenho): vale mesmo com o conjunto novo (as proteções de anúncio em análise/sem gasto abaixo continuam).
   if (!m3.has_active_ad) {
     // Etapas 104/122: anúncio em outro status vivo, conjunto novo ou conferência que falhou — não pausa.
     if (m3.has_pending_ad) return { action: "none", reason: "tem anúncio em análise/processando/outro status (ou conjunto novo) — não pausa" };
@@ -125,6 +125,9 @@ export function decideAdSetAction(input: {
     if (!(m3.spend > 0)) return { action: "notify_no_spend", reason: "sem anúncio ativo e sem gasto — só avisa" };
     return { action: "pause", reason: "sem anúncio ativo" };
   }
+
+  // Etapa 173: por desempenho, conjunto com menos de 48h nunca é pausado nem mexido (o CPA pode estar altíssimo: só depois das 48h).
+  if (isNewAdSet(input.createdTime, now)) return { action: "none", reason: "conjunto com menos de 48h — não mexe" };
 
   if (quarantineUntil && quarantineUntil.getTime() > now.getTime()) return { action: "skip", reason: "quarantine" };
 

@@ -120,7 +120,7 @@ export async function runErrorAudit(
       // Etapa 122: só pausa conjunto "sem anúncio ativo" (já conferido em auditAccountErrors); anúncio em
       // análise/com erro é só aviso, não pausa o conjunto.
       for (const i of issues) {
-        if (i.entity_type === "adset" && i.adset_id && !targets.has(i.adset_id)) targets.set(i.adset_id, { id: i.adset_id, type: "adset" });
+        if (i.entity_type === "adset" && i.adset_id && !i.hold && !targets.has(i.adset_id)) targets.set(i.adset_id, { id: i.adset_id, type: "adset" });
       }
       if (targets.size > 0) {
         const results = await setEntitiesStatus(token, [...targets.values()], "PAUSED");
@@ -135,9 +135,11 @@ export async function runErrorAudit(
         issues.map((i) => {
           const r = i.adset_id ? byId.get(i.adset_id) : undefined;
           const pauseNote = i.entity_type === "adset" && i.adset_id
-            ? r?.ok
-              ? " · conjunto pausado"
-              : ` · falha ao pausar: ${r?.error ?? "erro desconhecido"}`
+            ? i.hold
+              ? ` · mantido ativo (${i.hold})`
+              : r?.ok
+                ? " · conjunto pausado"
+                : ` · falha ao pausar: ${r?.error ?? "erro desconhecido"}`
             : "";
           return {
             user_id: userId,

@@ -3,7 +3,7 @@
 // Sábado e domingo (fuso de Brasília) a queda de investimento é grande, então a ordem das medidas muda:
 //   1º reduz o orçamento diário do conjunto pra R$10 (o conjunto entra em "standby", mantendo os criativos);
 //   2º se 6h depois continua acima da meta, pausa o CRIATIVO que está caro;
-//   3º se ainda não melhorou, pausa o CONJUNTO (as regras de sempre: criado há 24h+, algum criativo já pausado…).
+//   3º se ainda não melhorou, pausa o CONJUNTO (as regras de sempre: criado há 48h+, algum criativo já pausado…).
 // Além disso, sábado e domingo de madrugada os conjuntos de bom desempenho (CPA dos 7 dias abaixo da meta) ou com mais
 // de 3 dias ativos vão pra standby (R$10). Segunda 05h todos os que estão em standby voltam pra R$15 e saem da tela Standby.
 // Estado: tabela weekend_standby (supabase/migrations/0034_pause_backup_and_standby.sql).

@@ -2848,7 +2848,7 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     aparecendo na hora (`components/painel/alertas-tab.tsx`).
 
 145. **Pausas automáticas: travas novas, backup e fim de semana com standby (Etapa 158)** — precisa rodar a migration `0034_pause_backup_and_standby.sql`.
-    Conjuntos (`lib/alerts/adset-decision.ts` + `adsets-pause.ts`): (1) nunca pausa conjunto com menos de 24h; (2) nunca pausa por desempenho
+    Conjuntos (`lib/alerts/adset-decision.ts` + `adsets-pause.ts`): (1) nunca pausa conjunto com menos de 24h (**desde a Etapa 173: 48h**, e vale também pro corte de orçamento — ver item 151); (2) nunca pausa por desempenho
     conjunto com TODOS os criativos ativos (primeiro pausa criativo, depois o conjunto); (3) conjunto sem anúncio ativo e sem gasto não é
     pausado, só avisa na aba Alertas (1x por dia, tipo "Conjunto sem gasto"); (4) orçamento diário (ABO) acima de R$25 e CPA de ontem + hoje
     R$4+ acima da meta → orçamento vai pra R$10 e quarentena de 24h (CBO não mexe).
@@ -2963,6 +2963,15 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     etiqueta "R$ x acima/abaixo do ideal" (passar o mouse mostra as faixas de cor), Orçamento e ritmo (orçamento diário com a diferença, ritmo, ritmo médio; a conta detalhada do ritmo aparece só ao passar o
     mouse no número) e WhatsApp; na lista lateral, CPA e Ritmo ficam alinhados à direita (sem "R$") e o Status centralizado.
     `OffersCell` (descricao-tab) agora é exportado; link "Foco" em `app/(app)/layout.tsx`. Sem migration e sem n8n.
+
+151. **Trava de 48h na pausa de conjuntos (Etapa 173)** (`lib/alerts/adset-decision.ts`, `adsets-pause.ts`): conjunto com **menos de 48h** (antes 24h) nunca é pausado **por desempenho** nem tem o
+    orçamento cortado/standby — mesmo com o CPA 50x acima; só depois das 48h entra nas regras de sempre. Exceções (podem pausar antes das 48h): **erro** (Auditoria de localização e de erros) e
+    **conjunto sem anúncio ativo** (a rotina de pausas agora decide esses também em conjunto novo, mantendo as proteções: anúncio em análise/outro status vivo, conjunto com menos de 3h ainda
+    sem anúncio, e sem gasto só avisa). A constante é `NEW_ADSET_HOURS`.
+    **Etapa 174 — conjunto novo / em análise não é pausado:** (1) a conferência direta dos anúncios (`lib/meta/adset-ads-check.ts`) agora pede TODOS os status de anúncio de forma explícita (em análise, processando,
+    pré-aprovado, com problemas…), pra um conjunto com anúncio em análise nunca parecer "sem anúncio"; (2) conjunto novo ainda sem anúncio fica protegido por 48h (era 3h, `NEW_ADSET_GRACE_HOURS`);
+    (3) a **Auditoria** (de hora em hora, `lib/audit/errors.ts` + `run.ts`) só pausa "conjunto sem anúncio ativo" se ele **gastou de ontem pra hoje**: sem gasto (ou sem conseguir conferir) fica ativo — conjunto novo
+    nessa situação nem é avisado; os mais velhos aparecem na Auditoria como "mantido ativo (sem gasto de ontem pra hoje)". A pausa por **localização** continua valendo desde o início. Sem migration e sem n8n.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
