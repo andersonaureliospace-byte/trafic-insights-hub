@@ -62,7 +62,7 @@ export function FocoOfertas({ accountId }: { accountId: string }) {
   }
 
   return (
-    <div className="space-y-3 p-4">
+    <div className="space-y-1.5 px-3 py-2.5">
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs text-zinc-400">{entry ? `atualizado ${atTxt(entry.at)}` : ""}</span>
         {isIvs ? (

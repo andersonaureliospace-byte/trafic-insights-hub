@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ContaLateral } from "@/components/foco/conta-filtros";
+import { FocoDescricao } from "@/components/foco/foco-descricao";
 import { FocoMetas } from "@/components/foco/foco-metas";
 import { FocoOfertas } from "@/components/foco/foco-ofertas";
 import { FocoResultados } from "@/components/foco/foco-resultados";
@@ -246,7 +247,7 @@ export default function FocoPage() {
           Escolha um cliente na lista ao lado para abrir o modo Foco.
         </div>
       ) : (
-        <div key={opt.id} className="grid min-h-0 flex-1 gap-3 lg:grid-rows-[minmax(0,5fr)_minmax(0,6fr)]">
+        <div key={opt.id} className="grid min-h-0 flex-1 gap-3 lg:grid-rows-[minmax(0,11fr)_minmax(0,12fr)]">
           <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <Quadro title="Acompanhamento de Resultados" className="min-h-[16rem]">
               <FocoResultados daily={daily} month={month} cpaTarget={opt.cpaTarget} />
@@ -254,9 +255,14 @@ export default function FocoPage() {
             <Quadro title="Acompanhamento de metas" className="min-h-[16rem]">
               <FocoMetas insight={insight} cpaTarget={opt.cpaTarget} monthlyTarget={opt.monthlyInvestment} whatsapp={opt.whatsapp} />
             </Quadro>
-            <Quadro title="Ofertas ativas" className="min-h-[16rem]">
-              <FocoOfertas accountId={opt.id} />
-            </Quadro>
+            <div className="flex min-h-[16rem] min-w-0 flex-col gap-3 lg:min-h-0">
+              <Quadro title="Ofertas ativas" className="shrink-0">
+                <FocoOfertas accountId={opt.id} />
+              </Quadro>
+              <Quadro title="Descrição (Asana)" className="min-h-[9rem] flex-1">
+                <FocoDescricao accountId={opt.id} />
+              </Quadro>
+            </div>
           </div>
           <div className="grid min-h-0 gap-3 lg:grid-cols-2">
             <Quadro title="Vídeos (Geral)" className="min-h-[22rem]">

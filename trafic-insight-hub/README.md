@@ -2962,6 +2962,8 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     *Metas* reorganizado em 4 blocos com a mesma hierarquia (rótulo → número grande → linha de apoio): Investimento do mês (barra + ideal até hoje), CPA do mês × **CPA ideal** (caixa azul) com a
     etiqueta "R$ x acima/abaixo do ideal" (passar o mouse mostra as faixas de cor), Orçamento e ritmo (orçamento diário com a diferença, ritmo, ritmo médio; a conta detalhada do ritmo aparece só ao passar o
     mouse no número) e WhatsApp; na lista lateral, CPA e Ritmo ficam alinhados à direita (sem "R$") e o Status centralizado.
+    **Descrição (Asana) no Foco (Etapa 175):** novo quadro logo abaixo de *Ofertas ativas* (`components/foco/foco-descricao.tsx`), com a descrição do cliente no Asana (a mesma da tela Descrição), ocupando o espaço que sobra
+    da coluna sem barra de rolagem; só rola por dentro se o texto for maior que o quadro. As duas linhas de cima/baixo passaram a 11fr/12fr e o *Ofertas ativas* ficou mais compacto.
     `OffersCell` (descricao-tab) agora é exportado; link "Foco" em `app/(app)/layout.tsx`. Sem migration e sem n8n.
 
 151. **Trava de 48h na pausa de conjuntos (Etapa 173)** (`lib/alerts/adset-decision.ts`, `adsets-pause.ts`): conjunto com **menos de 48h** (antes 24h) nunca é pausado **por desempenho** nem tem o
