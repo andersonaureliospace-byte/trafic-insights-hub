@@ -8,7 +8,8 @@
 //   Traffic -> Asana: só pelo botão por cliente. SUBSTITUI a descrição (não acrescenta).
 //
 // Texto simples: a descrição é lida/gravada como `notes`. Se a tarefa tem formatação (negrito, lista,
-// link...), o envio pede confirmação antes, porque o texto simples não preserva a formatação.
+// link...), o envio de texto simples pede confirmação antes (perde a formatação). Pra manter a formatação, o Foco
+// edita o `html_notes` direto (getLiveHtml / sendHtmlToAsana) — a tela Descrição continua em texto simples.
 
 import type { createClient } from "@/lib/supabase/server";
 import { asanaConfigured, asanaFetch, listSectionTasks, matchTask, type AsanaTask } from "@/lib/asana/priority-sync";
@@ -201,6 +202,63 @@ export async function sendDescriptionToAsana(
   const { error: upErr } = await db
     .from("client_descriptions")
     .update({ asana_description: row.draft, asana_has_rich: false, draft: null, synced_at: nowIso, updated_at: nowIso })
+    .eq("user_id", userId)
+    .eq("ad_account_id", accountId);
+  if (upErr) throw upErr;
+  return { ok: true };
+}
+
+// Formatação preservada: lê o html_notes da tarefa AGORA (pro editor do Foco).
+export async function getLiveHtml(db: Db, userId: string, accountId: string): Promise<{ html: string; notes: string } | null> {
+  if (!asanaConfigured()) return null;
+  const { data, error } = await db.from("client_descriptions").select("asana_task_gid, match_status").eq("user_id", userId).eq("ad_account_id", accountId).maybeSingle();
+  if (error) throw error;
+  if (!data?.asana_task_gid || data.match_status !== "ok") return null;
+  const cur = ((await asanaFetch(`/tasks/${data.asana_task_gid}?opt_fields=notes,html_notes`)) as { data?: { notes?: string; html_notes?: string } }).data;
+  return { html: cur?.html_notes ?? "", notes: clean(cur?.notes) };
+}
+
+// Traffic -> Asana COM formatação: grava o html_notes (substitui a descrição inteira). Confere antes se o texto
+// do Asana mudou desde a última sincronização (a não ser que force).
+export async function sendHtmlToAsana(
+  db: Db,
+  userId: string,
+  accountId: string,
+  html: string,
+  opts: { force?: boolean } = {},
+): Promise<SendDescriptionResult> {
+  if (!asanaConfigured()) {
+    return { ok: false, code: "not_configured", message: "Falta configurar ASANA_ACCESS_TOKEN na Vercel." };
+  }
+  const { data, error } = await db.from("client_descriptions").select("*").eq("user_id", userId).eq("ad_account_id", accountId).maybeSingle();
+  if (error) throw error;
+  const row = data as ClientDescriptionRow | null;
+  if (!row?.asana_task_gid || row.match_status !== "ok") {
+    return { ok: false, code: "no_task", message: "Esse cliente ainda não está ligado a uma tarefa do Asana (confira o nome do cliente)." };
+  }
+  const path = `/tasks/${row.asana_task_gid}`;
+  if (!opts.force) {
+    const cur = ((await asanaFetch(`${path}?opt_fields=notes`)) as { data?: { notes?: string } }).data;
+    if (!sameText(clean(cur?.notes), row.asana_description)) {
+      return {
+        ok: false,
+        code: "conflict",
+        message: "A descrição mudou no Asana desde a última sincronização. Se enviar, o texto de lá será substituído pelo seu.",
+      };
+    }
+  }
+  await asanaFetch(path, { method: "PUT", body: JSON.stringify({ data: { html_notes: html } }) });
+  const after = ((await asanaFetch(`${path}?opt_fields=notes,html_notes`)) as { data?: { notes?: string; html_notes?: string } }).data;
+  const nowIso = new Date().toISOString();
+  const { error: upErr } = await db
+    .from("client_descriptions")
+    .update({
+      asana_description: clean(after?.notes),
+      asana_has_rich: hasRichFormatting(after?.html_notes),
+      draft: null,
+      synced_at: nowIso,
+      updated_at: nowIso,
+    })
     .eq("user_id", userId)
     .eq("ad_account_id", accountId);
   if (upErr) throw upErr;

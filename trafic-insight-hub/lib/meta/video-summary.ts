@@ -8,7 +8,7 @@
 //  Anúncios "GERAL | …" que não estão no banco de vídeos são IGNORADOS.
 //  Visão por conta (summarizeAccounts, Etapa 162): mesmas ideias olhando UMA conta por vez — ver AccountVideoTag.
 
-import { VIDEO_BANK_GERAL, matchVideo, type VideoMatch } from "./video-bank";
+import { bankEntry, type VideoMatch } from "./video-bank";
 import type { AccountVideoStat, Period } from "./video-map";
 
 export const RECENT_DAYS = 14;
@@ -67,11 +67,11 @@ function daysSince(iso: string | null, now: Date): number | null {
   return Number.isNaN(t) ? null : Math.floor((now.getTime() - t) / 86_400_000);
 }
 
-export function summarizeVideos(inputs: AccountVideoInput[], now: Date = new Date()): VideoSummary[] {
+export function summarizeVideos(inputs: AccountVideoInput[], bank: readonly string[], now: Date = new Date()): VideoSummary[] {
   const keys = new Map<string, VideoMatch>();
-  for (const label of VIDEO_BANK_GERAL) {
-    const m = matchVideo(label);
-    if (m) keys.set(m.key, m);
+  for (const label of bank) {
+    const m = bankEntry(label);
+    if (m.key) keys.set(m.key, m);
   }
 
   const out: VideoSummary[] = [];
@@ -175,11 +175,11 @@ export interface AccountSummary {
 
 const ACCOUNT_ORDER: AccountVideoTag[] = ["reativar", "repetido", "parado", "pouco", "caro", "nunca"]; // "nunca" por último: são muitos
 
-export function summarizeAccounts(inputs: AccountVideoInput[], now: Date = new Date()): AccountSummary[] {
+export function summarizeAccounts(inputs: AccountVideoInput[], labels: readonly string[], now: Date = new Date()): AccountSummary[] {
   const bank = new Map<string, VideoMatch>();
-  for (const label of VIDEO_BANK_GERAL) {
-    const m = matchVideo(label);
-    if (m) bank.set(m.key, m);
+  for (const label of labels) {
+    const m = bankEntry(label);
+    if (m.key) bank.set(m.key, m);
   }
   const out: AccountSummary[] = [];
   for (const a of inputs) {

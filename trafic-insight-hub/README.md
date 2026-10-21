@@ -2963,7 +2963,8 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     etiqueta "R$ x acima/abaixo do ideal" (passar o mouse mostra as faixas de cor), Orçamento e ritmo (orçamento diário com a diferença, ritmo, ritmo médio; a conta detalhada do ritmo aparece só ao passar o
     mouse no número) e WhatsApp; na lista lateral, CPA e Ritmo ficam alinhados à direita (sem "R$") e o Status centralizado.
     **Descrição (Asana) no Foco (Etapa 175):** novo quadro logo abaixo de *Ofertas ativas* (`components/foco/foco-descricao.tsx`), com a descrição do cliente no Asana (a mesma da tela Descrição), ocupando o espaço que sobra
-    da coluna sem barra de rolagem: mostra só uma prévia do texto; passar o mouse abre uma caixa maior (posição fixa, não é cortada pelo quadro) com o texto inteiro, e clicar nela libera a edição (Enviar ao Asana / Voltar ao do Asana / Fechar; Esc ou clicar fora fecha e guarda o rascunho). As duas linhas de cima/baixo passaram a 11fr/12fr e o *Ofertas ativas* ficou mais compacto.
+    da coluna sem barra de rolagem: mostra só uma prévia do texto; passar o mouse abre uma caixa maior (posição fixa, não é cortada pelo quadro) com o texto inteiro, e clicar nela libera a edição (Enviar ao Asana / Voltar ao do Asana / Fechar; Esc ou clicar fora fecha e guarda o rascunho).
+    **Com formatação (Etapa 176):** se a descrição no Asana tem negrito/lista/link, o Foco edita num editor com botões B / I / U / Lista / Lista numerada / Link e envia o `html_notes` (sem perder a formatação; `lib/asana/rich-html.ts` converte Asana ⇄ editor, só marcas aceitas pelo Asana; rotas `action: "html"` e `"send_html"` em `/api/asana/descriptions`, `getLiveHtml`/`sendHtmlToAsana`). Alterações não enviadas ficam só na tela (não viram rascunho no banco). Se a descrição tem imagem, segue em texto simples com o aviso de antes. A tela Descrição (Auditoria) continua em texto simples. Sem migration e sem n8n. As duas linhas de cima/baixo passaram a 11fr/12fr e o *Ofertas ativas* ficou mais compacto.
     `OffersCell` (descricao-tab) agora é exportado; link "Foco" em `app/(app)/layout.tsx`. Sem migration e sem n8n.
 
 151. **Trava de 48h na pausa de conjuntos (Etapa 173)** (`lib/alerts/adset-decision.ts`, `adsets-pause.ts`): conjunto com **menos de 48h** (antes 24h) nunca é pausado **por desempenho** nem tem o
@@ -2974,6 +2975,11 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     pré-aprovado, com problemas…), pra um conjunto com anúncio em análise nunca parecer "sem anúncio"; (2) conjunto novo ainda sem anúncio fica protegido por 48h (era 3h, `NEW_ADSET_GRACE_HOURS`);
     (3) a **Auditoria** (de hora em hora, `lib/audit/errors.ts` + `run.ts`) só pausa "conjunto sem anúncio ativo" se ele **gastou de ontem pra hoje**: sem gasto (ou sem conseguir conferir) fica ativo — conjunto novo
     nessa situação nem é avisado; os mais velhos aparecem na Auditoria como "mantido ativo (sem gasto de ontem pra hoje)". A pausa por **localização** continua valendo desde o início. Sem migration e sem n8n.
+152. **Configurações → "Vídeos gerais" (Etapa 177)** (`components/configuracoes/videos-gerais-tab.tsx`, `app/api/video-bank/route.ts`, `lib/meta/video-bank-store.ts`, migration `0036_video_bank.sql`): a lista de vídeos de GERAL deixou de ser fixa no código
+    (`DEFAULT_VIDEO_BANK` em `lib/meta/video-bank.ts` virou só a lista padrão, usada se a tabela não existir) e passou a ficar na tabela `video_bank` (por usuário; a migration copia os 31 vídeos atuais).
+    Na nova aba dá pra **adicionar** (um ou vários de uma vez, um por linha), **editar** o nome e **excluir**; o prefixo "GERAL | " entra sozinho e nome repetido é recusado. `createVideoMatcher(lista)` monta o reconhecedor
+    (maior nome que bate no começo) e `summarizeVideos` / `summarizeAccounts` recebem a lista; `GET /api/analysis/video-map` devolve `bank` junto com o retrato. Vídeo novo ou renomeado só ganha números no
+    próximo "Atualizar" em Painel → Vídeos (ou no hook da madrugada, que já lê a lista do banco); excluir some da tela na hora. **Rodar a migration 0036 no Supabase.** Sem n8n.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

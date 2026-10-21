@@ -6,7 +6,7 @@ import { metaGetAll } from "./client";
 import { addDaysYmd, todayBrt } from "./daily-range";
 import { getCreativeCostAnalysis } from "./creative-analysis";
 import { memoMeta, tokenTag } from "./memo";
-import { matchVideo } from "./video-bank";
+import { createVideoMatcher } from "./video-bank";
 
 export interface Period {
   spend: number;
@@ -64,7 +64,13 @@ export function videoRanges(now: Date = new Date()) {
   };
 }
 
-export async function getAccountVideoStats(token: string, accountId: string, now: Date = new Date()): Promise<AccountVideoStat[]> {
+export async function getAccountVideoStats(
+  token: string,
+  accountId: string,
+  bank: readonly string[],
+  now: Date = new Date(),
+): Promise<AccountVideoStat[]> {
+  const matchVideo = createVideoMatcher(bank);
   const id = accountId.startsWith("act_") ? accountId : `act_${accountId}`;
   const r = videoRanges(now);
   const [ads, month, d7, d30] = await Promise.all([

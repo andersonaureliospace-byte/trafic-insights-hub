@@ -1,8 +1,8 @@
 // Banco de vídeos de GERAL (Etapa 160) — os nomes dos anúncios são o nome do vídeo ("GERAL | PREÇO ÚNICO"), igual em todas as contas
-// (nomenclatura 100% organizada de outubro/2026 pra cá). Lista informada pelo Anderson; pra incluir vídeo novo, é só acrescentar aqui.
-// Código puro (sem Meta), usado pelo servidor e pela tela.
+// (nomenclatura 100% organizada de outubro/2026 pra cá). Desde a Etapa 177 a lista vive no banco (tabela video_bank) e é editada em
+// Configurações → Vídeos gerais; a lista abaixo é só a PADRÃO (usada se a tabela ainda não existir). Código puro (sem Meta).
 
-export const VIDEO_BANK_GERAL: readonly string[] = [
+export const DEFAULT_VIDEO_BANK: readonly string[] = [
   "GERAL | PREÇO ÚNICO",
   "GERAL | É ISSO MESMO",
   "GERAL | ARMAÇÕES A 49,99",
@@ -46,23 +46,30 @@ export function normVideo(s: string): string {
     .trim();
 }
 
-const BANK = VIDEO_BANK_GERAL.map((label) => ({ label, key: normVideo(label) })).sort((a, b) => b.key.length - a.key.length);
-
 export interface VideoMatch {
   key: string;
   label: string;
   inBank: boolean;
 }
 
-// Reconhece o vídeo pelo nome do anúncio. Só entram anúncios de GERAL no padrão "GERAL | ..." (os nomes antigos, tipo
-// "[ADS Geral Branding] AD 14", ficam de fora). Casa com o MAIOR nome do banco que bate no começo (ex.: "… ÓCULOS DE GRAU" não vira
-// "… ÓCULOS"), aceitando sufixos como " - Cópia" ou " v2". Nome "GERAL | …" que não está no banco entra como "fora da lista".
-export function matchVideo(adName: string): VideoMatch | null {
-  const n = normVideo(adName);
-  if (!/^GERAL /.test(n) || !adName.includes("|")) return null;
-  for (const v of BANK) {
-    if (n === v.key || n.startsWith(`${v.key} `)) return { key: v.key, label: v.label, inBank: true };
-  }
-  const clean = adName.replace(/\s*[-–—]?\s*[([]?\s*(c[oó]pia|copy)(\s*(de|of))?(\s*\d+)?\s*[)\]]?/gi, "").replace(/\s{2,}/g, " ").trim();
-  return { key: normVideo(clean), label: clean, inBank: false };
+// Entrada da lista (nome → chave normalizada). Usada pra montar a lista de vídeos mesmo sem nenhum anúncio.
+export function bankEntry(label: string): VideoMatch {
+  return { key: normVideo(label), label, inBank: true };
+}
+
+// Monta o reconhecedor de vídeo a partir da lista de nomes. Reconhece o vídeo pelo nome do anúncio. Só entram anúncios de GERAL no padrão
+// "GERAL | ..." (os nomes antigos, tipo "[ADS Geral Branding] AD 14", ficam de fora). Casa com o MAIOR nome da lista que bate no começo
+// (ex.: "… ÓCULOS DE GRAU" não vira "… ÓCULOS"), aceitando sufixos como " - Cópia" ou " v2". Nome "GERAL | …" que não está na lista entra
+// como "fora da lista".
+export function createVideoMatcher(labels: readonly string[]): (adName: string) => VideoMatch | null {
+  const bank = labels.map(bankEntry).sort((a, b) => b.key.length - a.key.length);
+  return (adName: string) => {
+    const n = normVideo(adName);
+    if (!/^GERAL /.test(n) || !adName.includes("|")) return null;
+    for (const v of bank) {
+      if (n === v.key || n.startsWith(`${v.key} `)) return { key: v.key, label: v.label, inBank: true };
+    }
+    const clean = adName.replace(/\s*[-–—]?\s*[([]?\s*(c[oó]pia|copy)(\s*(de|of))?(\s*\d+)?\s*[)\]]?/gi, "").replace(/\s{2,}/g, " ").trim();
+    return { key: normVideo(clean), label: clean, inBank: false };
+  };
 }

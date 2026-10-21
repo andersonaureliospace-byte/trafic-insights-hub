@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { fromEditor, hasImage, toEditorHtml } from "@/lib/asana/rich-html";
 
 // Modo Foco — quadro "Descrição (Asana)" de UMA conta: a mesma descrição da aba Descrição (Auditoria). Editou? Fica como rascunho (salvo ao sair da caixa);
 // só vai pro Asana quando clica em "Enviar ao Asana" — e o texto SUBSTITUI a descrição de lá. No quadro aparece só uma prévia (sem barra de rolagem);
 // passar o mouse abre uma caixa maior com o texto inteiro; clicar nela (ou na prévia) libera a edição.
+// Se a descrição no Asana tem formatação (negrito, lista, link), a edição usa um editor com esses botões e envia COM a formatação.
 
 interface DescRow {
   ad_account_id: string;
@@ -48,6 +50,11 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
   const openT = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closeT = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editingRef = useRef(false);
+  // Edição com formatação (só quando a descrição no Asana tem negrito/lista/link): texto vivo do Asana + editor.
+  const [liveHtml, setLiveHtml] = useState<string | null>(null);
+  const [richDraft, setRichDraft] = useState<string | null>(null); // alterações ainda não enviadas, guardadas ao fechar a caixa
+  const [richDirty, setRichDirty] = useState(false);
+  const editorRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -79,6 +86,22 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
       setBox({ top, left: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)), width, maxH: window.innerHeight - top - 12 });
     }
     setOpen(true);
+    if (row?.asana_has_rich && liveHtml === null) void fetchLive();
+  }
+  async function fetchLive() {
+    if (!row) return;
+    try {
+      const res = await fetch("/api/asana/descriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "html", ad_account_id: row.ad_account_id }),
+      });
+      const d = await res.json();
+      if (d.error) setMsg({ ok: false, text: d.error });
+      else setLiveHtml(typeof d.html === "string" ? d.html : "");
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    }
   }
   function hoverIn() {
     if (closeT.current) clearTimeout(closeT.current);
@@ -97,6 +120,7 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
   }
   function closePanel() {
     if (edit !== null) void saveDraft();
+    if (richDirty && editorRef.current) setRichDraft(editorRef.current.innerHTML);
     editingRef.current = false;
     setEditing(false);
     setOpen(false);
@@ -118,6 +142,66 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
     if (closeT.current) clearTimeout(closeT.current);
   }, []);
 
+  async function sendRich(force = false) {
+    if (!row || !editorRef.current) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/asana/descriptions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "send_html", ad_account_id: row.ad_account_id, html: fromEditor(editorRef.current), force }),
+      });
+      const d = await res.json();
+      if (d.error) setMsg({ ok: false, text: d.error });
+      else if (d.ok) {
+        setMsg({ ok: true, text: "Enviado ao Asana, com a formatação." });
+        setRichDraft(null);
+        setRichDirty(false);
+        setLiveHtml(null);
+        editingRef.current = false;
+        setEditing(false);
+        setOpen(false);
+        await load();
+      } else if (d.code === "conflict" && !force) {
+        if (confirm(`${d.message}\n\nEnviar mesmo assim?`)) {
+          setBusy(false);
+          await sendRich(true);
+          return;
+        }
+      } else setMsg({ ok: false, text: d.message ?? "Não foi possível enviar." });
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function discardRich() {
+    setRichDraft(null);
+    setRichDirty(false);
+    setMsg(null);
+    if (editorRef.current) editorRef.current.innerHTML = toEditorHtml(liveHtml ?? "");
+  }
+
+  // Botões de formatação do editor: o mouseDown não rouba a seleção do texto.
+  function fmt(cmd: string, value?: string) {
+    editorRef.current?.focus();
+    document.execCommand(cmd, false, value);
+    setRichDirty(true);
+  }
+  function addLink() {
+    const sel = window.getSelection();
+    const range = sel && sel.rangeCount ? sel.getRangeAt(0).cloneRange() : null;
+    const url = window.prompt("Endereço do link (ex.: https://…)");
+    if (!url?.trim()) return;
+    if (range) {
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+    fmt("createLink", /^[a-z][a-z0-9+.-]*:/i.test(url.trim()) ? url.trim() : `https://${url.trim()}`);
+  }
+
   async function syncNow() {
     setSyncing(true);
     setMsg(null);
@@ -130,6 +214,7 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
       const d = await res.json();
       if (d.error) setMsg({ ok: false, text: d.error });
       else if (d.summary && d.summary.configured === false) setMsg({ ok: false, text: "Asana não configurado." });
+      setLiveHtml(null);
       await load();
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
@@ -234,7 +319,12 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
   }
 
   const text = edit ?? row.draft ?? row.asana_description;
-  const dirty = !sameText(text, row.asana_description);
+  const richBlocked = row.asana_has_rich && liveHtml !== null && hasImage(liveHtml); // com imagem: segue em texto simples
+  const richActive = row.asana_has_rich && !richBlocked;
+  const dirty = richActive ? richDirty || richDraft !== null : !sameText(text, row.asana_description);
+  const richCls =
+    "text-sm leading-snug [&_a]:text-blue-600 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-2 [&_code]:rounded [&_code]:bg-zinc-100 [&_code]:px-1 dark:[&_code]:bg-zinc-800 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:font-semibold [&_ol]:list-decimal [&_ol]:pl-5 [&_strong]:font-semibold [&_ul]:list-disc [&_ul]:pl-5";
+  const tbBtn = "h-6 min-w-6 rounded border border-zinc-300 px-1.5 text-xs font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800";
   const asanaLink = row.asana_task_gid ? (
     <a href={`https://app.asana.com/0/${ASANA_PROJECT_GID}/${row.asana_task_gid}`} target="_blank" rel="noreferrer" className="underline decoration-dotted underline-offset-2 hover:text-zinc-600 dark:hover:text-zinc-300">
       Abrir no Asana
@@ -273,7 +363,37 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
           style={{ top: box.top, left: box.left, width: box.width, maxHeight: box.maxH, height: editing ? Math.min(box.maxH, 440) : undefined }}
           className="fixed z-50 flex flex-col gap-2 rounded-xl border border-zinc-300 bg-white p-3 shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
         >
-          {editing ? (
+          {editing && richActive ? (
+            liveHtml === null ? (
+              <p className="flex-1 text-xs text-zinc-400">Carregando a formatação do Asana…</p>
+            ) : (
+              <>
+                <div className="flex shrink-0 items-center gap-1" onMouseDown={(e) => e.preventDefault()}>
+                  <button type="button" className={`${tbBtn} font-bold`} onClick={() => fmt("bold")} title="Negrito">B</button>
+                  <button type="button" className={`${tbBtn} italic`} onClick={() => fmt("italic")} title="Itálico">I</button>
+                  <button type="button" className={`${tbBtn} underline`} onClick={() => fmt("underline")} title="Sublinhado">U</button>
+                  <button type="button" className={tbBtn} onClick={() => fmt("insertUnorderedList")} title="Lista com marcadores">• Lista</button>
+                  <button type="button" className={tbBtn} onClick={() => fmt("insertOrderedList")} title="Lista numerada">1. Lista</button>
+                  <button type="button" className={tbBtn} onClick={addLink} title="Transformar o texto selecionado em link">Link</button>
+                </div>
+                <div
+                  ref={(el) => {
+                    editorRef.current = el;
+                    if (el && !el.dataset.ready) {
+                      el.dataset.ready = "1";
+                      el.innerHTML = richDraft ?? toEditorHtml(liveHtml);
+                      el.focus();
+                    }
+                  }}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={() => setRichDirty(true)}
+                  onKeyDown={(e) => { if (e.key === "Escape") closePanel(); }}
+                  className={`min-h-[8rem] w-full flex-1 overflow-auto rounded-md border border-zinc-300 p-2 whitespace-pre-wrap focus:outline-none dark:border-zinc-700 ${richCls}`}
+                />
+              </>
+            )
+          ) : editing ? (
             <textarea
               autoFocus
               value={text}
@@ -283,6 +403,13 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
               placeholder="Sem descrição no Asana."
               className="min-h-[8rem] w-full flex-1 resize-none rounded-md border border-zinc-300 bg-transparent p-2 text-sm leading-snug dark:border-zinc-700"
             />
+          ) : richActive && liveHtml !== null ? (
+            <div
+              onClick={startEdit}
+              title="Clique para editar"
+              className={`min-h-0 flex-1 cursor-text overflow-auto whitespace-pre-wrap text-zinc-800 dark:text-zinc-200 ${richCls}`}
+              dangerouslySetInnerHTML={{ __html: richDraft ?? toEditorHtml(liveHtml) }}
+            />
           ) : (
             <div onClick={startEdit} title="Clique para editar" className="min-h-0 flex-1 cursor-text overflow-auto text-sm leading-snug whitespace-pre-wrap text-zinc-800 dark:text-zinc-200">
               {text.trim() ? text : <span className="italic text-zinc-400">Sem descrição no Asana. Clique para escrever.</span>}
@@ -291,14 +418,14 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
           {editing ? (
             <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1">
               <button
-                onClick={() => void send()}
-                disabled={!dirty || busy}
+                onClick={() => void (richActive ? sendRich() : send())}
+                disabled={!dirty || busy || (richActive && liveHtml === null)}
                 className="h-7 rounded-md bg-zinc-900 px-2.5 text-xs font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
               >
                 {busy ? "Enviando…" : "Enviar ao Asana"}
               </button>
               {dirty ? (
-                <button onClick={() => void discard()} className="h-7 rounded-md border border-zinc-300 px-2.5 text-xs font-medium dark:border-zinc-700">
+                <button onClick={() => (richActive ? discardRich() : void discard())} className="h-7 rounded-md border border-zinc-300 px-2.5 text-xs font-medium dark:border-zinc-700">
                   Voltar ao do Asana
                 </button>
               ) : null}
@@ -306,10 +433,12 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
                 Fechar
               </button>
               {dirtyBadge}
-              {row.asana_has_rich ? (
-                <span className="text-[11px] text-zinc-400" title="A descrição no Asana tem negrito, lista ou link. Ao enviar como texto simples, isso se perde.">
-                  tem formatação no Asana
+              {richBlocked ? (
+                <span className="text-[11px] text-amber-600" title="A descrição no Asana tem imagem. Enviar como texto perde a formatação e a imagem — se preferir, edite direto no Asana.">
+                  tem imagem: envia só texto
                 </span>
+              ) : richActive ? (
+                <span className="text-[11px] text-zinc-400">edita com formatação</span>
               ) : null}
               {msgEl}
             </div>

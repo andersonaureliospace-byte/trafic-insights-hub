@@ -6,6 +6,7 @@ import type { createClient } from "@/lib/supabase/server";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { todayBrt } from "./daily-range";
 import { getAccountVideoStats, type AccountVideoStat } from "./video-map";
+import { loadVideoBank } from "./video-bank-store";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -62,6 +63,7 @@ export async function computeAccounts(
     .in("ad_account_id", ids);
   const map = new Map((bindings ?? []).map((b) => [b.ad_account_id as string, b]));
   const today = todayBrt();
+  const bank = await loadVideoBank(db, userId);
   const entries: SnapshotAccount[] = [];
   const skipped: { accountId: string; clientName: string }[] = [];
   await Promise.all(
@@ -74,7 +76,7 @@ export async function computeAccounts(
         return;
       }
       try {
-        entries.push({ accountId, clientName, cpaTarget, stats: await getAccountVideoStats(token, accountId), computedFor: today });
+        entries.push({ accountId, clientName, cpaTarget, stats: await getAccountVideoStats(token, accountId, bank), computedFor: today });
       } catch (e) {
         entries.push({ accountId, clientName, cpaTarget, stats: [], computedFor: today, error: (e as Error).message });
       }

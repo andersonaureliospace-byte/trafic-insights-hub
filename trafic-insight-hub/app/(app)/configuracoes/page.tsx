@@ -5,12 +5,14 @@ import { MetaCredentialsForm } from "@/components/meta-credentials-form";
 import { WhatsappTab } from "@/components/configuracoes/whatsapp-tab";
 import { StatusTab } from "@/components/configuracoes/status-tab";
 import { ClientesSection } from "@/components/configuracoes/clientes-section";
+import { VideosGeraisTab } from "@/components/configuracoes/videos-gerais-tab";
 
 const TABS = [
   { id: "meta", label: "Meta (Facebook)" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "status", label: "Status" },
   { id: "clientes", label: "Clientes" },
+  { id: "videos", label: "Vídeos gerais" },
 ] as const;
 
 export default function ConfiguracoesPage() {
@@ -40,6 +42,7 @@ export default function ConfiguracoesPage() {
       {tab === "whatsapp" ? <WhatsappTab /> : null}
       {tab === "status" ? <StatusTab /> : null}
       {tab === "clientes" ? <ClientesSection /> : null}
+      {tab === "videos" ? <VideosGeraisTab /> : null}
     </div>
   );
 }

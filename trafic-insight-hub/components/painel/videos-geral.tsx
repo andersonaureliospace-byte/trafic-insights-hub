@@ -141,6 +141,7 @@ const dayTxt = (d: number | null) => (d == null ? "nunca" : d <= 0 ? "hoje" : `h
 export function VideosGeral({ accounts, focusAccountId }: { accounts: Array<{ account_id: string }>; focusAccountId?: string }) {
   const [data, setData] = useState<Cached | null>(null);
   const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
+  const [bank, setBank] = useState<string[]>([]); // lista de vídeos (Configurações → Vídeos gerais)
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -160,9 +161,10 @@ export function VideosGeral({ accounts, focusAccountId }: { accounts: Array<{ ac
     setError(null);
     try {
       const res = await fetch("/api/analysis/video-map");
-      const d = (await res.json()) as { error?: string; snapshot?: Snapshot | null };
+      const d = (await res.json()) as { error?: string; snapshot?: Snapshot | null; bank?: string[] };
       if (d.error) throw new Error(d.error);
       const snap = d.snapshot ?? null;
+      setBank(d.bank ?? []);
       setSnapshotAt(snap?.computed_at ?? null);
       const wanted = new Set(ids);
       const list = Object.values(snap?.accounts ?? {}).filter((a) => wanted.has(a.accountId));
@@ -215,7 +217,7 @@ export function VideosGeral({ accounts, focusAccountId }: { accounts: Array<{ ac
     void readSnapshot();
   }, [readSnapshot]);
 
-  const videos = useMemo(() => (data ? summarizeVideos(data.accounts) : []), [data]);
+  const videos = useMemo(() => (data ? summarizeVideos(data.accounts, bank) : []), [data, bank]);
   const counts = useMemo(() => {
     const c: Record<string, number> = { todos: videos.length };
     for (const v of videos) for (const t of v.tags) c[t] = (c[t] ?? 0) + 1;
@@ -226,7 +228,7 @@ export function VideosGeral({ accounts, focusAccountId }: { accounts: Array<{ ac
     return videos.filter((v) => (filter === "todos" || v.tags.includes(filter)) && (!needle || v.label.toLowerCase().includes(needle)));
   }, [videos, filter, q]);
 
-  const contas = useMemo(() => (data ? summarizeAccounts(data.accounts) : []), [data]);
+  const contas = useMemo(() => (data ? summarizeAccounts(data.accounts, bank) : []), [data, bank]);
   const selectedConta = useMemo(() => contas.find((a) => a.accountId === contaSel) ?? null, [contas, contaSel]);
   // Sem conta escolhida: os números são de CONTAS (quantas contas têm vídeo naquela situação). Com conta escolhida: são de VÍDEOS dessa conta.
   const contaCounts = useMemo(() => {
