@@ -14,6 +14,7 @@ import {
   STORE_DAYS,
   addDaysYmd,
   buildDayRows,
+  isSuspectDay,
   oldestKeptDay,
   planRange,
   resolveRange,
@@ -78,8 +79,11 @@ export async function readStoredDaysMany(
         .limit(chunk.length * (STORE_DAYS + 2));
       if (error) throw error;
       for (const r of (data ?? []) as DbRow[]) {
+        const row = toDayRow(r);
+        // Etapa 178: dia gravado com resultados mas sem gasto = cópia ruim; ignora (a Meta responde no lugar) até a rotina noturna refazer.
+        if (isSuspectDay(row)) continue;
         const m = out.get(r.ad_account_id) ?? new Map<string, DayRow>();
-        m.set(r.day, toDayRow(r));
+        m.set(r.day, row);
         out.set(r.ad_account_id, m);
       }
     }
@@ -107,7 +111,21 @@ export async function planFromStore(actId: string, preset: DateRangeInput): Prom
 
 // ---------------------------------------------------------------- escrita (rotina noturna)
 
+// Etapa 178: confere o que a Meta devolveu antes de gravar. Se algum dia veio com resultados e sem gasto (a Meta às vezes
+// devolve a linha sem o `spend`), tenta de novo uma vez; se continuar assim, esses dias NÃO são gravados (ficam sem cópia e a
+// tela pergunta à Meta por eles) — os outros dias gravam normalmente.
 async function fetchAccountDays(token: string, actId: string, range: YmdRange): Promise<DayRow[]> {
+  let rows = await fetchAccountDaysOnce(token, actId, range);
+  if (rows.some(isSuspectDay)) {
+    await new Promise((r) => setTimeout(r, 2000));
+    rows = await fetchAccountDaysOnce(token, actId, range);
+  }
+  const bad = rows.filter(isSuspectDay);
+  if (bad.length > 0) console.warn(`daily-store: ${normAccountId(actId)} com ${bad.length} dia(s) sem gasto (ex.: ${bad[0].day}) — não gravados`);
+  return rows.filter((r) => !isSuspectDay(r));
+}
+
+async function fetchAccountDaysOnce(token: string, actId: string, range: YmdRange): Promise<DayRow[]> {
   const id = `act_${normAccountId(actId)}`;
   // Objetivos fora do CPA: precisa da lista de campanhas (uma chamada). Se falhar, ABORTA — gravar sem
   // essa classificação misturaria seguidores/tráfego no CPA.

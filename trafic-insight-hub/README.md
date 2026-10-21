@@ -2980,6 +2980,10 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     Na nova aba dá pra **adicionar** (um ou vários de uma vez, um por linha), **editar** o nome e **excluir**; o prefixo "GERAL | " entra sozinho e nome repetido é recusado. `createVideoMatcher(lista)` monta o reconhecedor
     (maior nome que bate no começo) e `summarizeVideos` / `summarizeAccounts` recebem a lista; `GET /api/analysis/video-map` devolve `bank` junto com o retrato. Vídeo novo ou renomeado só ganha números no
     próximo "Atualizar" em Painel → Vídeos (ou no hook da madrugada, que já lê a lista do banco); excluir some da tela na hora. **Rodar a migration 0036 no Supabase.** Sem n8n.
+153. **Conserto do backup diário sem gasto (Etapa 178)** (`lib/meta/daily-range.ts`, `daily-store.ts`): em 21/10 várias contas (ex.: IVS BLUMENAU - P) passaram a mostrar só o gasto de HOJE com os leads do mês inteiro
+    (CPA absurdo, ex.: R$ 0,05) — os dias fechados em `meta_daily_metrics` estavam gravados com `spend`/`cpa_spend` = 0 mas com `results` > 0 (a Meta devolveu as linhas sem o gasto na cópia da madrugada).
+    Agora: (1) **leitura** ignora qualquer dia com resultados e sem gasto (`isSuspectDay`) — a Meta responde no lugar, então a tela volta ao normal assim que o código é publicado; (2) **gravação** (rotina noturna)
+    confere o que veio, tenta de novo uma vez e NÃO grava dia suspeito. Pra refazer a cópia na hora: chamar o hook `metrics-sync-tick` com `{"force": true}`. Sem migration e sem mudança no n8n.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

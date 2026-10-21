@@ -15,6 +15,12 @@ export interface DayRow {
   types: string[];
 }
 
+// Dia suspeito (Etapa 178): tem resultados mas NENHUM gasto. Não existe na vida real (conversa sem gasto no dia) — é sinal de que a Meta
+// devolveu a linha sem o gasto na hora da cópia. Esse dia nunca é gravado e, se já estiver gravado, não é usado (a Meta responde no lugar).
+export function isSuspectDay(r: { spend: number; cpaSpend: number; results: number }): boolean {
+  return r.results > 0 && r.spend <= 0 && r.cpaSpend <= 0;
+}
+
 export interface YmdRange {
   since: string;
   until: string;
