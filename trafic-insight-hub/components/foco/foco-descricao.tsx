@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // Modo Foco — quadro "Descrição (Asana)" de UMA conta: a mesma descrição da aba Descrição (Auditoria). Editou? Fica como rascunho (salvo ao sair da caixa);
-// só vai pro Asana quando clica em "Enviar ao Asana" — e o texto SUBSTITUI a descrição de lá. A caixa ocupa o espaço que sobra no quadro (rola só se o texto for maior).
+// só vai pro Asana quando clica em "Enviar ao Asana" — e o texto SUBSTITUI a descrição de lá. No quadro aparece só uma prévia (sem barra de rolagem);
+// passar o mouse abre uma caixa maior com o texto inteiro; clicar nela (ou na prévia) libera a edição.
 
 interface DescRow {
   ad_account_id: string;
@@ -39,6 +40,14 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
   const [busy, setBusy] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [box, setBox] = useState({ top: 8, left: 8, width: 520, maxH: 420 });
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const openT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closeT = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const editingRef = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -60,6 +69,54 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- lê a descrição do cliente ao abrir/trocar de conta
     void load();
   }, [load]);
+
+  // Caixa expandida: posição fixa (não é cortada pelo quadro), alinhada à direita da prévia e dentro da tela.
+  function openPanel() {
+    const r = triggerRef.current?.getBoundingClientRect();
+    if (r) {
+      const width = Math.min(560, window.innerWidth - 16);
+      const top = Math.max(8, Math.min(r.top, window.innerHeight - 12 - 360));
+      setBox({ top, left: Math.max(8, Math.min(r.right - width, window.innerWidth - width - 8)), width, maxH: window.innerHeight - top - 12 });
+    }
+    setOpen(true);
+  }
+  function hoverIn() {
+    if (closeT.current) clearTimeout(closeT.current);
+    if (!open && !openT.current) openT.current = setTimeout(() => { openT.current = null; openPanel(); }, 150);
+  }
+  function hoverOut() {
+    if (openT.current) { clearTimeout(openT.current); openT.current = null; }
+    if (closeT.current) clearTimeout(closeT.current);
+    closeT.current = setTimeout(() => { if (!editingRef.current) setOpen(false); }, 250);
+  }
+  function startEdit() {
+    if (openT.current) { clearTimeout(openT.current); openT.current = null; }
+    if (!open) openPanel();
+    editingRef.current = true;
+    setEditing(true);
+  }
+  function closePanel() {
+    if (edit !== null) void saveDraft();
+    editingRef.current = false;
+    setEditing(false);
+    setOpen(false);
+  }
+
+  useEffect(() => {
+    if (!open || !editing) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (panelRef.current?.contains(t) || triggerRef.current?.contains(t)) return;
+      closePanel();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  });
+
+  useEffect(() => () => {
+    if (openT.current) clearTimeout(openT.current);
+    if (closeT.current) clearTimeout(closeT.current);
+  }, []);
 
   async function syncNow() {
     setSyncing(true);
@@ -178,45 +235,89 @@ export function FocoDescricao({ accountId }: { accountId: string }) {
 
   const text = edit ?? row.draft ?? row.asana_description;
   const dirty = !sameText(text, row.asana_description);
+  const asanaLink = row.asana_task_gid ? (
+    <a href={`https://app.asana.com/0/${ASANA_PROJECT_GID}/${row.asana_task_gid}`} target="_blank" rel="noreferrer" className="underline decoration-dotted underline-offset-2 hover:text-zinc-600 dark:hover:text-zinc-300">
+      Abrir no Asana
+    </a>
+  ) : null;
+  const msgEl = msg?.text ? <span className={`text-xs ${msg.ok ? "text-green-600" : "text-red-600"}`}>{msg.text}</span> : null;
+  const dirtyBadge = dirty ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">não enviado</span> : null;
+
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 p-2.5">
-      <textarea
-        value={text}
-        onChange={(e) => setEdit(e.target.value)}
-        onBlur={() => void saveDraft()}
-        placeholder="Sem descrição no Asana."
-        className="min-h-[4rem] w-full flex-1 resize-none rounded-md border border-zinc-300 bg-transparent p-2 text-sm leading-snug dark:border-zinc-700"
-      />
-      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1">
-        <button
-          onClick={() => void send()}
-          disabled={!dirty || busy}
-          className="h-7 rounded-md bg-zinc-900 px-2.5 text-xs font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          {busy ? "Enviando…" : "Enviar ao Asana"}
-        </button>
-        {dirty ? (
-          <button onClick={() => void discard()} className="h-7 rounded-md border border-zinc-300 px-2.5 text-xs font-medium dark:border-zinc-700">
-            Voltar ao do Asana
-          </button>
-        ) : null}
-        {dirty ? <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">não enviado</span> : null}
-        {row.asana_has_rich ? (
-          <span className="text-[11px] text-zinc-400" title="A descrição no Asana tem negrito, lista ou link. Ao enviar como texto simples, isso se perde.">
-            tem formatação no Asana
-          </span>
-        ) : null}
-        {msg?.text ? <span className={`text-xs ${msg.ok ? "text-green-600" : "text-red-600"}`}>{msg.text}</span> : null}
-        <span className="ml-auto flex items-center gap-2 text-[11px] text-zinc-400">
+    <div className="flex h-full min-h-0 flex-col gap-1.5 p-2.5">
+      <div
+        ref={triggerRef}
+        onMouseEnter={hoverIn}
+        onMouseLeave={hoverOut}
+        onClick={startEdit}
+        title="Passe o mouse para ver tudo · clique para editar"
+        className="min-h-0 flex-1 cursor-pointer overflow-hidden rounded-md border border-zinc-200 p-2 text-sm leading-snug whitespace-pre-wrap text-zinc-700 transition-colors hover:border-zinc-400 dark:border-zinc-800 dark:text-zinc-300 dark:hover:border-zinc-600 [mask-image:linear-gradient(to_bottom,black_80%,transparent)]"
+      >
+        {text.trim() ? text : <span className="italic text-zinc-400">Sem descrição no Asana. Clique para escrever.</span>}
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-zinc-400">
+        {dirtyBadge}
+        {msgEl}
+        <span className="ml-auto flex items-center gap-2">
           {ago(row.synced_at)}
-          {row.asana_task_gid ? (
-            <a href={`https://app.asana.com/0/${ASANA_PROJECT_GID}/${row.asana_task_gid}`} target="_blank" rel="noreferrer" className="underline decoration-dotted underline-offset-2 hover:text-zinc-600 dark:hover:text-zinc-300">
-              Abrir no Asana
-            </a>
-          ) : null}
+          {asanaLink}
           {syncBtn}
         </span>
       </div>
+
+      {open ? (
+        <div
+          ref={panelRef}
+          onMouseEnter={hoverIn}
+          onMouseLeave={hoverOut}
+          style={{ top: box.top, left: box.left, width: box.width, maxHeight: box.maxH, height: editing ? Math.min(box.maxH, 440) : undefined }}
+          className="fixed z-50 flex flex-col gap-2 rounded-xl border border-zinc-300 bg-white p-3 shadow-2xl dark:border-zinc-700 dark:bg-zinc-900"
+        >
+          {editing ? (
+            <textarea
+              autoFocus
+              value={text}
+              onChange={(e) => setEdit(e.target.value)}
+              onBlur={() => void saveDraft()}
+              onKeyDown={(e) => { if (e.key === "Escape") closePanel(); }}
+              placeholder="Sem descrição no Asana."
+              className="min-h-[8rem] w-full flex-1 resize-none rounded-md border border-zinc-300 bg-transparent p-2 text-sm leading-snug dark:border-zinc-700"
+            />
+          ) : (
+            <div onClick={startEdit} title="Clique para editar" className="min-h-0 flex-1 cursor-text overflow-auto text-sm leading-snug whitespace-pre-wrap text-zinc-800 dark:text-zinc-200">
+              {text.trim() ? text : <span className="italic text-zinc-400">Sem descrição no Asana. Clique para escrever.</span>}
+            </div>
+          )}
+          {editing ? (
+            <div className="flex shrink-0 flex-wrap items-center gap-x-2 gap-y-1">
+              <button
+                onClick={() => void send()}
+                disabled={!dirty || busy}
+                className="h-7 rounded-md bg-zinc-900 px-2.5 text-xs font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
+              >
+                {busy ? "Enviando…" : "Enviar ao Asana"}
+              </button>
+              {dirty ? (
+                <button onClick={() => void discard()} className="h-7 rounded-md border border-zinc-300 px-2.5 text-xs font-medium dark:border-zinc-700">
+                  Voltar ao do Asana
+                </button>
+              ) : null}
+              <button onClick={closePanel} className="h-7 rounded-md border border-zinc-300 px-2.5 text-xs font-medium dark:border-zinc-700">
+                Fechar
+              </button>
+              {dirtyBadge}
+              {row.asana_has_rich ? (
+                <span className="text-[11px] text-zinc-400" title="A descrição no Asana tem negrito, lista ou link. Ao enviar como texto simples, isso se perde.">
+                  tem formatação no Asana
+                </span>
+              ) : null}
+              {msgEl}
+            </div>
+          ) : (
+            <p className="shrink-0 text-[11px] text-zinc-400">Clique no texto para editar</p>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
