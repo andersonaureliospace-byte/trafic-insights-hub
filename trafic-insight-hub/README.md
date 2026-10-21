@@ -2984,6 +2984,12 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
     (CPA absurdo, ex.: R$ 0,05) — os dias fechados em `meta_daily_metrics` estavam gravados com `spend`/`cpa_spend` = 0 mas com `results` > 0 (a Meta devolveu as linhas sem o gasto na cópia da madrugada).
     Agora: (1) **leitura** ignora qualquer dia com resultados e sem gasto (`isSuspectDay`) — a Meta responde no lugar, então a tela volta ao normal assim que o código é publicado; (2) **gravação** (rotina noturna)
     confere o que veio, tenta de novo uma vez e NÃO grava dia suspeito. Pra refazer a cópia na hora: chamar o hook `metrics-sync-tick` com `{"force": true}`. Sem migration e sem mudança no n8n.
+154. **Auditoria de localização pega e DESLIGA a "expansão de localização" — sem pausar (Etapas 179 e 180)** (`lib/audit/location.ts`, `run.ts`, `components/auditoria/location-audit.tsx`): o checkbox "Alcançar mais pessoas com probabilidade
+    de responder aos seus anúncios" (Público → Localizações) vive em `targeting.geo_locations.location_expansion.expand_locations` (1 = ligado; chave ausente ou 0 = desligado); a auditoria só olhava
+    `targeting_relaxation_types` e `targeting_optimization`, então esse caso passava. **Etapa 181 (testado num conjunto real de Ijuí):** com a caixa ligada a Meta NÃO devolve `location_expansion`; devolve `targeting_automation.individual_setting.geo = 1` (desligada: 0 ou sem a chave) — é esse o campo que a auditoria lê e zera; e a Meta recusa `page_types` na gravação, então ele não é reenviado. Agora entra como problema "Expansão de público", mas **NUNCA pausa**: `disableLocationExpansion` lê o público do conjunto, manda de volta o
+    `targeting` inteiro (a Meta substitui o objeto todo; some só `effective_*` e `age_range`) com a expansão em 0 (e relaxation zerado / optimization "none" nos campos antigos) e, se mesmo assim o conjunto deixar de estar ativo, reativa.
+    Só **Brasil (país inteiro)** continua pausando. Conjunto com expansão desligada com sucesso some da lista; se não der pra desligar, fica "Incorreto" com o selo "Falha ao desligar a expansão". O resumo (botão e hook `audit-tick`)
+    traz `fixedCount`. Atenção: editar o público de um conjunto pode reiniciar a fase de aprendizado dele na Meta. Sem migration e sem n8n.
 
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do

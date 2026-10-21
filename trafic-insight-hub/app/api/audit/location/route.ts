@@ -13,7 +13,7 @@ interface LocationStatusRow {
   ad_account_id: string;
   adset_id: string;
   adset_name: string | null;
-  detail: { campaign_name?: string | null; reasons?: string[]; paused?: boolean; pause_error?: string | null } | null;
+  detail: { campaign_name?: string | null; reasons?: string[]; paused?: boolean; pause_error?: string | null; expansion_fixed?: boolean; fix_error?: string | null } | null;
   checked_at: string;
 }
 
@@ -63,6 +63,8 @@ export async function GET() {
           reasons: r.detail?.reasons ?? [],
           paused: r.detail?.paused,
           pause_error: r.detail?.pause_error ?? null,
+          expansion_fixed: r.detail?.expansion_fixed,
+          fix_error: r.detail?.fix_error ?? null,
         })),
         checked_at: checkedAt,
       };
@@ -82,7 +84,7 @@ export async function POST() {
       return NextResponse.json({ rows: [], pausedCount: 0, failedCount: 0 });
     }
 
-    const { byAccount, pausedCount, failedCount } = await runLocationAudit(supabase, user.id, token, bindings);
+    const { byAccount, pausedCount, failedCount, fixedCount } = await runLocationAudit(supabase, user.id, token, bindings);
     const now = new Date().toISOString();
     const rows = bindings.map((b) => {
       const issues = byAccount[b.ad_account_id] ?? [];
@@ -94,7 +96,7 @@ export async function POST() {
         checked_at: now,
       };
     });
-    return NextResponse.json({ rows, pausedCount, failedCount });
+    return NextResponse.json({ rows, pausedCount, failedCount, fixedCount });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

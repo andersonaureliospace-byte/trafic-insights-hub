@@ -51,7 +51,7 @@ export async function POST(request: Request) {
       const errors = await runErrorAudit(supabase, userId, token, list);
       results.push({
         userId,
-        location: { pausedCount: location.pausedCount, failedCount: location.failedCount, checkedAccounts: location.checkedAccounts },
+        location: { pausedCount: location.pausedCount, fixedCount: location.fixedCount ?? 0, failedCount: location.failedCount, checkedAccounts: location.checkedAccounts },
         errors: { pausedCount: errors.pausedCount, failedCount: errors.failedCount, checkedAccounts: errors.checkedAccounts },
       });
     } catch (e) {

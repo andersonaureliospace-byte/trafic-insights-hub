@@ -9,6 +9,8 @@ interface LocationIssue {
   reasons: string[];
   paused?: boolean;
   pause_error?: string | null;
+  expansion_fixed?: boolean;
+  fix_error?: string | null;
 }
 
 interface LocationRow {
@@ -43,7 +45,7 @@ export function LocationAudit() {
   }, []);
 
   async function handleRun() {
-    if (!confirm("A verificação pausa automaticamente os conjuntos com configuração incorreta. Deseja continuar?")) {
+    if (!confirm("A verificação pausa os conjuntos com Brasil (país inteiro) e DESLIGA a caixa de expansão de público dos conjuntos que estiverem com ela ligada (esses seguem ativos). Deseja continuar?")) {
       return;
     }
     setRunning(true);
@@ -56,7 +58,7 @@ export function LocationAudit() {
     }
     setError(null);
     setRows(d.rows ?? []);
-    const msg = `Verificação concluída · ${d.pausedCount} conjunto(s) pausado(s)${d.failedCount > 0 ? ` · ${d.failedCount} falha(s)` : ""}`;
+    const msg = `Verificação concluída · ${d.pausedCount} conjunto(s) pausado(s) · ${d.fixedCount ?? 0} expansão(ões) desligada(s)${d.failedCount > 0 ? ` · ${d.failedCount} falha(s)` : ""}`;
     alert(msg);
   }
 
@@ -76,7 +78,7 @@ export function LocationAudit() {
             {open ? (
               <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
                 Marcado como <strong>Incorreto</strong> quando um conjunto ativo está com localização Brasil (país
-                inteiro) ou com a expansão de público ligada.
+                inteiro — esse é pausado) ou com a expansão de público ligada (essa só é desligada, o conjunto nunca é pausado por isso).
               </p>
             ) : (
               <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">
@@ -165,6 +167,14 @@ export function LocationAudit() {
                                           title={i.pause_error ?? undefined}
                                         >
                                           Falha ao pausar
+                                        </span>
+                                      ) : null}
+                                      {i.fix_error ? (
+                                        <span
+                                          className="rounded-full bg-red-100 px-1.5 py-0.5 text-[11px] text-red-700 dark:bg-red-950 dark:text-red-300"
+                                          title={i.fix_error}
+                                        >
+                                          Falha ao desligar a expansão
                                         </span>
                                       ) : null}
                                     </div>

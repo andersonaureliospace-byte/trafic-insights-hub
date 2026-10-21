@@ -2,14 +2,18 @@
 // Marca como incorreto qualquer conjunto ativo (com campanha ativa e ao menos
 // um anúncio ativo) segmentando o Brasil inteiro (sem restrição de
 // estado/cidade) ou com a expansão de público ligada.
+// Etapa 180: Brasil inteiro continua sendo PAUSADO; a expansão de público ("Alcançar mais pessoas com probabilidade de
+// responder aos seus anúncios") NUNCA pausa — só DESLIGA a caixa (disableLocationExpansion) e o conjunto segue ativo.
 
-import { metaGetAll } from "@/lib/meta/client";
+import { metaGet, metaGetAll, metaPost } from "@/lib/meta/client";
 
 export interface AuditLocationIssue {
   adset_id: string;
   adset_name: string;
   campaign_name: string | null;
   reasons: string[];
+  pause: boolean; // tem problema que pausa (Brasil inteiro)
+  expansion: boolean; // expansão de público ligada (só desliga a caixa, nunca pausa)
 }
 
 export const REASON_BRASIL = "Localização: Brasil (país inteiro)";
@@ -26,14 +30,17 @@ interface Targeting {
     custom_locations?: unknown[];
     geo_markets?: unknown[];
     places?: unknown[];
+    // Checkbox "Alcançar mais pessoas com probabilidade de responder aos seus anúncios" (Público > Localizações): expand_locations 1 = ligado.
+    location_expansion?: { expand_locations?: number | boolean };
   };
-  targeting_automation?: { advantage_audience?: number };
+  targeting_automation?: { advantage_audience?: number; individual_setting?: { geo?: number } };
   targeting_optimization?: string;
   targeting_relaxation_types?: Record<string, number>;
 }
 
 export function evaluateTargetingDetailed(t: Targeting | undefined | null): {
-  blocking: string[];
+  blocking: string[]; // motivos que PAUSAM (Brasil inteiro)
+  expansion: boolean; // expansão ligada: só desliga a caixa
   info: string[];
 } {
   const reasons: string[] = [];
@@ -53,12 +60,65 @@ export function evaluateTargetingDetailed(t: Targeting | undefined | null): {
   if (advantage) info.push(REASON_ADVANTAGE);
 
   const relaxation = Object.values(t?.targeting_relaxation_types ?? {}).some((v) => Number(v) === 1);
+  // Etapa 179: o checkbox de expansão de localização vive em geo_locations.location_expansion (não em targeting_relaxation_types).
+  const locationExpansion = Number(geo.location_expansion?.expand_locations ?? 0) === 1;
   const optimization = ["expansion_all", "targeting_relaxation"].includes(
     String(t?.targeting_optimization ?? ""),
   );
-  if (relaxation || optimization) reasons.push(REASON_EXPANSION);
+  // Etapa 181 (confirmado num conjunto de teste da IVS Ijuí): com a caixa LIGADA a Meta devolve targeting_automation.individual_setting.geo = 1
+  // (desligada: geo = 0 ou sem a chave). A chave geo_locations.location_expansion não aparece nessa situação, mas fica na checagem por garantia.
+  const geoExpansion = Number(t?.targeting_automation?.individual_setting?.geo ?? 0) === 1;
+  const expansion = relaxation || optimization || locationExpansion || geoExpansion;
 
-  return { blocking: reasons, info };
+  return { blocking: reasons, expansion, info };
+}
+
+// Targeting com a expansão desligada. A Meta SUBSTITUI o targeting inteiro na gravação (não mescla), então manda tudo que veio,
+// menos o que a Meta só devolve como leitura: effective_*, age_range e page_types (a Meta recusa: "Page types have been replaced
+// with Ad placements" — testado no conjunto de teste de Ijuí). A caixa é targeting_automation.individual_setting.geo (1 = ligada).
+export function buildTargetingWithoutExpansion(t: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(t)) {
+    if (k.startsWith("effective_") || k === "age_range" || k === "page_types") continue;
+    out[k] = v;
+  }
+  const auto = { ...((out.targeting_automation as Record<string, unknown> | undefined) ?? {}) };
+  auto.individual_setting = { ...((auto.individual_setting as Record<string, unknown> | undefined) ?? {}), geo: 0 };
+  out.targeting_automation = auto;
+  const geo = { ...((out.geo_locations as Record<string, unknown> | undefined) ?? {}) };
+  if (geo.location_expansion) {
+    geo.location_expansion = { expand_locations: 0 };
+    out.geo_locations = geo;
+  }
+  const relax = out.targeting_relaxation_types as Record<string, number> | undefined;
+  if (relax) out.targeting_relaxation_types = Object.fromEntries(Object.keys(relax).map((k) => [k, 0]));
+  if (["expansion_all", "targeting_relaxation"].includes(String(out.targeting_optimization ?? ""))) out.targeting_optimization = "none";
+  return out;
+}
+
+// Desliga a caixa de expansão de UM conjunto. NUNCA deixa o conjunto pausado por causa disso: se depois da edição o conjunto
+// deixou de estar ativo (a Meta às vezes muda o status ao editar), reativa na hora.
+export async function disableLocationExpansion(
+  token: string,
+  adsetId: string,
+): Promise<{ ok: boolean; reactivated?: boolean; error?: string }> {
+  try {
+    const cur = await metaGet<{ targeting?: Record<string, unknown>; status?: string }>(token, `/${adsetId}`, { fields: "targeting,status" });
+    if (!cur.targeting) return { ok: false, error: "A Meta não devolveu o público do conjunto." };
+    const wasActive = String(cur.status ?? "").toUpperCase() === "ACTIVE";
+    await metaPost(token, `/${adsetId}`, { targeting: JSON.stringify(buildTargetingWithoutExpansion(cur.targeting)) });
+    let reactivated = false;
+    if (wasActive) {
+      const after = await metaGet<{ status?: string }>(token, `/${adsetId}`, { fields: "status" });
+      if (String(after.status ?? "").toUpperCase() !== "ACTIVE") {
+        await metaPost(token, `/${adsetId}`, { status: "ACTIVE" });
+        reactivated = true;
+      }
+    }
+    return { ok: true, reactivated };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message.slice(0, 220) };
+  }
 }
 
 interface AdsetLocationRow {
@@ -101,13 +161,15 @@ export async function auditAccountLocation(
     if (row.end_time && new Date(row.end_time).getTime() <= now) continue;
 
     checked++;
-    const { blocking, info } = evaluateTargetingDetailed(row.targeting);
-    if (blocking.length > 0) {
+    const { blocking, expansion, info } = evaluateTargetingDetailed(row.targeting);
+    if (blocking.length > 0 || expansion) {
       issues.push({
         adset_id: row.id,
         adset_name: row.name || row.id,
         campaign_name: row.campaign?.name ?? null,
-        reasons: [...blocking, ...info],
+        reasons: [...blocking, ...(expansion ? [REASON_EXPANSION] : []), ...info],
+        pause: blocking.length > 0,
+        expansion,
       });
     }
   }

@@ -4,7 +4,7 @@
 // conjuntos com problema e grava o resultado.
 
 import type { createClient } from "@/lib/supabase/server";
-import { auditAccountLocation, type AuditLocationIssue } from "./location";
+import { auditAccountLocation, disableLocationExpansion, type AuditLocationIssue } from "./location";
 import { auditAccountErrors, type AuditErrorIssue } from "./errors";
 import { setEntitiesStatus } from "@/lib/meta/status";
 
@@ -21,6 +21,7 @@ interface Binding {
 export interface AuditRunSummary {
   pausedCount: number;
   failedCount: number;
+  fixedCount?: number; // localização: caixas de expansão desligadas (o conjunto segue ativo)
   checkedAccounts: number;
 }
 
@@ -36,6 +37,7 @@ export async function runLocationAudit(
 ): Promise<AuditRunSummary & { byAccount: Record<string, AuditLocationIssue[]> }> {
   let pausedCount = 0;
   let failedCount = 0;
+  let fixedCount = 0;
   const byAccount: Record<string, AuditLocationIssue[]> = {};
   const now = new Date().toISOString();
 
@@ -48,23 +50,41 @@ export async function runLocationAudit(
       // Conta inacessível: não gera falso alerta.
       issues = [];
     }
-    byAccount[b.ad_account_id] = issues;
 
-    if (issues.length > 0) {
+    // Brasil inteiro: pausa (como sempre). Expansão de público: NUNCA pausa — só desliga a caixa e o conjunto segue ativo.
+    const toPause = issues.filter((i) => i.pause);
+    const pauseById = new Map<string, { ok: boolean; error?: string }>();
+    if (toPause.length > 0) {
       const results = await setEntitiesStatus(
         token,
-        issues.map((i) => ({ id: i.adset_id, type: "adset" as const })),
+        toPause.map((i) => ({ id: i.adset_id, type: "adset" as const })),
         "PAUSED",
       );
-      const byId = new Map(results.map((r) => [r.id, r]));
       for (const r of results) {
+        pauseById.set(r.id, r);
         if (r.ok) pausedCount++;
         else failedCount++;
       }
+    }
 
+    const fixById = new Map<string, { ok: boolean; error?: string }>();
+    for (const i of issues.filter((x) => x.expansion)) {
+      const r = await disableLocationExpansion(token, i.adset_id);
+      fixById.set(i.adset_id, r);
+      if (r.ok) fixedCount++;
+      else failedCount++;
+    }
+
+    // O que continua "incorreto": conjuntos de Brasil inteiro (pausados) e expansões que não deu pra desligar.
+    // Expansão desligada com sucesso e conjunto sem outro problema = resolvido, some da lista.
+    const remaining = issues.filter((i) => i.pause || (i.expansion && !fixById.get(i.adset_id)?.ok));
+    byAccount[b.ad_account_id] = remaining;
+
+    if (remaining.length > 0) {
       await supabase.from("audit_location_status").upsert(
-        issues.map((i) => {
-          const r = byId.get(i.adset_id);
+        remaining.map((i) => {
+          const p = pauseById.get(i.adset_id);
+          const f = fixById.get(i.adset_id);
           return {
             user_id: userId,
             ad_account_id: b.ad_account_id,
@@ -74,8 +94,10 @@ export async function runLocationAudit(
             detail: {
               campaign_name: i.campaign_name,
               reasons: i.reasons,
-              paused: !!r?.ok,
-              pause_error: r?.ok ? null : (r?.error ?? "Falha ao pausar"),
+              paused: i.pause ? !!p?.ok : undefined,
+              pause_error: i.pause ? (p?.ok ? null : (p?.error ?? "Falha ao pausar")) : null,
+              expansion_fixed: i.expansion ? !!f?.ok : undefined,
+              fix_error: i.expansion && !f?.ok ? (f?.error ?? "Falha ao desligar a expansão") : null,
             },
             checked_at: now,
           };
@@ -85,12 +107,12 @@ export async function runLocationAudit(
     }
 
     // Limpa da tabela os conjuntos dessa conta que não têm mais problema.
-    const currentIds = issues.map((i) => i.adset_id);
+    const currentIds = remaining.map((i) => i.adset_id);
     const del = supabase.from("audit_location_status").delete().eq("user_id", userId).eq("ad_account_id", b.ad_account_id);
     await (currentIds.length > 0 ? del.not("adset_id", "in", inFilterList(currentIds)) : del);
   }
 
-  return { pausedCount, failedCount, checkedAccounts: bindings.length, byAccount };
+  return { pausedCount, failedCount, fixedCount, checkedAccounts: bindings.length, byAccount };
 }
 
 export async function runErrorAudit(
