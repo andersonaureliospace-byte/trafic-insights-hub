@@ -58,7 +58,11 @@ export async function POST(request: Request) {
         .eq("user_id", userId);
       if (bindErr) throw bindErr;
       const off = await inactiveAccountIds(supabase, userId);
-      const list = ((bindings ?? []) as { ad_account_id: string; client_name: string | null }[]).filter((b) => !off.has(b.ad_account_id));
+      // Etapa 187: só as "Contas exibidas" do Painel (user_selected_accounts).
+      const { data: sel, error: selErr } = await supabase.from("user_selected_accounts").select("ad_account_id").eq("user_id", userId);
+      if (selErr) throw selErr;
+      const selected = new Set((sel ?? []).map((s) => s.ad_account_id as string));
+      const list = ((bindings ?? []) as { ad_account_id: string; client_name: string | null }[]).filter((b) => !off.has(b.ad_account_id) && selected.has(b.ad_account_id));
       if (list.length === 0) {
         results.push({ userId, location: { checkedAccounts: 0 }, errors: { checkedAccounts: 0 } });
         continue;
