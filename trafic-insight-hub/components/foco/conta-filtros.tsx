@@ -64,7 +64,7 @@ const SPEED_STRIPE: Record<SpeedOverall, string> = {
 const selCls = "h-7 w-full min-w-0 rounded-md border border-zinc-300 bg-transparent px-1.5 text-xs disabled:opacity-40 dark:border-zinc-700";
 const lblCls = "mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-zinc-400";
 // Colunas fixas: Nome ocupa o que sobra; Status centralizado; CPA e Ritmo alinhados à direita (cabeçalho e valores com o mesmo recuo).
-const COLS = "grid-cols-[minmax(0,1fr)_4.2rem_3.6rem_3.9rem]";
+const COLS = "grid-cols-[minmax(0,1fr)_4.2rem_3.6rem_4.6rem]";
 const num = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const signed = (v: number) => `${v < 0 ? "−" : "+"}${num(Math.abs(v))}`;
 
@@ -370,10 +370,10 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         <button
           type="button"
           onClick={() => setBudgetMode((m) => (m === "hoje" ? "amanha" : "hoje"))}
-          title={budgetMode === "hoje" ? "Gastar hoje: quanto ainda falta gastar hoje. Clique pra ver Gastar amanhã." : "Gastar amanhã: orçamento pra configurar. Clique pra ver Gastar hoje."}
+          title={budgetMode === "hoje" ? "Ritmo: em cima = investimento real de hoje (até agora); embaixo = quanto falta pra chegar no Gastar hoje. Clique pra ver Gastar amanhã." : "Gastar amanhã: orçamento pra configurar. Clique pra ver Gastar hoje."}
           className="text-right font-medium uppercase tracking-wide text-sky-600 underline decoration-dotted underline-offset-2 hover:text-sky-800 dark:text-sky-400"
         >
-          {budgetMode === "hoje" ? "Hoje ⇄" : "Amanhã ⇄"}
+          {budgetMode === "hoje" ? "Ritmo ⇄" : "Amanhã ⇄"}
         </button>
       </div>
       <ul className="min-h-0 flex-1 overflow-auto">
@@ -423,9 +423,21 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
                 </span>
                 <span
                   title={sp ? speedBudgetTooltip(sp, o.monthlyInvestment) : undefined}
-                  className={`text-right text-xs tabular-nums ${budgetVal == null ? "text-zinc-400" : budgetMode === "amanha" ? i?.budgetCls : ""}`}
+                  className={`text-right text-xs tabular-nums ${(budgetMode === "hoje" ? sp?.spentToday == null : budgetVal == null) ? "text-zinc-400" : budgetMode === "amanha" ? i?.budgetCls : ""}`}
                 >
-                  <span className="block text-xs leading-tight">{budgetVal != null ? num(budgetVal) : "—"}</span>
+                  {budgetMode === "hoje" ? (
+                    <>
+                      {/* Ritmo (igual ao Orçamento por dia do Acompanhamento de metas): investimento real de hoje + quanto falta pro Gastar hoje. */}
+                      <span className="block text-xs leading-tight">{sp?.spentToday != null ? num(sp.spentToday) : "—"}</span>
+                      {sp?.gastarHoje != null ? (
+                        <span className={`block text-[10px] leading-tight ${sp.gastarHoje > 0.004 ? "text-sky-600 dark:text-sky-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                          {sp.gastarHoje > 0.004 ? `falta ${num(sp.gastarHoje)}` : "✓ batido"}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : (
+                    <span className="block text-xs leading-tight">{budgetVal != null ? num(budgetVal) : "—"}</span>
+                  )}
                   {/* Embaixo (modo Amanhã): orçamento atual − recomendado (+ = orçamento acima; − = falta subir). */}
                   {budgetMode === "amanha" && budgetVal != null && i?.budget != null ? (
                     <span className="block text-[10px] leading-tight opacity-70">{signed(i.budget - budgetVal)}</span>
