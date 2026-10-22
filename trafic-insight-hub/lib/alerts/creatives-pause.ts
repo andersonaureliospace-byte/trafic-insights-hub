@@ -33,6 +33,7 @@
 
 import type { createClient } from "@/lib/supabase/server";
 import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";
+import { getMultiMediaAds } from "@/lib/meta/multi-media";
 import { decideCreativePause, holdBecauseTodayIsGood } from "@/lib/alerts/creative-decision";
 import { applyPauseBrake, isTripleOverTarget, severityOf, BRAKE_MAX_SHARE } from "@/lib/alerts/pause-brake";
 import { spDate, type DateRangeInput } from "@/lib/meta/client";
@@ -155,11 +156,15 @@ export async function checkAndPauseCreatives(
         const activeByAdset = new Map<string, number>();
         for (const r of allActive) if (r.adset_id) activeByAdset.set(r.adset_id, (activeByAdset.get(r.adset_id) ?? 0) + 1);
         // Só busca 7 dias / 2 dias + hoje se a conta tiver algum criativo acima do limite.
-        const flaggedAll = active.filter(
+        const flaggedRaw = active.filter(
           (r) =>
             decideCreativePause({ cpaTarget, m2: r, m7: undefined, sevenDayFetched: false, m3: undefined, threeDayFetched: false })
               .action !== "none",
         );
+        if (flaggedRaw.length === 0) return;
+        // Etapa 195: anúncio com várias mídias dentro (formato flexível) NÃO é pausado nem passa pelo standby — por enquanto.
+        const multi = await getMultiMediaAds(token, accountId);
+        const flaggedAll = flaggedRaw.filter((r) => !multi.adIds.has(r.id));
         if (flaggedAll.length === 0) return;
         // Etapa 133: olha só o dia de hoje antes de pausar. Se a busca falhar, não decide no escuro (pula a conta).
         let rowsToday: CreativeCostRow[];
