@@ -3003,6 +3003,8 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
 
 160. **Prioridade + aviso de investimento pela Speed (Etapa 187)**: o "Status" de 3 dias (o campo do Asana) passou a se chamar **Prioridade** no Desempenho, Evolução, Configurações e na atualização em massa. O aviso de **Investimento baixo** (`lib/alerts/low-investment.ts`) agora dispara quando a Speed mostra "Abaixo" (gasto até ontem mais de 2% abaixo do ideal até hoje) e manda o orçamento recomendado pra hoje (o que já gastou + Gastar hoje), em vez de comparar Invest. diário × Ritmo com banda de R$ 10. Monitor de CPA, Evolução e o aviso de CPA acima já usam o CPA novo (investimento total ÷ conversas) pela regra central da Etapa 185.
 
+161. **Quadro "Corrida dos 20" (Etapa 189)** (`app/corrida/page.tsx`): página fora do menu e sem cabeçalho, em `/corrida` (pede login), pra deixar aberta na tela (pensada pra 1366×768). Mostra todas as contas exibidas com CPA ideal, pelo CPA do mês com a regra da Speed, em 3 grupos (Fora da meta, Aceitável, OK) + placar "X de N na meta" com a linha dos 20 (40 pontos). Cada cartão: CPA do mês, régua (verde até a meta, laranja até +R$ 1,20, vermelho depois), Teto daqui (CPA máximo até o fim do mês pra fechar Aceitável, supondo a meta mensal inteira gasta) e CPA desde o início do plano (padrão 22/10/2026; outro início com `?desde=AAAA-MM-DD`). Usa `/api/meta/insights` com `skipBudget` (mês e período do plano); atualiza a cada 20 min e no botão.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e
