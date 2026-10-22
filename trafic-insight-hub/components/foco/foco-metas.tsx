@@ -15,7 +15,7 @@ import {
 import type { AccountInsight } from "@/lib/meta/insights";
 
 // Modo Foco — quadro "Acompanhamento de metas" de UMA conta, em 4 blocos (rótulo pequeno → número grande → uma linha de apoio):
-// Investimento do mês, CPA do mês × CPA ideal, Orçamento (atual × Gastar hoje × Gastar amanhã), WhatsApp.
+// Investimento do mês, CPA do mês × CPA ideal, Orçamento (atual × Gastar hoje × Gastar amanhã). O WhatsApp agora fica na linha de cima da página (ao lado do Gerenciador).
 // Etapa 185: status e contas iguais aos da Speed (lib/meta/speed.ts), com o dado ao vivo. Só mostra; quem busca é a página.
 
 const LABEL = "text-[11px] font-medium uppercase tracking-wide text-zinc-400";
@@ -61,13 +61,11 @@ export function FocoMetas({
   untilYesterday,
   cpaTarget,
   monthlyTarget,
-  whatsapp,
 }: {
   insight: AccountInsight | null;
   untilYesterday: number | null;
   cpaTarget: number | null;
   monthlyTarget: number | null;
-  whatsapp?: string | null;
 }) {
   if (!insight || insight.insights_failed) {
     return (
@@ -92,7 +90,6 @@ export function FocoMetas({
   const budgetDiff = s.gastarAmanha != null ? insight.daily_budget - s.gastarAmanha : null;
   const budgetCls = s.gastarAmanha != null ? ritmoColorClass(s.gastarAmanha, insight.daily_budget) : "";
   const okTxt = speedOkText(s);
-  const wa = whatsapp?.trim();
 
   return (
     <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
@@ -193,12 +190,6 @@ export function FocoMetas({
             {okTxt ? <span className={`ml-1 ${s.okInDays === 0 ? "text-emerald-600 dark:text-emerald-400" : "text-orange-600 dark:text-orange-400"}`}>· {okTxt}</span> : null}
           </p>
         )}
-      </section>
-
-      {/* 4 · WhatsApp */}
-      <section className="flex items-center justify-between gap-3 px-3 py-1.5">
-        <p className={LABEL}>WhatsApp</p>
-        <p className="text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-50">{wa ? wa : <span className="font-normal text-zinc-500">não cadastrado</span>}</p>
       </section>
     </div>
   );

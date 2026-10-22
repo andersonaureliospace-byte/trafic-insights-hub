@@ -250,10 +250,16 @@ export default function FocoPage() {
               href={adsManagerUrl(opt.id)}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-zinc-500 underline decoration-dotted underline-offset-2 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+              title="Abrir o Gerenciador de Anúncios desta conta"
+              className="inline-flex h-8 items-center gap-1 rounded-md border border-sky-300 px-2.5 text-xs font-medium text-sky-700 transition-colors hover:bg-sky-50 dark:border-sky-800 dark:text-sky-300 dark:hover:bg-sky-950/40"
             >
-              Gerenciador
+              Gerenciador <span aria-hidden>↗</span>
             </a>
+            {opt.whatsapp?.trim() ? (
+              <span className="text-sm font-semibold tabular-nums text-zinc-900 dark:text-zinc-50" title="WhatsApp do cliente">
+                {opt.whatsapp.trim()}
+              </span>
+            ) : null}
           </>
         ) : null}
         {error ? <span className="text-xs text-red-600">{error}</span> : null}
@@ -270,7 +276,7 @@ export default function FocoPage() {
               <FocoResultados daily={daily} month={month} cpaTarget={opt.cpaTarget} insight={insight} monthlyTarget={opt.monthlyInvestment} untilYesterday={untilYesterday} />
             </Quadro>
             <Quadro title="Acompanhamento de metas" className="min-h-[16rem]">
-              <FocoMetas insight={insight} untilYesterday={untilYesterday} cpaTarget={opt.cpaTarget} monthlyTarget={opt.monthlyInvestment} whatsapp={opt.whatsapp} />
+              <FocoMetas insight={insight} untilYesterday={untilYesterday} cpaTarget={opt.cpaTarget} monthlyTarget={opt.monthlyInvestment} />
             </Quadro>
             <div className="flex min-h-[16rem] min-w-0 flex-col gap-3 lg:min-h-0">
               <Quadro title="Ofertas ativas" className="shrink-0">
