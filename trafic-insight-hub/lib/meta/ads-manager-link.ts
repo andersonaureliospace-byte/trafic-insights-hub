@@ -30,7 +30,7 @@ export function registerAccountBusinesses(
 // abrir a conta certa no Facebook com um clique.
 // Etapa 132: já abre (1) no MESMO período que o Painel está mostrando (`preset`, os mesmos ids do filtro de período —
 // datas em fuso de Brasília) e (2) com o filtro "nome da campanha NÃO contém 'vaga'" aplicado. Sem `preset` (ou um
-// período que não dá pra converter) abre em "Ontem".
+// período que não dá pra converter) abre em "Ontem". Etapa 194: abre na aba Anúncios, só com anúncios ativos.
 export function adsManagerUrl(accountId: string, preset?: string): string {
   const numericId = accountId.replace(/^act_/, "");
   // Etapa 132b: com o Business Manager da conta na URL (igual ao link que o próprio Gerenciador gera) ele não precisa
@@ -47,9 +47,14 @@ export function adsManagerUrl(accountId: string, preset?: string): string {
   const date = encodeURIComponent(`${range.since}_${addDaysYmd(range.until, 1)}${label}`);
   // %1E (separador de registro) e as aspas já vêm codificados como o próprio Gerenciador gera — por isso o filtro é
   // montado na mão, sem passar por URLSearchParams (que codificaria de novo).
-  const filter = "SEARCH_BY_CAMPAIGN_GROUP_NAME-STRING_SET%1ENOT_CONTAINS_ANY%1E[%22vaga%22]";
+  // Etapa 194: abre na aba ANÚNCIOS (não Campanhas) com dois filtros juntos — nome da campanha não contém "vaga" e anúncio
+  // ATIVO (`ADGROUP_DELIVERY_STATUS` é o status de veiculação do anúncio, no vocabulário interno da Meta; o separador entre
+  // filtros é %1D). Filtrar pelo anúncio já deixa só os conjuntos e campanhas que têm anúncio ativo.
+  const filter =
+    "SEARCH_BY_CAMPAIGN_GROUP_NAME-STRING_SET%1ENOT_CONTAINS_ANY%1E[%22vaga%22]" +
+    "%1DADGROUP_DELIVERY_STATUS-STRING_SET%1EIN%1E[%22active%22]";
   return (
-    `https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${numericId}${business}` +
+    `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${numericId}${business}` +
     `&date=${date}&comparison_date=&insights_date=${date}&insights_comparison_date=` +
     `&filter_set=${filter}&nav_source=no_referrer`
   );

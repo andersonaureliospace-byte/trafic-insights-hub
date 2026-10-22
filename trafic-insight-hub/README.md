@@ -3013,6 +3013,8 @@ n8n-workflows/boleto-email.json → workflow pronto pra importar no n8n (Menu �
 
 165. **Atualização de status em massa apagava o status de quem não mudou (Etapa 193)** (`lib/alerts/bulk-status-update.ts`): na rodada das 01h de segunda/quinta, o upsert em lote de `account_bindings` só mandava `priority` nas linhas "updated"; no lote o supabase-js completa a coluna que falta com NULL (`defaultToNull`), então todo cliente que não mudou (ou foi pulado) ficava SEM status — em 22/10 dez contas (Foz do Iguaçu, Itatiba, Teresina 02, Campo Grande 03 - P, Luis Eduardo Magalhães, Muriaé, Itapetininga, Rondonópolis Marechal, Arapiraca, Rio Verde 02) amanheceram com "—" em Prioridade. Agora toda linha leva `priority` (o novo se mudou, o atual se não mudou/foi pulado). **Pra restaurar os já apagados:** depois do deploy, rode de novo o nó do `bulk-status-tick` no n8n (ele reclassifica pelo CPA dos últimos 3 dias e regrava o status).
 
+166. **Link do Gerenciador abre na aba Anúncios, só com anúncios ativos (Etapa 194)** (`lib/meta/ads-manager-link.ts`): `adsManagerUrl` (todos os links "Gerenciador"/nome da conta do Painel e do Foco) agora abre em `manage/ads` com dois filtros — nome da campanha não contém "vaga" (como já era) e anúncio ativo (`ADGROUP_DELIVERY_STATUS` = ativo, separado por `%1D`). Como o filtro é no anúncio, as abas Conjuntos e Campanhas também mostram só o que tem anúncio ativo. O período segue o do Painel, como antes. `adsManagerEntityUrl` (link direto pra uma campanha/conjunto/anúncio) não mudou.
+
 Com isso, as 6 áreas do plano original + todos os extras pedidos ao longo
 do caminho (CRM, Relatórios, Avisos, Status, anexos de mídia, ajustes do
 Painel, ficha de Clientes, tela cheia/status colorido/reordenar, Cobranças e

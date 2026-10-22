@@ -168,6 +168,7 @@ export default function CorridaPage() {
   const [error, setError] = useState<string | null>(null);
   const [at, setAt] = useState<number | null>(null);
   const [desde] = useState(defaultDesde);
+  const [q, setQ] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -231,14 +232,18 @@ export default function CorridaPage() {
   const desdeLabel = `${desde.slice(8, 10)}/${desde.slice(5, 7)}`;
   const g = useMemo(() => {
     const all = rows ?? [];
+    // Busca pelo nome: só filtra os cartões; o placar continua contando todas as contas.
+    const flat = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const needle = flat(q.trim());
+    const vis = needle ? all.filter((r) => flat(r.name).includes(needle)) : all;
     // Fora da meta: quem está no caminho (CPA desde o início do plano abaixo do teto) primeiro, depois o teto mais folgado.
     const score = (r: Row) => (r.teto != null ? r.teto / r.meta : -1) + (r.desde != null && r.teto != null && r.desde <= r.teto ? 10 : 0);
-    const fora = all.filter((r) => r.status === "high" || r.failed || r.status == null).sort((a, b) => score(b) - score(a));
-    const segurar = all.filter((r) => r.status === "acceptable").sort((a, b) => (a.teto ?? 99) - (b.teto ?? 99));
-    const seguras = all.filter((r) => r.status === "ok").sort((a, b) => (a.teto ?? 99) - (b.teto ?? 99));
-    const na = segurar.length + seguras.length;
-    return { fora, segurar, seguras, na, total: all.length };
-  }, [rows]);
+    const fora = vis.filter((r) => r.status === "high" || r.failed || r.status == null).sort((a, b) => score(b) - score(a));
+    const segurar = vis.filter((r) => r.status === "acceptable").sort((a, b) => (a.teto ?? 99) - (b.teto ?? 99));
+    const seguras = vis.filter((r) => r.status === "ok").sort((a, b) => (a.teto ?? 99) - (b.teto ?? 99));
+    const na = all.filter((r) => r.status === "ok" || r.status === "acceptable").length;
+    return { fora, segurar, seguras, na, total: all.length, shown: vis.length };
+  }, [rows, q]);
   const GOAL = 20;
   const faltam = Math.max(0, GOAL - g.na);
 
@@ -246,6 +251,15 @@ export default function CorridaPage() {
     <div className="flex min-h-screen flex-col gap-2 bg-zinc-50 px-3 py-2 dark:bg-zinc-950">
       <header className="flex flex-wrap items-center gap-x-5 gap-y-1">
         <h1 className="font-serif text-xl text-zinc-900 dark:text-zinc-50">Corrida dos 20</h1>
+        <input
+          id="corrida-busca"
+          type="search"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar conta…"
+          aria-label="Buscar conta pelo nome"
+          className="h-7 w-44 rounded-md border border-zinc-300 bg-white px-2 text-xs outline-none focus:border-zinc-900 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:border-zinc-100"
+        />
         <div className="flex items-baseline gap-1.5 tabular-nums">
           <span className="font-serif text-4xl leading-none text-zinc-900 dark:text-zinc-50">{rows ? g.na : "—"}</span>
           <span className="text-sm text-zinc-500">de {rows ? g.total : "—"} contas na meta pelo CPA</span>
@@ -282,6 +296,7 @@ export default function CorridaPage() {
           <Section title="Fora da meta" note="no caminho primeiro" rows={g.fora} desdeLabel={desdeLabel} />
           <Section title="Aceitável — segurar" note="perto do limite primeiro" rows={g.segurar} desdeLabel={desdeLabel} />
           <Section title="OK — seguras" note="só manter" rows={g.seguras} desdeLabel={desdeLabel} />
+          {g.shown === 0 ? <p className="text-sm text-zinc-500">Nenhuma conta com “{q}”.</p> : null}
         </>
       ) : null}
     </div>
