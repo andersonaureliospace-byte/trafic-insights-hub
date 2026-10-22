@@ -101,10 +101,12 @@ export function computeSpeed(input: SpeedInput, now: Date = new Date()): SpeedRo
       investStatus = investBand(until, idealToday);
       custoDia = Math.max(0, T - until) / Math.max(1, daysInMonth - day + 1);
     }
-    if (spentSoFar != null) {
+    // Etapa 188: sem o gasto até ontem (backup de outro dia / busca falhou) não dá pra saber o gasto de hoje
+    // nem aplicar o teto — não chuta número.
+    if (spentSoFar != null && spentToday != null) {
       // Hoje: amanhã a Speed compara o gasto até o fim de hoje com o ideal de amanhã.
       let hoje = Math.max(0, ideal(day + 1) - spentSoFar);
-      if (spentToday != null) hoje = Math.min(hoje, Math.max(0, cap - spentToday));
+      hoje = Math.min(hoje, Math.max(0, cap - spentToday));
       gastarHoje = hoje;
       const endToday = spentSoFar + hoje;
       if (day < daysInMonth) {

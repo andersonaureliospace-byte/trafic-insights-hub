@@ -2,10 +2,10 @@
 
 import { useMemo } from "react";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
-import { CPA_ACCEPTABLE_BAND } from "@/lib/meta/metas";
 import type { DailyCpaPoint } from "@/lib/meta/daily-cpa";
 import type { AccountInsight } from "@/lib/meta/insights";
-import { ritmoColorClass, ritmoFromInsight, ritmoTooltip } from "@/lib/meta/ritmo";
+import { ritmoColorClass } from "@/lib/meta/ritmo";
+import { computeSpeed, speedBudgetTooltip, speedCpaStatus } from "@/lib/meta/speed";
 
 // Modo Foco — quadro "Acompanhamento de Resultados" de UMA conta: os mesmos números do Desempenho (Leads, Valor usado e CPA, com a diferença pro CPA ideal
 // pequena embaixo do CPA) em vários períodos. Só mostra; quem busca os dados é a página.
@@ -18,13 +18,13 @@ export function todayBr(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 }
 
-// Verde: no ideal ou abaixo; laranja: até R$ 2,50 acima; vermelho: mais que isso. Sem CPA ideal, sem cor.
+// Etapa 188: cores pela régua da Speed — verde: no ideal ou abaixo; laranja: Aceitável (até R$ 1,20 acima); vermelho: Acima. Sem CPA ideal, sem cor.
 export function cpaCls(cpa: number | null, target: number | null | undefined): string {
   if (cpa == null) return "text-zinc-400";
-  if (target == null) return "";
-  const diff = cpa - target;
-  if (diff <= 0) return "text-emerald-600 dark:text-emerald-400";
-  if (diff <= CPA_ACCEPTABLE_BAND) return "text-orange-600 dark:text-orange-400";
+  const st = speedCpaStatus(cpa, target ?? null);
+  if (st == null) return "";
+  if (st === "ok") return "text-emerald-600 dark:text-emerald-400";
+  if (st === "acceptable") return "text-orange-600 dark:text-orange-400";
   return "text-red-600 dark:text-red-400";
 }
 
@@ -45,12 +45,14 @@ export function FocoResultados({
   cpaTarget,
   insight,
   monthlyTarget,
+  untilYesterday,
 }: {
   daily: DailyCpaPoint[];
   month: DailyCpaPoint | null;
   cpaTarget: number | null;
   insight?: AccountInsight | null;
   monthlyTarget?: number | null;
+  untilYesterday?: number | null;
 }) {
   const today = todayBr();
   const byDate = useMemo(() => new Map(daily.map((p) => [p.date, p])), [daily]);
@@ -70,12 +72,16 @@ export function FocoResultados({
     { label: "Últimos 7 dias + hoje", a: agg(range(0, 7)) },
     { label: "Mês atual", a: month ? { spend: month.spend, results: month.results, cpa: month.cpa } : { spend: 0, results: 0, cpa: null } },
   ];
-  // Rodapé (mesmo jeito do Desempenho do Painel): Invest. diário grande, colorido pelo Ritmo, e embaixo, pequeno, a diferença
-  // (Invest. diário − Ritmo = quanto sobra/falta por dia pra bater a meta do mês). Só aparece com o insight do mês carregado.
+  // Rodapé: Invest. diário grande e, embaixo, a diferença pro "Gastar amanhã" da Speed (lib/meta/speed.ts) — o MESMO número do quadro
+  // Acompanhamento de metas (Etapa 188; antes comparava com o Ritmo antigo e dava outro valor na mesma tela). Só com o mês carregado.
   const budget = insight && !insight.insights_failed ? insight.daily_budget : null;
-  const rit = insight ? ritmoFromInsight(monthlyTarget ?? null, insight) : null;
+  const sp = insight && !insight.insights_failed
+    ? computeSpeed({ monthlyTarget: monthlyTarget ?? null, spentSoFar: insight.spend, spentUntilYesterday: untilYesterday ?? null, cpa: null, cpaTarget: null })
+    : null;
+  const rit = sp?.gastarAmanha ?? null;
   const ritDiff = rit != null && budget != null ? budget - rit : null;
   const ritCls = ritmoColorClass(rit, budget ?? undefined);
+  const tip = sp ? speedBudgetTooltip(sp, monthlyTarget ?? null) : undefined;
   return (
     <table className="w-full text-sm">
       <thead>
@@ -110,14 +116,14 @@ export function FocoResultados({
       {budget != null ? (
         <tfoot>
           <tr className="border-t border-zinc-200 dark:border-zinc-800">
-            <td className="px-3 py-2 font-medium" title={insight ? ritmoTooltip(monthlyTarget ?? null, insight) : undefined}>
+            <td className="px-3 py-2 font-medium" title={tip}>
               Invest. diário
             </td>
-            <td colSpan={3} className="px-3 py-1.5 text-right tabular-nums" title={insight ? ritmoTooltip(monthlyTarget ?? null, insight) : undefined}>
+            <td colSpan={3} className="px-3 py-1.5 text-right tabular-nums" title={tip}>
               <div className={`font-semibold ${ritCls}`}>{fmtCurrency(budget)}</div>
               {ritDiff != null ? (
-                <div className={`text-[11px] leading-tight ${ritCls}`} title="Invest. diário menos o Ritmo (quanto precisa por dia pra bater a meta do mês)">
-                  {fmtCurrencySigned(ritDiff)} · ritmo {rit != null ? fmtCurrency(rit) : "—"}
+                <div className={`text-[11px] leading-tight ${ritCls}`} title="Invest. diário menos o Gastar amanhã (regra da Speed)">
+                  {fmtCurrencySigned(ritDiff)} · amanhã {rit != null ? fmtCurrency(rit) : "—"}
                 </div>
               ) : null}
             </td>
