@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkAndUpdateBulkStatus } from "@/lib/alerts/bulk-status-update";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n, segunda e quinta às 01h (Etapa 55) —
 // reclassifica o status de toda "Conta exibida" com o CPA dos últimos 3 dias
@@ -16,7 +17,7 @@ import { checkAndUpdateBulkStatus } from "@/lib/alerts/bulk-status-update";
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("bulk-status", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -52,4 +53,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

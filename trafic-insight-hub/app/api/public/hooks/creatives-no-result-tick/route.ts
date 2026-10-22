@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkAndPauseCreatives } from "@/lib/alerts/creatives-pause";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público (Etapa 124: SEM agendamento no n8n — criativos sem resultado já são pausados por
 // creatives-pause-tick; a rota continua existindo pra uso manual) — pausa só os criativos
@@ -13,7 +14,7 @@ import { checkAndPauseCreatives } from "@/lib/alerts/creatives-pause";
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("creatives-no-result", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -43,4 +44,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { reviewPausedAndReactivate } from "@/lib/alerts/pause-backup";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n no começo de cada rodada de pausas (Etapa 158) — "backup": revisa os conjuntos e criativos pausados
 // pelo sistema nas últimas 6h e reativa quem ganhou conversa e voltou pra dentro do limite. Protegido pelo segredo dos outros
 // hooks (WHATSAPP_DISPATCH_SECRET).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("pause-backup", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -37,4 +38,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

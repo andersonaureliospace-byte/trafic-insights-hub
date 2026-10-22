@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { releaseStandby } from "@/lib/alerts/weekend-standby";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n na segunda às 05h (Etapa 158) — todos os conjuntos em standby voltam pra R$15 e saem da tela Standby.
 // Em sábado/domingo não faz nada. Protegido pelo segredo dos outros hooks.
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("weekend-release", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -36,4 +37,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

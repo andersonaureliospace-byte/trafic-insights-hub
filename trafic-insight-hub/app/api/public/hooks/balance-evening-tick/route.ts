@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkEveningBalances } from "@/lib/alerts/balance-evening";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n às 19h, de segunda a sexta (Etapa 156) — "Saldo para amanhã": avisa as contas Pix/Híbrida cujo
 // saldo menos o Ritmo de amanhã fica abaixo do limite de alerta, pra dar tempo de programar o Pix. Só lê da Meta e avisa
 // (grupo de WhatsApp + aba Alertas), não envia Pix. Protegido pelo mesmo segredo dos outros hooks (WHATSAPP_DISPATCH_SECRET).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("balance-evening", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -42,4 +43,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

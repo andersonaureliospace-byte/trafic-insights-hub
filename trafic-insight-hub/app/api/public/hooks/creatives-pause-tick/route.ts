@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkAndPauseCreatives } from "@/lib/alerts/creatives-pause";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n (Etapa 124: 01h10/04h10/07h10/11h10/13h40/16h10/19h10/22h10,
 // FORA dos horários de pico 08h-11h e 14h-16h; logo em seguida o mesmo fluxo chama adsets-pause-tick) — pausa sozinho todo criativo ATIVO com CPA R$4+
@@ -10,7 +11,7 @@ import { checkAndPauseCreatives } from "@/lib/alerts/creatives-pause";
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("creatives-pause", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -40,4 +41,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

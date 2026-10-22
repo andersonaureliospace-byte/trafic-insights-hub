@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { syncDescriptionsFromAsana } from "@/lib/asana/descriptions";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Etapa 115: endpoint público chamado pelo n8n a cada 30 minutos em horário comercial (seg-sex,
 // 08h-18h). Traz a descrição das tarefas do Asana pra aba "Descrição": igual = não faz nada;
@@ -9,7 +10,7 @@ import { syncDescriptionsFromAsana } from "@/lib/asana/descriptions";
 // Pede o tempo máximo de função (lê a seção inteira no Asana).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("asana-descriptions", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -36,4 +37,4 @@ export async function POST(request: Request) {
     }
   }
   return NextResponse.json({ processed: results.length, results });
-}
+});

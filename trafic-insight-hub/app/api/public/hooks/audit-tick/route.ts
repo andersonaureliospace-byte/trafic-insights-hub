@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { createServiceClient } from "@/lib/supabase/server";
 import { runLocationAudit, runErrorAudit } from "@/lib/audit/run";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n (Etapa 124: de hora em hora no minuto 50, menos 08h/10h/14h — nos
 // picos de uso roda só às 09h50 e 15h50) pra rodar as
@@ -17,7 +18,7 @@ export const maxDuration = 60;
 //  - "location": só a auditoria de localização, varrendo TODOS os conjuntos ativos;
 //  - "errors": só a auditoria de anúncios com erro;
 //  - "full" (padrão, sem corpo = comportamento antigo): as duas, varrendo todos os conjuntos ativos.
-export async function POST(request: Request) {
+export const POST = withRunLog("audit", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -83,4 +84,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ mode, processed: results.length, results });
-}
+});

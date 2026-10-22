@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkCpaAlerts } from "@/lib/alerts/cpa";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n, uma vez por dia às 07h (Etapa 48) —
 // avisa o grupo de WhatsApp configurado, numa única mensagem, com todas as
@@ -11,7 +12,7 @@ import { checkCpaAlerts } from "@/lib/alerts/cpa";
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("cpa-alert", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -41,4 +42,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

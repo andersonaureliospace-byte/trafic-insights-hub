@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkNoDelivery } from "@/lib/alerts/no-delivery";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Etapa 138: alerta "conta sem anúncio ativo / sem entrega". Agendar de hora em hora (n8n); fora de 8h–21h (BRT) não faz nada.
 // Só avisa (aba Alertas + grupo do WhatsApp) — nunca pausa nem muda nada. Protegido por WHATSAPP_DISPATCH_SECRET.
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("no-delivery", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -41,4 +42,4 @@ export async function POST(request: Request) {
     }
   }
   return NextResponse.json({ processed: results.length, results });
-}
+});

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { createServiceClient } from "@/lib/supabase/server";
 import { refreshCpaBoardCache } from "@/lib/meta/cpa-board-cache";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n, uma vez por dia (Etapa 61, sugerido
 // 07h10 — logo depois do cpa-alert-tick, mesmo motivo: dar tempo da Meta
@@ -11,7 +12,7 @@ import { refreshCpaBoardCache } from "@/lib/meta/cpa-board-cache";
 // mudam mais depois de fechado o dia. "Hoje" continua sempre ao vivo.
 // Protegido pelo mesmo segredo compartilhado dos outros hooks internos
 // (WHATSAPP_DISPATCH_SECRET).
-export async function POST(request: Request) {
+export const POST = withRunLog("cpa-board-cache", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -49,4 +50,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

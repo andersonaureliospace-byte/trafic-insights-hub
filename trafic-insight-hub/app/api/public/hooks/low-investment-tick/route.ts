@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkLowInvestment } from "@/lib/alerts/low-investment";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público (Etapa 124: SEM agendamento no n8n — o aviso de "Invest. diário em 80% do Ritmo",
 // low-budget-tick, cobre o caso; a rota continua existindo pra uso manual) — só avisa (nunca pausa nem muda nada) o grupo de
@@ -11,7 +12,7 @@ import { checkLowInvestment } from "@/lib/alerts/low-investment";
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("low-investment", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -41,4 +42,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

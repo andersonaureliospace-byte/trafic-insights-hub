@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { refreshFundsBalance } from "@/lib/meta/funds-balance";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Etapa 81: endpoint público (chamado pelo n8n, ex.: a cada poucas horas —
 // mesmo padrão de balance-alert-tick) que atualiza o "Saldo por fundos" de
@@ -12,7 +13,7 @@ import { refreshFundsBalance } from "@/lib/meta/funds-balance";
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("funds-balance", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -86,4 +87,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

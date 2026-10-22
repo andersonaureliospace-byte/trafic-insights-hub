@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { refreshAudienceForUser } from "@/lib/meta/audience-snapshot";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Etapa 164: retrato do "Melhor público" (Análise). n8n sugerido: 06h30, 06h35, 06h40 e 06h45 (cada chamada continua as contas que faltam; as já feitas
 // hoje são puladas). ?force=1 refaz todas. Só lê da Meta. Protegido por WHATSAPP_DISPATCH_SECRET.
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("audience", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
   if (request.headers.get("x-webhook-secret") !== secret) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -29,4 +30,4 @@ export async function POST(request: Request) {
     }
   }
   return NextResponse.json({ processed: results.length, results });
-}
+});

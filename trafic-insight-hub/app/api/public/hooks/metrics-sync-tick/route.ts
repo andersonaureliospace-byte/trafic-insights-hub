@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { createServiceClient } from "@/lib/supabase/server";
 import { syncAccounts } from "@/lib/meta/daily-store";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n de madrugada (Etapa 125, sugerido 03h00 e de novo 03h25 pra terminar o
 // que sobrar) — refaz no Supabase (tabela meta_daily_metrics) o gasto e os resultados de cada conta, dia a dia,
@@ -13,7 +14,7 @@ import { syncAccounts } from "@/lib/meta/daily-store";
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("metrics-sync", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -62,4 +63,4 @@ export async function POST(request: Request) {
     }
   }
   return NextResponse.json({ processed: results.length, results });
-}
+});

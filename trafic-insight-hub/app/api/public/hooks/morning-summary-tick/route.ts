@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { buildMorningSummary } from "@/lib/alerts/morning-summary";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n todo dia às 07h (Etapa 137) — monta o "Contas que precisam de atenção" (pontuação por
 // status, CPA, Ritmo, saldo e pagamento) e manda pro grupo de WhatsApp + aba Alertas. Só lê da Meta, não altera nada.
 // Protegido pelo mesmo segredo compartilhado dos outros hooks internos (WHATSAPP_DISPATCH_SECRET).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("morning-summary", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -42,4 +43,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

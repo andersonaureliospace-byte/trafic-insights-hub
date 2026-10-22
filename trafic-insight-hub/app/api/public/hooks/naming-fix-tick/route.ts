@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { runNamingAutoFix } from "@/lib/naming/scan";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Etapa 140: ajuste automático diário (n8n sugerido: 1x ao dia) da IDADE e da DATA nos nomes dos conjuntos ativos das contas IVS
 // — só quando esses dois são as ÚNICAS divergências (os dados vêm da própria Meta). O resto fica na aba "Padrão de nomes"
 // pra aprovação. Protegido por WHATSAPP_DISPATCH_SECRET.
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("naming-fix", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
   if (request.headers.get("x-webhook-secret") !== secret) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -29,4 +30,4 @@ export async function POST(request: Request) {
     }
   }
   return NextResponse.json({ processed: results.length, results });
-}
+});

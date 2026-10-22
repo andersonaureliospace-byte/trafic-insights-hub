@@ -1,0 +1,31 @@
+// Etapa 190: nomes das automações (usado no servidor e no filtro da aba Alertas — sem import de servidor).
+
+// Nome que aparece no filtro "Automação" (chave = nome do hook sem "-tick").
+export const AUTOMATION_LABELS: Record<string, string> = {
+  "creatives-pause": "Pausa de criativos (CPA)",
+  "creatives-no-result": "Criativos sem resultado",
+  "adsets-pause": "Pausa/corte de conjuntos",
+  "pause-backup": "Backup (reativação)",
+  "low-budget": "Invest. diário ≤ 80% do Ritmo",
+  "low-investment": "Investimento baixo",
+  "cpa-alert": "CPA acima da meta",
+  "bulk-status": "Prioridade em massa",
+  "balance-alert": "Saldo / pagamento / sexta",
+  "balance-evening": "Saldo para amanhã (19h)",
+  "funds-balance": "Saldo das contas (fundos)",
+  "morning-summary": "Resumo das 7h",
+  "no-delivery": "Conta sem entrega",
+  "budget-plan": "Plano de aumento de investimento",
+  "budget-apply": "Aumento de investimento (6h)",
+  "naming-fix": "Ajuste de nomes",
+  "weekend-standby": "Standby de fim de semana",
+  "weekend-release": "Volta do fim de semana",
+  "exam-check": "Conjunto de EXAME ativo",
+  audit: "Auditoria (localização/erros)",
+  "asana-descriptions": "Descrições do Asana",
+  audience: "Snapshot de públicos",
+  "cpa-board-cache": "Cache do quadro de CPA",
+  "metrics-sync": "Sincronização de métricas",
+  offers: "Ofertas",
+  videos: "Snapshot de vídeos",
+};

@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { applyBudgetIncreases } from "@/lib/alerts/budget-increase";
 import { hourBrt } from "@/lib/alerts/no-delivery-rule";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Etapa 139: aplica o plano de aumento de investimento a partir das 6h (BRT), em fila (um conjunto de cada vez).
 // Cada chamada tem ~50s; se sobrar conjunto na fila, a próxima chamada continua (n8n sugerido: 06:00, 06:02, 06:04, 06:06, 06:08, 06:10).
 // Fora de 6h–9h59 não faz nada (aumento só de manhã). Protegido por WHATSAPP_DISPATCH_SECRET.
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("budget-apply", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
   if (request.headers.get("x-webhook-secret") !== secret) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -33,4 +34,4 @@ export async function POST(request: Request) {
     }
   }
   return NextResponse.json({ processed: results.length, results });
-}
+});

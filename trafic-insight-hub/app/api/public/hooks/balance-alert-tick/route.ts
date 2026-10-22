@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkLowBalances, checkFridayLowBalances } from "@/lib/alerts/balance";
 import { checkPaymentErrors } from "@/lib/alerts/payment";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n (ex.: a cada 3-6 horas — saldo não
 // muda de minuto a minuto) pra checar saldo baixo em todas as contas
@@ -15,7 +16,7 @@ import { checkPaymentErrors } from "@/lib/alerts/payment";
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("balance-alert", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
@@ -69,4 +70,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ processed: results.length, results });
-}
+});

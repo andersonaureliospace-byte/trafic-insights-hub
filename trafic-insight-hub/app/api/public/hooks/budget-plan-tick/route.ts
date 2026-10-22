@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { planBudgetIncreases } from "@/lib/alerts/budget-increase";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Etapa 139: monta, de madrugada (n8n sugerido: 03h00), o PLANO de aumento de investimento do dia. Não mexe na Meta.
 // Quem aplica é budget-apply-tick, às 6h. Protegido por WHATSAPP_DISPATCH_SECRET.
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("budget-plan", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
   if (request.headers.get("x-webhook-secret") !== secret) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -27,4 +28,4 @@ export async function POST(request: Request) {
     }
   }
   return NextResponse.json({ processed: results.length, results });
-}
+});

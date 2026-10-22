@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { runOffersTick } from "@/lib/offers/scan";
+import { withRunLog } from "@/lib/automation-runs";
 
 // Etapa 149: retrato das "Ofertas ativas" (aba Descrição) — n8n sugerido: ~05h20 e ~12h00, repetindo a cada 6 min por mais
 // 2 vezes (cada chamada só refaz as contas com retrato velho, até acabar o prazo da função). Lê os conjuntos do mês de cada
 // conta IVS na Meta e grava em meta_insights_cache. ?force=1 refaz todas. Protegido por WHATSAPP_DISPATCH_SECRET.
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export const POST = withRunLog("offers", async (request: Request) => {
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });
   if (request.headers.get("x-webhook-secret") !== secret) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -30,4 +31,4 @@ export async function POST(request: Request) {
     }
   }
   return NextResponse.json({ processed: results.length, results });
-}
+});
