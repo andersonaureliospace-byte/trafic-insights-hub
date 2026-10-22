@@ -114,9 +114,24 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
       string,
       { cpa: number | null; cpaStatus: SpeedCpa | null; cpaDiff: number | null; ritmo: number | null; speed: SpeedRow; budget: number | null; budgetCls: string }
     >();
+    // Etapa 191: orçamento diário confiável da conta. O orçamento não depende do período, então se a busca do
+    // período escolhido falhou no orçamento (budget_failed — limite da Meta), usa o de outro período salvo HOJE.
+    // Sem nenhum confiável, fica null e a coluna Ritmo mostra "—" (antes mostrava "0,00").
+    const budgetOf = (id: string): number | null => {
+      const cur = ins[id];
+      if (cur && !cur.budget_failed) return cur.daily_budget;
+      let best: { at: number; v: number } | null = null;
+      for (const per of Object.values(cache?.periods ?? {})) {
+        const x = per.data[id];
+        if (!x || x.budget_failed || !isToday(per.at)) continue;
+        if (!best || per.at > best.at) best = { at: per.at, v: x.daily_budget };
+      }
+      return best ? best.v : null;
+    };
     for (const o of opts) {
       const rit = ritmoFromInsight(o.monthlyInvestment, mon[o.id]);
-      const daily = ins[o.id]?.daily_budget ?? 0;
+      const budgetOk = budgetOf(o.id);
+      const daily = budgetOk ?? 0;
       const monthIns = monFull?.[o.id] && !monFull[o.id].insights_failed ? monFull[o.id] : null;
       const spentSoFar = monthIns?.spend ?? (mon[o.id] && !mon[o.id].insights_failed ? mon[o.id].spend : null);
       const untilIns = until?.[o.id];
@@ -132,10 +147,10 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         cpa: ins[o.id]?.cost_per_result ?? null,
         cpaStatus: speedCpaStatus(ins[o.id]?.cost_per_result ?? null, o.cpaTarget),
         cpaDiff: ins[o.id]?.cost_per_result != null && o.cpaTarget != null ? ins[o.id].cost_per_result! - o.cpaTarget : null,
-        budget: ins[o.id] ? daily : null,
+        budget: budgetOk,
         ritmo: rit,
         speed,
-        budgetCls: speed.gastarAmanha != null && ins[o.id] ? ritmoColorClass(speed.gastarAmanha, daily) : "",
+        budgetCls: speed.gastarAmanha != null && budgetOk != null ? ritmoColorClass(speed.gastarAmanha, daily) : "",
       });
     }
     return m;
@@ -418,7 +433,13 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
                   {i?.cpa != null && i.cpaDiff != null ? <span className="block text-[10px] leading-tight opacity-70">{signed(i.cpaDiff)}</span> : null}
                 </span>
                 <span
-                  title={sp ? speedBudgetTooltip(sp, o.monthlyInvestment) : undefined}
+                  title={
+                    i?.budget == null
+                      ? "A Meta não devolveu o orçamento desta conta (limite de chamadas). Clique em ↻ Atualizar."
+                      : sp
+                        ? speedBudgetTooltip(sp, o.monthlyInvestment)
+                        : undefined
+                  }
                   className={`text-right text-xs tabular-nums ${i?.budget == null ? "text-zinc-400" : ""}`}
                 >
                   {/* Ritmo = igual ao Orçamento (por dia) do Acompanhamento de metas: orçamento atual + (atual − Gastar amanhã). */}

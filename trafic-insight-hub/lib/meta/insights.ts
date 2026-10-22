@@ -73,6 +73,9 @@ export interface AccountInsight {
   cost_per_result: number | null;
   results: number | null;
   daily_budget: number;
+  // Etapa 191: true quando alguma chamada de orçamento (anúncios ativos, campanhas, conjuntos) falhou — aí
+  // daily_budget pode ter vindo 0 ou faltando pedaço (não confiável). Antes isso aparecia como "0,00" no Ritmo.
+  budget_failed?: boolean;
   cbo_budget: number;
   result_type: string | null;
   result_types_count: number;
@@ -182,6 +185,7 @@ export async function getAccountInsight(
   const activeNoCboIds = new Set<string>();
   let dailyBudget = 0;
   let cboBudget = 0;
+  let budgetFailed = false;
   const excludedIds = new Set<string>();
 
   const campaignsWithActiveAd = new Set<string>();
@@ -202,6 +206,7 @@ export async function getAccountInsight(
     }
   } catch (e) {
     console.error("active ads err", id, e);
+    budgetFailed = true;
   }
 
   if (!skipBudget) try {
@@ -243,6 +248,7 @@ export async function getAccountInsight(
     }
   } catch (e) {
     console.error("campaigns err", id, e);
+    budgetFailed = true;
   }
 
   if (activeNoCboIds.size > 0) {
@@ -276,6 +282,7 @@ export async function getAccountInsight(
       }
     } catch (e) {
       console.error("adsets budget err", id, e);
+      budgetFailed = true;
     }
   }
 
@@ -382,6 +389,7 @@ export async function getAccountInsight(
     cost_per_result: costPerResult,
     results,
     daily_budget: dailyBudget,
+    budget_failed: budgetFailed || undefined,
     cbo_budget: cboBudget,
     result_type: lastResultType,
     result_types_count: resultTypesSet.size,
@@ -413,8 +421,9 @@ export async function getAccountsInsights(
   // Etapa 89: contas cuja busca falhou (tipicamente limite de requisições da
   // Meta com muitas contas em paralelo) são tentadas de novo, uma de cada vez e
   // com uma pausa, até 2 rodadas — em vez de ficarem com gasto zerado.
+  // Etapa 191: idem quando falhou a busca do ORÇAMENTO (antes o orçamento ficava 0 e o Ritmo mostrava "0,00").
   for (let round = 0; round < 2; round++) {
-    const failed = accountIds.filter((id) => out[id]?.insights_failed);
+    const failed = accountIds.filter((id) => out[id]?.insights_failed || out[id]?.budget_failed);
     if (failed.length === 0) break;
     await new Promise((r) => setTimeout(r, 1500));
     for (const actId of failed) {
