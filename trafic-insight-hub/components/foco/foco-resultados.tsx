@@ -1,11 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
+import { fmtCurrency } from "@/lib/format";
 import type { DailyCpaPoint } from "@/lib/meta/daily-cpa";
-import type { AccountInsight } from "@/lib/meta/insights";
-import { ritmoColorClass } from "@/lib/meta/ritmo";
-import { computeSpeed, speedBudgetTooltip, speedCpaStatus } from "@/lib/meta/speed";
+import { speedCpaStatus } from "@/lib/meta/speed";
 
 // Modo Foco — quadro "Acompanhamento de Resultados" de UMA conta: os mesmos números do Desempenho (Leads, Valor usado e CPA, com a diferença pro CPA ideal
 // pequena embaixo do CPA) em vários períodos. Só mostra; quem busca os dados é a página.
@@ -39,21 +37,7 @@ const agg = (pts: DailyCpaPoint[]): Agg => {
   return { spend, results, cpa: results > 0 && spend > 0 ? spend / results : null };
 };
 
-export function FocoResultados({
-  daily,
-  month,
-  cpaTarget,
-  insight,
-  monthlyTarget,
-  untilYesterday,
-}: {
-  daily: DailyCpaPoint[];
-  month: DailyCpaPoint | null;
-  cpaTarget: number | null;
-  insight?: AccountInsight | null;
-  monthlyTarget?: number | null;
-  untilYesterday?: number | null;
-}) {
+export function FocoResultados({ daily, cpaTarget }: { daily: DailyCpaPoint[]; cpaTarget: number | null }) {
   const today = todayBr();
   const byDate = useMemo(() => new Map(daily.map((p) => [p.date, p])), [daily]);
   const range = (from: number, to: number) => {
@@ -69,19 +53,9 @@ export function FocoResultados({
     { label: "Ontem", a: agg(range(1, 1)) },
     { label: "Ontem e hoje", a: agg(range(0, 1)) },
     { label: "Últimos 3 dias + hoje", a: agg(range(0, 3)) },
-    { label: "Últimos 7 dias + hoje", a: agg(range(0, 7)) },
-    { label: "Mês atual", a: month ? { spend: month.spend, results: month.results, cpa: month.cpa } : { spend: 0, results: 0, cpa: null } },
   ];
-  // Rodapé: Invest. diário grande e, embaixo, a diferença pro "Gastar amanhã" da Speed (lib/meta/speed.ts) — o MESMO número do quadro
-  // Acompanhamento de metas (Etapa 188; antes comparava com o Ritmo antigo e dava outro valor na mesma tela). Só com o mês carregado.
-  const budget = insight && !insight.insights_failed ? insight.daily_budget : null;
-  const sp = insight && !insight.insights_failed
-    ? computeSpeed({ monthlyTarget: monthlyTarget ?? null, spentSoFar: insight.spend, spentUntilYesterday: untilYesterday ?? null, cpa: null, cpaTarget: null })
-    : null;
-  const rit = sp?.gastarAmanha ?? null;
-  const ritDiff = rit != null && budget != null ? budget - rit : null;
-  const ritCls = ritmoColorClass(rit, budget ?? undefined);
-  const tip = sp ? speedBudgetTooltip(sp, monthlyTarget ?? null) : undefined;
+  // Etapa 189: "Últimos 7 dias + hoje", "Mês atual" e o rodapé "Invest. diário" saíram daqui — o mês e o orçamento já estão no quadro
+  // Acompanhamento de metas, e com 4 linhas o quadro cabe sem barra de rolagem.
   return (
     <table className="w-full text-sm">
       <thead>
@@ -113,23 +87,6 @@ export function FocoResultados({
           );
         })}
       </tbody>
-      {budget != null ? (
-        <tfoot>
-          <tr className="border-t border-zinc-200 dark:border-zinc-800">
-            <td className="px-3 py-2 font-medium" title={tip}>
-              Invest. diário
-            </td>
-            <td colSpan={3} className="px-3 py-1.5 text-right tabular-nums" title={tip}>
-              <div className={`font-semibold ${ritCls}`}>{fmtCurrency(budget)}</div>
-              {ritDiff != null ? (
-                <div className={`text-[11px] leading-tight ${ritCls}`} title="Invest. diário menos o Gastar amanhã (regra da Speed)">
-                  {fmtCurrencySigned(ritDiff)} · amanhã {rit != null ? fmtCurrency(rit) : "—"}
-                </div>
-              ) : null}
-            </td>
-          </tr>
-        </tfoot>
-      ) : null}
     </table>
   );
 }

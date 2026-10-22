@@ -59,7 +59,6 @@ export default function FocoPage() {
   const [opts, setOpts] = useState<Opt[] | null>(null);
   const [sel, setSel] = useState("");
   const [daily, setDaily] = useState<DailyCpaPoint[]>([]);
-  const [month, setMonth] = useState<DailyCpaPoint | null>(null);
   const [insight, setInsight] = useState<AccountInsight | null>(null);
   // Etapa 185: gasto do dia 01 até ONTEM — é o número que a Speed mostra (status do investimento igual ao dela).
   const [untilYesterday, setUntilYesterday] = useState<number | null>(null);
@@ -132,7 +131,7 @@ export default function FocoPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: AbortSignal.timeout(90_000),
-          body: JSON.stringify({ accountIds: [id], days: 14, includeToday: true, includeMonth: true }),
+          body: JSON.stringify({ accountIds: [id], days: 14, includeToday: true }),
         }).then((r) => r.json()),
         fetch("/api/meta/insights", {
           method: "POST",
@@ -155,7 +154,6 @@ export default function FocoPage() {
       if (my !== run.current) return;
       if (dRes.error) throw new Error(dRes.error);
       setDaily((dRes.daily?.[id] ?? []) as DailyCpaPoint[]);
-      setMonth((dRes.month?.[id] ?? null) as DailyCpaPoint | null);
       setInsight((iRes.insights?.[id] ?? null) as AccountInsight | null);
       const y = (yRes as { insights?: Record<string, AccountInsight> } | null)?.insights?.[id];
       setUntilYesterday(firstDay ? 0 : y && !y.insights_failed ? y.spend : null);
@@ -273,7 +271,7 @@ export default function FocoPage() {
         <div key={opt.id} className="grid min-h-0 flex-1 gap-3 lg:grid-rows-[minmax(0,11fr)_minmax(0,12fr)]">
           <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
             <Quadro title="Acompanhamento de Resultados" className="min-h-[16rem]">
-              <FocoResultados daily={daily} month={month} cpaTarget={opt.cpaTarget} insight={insight} monthlyTarget={opt.monthlyInvestment} untilYesterday={untilYesterday} />
+              <FocoResultados daily={daily} cpaTarget={opt.cpaTarget} />
             </Quadro>
             <Quadro title="Acompanhamento de metas" className="min-h-[16rem]">
               <FocoMetas insight={insight} untilYesterday={untilYesterday} cpaTarget={opt.cpaTarget} monthlyTarget={opt.monthlyInvestment} />
