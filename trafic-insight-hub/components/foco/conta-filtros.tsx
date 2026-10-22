@@ -64,7 +64,7 @@ const SPEED_STRIPE: Record<SpeedOverall, string> = {
 const selCls = "h-7 w-full min-w-0 rounded-md border border-zinc-300 bg-transparent px-1.5 text-xs disabled:opacity-40 dark:border-zinc-700";
 const lblCls = "mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-zinc-400";
 // Colunas fixas: Nome ocupa o que sobra; Status centralizado; CPA e Ritmo alinhados à direita (cabeçalho e valores com o mesmo recuo).
-const COLS = "grid-cols-[minmax(0,1fr)_4.2rem_3.6rem_4.6rem]";
+const COLS = "grid-cols-[minmax(0,1fr)_4.2rem_3.6rem_3.9rem]";
 const num = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const signed = (v: number) => `${v < 0 ? "−" : "+"}${num(Math.abs(v))}`;
 
@@ -77,7 +77,6 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
   const [optimized, setOptimized] = useState<"all" | "optimized" | "pending">("all");
   const [attentionF, setAttentionF] = useState<"all" | "attention">("all");
   const [sort, setSort] = useState<FocoSort>("manual");
-  const [budgetMode, setBudgetMode] = useState<"hoje" | "amanha">("amanha");
   const [period, setPeriod] = useState(""); // "" = o período salvo mais recente
   const [attention, setAttention] = useState<Att>({});
   const [refreshing, setRefreshing] = useState(false);
@@ -367,14 +366,12 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         <span>Cliente</span>
         <span className="text-center">Prioridade</span>
         <span className="text-right">CPA</span>
-        <button
-          type="button"
-          onClick={() => setBudgetMode((m) => (m === "hoje" ? "amanha" : "hoje"))}
-          title={budgetMode === "hoje" ? "Ritmo: em cima = investimento real de hoje (até agora); embaixo = quanto falta pra chegar no Gastar hoje. Clique pra ver Gastar amanhã." : "Gastar amanhã: orçamento pra configurar. Clique pra ver Gastar hoje."}
-          className="text-right font-medium uppercase tracking-wide text-sky-600 underline decoration-dotted underline-offset-2 hover:text-sky-800 dark:text-sky-400"
+        <span
+          className="text-right"
+          title="Ritmo (igual ao Orçamento por dia do Acompanhamento de metas): em cima = orçamento atual por dia; embaixo = diferença pro Gastar amanhã (+ = acima; − = falta subir)."
         >
-          {budgetMode === "hoje" ? "Ritmo ⇄" : "Amanhã ⇄"}
-        </button>
+          Ritmo
+        </span>
       </div>
       <ul className="min-h-0 flex-1 overflow-auto">
         {list.length === 0 ? <li className="px-3 py-6 text-center text-sm text-zinc-500">Nenhum cliente com esses filtros.</li> : null}
@@ -386,7 +383,6 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
           const speedTitle = sp?.overall
             ? `Speed (mês): investimento ${sp.investStatus ? SPEED_INVEST_LABEL[sp.investStatus] : "—"} · CPA ${sp.cpaStatus ? SPEED_CPA_LABEL[sp.cpaStatus] : "—"}`
             : "Speed: sem dado do mês — clique em ↻ Atualizar";
-          const budgetVal = budgetMode === "hoje" ? sp?.gastarHoje : sp?.gastarAmanha;
           return (
             <li key={o.id}>
               <button
@@ -423,24 +419,12 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
                 </span>
                 <span
                   title={sp ? speedBudgetTooltip(sp, o.monthlyInvestment) : undefined}
-                  className={`text-right text-xs tabular-nums ${(budgetMode === "hoje" ? sp?.spentToday == null : budgetVal == null) ? "text-zinc-400" : budgetMode === "amanha" ? i?.budgetCls : ""}`}
+                  className={`text-right text-xs tabular-nums ${i?.budget == null ? "text-zinc-400" : ""}`}
                 >
-                  {budgetMode === "hoje" ? (
-                    <>
-                      {/* Ritmo (igual ao Orçamento por dia do Acompanhamento de metas): investimento real de hoje + quanto falta pro Gastar hoje. */}
-                      <span className="block text-xs leading-tight">{sp?.spentToday != null ? num(sp.spentToday) : "—"}</span>
-                      {sp?.gastarHoje != null ? (
-                        <span className={`block text-[10px] leading-tight ${sp.gastarHoje > 0.004 ? "text-sky-600 dark:text-sky-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-                          {sp.gastarHoje > 0.004 ? `falta ${num(sp.gastarHoje)}` : "✓ batido"}
-                        </span>
-                      ) : null}
-                    </>
-                  ) : (
-                    <span className="block text-xs leading-tight">{budgetVal != null ? num(budgetVal) : "—"}</span>
-                  )}
-                  {/* Embaixo (modo Amanhã): orçamento atual − recomendado (+ = orçamento acima; − = falta subir). */}
-                  {budgetMode === "amanha" && budgetVal != null && i?.budget != null ? (
-                    <span className="block text-[10px] leading-tight opacity-70">{signed(i.budget - budgetVal)}</span>
+                  {/* Ritmo = igual ao Orçamento (por dia) do Acompanhamento de metas: orçamento atual + (atual − Gastar amanhã). */}
+                  <span className="block text-xs leading-tight">{i?.budget != null ? num(i.budget) : "—"}</span>
+                  {i?.budget != null && sp?.gastarAmanha != null && Math.abs(i.budget - sp.gastarAmanha) >= 0.01 ? (
+                    <span className={`block text-[10px] leading-tight ${i.budgetCls}`}>{signed(i.budget - sp.gastarAmanha)}</span>
                   ) : null}
                 </span>
               </button>
