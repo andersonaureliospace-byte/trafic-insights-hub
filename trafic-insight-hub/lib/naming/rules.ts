@@ -126,7 +126,10 @@ export interface NameCheck {
   problems: string[];
   suggestion: string | null; // nome sugerido (null = não ok e sem sugestão possível)
   needsInput: boolean; // true = a sugestão está incompleta, precisa ser editada antes de aceitar
-  autoFix: boolean; // true = só idade e/ou data divergem (ajuste automático, sem aprovação)
+  autoFix: boolean; // true = dá pra ajustar sozinho, sem aprovação (só idade/data divergem, e/ou tem "Cópia")
+  // Etapa 192: nome que o ajuste automático aplica. Pode ser só o nome atual sem o "Cópia" quando o resto
+  // ainda precisa de aprovação (aí o item continua na aba "Padrão de nomes" com a sugestão completa).
+  autoName?: string | null;
 }
 
 const OK: NameCheck = { ok: true, problems: [], suggestion: null, needsInput: false, autoFix: false };
@@ -178,7 +181,11 @@ export function checkCampaignName(name: string, unitName: string | null): NameCh
   if (problems.length === 0) return OK;
   const suggestion = [type ?? parts[0] ?? "?", objective || "?", unit || "?"].join(" | ");
   if (suggestion.includes("?")) needsInput = true;
-  return { ok: false, problems, suggestion, needsInput, autoFix: false };
+  // Etapa 192: "Cópia" sai sozinho. Se era o único problema, aplica a sugestão; senão só tira o "Cópia".
+  const copyOnly = hasCopy(name) && problems.length === 1;
+  const cleaned = hasCopy(name) ? stripCopy(name) : "";
+  const autoName = copyOnly && !needsInput ? suggestion : cleaned || null;
+  return { ok: false, problems, suggestion, needsInput, autoFix: !!autoName, autoName };
 }
 
 // ---------- conjunto ----------
@@ -359,10 +366,13 @@ export function expectedAdsetParts(facts: AdsetFacts): { parts: Part[]; needsInp
 export function checkAdsetName(facts: AdsetFacts): NameCheck {
   const { parts: expected, needsInput, notes } = expectedAdsetParts(facts);
   const suggestion = expected.map((p) => p.text).join(" | ");
-  const cur = splitParts(facts.name);
+  const copy = hasCopy(facts.name);
+  const cleanedName = copy ? stripCopy(facts.name) : facts.name;
+  // Etapa 192: compara sem o "Cópia" (senão a última parte "21/10 — Cópia" contava como DATA errada).
+  const cur = splitParts(cleanedName);
   const problems: string[] = [];
 
-  if (hasCopy(facts.name)) problems.push('Tem "cópia" no nome');
+  if (copy) problems.push('Tem "cópia" no nome');
 
   let autoFix = false;
   if (cur.length === expected.length) {
@@ -385,12 +395,21 @@ export function checkAdsetName(facts: AdsetFacts): NameCheck {
       data: "DATA",
     };
     for (const k of diffKeys) problems.push(`${labels[k]} fora do padrão`);
-    autoFix = problems.length > 0 && diffKeys.length > 0 && diffKeys.every((k) => k === "idade" || k === "data") && !hasCopy(facts.name) && !needsInput;
+    autoFix = problems.length > 0 && diffKeys.every((k) => k === "idade" || k === "data") && !needsInput;
   } else {
     problems.push(`Estrutura fora do padrão (${cur.length} partes, esperado ${expected.length})`);
   }
   for (const n of notes) problems.push(n);
-  return { ok: false, problems, suggestion, needsInput, autoFix };
+  // Etapa 192: só idade/data (com ou sem "Cópia") → aplica a sugestão completa. Quando o resto precisa de aprovação,
+  // o automático ainda assim tira o "Cópia" e acerta a DATA (a parte DD/MM do nome vira a data de criação do
+  // conjunto); o resto continua na aba "Padrão de nomes".
+  let autoName: string | null = autoFix ? suggestion : null;
+  if (!autoName) {
+    const date = expected.find((p) => p.key === "data")?.text;
+    const partial = cur.map((x) => (date && /^\d{1,2}\/\d{1,2}$/.test(x.trim()) ? date : x)).join(" | ");
+    if (partial && normName(partial) !== normName(facts.name)) autoName = partial;
+  }
+  return { ok: false, problems, suggestion, needsInput, autoFix: !!autoName, autoName };
 }
 
 // ---------- anúncio (só "sem cópia") ----------
@@ -398,5 +417,6 @@ export function checkAdsetName(facts: AdsetFacts): NameCheck {
 export function checkAdName(name: string): NameCheck {
   if (!hasCopy(name)) return OK;
   const cleaned = stripCopy(name);
-  return { ok: false, problems: ['Tem "cópia" no nome'], suggestion: cleaned || null, needsInput: !cleaned, autoFix: false };
+  // Etapa 192: anúncio só tem a regra do "Cópia" — sai sozinho.
+  return { ok: false, problems: ['Tem "cópia" no nome'], suggestion: cleaned || null, needsInput: !cleaned, autoFix: !!cleaned, autoName: cleaned || null };
 }

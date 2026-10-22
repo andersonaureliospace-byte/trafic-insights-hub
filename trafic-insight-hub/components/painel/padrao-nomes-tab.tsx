@@ -19,7 +19,12 @@ interface Item {
   problems: string[];
   needsInput: boolean;
   autoFix: boolean;
+  autoName?: string | null;
 }
+
+// Etapa 192: "auto" = o ajuste automático resolve tudo (idade/data e/ou "Cópia"). Quem tem mais coisa fora do padrão
+// fica na lista de aprovação (o automático só tira o "Cópia" e acerta a data dele; o resto continua aqui).
+const fullyAuto = (i: Item) => i.autoFix && !!i.autoName && i.autoName === i.suggestion;
 
 interface Kept {
   entity_id: string;
@@ -199,7 +204,7 @@ export function PadraoNomesTab() {
       const res = await fetch("/api/naming/autofix", { method: "POST" });
       const j = await res.json();
       if (!res.ok || !j.ok) throw new Error(j.error ?? "Falha no ajuste automático.");
-      setMsg(`Ajustados: ${j.fixed} conjunto(s)${j.failed > 0 ? ` · falharam: ${j.failed}` : ""}.`);
+      setMsg(`Ajustados: ${j.fixed} item(ns)${j.failed > 0 ? ` · falharam: ${j.failed}` : ""}.`);
       await scan();
     } catch (e) {
       setError((e as Error).message);
@@ -208,8 +213,8 @@ export function PadraoNomesTab() {
     }
   }
 
-  const auto = useMemo(() => (items ?? []).filter((i) => i.autoFix), [items]);
-  const manual = useMemo(() => (items ?? []).filter((i) => !i.autoFix), [items]);
+  const auto = useMemo(() => (items ?? []).filter(fullyAuto), [items]);
+  const manual = useMemo(() => (items ?? []).filter((i) => !fullyAuto(i)), [items]);
   const byAccount = useMemo(() => {
     const m = new Map<string, Item[]>();
     for (const it of manual) {
@@ -254,9 +259,9 @@ export function PadraoNomesTab() {
               onClick={() => void runAutoFix()}
               disabled={loading || autoBusy}
               className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
-              title="Só a idade e/ou a data estão diferentes — dados que vêm direto da Meta, não precisa de aprovação"
+              title='Idade/data diferentes (dados que vêm direto da Meta) e/ou "Cópia" no nome — não precisa de aprovação. Nos que precisam de aprovação no resto, também tira o "Cópia" e acerta a data.'
             >
-              {autoBusy ? "Ajustando…" : `Ajustar idade/data de ${auto.length} conjunto(s) agora`}
+              {autoBusy ? "Ajustando…" : `Ajustar automáticos (${auto.length}) agora`}
             </button>
           ) : null}
           {manual.length > 0 ? (
@@ -282,7 +287,7 @@ export function PadraoNomesTab() {
         <>
           {auto.length > 0 ? (
             <p className="bg-emerald-50 px-4 py-2 text-xs text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200">
-              {auto.length} conjunto(s) só com idade/data diferentes — o sistema ajusta sozinho todo dia (ou use o botão acima).
+              {auto.length} item(ns) só com idade/data diferentes e/ou &quot;Cópia&quot; no nome — o sistema ajusta sozinho (ou use o botão acima).
             </p>
           ) : null}
           {byAccount.map(([name, list]) => (

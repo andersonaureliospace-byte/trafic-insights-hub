@@ -3,8 +3,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { runNamingAutoFix } from "@/lib/naming/scan";
 import { withRunLog } from "@/lib/automation-runs";
 
-// Etapa 140: ajuste automático diário (n8n sugerido: 1x ao dia) da IDADE e da DATA nos nomes dos conjuntos ativos das contas IVS
-// — só quando esses dois são as ÚNICAS divergências (os dados vêm da própria Meta). O resto fica na aba "Padrão de nomes"
+// Etapa 140/192: ajuste automático (n8n: 6x ao dia) — tira o "Cópia" e acerta IDADE e DATA nos nomes ativos das contas IVS
+// (os dados vêm da própria Meta), sem aprovação. O resto do nome que estiver fora do padrão fica na aba "Padrão de nomes"
 // pra aprovação. Protegido por WHATSAPP_DISPATCH_SECRET.
 export const maxDuration = 60;
 

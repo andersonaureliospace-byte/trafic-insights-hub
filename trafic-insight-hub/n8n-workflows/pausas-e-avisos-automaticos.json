@@ -876,7 +876,7 @@
     },
     {
       "parameters": {
-        "content": "## 12. Padrão de nomes (ajuste diário de idade e data)\n\n04h30: nos conjuntos ativos das contas IVS em que SÓ a idade e/ou a data do nome estão diferentes, corrige o nome sozinho (os dois dados vêm da própria Meta). O resto fica na aba 'Padrão de nomes' pra você aprovar.",
+        "content": "## 12. Padrão de nomes (ajuste automático: Cópia, idade e data)\n\n04h30, 07h30, 12h30, 17h30, 20h30 e 23h30: nas campanhas, conjuntos e anúncios ativos das contas IVS, tira o \"Cópia\" do nome e acerta a DATA (e a idade) do conjunto sozinho — os dados vêm da própria Meta. O que mais estiver fora do padrão fica na aba 'Padrão de nomes' pra você aprovar.",
         "height": 130,
         "width": 900,
         "color": 5
@@ -896,7 +896,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "30 4 * * *"
+              "expression": "30 4,7,12,17,20,23 * * *"
             }
           ]
         }
@@ -908,7 +908,7 @@
         3820
       ],
       "id": "8405af4d-bba1-4532-b169-d56a033e6cf2",
-      "name": "Agenda - Padrão de nomes (04h30)"
+      "name": "Agenda - Padrão de nomes (6x ao dia)"
     },
     {
       "parameters": {
@@ -934,7 +934,7 @@
         3820
       ],
       "id": "74359937-7b08-470a-a393-217efd0d6e10",
-      "name": "Ajustar idade/data nos nomes dos conjuntos",
+      "name": "Ajustar Cópia/idade/data nos nomes",
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
@@ -1678,17 +1678,6 @@
         ]
       ]
     },
-    "Agenda - Padrão de nomes (04h30)": {
-      "main": [
-        [
-          {
-            "node": "Ajustar idade/data nos nomes dos conjuntos",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Agenda - Ofertas ativas (05h20 e 12h00)": {
       "main": [
         [
@@ -1804,6 +1793,17 @@
         [
           {
             "node": "Rodar localização (todos os conjuntos ativos)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Padrão de nomes (6x ao dia)": {
+      "main": [
+        [
+          {
+            "node": "Ajustar Cópia/idade/data nos nomes",
             "type": "main",
             "index": 0
           }

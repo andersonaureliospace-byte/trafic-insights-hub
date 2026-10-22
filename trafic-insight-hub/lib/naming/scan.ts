@@ -23,6 +23,7 @@ export interface NamingItem {
   problems: string[];
   needsInput: boolean;
   autoFix: boolean;
+  autoName: string | null; // Etapa 192: o nome que o ajuste automático aplica
 }
 
 export interface NamingAccount {
@@ -93,6 +94,7 @@ export async function scanAccountNames(token: string, acc: NamingAccount): Promi
       problems: c.problems,
       needsInput: c.needsInput,
       autoFix: c.autoFix,
+      autoName: c.autoName ?? null,
     });
   };
 
@@ -206,6 +208,7 @@ export interface AutoFixResult {
 }
 
 // Ajusta sozinho (sem aprovação) os conjuntos em que SÓ a idade e/ou a data divergem — os dois dados vêm direto da Meta.
+// Etapa 192: e tira o "Cópia" de campanhas, conjuntos e anúncios (o resto do nome, se precisar, fica pra aprovação).
 export async function runNamingAutoFix(
   db: Db,
   userId: string,
@@ -214,14 +217,14 @@ export async function runNamingAutoFix(
 ): Promise<AutoFixResult> {
   const deadline = opts.deadlineMs ?? Date.now() + 50_000;
   const { items, failedAccounts } = await scanAllNames(db, userId, token);
-  const todo = items.filter((i) => i.autoFix && i.entity === "adset" && i.suggestion);
+  const todo = items.filter((i) => i.autoFix && i.autoName && i.autoName !== i.current_name);
   const fixed: AutoFixResult["fixed"] = [];
   const failed: AutoFixResult["failed"] = [];
   for (const it of todo) {
     if (Date.now() + RENAME_DELAY_MS + 2000 > deadline) break;
     try {
-      await renameEntity(token, it.id, it.suggestion!);
-      fixed.push({ id: it.id, from: it.current_name, to: it.suggestion!, client_name: it.client_name });
+      await renameEntity(token, it.id, it.autoName!);
+      fixed.push({ id: it.id, from: it.current_name, to: it.autoName!, client_name: it.client_name });
     } catch (e) {
       failed.push({ id: it.id, error: (e as Error).message.slice(0, 200) });
     }
@@ -232,7 +235,7 @@ export async function runNamingAutoFix(
     try {
       await publishAlert(db, userId, {
         kind: "naming-fix",
-        title: `✏️ Nomes ajustados (idade/data) em ${fixed.length} conjunto${fixed.length > 1 ? "s" : ""}`,
+        title: `✏️ Nomes ajustados automaticamente (idade/data/"Cópia") — ${fixed.length} ${fixed.length > 1 ? "itens" : "item"}`,
         body: fixed.map((f) => `• ${f.client_name}: ${f.from} → ${f.to}`).join("\n"),
         count: fixed.length,
       });
