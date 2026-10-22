@@ -80,6 +80,7 @@ interface LowInvestmentStatus {
   daily_budget: number;
   ritmo: number;
   diff: number;
+  speed_diff_pct?: number | null;
   low: boolean;
 }
 
@@ -375,7 +376,7 @@ export function AvisosTab() {
   const cpaCritical = [...(cpaStatuses ?? [])].filter((s) => s.critical).sort((a, b) => (b.diff ?? 0) - (a.diff ?? 0));
   const cpaOk = (cpaStatuses ?? []).filter((s) => !s.critical);
 
-  const lowInvestmentCritical = [...(lowInvestmentStatuses ?? [])].filter((s) => s.low).sort((a, b) => b.diff - a.diff);
+  const lowInvestmentCritical = [...(lowInvestmentStatuses ?? [])].filter((s) => s.low).sort((a, b) => (a.speed_diff_pct ?? 0) - (b.speed_diff_pct ?? 0));
   const lowInvestmentOk = (lowInvestmentStatuses ?? []).filter((s) => !s.low);
 
   return (
@@ -776,8 +777,9 @@ export function AvisosTab() {
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
           Considera toda conta com Investimento mensal cadastrado (Clientes/Acompanhamento). Entra no
-          aviso quem está com o orçamento diário atual mais de R$10 MENOR que o Ritmo necessário pra
-          bater a meta do mês (mesma banda usada pra colorir a coluna Ritmo de Acompanhamento). Só
+          aviso quem a Speed mostra com investimento &quot;Abaixo&quot;: gasto do dia 01 até ontem mais de 2%
+          abaixo do ideal até hoje (mesma regra do Foco e da aba Metas). &quot;Recomendado hoje&quot; = o que
+          precisa gastar no dia pra voltar à meta cheia, com teto de 2x o ritmo médio. Só
           avisa, nunca muda nada. Pensado pra rodar automaticamente de manhã, de segunda a sexta (veja o
           ⚠️ no README) — sem cooldown, então &quot;Verificar agora&quot; sempre reenvia se houver
           alguma conta com investimento baixo.
@@ -814,7 +816,9 @@ export function AvisosTab() {
                   <tr className="border-b border-zinc-200 text-left text-xs uppercase tracking-wide text-zinc-400 dark:border-zinc-800">
                     <th className="px-4 py-2 font-medium">Cliente</th>
                     <th className="px-4 py-2 text-right font-medium">Invest. diário atual</th>
-                    <th className="px-4 py-2 text-right font-medium">Ritmo necessário</th>
+                    <th className="px-4 py-2 text-right font-medium" title="O que já gastou hoje + Gastar hoje (regra da Speed: meta cheia, teto 2x o ritmo médio)">
+                      Recomendado hoje
+                    </th>
                     <th className="px-4 py-2 font-medium">Status</th>
                   </tr>
                 </thead>
@@ -832,7 +836,8 @@ export function AvisosTab() {
                               : "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                           }`}
                         >
-                          {s.low ? "Investimento baixo" : "OK"}
+                          {s.low ? "Abaixo (Speed)" : "OK"}
+                          {s.speed_diff_pct != null ? ` · ${(s.speed_diff_pct * 100).toFixed(1).replace(".", ",")}%` : ""}
                         </span>
                       </td>
                     </tr>
@@ -847,7 +852,7 @@ export function AvisosTab() {
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
           Reclassifica toda &quot;Conta exibida&quot; do Painel com o CPA dos últimos 3 dias (sem contar
-          hoje) — mesmo critério do botão &quot;Atualizar status em massa&quot; de Acompanhamento. Sempre
+          hoje) — mesmo critério do botão &quot;Atualizar prioridade em massa&quot; de Acompanhamento. Sempre
           desconsidera contas em inauguração. Ao clicar, já ATUALIZA de verdade o status de quem mudou e
           reordena o quadro inteiro (status mais crítico primeiro e, dentro de cada status, do maior CPA
           pro menor) — não é só uma prévia. O aviso no WhatsApp traz o status de TODO cliente classificado
@@ -859,7 +864,7 @@ export function AvisosTab() {
 
         <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
           <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
-            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Atualização de status em massa</h3>
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">Atualização de prioridade em massa</h3>
             <button
               onClick={() => void handleRunBulkStatus()}
               disabled={runningBulkStatus}

@@ -188,7 +188,7 @@ export function EvolucaoTab({
         </div>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
-            <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Status</span>
+            <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Prioridade</span>
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}

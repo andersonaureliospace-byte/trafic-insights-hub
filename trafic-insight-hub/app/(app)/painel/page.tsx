@@ -1010,7 +1010,7 @@ export default function PainelPage() {
 
                 <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-4 py-2 dark:border-zinc-800">
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Status</span>
+                    <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Prioridade</span>
                     <select
                       value={priorityFilter}
                       onChange={(e) => setPriorityFilter(e.target.value)}
@@ -1112,7 +1112,7 @@ export default function PainelPage() {
                         <th className="px-4 py-2 font-medium" title="Clique no nome pra abrir a conta no Gerenciador de Anúncios">
                           Cliente
                         </th>
-                        <th className="px-4 py-2 font-medium">Status</th>
+                        <th className="px-4 py-2 font-medium" title="Prioridade (o mesmo campo do Asana) — classificação pelo CPA dos últimos 3 dias">Prioridade</th>
                         <th
                           className="px-4 py-2 text-right font-medium"
                           title="Conversas iniciadas — o mesmo Resultado que aparece no Gerenciador de Anúncios, campo results da Meta (o que também gera o CPA)"

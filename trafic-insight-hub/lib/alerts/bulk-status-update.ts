@@ -235,7 +235,7 @@ export async function checkAndUpdateBulkStatus(
       // o texto do grupo continua sendo só "cliente: status", um por linha, sem cabeçalho.
       await publishAlert(db, userId, {
         kind: "bulk-status",
-        title: "Status em massa atualizado",
+        title: "Prioridade em massa atualizada",
         body: asana ? `${lines.join("\n")}\n\n${describeAsanaSync(asana)}` : lines.join("\n"),
         count: reportable.length,
         groupText: lines.join("\n"),

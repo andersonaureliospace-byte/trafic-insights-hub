@@ -24,7 +24,7 @@ const KIND_LABELS: Record<string, string> = {
   "low-budget": "Invest. diário ≤ 80% do Ritmo",
   "low-investment": "Investimento baixo",
   "cpa-yesterday": "CPA acima da meta",
-  "bulk-status": "Status em massa",
+  "bulk-status": "Prioridade em massa",
   "balance-low": "Saldo baixo",
   "balance-friday": "Saldo de sexta",
   "balance-evening": "Saldo para amanhã (19h)",

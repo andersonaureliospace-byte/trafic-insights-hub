@@ -10,7 +10,7 @@ import { VideosGeraisTab } from "@/components/configuracoes/videos-gerais-tab";
 const TABS = [
   { id: "meta", label: "Meta (Facebook)" },
   { id: "whatsapp", label: "WhatsApp" },
-  { id: "status", label: "Status" },
+  { id: "status", label: "Prioridade" },
   { id: "clientes", label: "Clientes" },
   { id: "videos", label: "Vídeos gerais" },
 ] as const;
