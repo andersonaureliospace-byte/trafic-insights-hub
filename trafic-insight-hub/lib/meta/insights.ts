@@ -19,7 +19,7 @@
 import { metaGet, metaGetAll, presetParams, type DateRangeInput } from "./client";
 import { memoMeta, tokenTag } from "./memo";
 import { planFromStore } from "./daily-store";
-import { isVaga, isJobCampaign, EXCLUDED_OBJECTIVES, pickFirstNumeric, lifetimeToDailyEquivalent } from "./shared";
+import { isVaga, isJobCampaign, EXCLUDED_OBJECTIVES, lifetimeToDailyEquivalent, isNonLeadResultType, leadResultOf } from "./shared";
 
 // Ajuste pedido pelo usuário: um conjunto "Programado" (Meta Ads mostra o
 // círculo vazado "○ Programado" em vez da bolinha verde "● Ativo") tem o
@@ -281,6 +281,7 @@ export async function getAccountInsight(
         campaign_name?: string;
         spend?: string;
         results?: Array<{ indicator?: string; values?: Array<{ value?: string }> }>;
+        actions?: Array<{ action_type?: string; value?: string }>;
         cost_per_result?: Array<{ values?: Array<{ value?: string }> }>;
       }>;
     };
@@ -333,11 +334,15 @@ export async function getAccountInsight(
       spend += rowSpend;
       if (isVaga(row.campaign_name)) continue; // tag de nome (seguidores/tráfego): fora do CPA
       if (row.campaign_id && excludedIds.has(row.campaign_id)) continue;
+      // Etapa 184: resultado que não é lead/conversa (interação no post, clique, alcance…) — gasto fica só no Investimento.
+      // Se a campanha tem conversas iniciadas em `actions`, elas valem (leadResultOf).
+      const lr = leadResultOf(row.results, row.actions);
+      if (isNonLeadResultType(lr.type)) continue;
       cpaSpend += rowSpend;
-      const rowResults = pickFirstNumeric(row.results);
+      const rowResults = lr.value;
       let rowType: string | null = null;
       if (rowResults != null && rowResults > 0) {
-        const ind = row.results?.[0]?.indicator;
+        const ind = lr.type;
         if (ind) rowType = ind.includes(":") ? ind.split(":").slice(1).join(":") : ind;
       }
       if (rowResults != null && rowResults > 0) {

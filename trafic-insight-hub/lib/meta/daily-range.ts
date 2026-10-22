@@ -1,3 +1,5 @@
+import { isNonLeadResultType } from "./shared";
+
 // Etapa 125: parte "pura" (sem banco, sem Meta) do backup diário — resolve o período pedido em datas e
 // decide o que vem do backup (dias fechados guardados) e o que ainda precisa ser perguntado à Meta
 // (hoje, ou qualquer dia que falte no backup). Tudo em datas de texto YYYY-MM-DD (fuso de Brasília),
@@ -141,7 +143,8 @@ export function buildDayRows(
     const cur = byDay.get(r.date_start) ?? { spend: 0, cpaSpend: 0, results: 0, types: new Set<string>() };
     const s = r.spend ? Number(r.spend) : 0;
     cur.spend += s;
-    const counts = !isVagaName(r.campaign_name) && !(r.campaign_id && excludedIds.has(r.campaign_id));
+    // Etapa 184: resultado que não é lead/conversa (interação no post, clique, alcance…) não conta no CPA — só no gasto.
+    const counts = !isNonLeadResultType(r.resultType) && !isVagaName(r.campaign_name) && !(r.campaign_id && excludedIds.has(r.campaign_id));
     if (counts) {
       cur.cpaSpend += s;
       if (r.resultValue != null && r.resultValue > 0) {

@@ -9,7 +9,7 @@
 
 import { createServiceClient } from "@/lib/supabase/server";
 import { metaGet, metaGetAll, type DateRangeInput } from "./client";
-import { isJobCampaign, isVaga, EXCLUDED_OBJECTIVES, pickFirstNumeric } from "./shared";
+import { isJobCampaign, isVaga, EXCLUDED_OBJECTIVES, leadResultOf, isNonLeadResultType } from "./shared";
 import {
   STORE_DAYS,
   addDaysYmd,
@@ -82,6 +82,8 @@ export async function readStoredDaysMany(
         const row = toDayRow(r);
         // Etapa 178: dia gravado com resultados mas sem gasto = cópia ruim; ignora (a Meta responde no lugar) até a rotina noturna refazer.
         if (isSuspectDay(row)) continue;
+        // Etapa 184: dia gravado com resultado que não é lead (ex.: post_engagement) = cópia feita antes da correção; ignora (a Meta responde no lugar) até a rotina noturna refazer.
+        if (row.types.some(isNonLeadResultType)) continue;
         const m = out.get(r.ad_account_id) ?? new Map<string, DayRow>();
         m.set(r.day, row);
         out.set(r.ad_account_id, m);
@@ -142,8 +144,9 @@ async function fetchAccountDaysOnce(token: string, actId: string, range: YmdRang
     campaign_name?: string;
     spend?: string;
     results?: Array<{ indicator?: string; values?: Array<{ value?: string }> }>;
+    actions?: Array<{ action_type?: string; value?: string }>;
   }>(token, `/${id}/insights`, {
-    fields: "date_start,campaign_id,campaign_name,spend,results",
+    fields: "date_start,campaign_id,campaign_name,spend,results,actions",
     time_range: JSON.stringify(range),
     time_increment: "1",
     level: "campaign",
@@ -151,12 +154,10 @@ async function fetchAccountDaysOnce(token: string, actId: string, range: YmdRang
     use_unified_attribution_setting: "true",
   });
   const inputs: CampaignDayInput[] = rows.map((r) => {
-    const v = pickFirstNumeric(r.results);
+    const lr = leadResultOf(r.results, r.actions);
+    const v = lr.value;
     let type: string | null = null;
-    if (v != null && v > 0) {
-      const ind = r.results?.[0]?.indicator;
-      if (ind) type = ind.includes(":") ? ind.split(":").slice(1).join(":") : ind;
-    }
+    if (v != null && v > 0) type = lr.type;
     return {
       date_start: r.date_start,
       campaign_id: r.campaign_id,

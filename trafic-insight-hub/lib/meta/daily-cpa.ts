@@ -4,7 +4,7 @@
 // também de base para eventuais gráficos futuros.
 
 import { metaGet, metaGetAll, spDate } from "./client";
-import { isVaga, EXCLUDED_OBJECTIVES, pickFirstNumeric } from "./shared";
+import { isVaga, EXCLUDED_OBJECTIVES, isNonLeadResultType, leadResultOf } from "./shared";
 import { memoMeta } from "./memo";
 import { closedDaysFor, hasAllClosedDays, normAccountId } from "./daily-store";
 
@@ -33,7 +33,8 @@ interface DailyInsightRow {
   campaign_id?: string;
   campaign_name?: string;
   spend?: string;
-  results?: Array<{ values?: Array<{ value?: string }> }>;
+  results?: Array<{ indicator?: string; values?: Array<{ value?: string }> }>;
+  actions?: Array<{ action_type?: string; value?: string }>;
 }
 
 // Etapa 125: lista de campanhas excluídas guardada por 2 min (várias partes da mesma tela pedem junto);
@@ -72,7 +73,7 @@ async function getAccountDailyCpa(
   const byDate = new Map<string, { spend: number; results: number }>();
   try {
     const rows = await metaGetAll<DailyInsightRow>(token, `/${id}/insights`, {
-      fields: "date_start,campaign_id,campaign_name,spend,results",
+      fields: "date_start,campaign_id,campaign_name,spend,results,actions",
       time_range: JSON.stringify({ since, until }),
       time_increment: "1",
       level: "campaign",
@@ -83,9 +84,11 @@ async function getAccountDailyCpa(
       if (!row.date_start) continue;
       if (isVaga(row.campaign_name)) continue;
       if (row.campaign_id && excluded.has(row.campaign_id)) continue;
+      const lr = leadResultOf(row.results, row.actions);
+      if (isNonLeadResultType(lr.type)) continue; // Etapa 184: interação/clique/alcance não é lead (conversas em `actions` valem)
       const cur = byDate.get(row.date_start) ?? { spend: 0, results: 0 };
       cur.spend += row.spend ? Number(row.spend) : 0;
-      const r = pickFirstNumeric(row.results);
+      const r = lr.value;
       if (r != null) cur.results += r;
       byDate.set(row.date_start, cur);
     }
@@ -138,7 +141,7 @@ async function fetchAccountTodayCpa(
   let results = 0;
   try {
     const rows = await metaGetAll<Omit<DailyInsightRow, "date_start">>(token, `/${id}/insights`, {
-      fields: "campaign_id,campaign_name,spend,results",
+      fields: "campaign_id,campaign_name,spend,results,actions",
       date_preset: "today",
       level: "campaign",
       limit: "500",
@@ -147,8 +150,10 @@ async function fetchAccountTodayCpa(
     for (const row of rows) {
       if (isVaga(row.campaign_name)) continue;
       if (row.campaign_id && excluded.has(row.campaign_id)) continue;
+      const lr = leadResultOf(row.results, row.actions);
+      if (isNonLeadResultType(lr.type)) continue;
       spend += row.spend ? Number(row.spend) : 0;
-      const r = pickFirstNumeric(row.results);
+      const r = lr.value;
       if (r != null) results += r;
     }
   } catch (e) {
@@ -188,7 +193,7 @@ export async function getAccountsMonthCpa(
       }
       try {
         const rows = await metaGetAll<Omit<DailyInsightRow, "date_start">>(token, `/${id}/insights`, {
-          fields: "campaign_id,campaign_name,spend,results",
+          fields: "campaign_id,campaign_name,spend,results,actions",
           date_preset: "this_month",
           level: "campaign",
           limit: "500",
@@ -197,8 +202,10 @@ export async function getAccountsMonthCpa(
         for (const row of rows) {
           if (isVaga(row.campaign_name)) continue;
           if (row.campaign_id && excluded.has(row.campaign_id)) continue;
+          const lr = leadResultOf(row.results, row.actions);
+      if (isNonLeadResultType(lr.type)) continue;
           spend += row.spend ? Number(row.spend) : 0;
-          const r = pickFirstNumeric(row.results);
+          const r = lr.value;
           if (r != null) results += r;
         }
       } catch (e) {

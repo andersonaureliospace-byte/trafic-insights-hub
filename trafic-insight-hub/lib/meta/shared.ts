@@ -24,6 +24,57 @@ export const EXCLUDED_OBJECTIVES = new Set([
   "EVENT_RESPONSES",
 ]);
 
+// Etapa 184: tipos de "resultado" que NÃO são lead/conversa — interação no post, clique, visualização, alcance, curtida. Campanha de
+// Engajamento (OUTCOME_ENGAGEMENT) otimizada pra interação no post devolve milhares disso a centavos (ex.: 2.444 em R$ 113 numa campanha
+// arquivada de Guaratinguetá) e derrubava o CPA do mês pra R$ 0,76. Esse resultado nunca entra no CPA; o gasto continua no Investimento.
+// OUTCOME_ENGAGEMENT com conversas de WhatsApp (messaging_conversation_started) continua contando normalmente.
+export const NON_LEAD_RESULT_TYPES = new Set([
+  "post_engagement",
+  "page_engagement",
+  "link_click",
+  "landing_page_view",
+  "video_view",
+  "thruplay",
+  "reach",
+  "impressions",
+  "like",
+  "page_like",
+]);
+
+export const isNonLeadResultType = (t?: string | null): boolean => !!t && NON_LEAD_RESULT_TYPES.has(t);
+
+// Tipo do resultado de uma linha de insights ("actions:post_engagement" -> "post_engagement"; "reach" -> "reach").
+export function resultTypeOf(results: Array<{ indicator?: string }> | undefined): string | null {
+  const ind = results?.[0]?.indicator;
+  if (!ind) return null;
+  return ind.includes(":") ? ind.split(":").slice(1).join(":") : ind;
+}
+
+const MESSAGING_ACTION = "onsite_conversion.messaging_conversation_started_7d";
+
+// Conversas iniciadas (WhatsApp/Messenger/Direct) dentro de `actions` de uma linha de insights.
+export function messagingFromActions(actions: Array<{ action_type?: string; value?: string }> | undefined): number {
+  let sum = 0;
+  for (const a of actions ?? []) if (a.action_type === MESSAGING_ACTION) sum += Number(a.value) || 0;
+  return sum;
+}
+
+// Resultado "de lead" de uma linha de campanha. Caso especial (Guaratinguetá): campanha de Engajamento cujo CONJUNTO otimiza pra conversas
+// iniciadas, mas o campo `results` no nível da campanha vem como post_engagement (2.444 em vez das 23 conversas reais no Gerenciador).
+// Se o tipo vier como não-lead, usa as conversas iniciadas de `actions` (se houver); sem conversas, continua não-lead e o chamador exclui.
+export function leadResultOf(
+  results: Array<{ indicator?: string; values?: Array<{ value?: string }> }> | undefined,
+  actions: Array<{ action_type?: string; value?: string }> | undefined,
+): { value: number | null; type: string | null } {
+  const value = pickFirstNumeric(results);
+  const type = resultTypeOf(results);
+  if (isNonLeadResultType(type)) {
+    const m = messagingFromActions(actions);
+    if (m > 0) return { value: m, type: MESSAGING_ACTION };
+  }
+  return { value, type };
+}
+
 export function pickFirstNumeric(
   arr: Array<{ values?: Array<{ value?: string }> }> | undefined,
 ): number | null {
