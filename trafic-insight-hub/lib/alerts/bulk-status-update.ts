@@ -192,7 +192,10 @@ export async function checkAndUpdateBulkStatus(
     ad_account_id: e.accountId,
     sort_order: i,
     updated_at: new Date().toISOString(),
-    ...(e.result.outcome === "updated" ? { priority: e.finalPriority } : {}),
+    // Etapa 185: SEMPRE manda o status (o novo se mudou, o atual se não mudou/foi pulado). Antes só as linhas "updated" levavam
+    // `priority`: num upsert em lote o supabase-js completa a coluna que falta com NULL, e todo cliente que não mudou (ou foi
+    // pulado) tinha o status APAGADO na rodada das 01h de segunda/quinta.
+    priority: e.finalPriority,
   }));
   const { error: upsertErr } = await db
     .from("account_bindings")
