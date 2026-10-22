@@ -4,7 +4,11 @@
 // também de base para eventuais gráficos futuros.
 
 import { metaGet, metaGetAll, spDate } from "./client";
-import { isVaga, EXCLUDED_OBJECTIVES, isNonLeadResultType, leadResultOf } from "./shared";
+import { isVaga, isJobCampaign, EXCLUDED_OBJECTIVES, isNonLeadResultType, leadResultOf } from "./shared";
+
+// Etapa 185 (regra da Speed): o CPA usa o investimento TOTAL da conta (tudo menos [VAGA]) ÷ conversas.
+// Campanha "fora do CPA" (objetivo de tráfego/visitas ao perfil/etc., [SEGUIDORES]/[TRÁFEGO] no nome ou resultado que não é lead)
+// continua sem contar resultado, mas o gasto dela agora entra no "Valor usado" e no numerador do CPA.
 import { memoMeta } from "./memo";
 import { closedDaysFor, hasAllClosedDays, normAccountId } from "./daily-store";
 
@@ -82,15 +86,16 @@ async function getAccountDailyCpa(
     });
     for (const row of rows) {
       if (!row.date_start) continue;
+      if (isJobCampaign(row.campaign_name)) continue;
+      const cur = byDate.get(row.date_start) ?? { spend: 0, results: 0 };
+      cur.spend += row.spend ? Number(row.spend) : 0;
+      byDate.set(row.date_start, cur);
       if (isVaga(row.campaign_name)) continue;
       if (row.campaign_id && excluded.has(row.campaign_id)) continue;
       const lr = leadResultOf(row.results, row.actions);
       if (isNonLeadResultType(lr.type)) continue; // Etapa 184: interação/clique/alcance não é lead (conversas em `actions` valem)
-      const cur = byDate.get(row.date_start) ?? { spend: 0, results: 0 };
-      cur.spend += row.spend ? Number(row.spend) : 0;
       const r = lr.value;
       if (r != null) cur.results += r;
-      byDate.set(row.date_start, cur);
     }
   } catch (e) {
     console.error("daily-cpa insights err", id, e);
@@ -148,11 +153,12 @@ async function fetchAccountTodayCpa(
       use_unified_attribution_setting: "true",
     });
     for (const row of rows) {
+      if (isJobCampaign(row.campaign_name)) continue;
+      spend += row.spend ? Number(row.spend) : 0;
       if (isVaga(row.campaign_name)) continue;
       if (row.campaign_id && excluded.has(row.campaign_id)) continue;
       const lr = leadResultOf(row.results, row.actions);
       if (isNonLeadResultType(lr.type)) continue;
-      spend += row.spend ? Number(row.spend) : 0;
       const r = lr.value;
       if (r != null) results += r;
     }
@@ -184,7 +190,7 @@ export async function getAccountsMonthCpa(
       let results = 0;
       if (monthStart > yesterday || hasAllClosedDays(storedMonth.get(normAccountId(actId)), monthStart, yesterday)) {
         const days = storedMonth.get(normAccountId(actId));
-        if (days) for (const d of days.values()) { spend += d.cpaSpend; results += d.results; }
+        if (days) for (const d of days.values()) { spend += d.spend; results += d.results; }
         const t = await getAccountTodayCpa(token, actId, todayDate, excluded);
         spend += t.spend;
         results += t.results;
@@ -200,11 +206,12 @@ export async function getAccountsMonthCpa(
           use_unified_attribution_setting: "true",
         });
         for (const row of rows) {
+          if (isJobCampaign(row.campaign_name)) continue;
+          spend += row.spend ? Number(row.spend) : 0;
           if (isVaga(row.campaign_name)) continue;
           if (row.campaign_id && excluded.has(row.campaign_id)) continue;
           const lr = leadResultOf(row.results, row.actions);
-      if (isNonLeadResultType(lr.type)) continue;
-          spend += row.spend ? Number(row.spend) : 0;
+          if (isNonLeadResultType(lr.type)) continue;
           const r = lr.value;
           if (r != null) results += r;
         }
@@ -249,7 +256,7 @@ export async function getAccountsDailyCpa(
         points = [];
         for (let d = since; d <= closedUntil; d = addDaysYmd(d, 1)) {
           const v = days!.get(d)!;
-          points.push({ date: d, spend: v.cpaSpend, results: v.results, cpa: v.results > 0 && v.cpaSpend > 0 ? v.cpaSpend / v.results : null });
+          points.push({ date: d, spend: v.spend, results: v.results, cpa: v.results > 0 && v.spend > 0 ? v.spend / v.results : null });
         }
         if (until >= todayDate) points.push({ date: todayDate, spend: 0, results: 0, cpa: null });
       } else {

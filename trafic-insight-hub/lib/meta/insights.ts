@@ -10,9 +10,13 @@
 //  - só soma campanha/conjunto que tenha ao menos um anúncio "ligado" (ver
 //    ATIVE_ISH_STATUSES abaixo — inclui "Programado", que também conta pro
 //    Invest. diário mesmo sem estar entregando ainda)
-//  - "resultado"/CPA vem do campo oficial `results` / `cost_per_result` do
-//    Graph API — a mesma fonte que o Gerenciador de Anúncios usa, sem inflar
-//    com `actions`
+//  - "resultado" vem do campo oficial `results` do Graph API — a mesma fonte
+//    que o Gerenciador de Anúncios usa, sem inflar com `actions`
+//  - Etapa 185 (regra da Speed, conferida na Meta): CPA = investimento TOTAL
+//    (tudo menos [VAGA], inclusive tráfego/visitas ao perfil) ÷ conversas.
+//    Antes o numerador era só o gasto das campanhas que contam pra resultado,
+//    o que deixava o CPA mais baixo que o da Speed em conta com campanha de
+//    outro objetivo rodando (ex.: Novo Hamburgo R$ 5,46 aqui × R$ 6,15 na Speed)
 //  - orçamento diário soma CBO da campanha, ou (se não tiver CBO) o orçamento
 //    dos conjuntos ativos, convertendo lifetime_budget pro equivalente diário
 
@@ -151,6 +155,10 @@ export interface InsightOptions {
   // Ignora o backup diário (meta_daily_metrics) e pergunta o período INTEIRO à Meta. Usado no cache do
   // Monitor de CPA: o número que o gestor confere no Gerenciador tem que sair da Meta, não de uma cópia.
   skipStore?: boolean;
+  // Etapa 185: gasto + resultado/CPA, mas SEM as chamadas de orçamento diário (anúncios ativos, campanhas,
+  // conjuntos) — 1 chamada por conta em vez de 4. Usado na lista do Foco (CPA do mês pro status da Speed).
+  // Nesse modo daily_budget vem 0 (não confiável); a exclusão por objetivo usa o `objective` da própria linha.
+  skipBudget?: boolean;
 }
 
 export async function getAccountInsight(
@@ -160,6 +168,7 @@ export async function getAccountInsight(
   opts: InsightOptions = {},
 ): Promise<AccountInsight> {
   const spendOnly = opts.spendOnly === true;
+  const skipBudget = spendOnly || opts.skipBudget === true;
   const id = actId.startsWith("act_") ? actId : `act_${actId}`;
 
   let spend = 0; // investimento total: tudo, menos [VAGA] (inclui reconhecimento/tráfego)
@@ -177,7 +186,7 @@ export async function getAccountInsight(
 
   const campaignsWithActiveAd = new Set<string>();
   const adsetsWithActiveAd = new Set<string>();
-  if (!spendOnly) try {
+  if (!skipBudget) try {
     const activeAds = await metaGetAll<{ campaign_id?: string; adset_id?: string }>(
       token,
       `/${id}/ads`,
@@ -195,7 +204,7 @@ export async function getAccountInsight(
     console.error("active ads err", id, e);
   }
 
-  if (!spendOnly) try {
+  if (!skipBudget) try {
     const camps = await metaGet<{ data: CampaignRow[] }>(token, `/${id}/campaigns`, {
       fields:
         "id,name,objective,daily_budget,lifetime_budget,status,effective_status,start_time,stop_time,created_time",
@@ -279,6 +288,7 @@ export async function getAccountInsight(
       data: Array<{
         campaign_id?: string;
         campaign_name?: string;
+        objective?: string;
         spend?: string;
         results?: Array<{ indicator?: string; values?: Array<{ value?: string }> }>;
         actions?: Array<{ action_type?: string; value?: string }>;
@@ -297,7 +307,7 @@ export async function getAccountInsight(
       metaGet<InsRes>(token, `/${id}/insights`, {
         fields: spendOnly
           ? "campaign_id,campaign_name,spend"
-          : "campaign_id,campaign_name,spend,actions,cost_per_action_type,results,cost_per_result",
+          : "campaign_id,campaign_name,objective,spend,actions,cost_per_action_type,results,cost_per_result",
         ...(stored?.live ? { time_range: JSON.stringify(stored.live) } : presetParams(datePreset)),
         level: "campaign",
         limit: "500",
@@ -334,6 +344,7 @@ export async function getAccountInsight(
       spend += rowSpend;
       if (isVaga(row.campaign_name)) continue; // tag de nome (seguidores/tráfego): fora do CPA
       if (row.campaign_id && excludedIds.has(row.campaign_id)) continue;
+      if (row.objective && EXCLUDED_OBJECTIVES.has(row.objective)) continue;
       // Etapa 184: resultado que não é lead/conversa (interação no post, clique, alcance…) — gasto fica só no Investimento.
       // Se a campanha tem conversas iniciadas em `actions`, elas valem (leadResultOf).
       const lr = leadResultOf(row.results, row.actions);
@@ -356,7 +367,8 @@ export async function getAccountInsight(
     }
     if (hasResults) {
       results = totalResults;
-      if (cpaSpend > 0) costPerResult = cpaSpend / totalResults;
+      // Etapa 185: regra da Speed — investimento total ÷ conversas (cpaSpend fica só como referência).
+      if (spend > 0) costPerResult = spend / totalResults;
     }
   } catch (e) {
     console.error("insights err", id, e);

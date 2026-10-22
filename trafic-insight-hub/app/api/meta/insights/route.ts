@@ -16,7 +16,10 @@ export async function POST(request: Request) {
 
     if (accountIds.length === 0) return NextResponse.json({ insights: {} });
 
-    const insights = await getAccountsInsights(token, accountIds, datePreset, { spendOnly: body.spendOnly === true });
+    const insights = await getAccountsInsights(token, accountIds, datePreset, {
+      spendOnly: body.spendOnly === true,
+      skipBudget: body.skipBudget === true,
+    });
     return NextResponse.json({ insights });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });

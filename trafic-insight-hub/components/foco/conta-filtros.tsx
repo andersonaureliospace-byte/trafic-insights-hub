@@ -3,12 +3,35 @@
 import { useEffect, useMemo, useState } from "react";
 import { writeTabCache } from "@/lib/client-cache";
 import { DATE_PRESETS, priorityRank } from "@/lib/format";
-import { PRIORITY_CPA_SORT, type FocoSort, cacheLabel, readDesempenhoCache } from "@/components/foco/conta-filtros-data";
-import { METAS_SORTS, compareMetas, computeMetas, metasCalendar, type CpaStatus } from "@/lib/meta/metas";
-import { RITMO_BAND, ritmoColorClass, ritmoFromInsight } from "@/lib/meta/ritmo";
+import {
+  FOCO_MONTH_KEY,
+  FOCO_UNTIL_YESTERDAY_KEY,
+  PRIORITY_CPA_SORT,
+  SPEED_SORT,
+  type FocoSort,
+  cacheLabel,
+  isToday,
+  readDesempenhoCache,
+} from "@/components/foco/conta-filtros-data";
+import { METAS_SORTS, compareMetas, computeMetas, metasCalendar } from "@/lib/meta/metas";
+import { monthCalendarSP, ritmoColorClass, ritmoFromInsight } from "@/lib/meta/ritmo";
+import {
+  SPEED_CPA_LABEL,
+  SPEED_INVEST_LABEL,
+  computeSpeed,
+  speedBudgetTooltip,
+  speedCpaStatus,
+  speedSortKey,
+  type SpeedCpa,
+  type SpeedOverall,
+  type SpeedRow,
+} from "@/lib/meta/speed";
 import type { AccountInsight } from "@/lib/meta/insights";
 import { usePriorityOptions } from "@/lib/priority-context";
 
+// Etapa 185: colunas viraram Nome | Prioridade | CPA | Hoje⇄Amanhã. "Status" passou a se chamar "Prioridade" (o mesmo nome do campo no
+// Asana — é a classificação dos últimos 3 dias); o status da Speed (mensal) aparece como uma faixa colorida à esquerda de cada linha.
+// Hoje⇄Amanhã (clique no título alterna) = Gastar hoje / Gastar amanhã de lib/meta/speed.ts; ao passar o mouse mostra a conta.
 // Painel lateral do modo Foco: lista vertical de clientes (Nome | Status | CPA | Ritmo) com busca e os mesmos filtros do Desempenho
 // (Status, CPA, Investimento, Otimizado, Atenção + Ordem). Filtra só a LISTA — nada é buscado na Meta. CPA, Ritmo e os filtros/ordens por número
 // usam o que o Desempenho já deixou salvo neste navegador (sem isso aparecem "—" e esses filtros ficam desativados). Atenção = lista do Resumo das 7h.
@@ -27,10 +50,16 @@ export interface FiltroOpt {
 type Att = Record<string, { points: number; reasons: string[] }>;
 
 const flat = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-const CPA_TEXT: Record<CpaStatus, string> = {
-  good: "text-emerald-600 dark:text-emerald-400",
+const CPA_TEXT: Record<SpeedCpa, string> = {
+  ok: "text-emerald-600 dark:text-emerald-400",
   acceptable: "text-orange-600 dark:text-orange-400",
   high: "text-red-600 dark:text-red-400",
+};
+// Faixa à esquerda da linha = status da Speed no mês (investimento + CPA).
+const SPEED_STRIPE: Record<SpeedOverall, string> = {
+  ok: "border-l-emerald-500",
+  acceptable: "border-l-orange-400",
+  off: "border-l-red-500",
 };
 const selCls = "h-7 w-full min-w-0 rounded-md border border-zinc-300 bg-transparent px-1.5 text-xs disabled:opacity-40 dark:border-zinc-700";
 const lblCls = "mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-zinc-400";
@@ -48,6 +77,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
   const [optimized, setOptimized] = useState<"all" | "optimized" | "pending">("all");
   const [attentionF, setAttentionF] = useState<"all" | "attention">("all");
   const [sort, setSort] = useState<FocoSort>("manual");
+  const [budgetMode, setBudgetMode] = useState<"hoje" | "amanha">("amanha");
   const [period, setPeriod] = useState(""); // "" = o período salvo mais recente
   const [attention, setAttention] = useState<Att>({});
   const [refreshing, setRefreshing] = useState(false);
@@ -73,33 +103,44 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
     };
   }, []);
 
-  // Números de cada conta que aparecem na lista (CPA, Ritmo) — vêm só do backup do Desempenho.
+  // Números de cada conta que aparecem na lista — vêm só do backup do Desempenho/Foco (nada é buscado aqui).
+  // CPA = período escolhido (cor pela régua da Speed). Speed (faixa, Hoje⇄Amanhã, filtro Investimento, ordem Speed) = mês ao vivo.
   const info = useMemo(() => {
     const ins = insightsAll;
     const mon = cache?.monthly ?? {};
-    const m = new Map<string, { cpa: number | null; cpaStatus: CpaStatus | null; cpaDiff: number | null; ritmo: number | null; ritmoCls: string; budget: number | null; budgetDiff: number | null }>();
+    const monFull = cache?.monthFull && isToday(cache.monthFull.at) ? cache.monthFull.data : null;
+    const until = cache?.untilYesterday && isToday(cache.untilYesterday.at) ? cache.untilYesterday.data : null;
+    const firstDay = monthCalendarSP().day === 1;
+    const m = new Map<
+      string,
+      { cpa: number | null; cpaStatus: SpeedCpa | null; cpaDiff: number | null; ritmo: number | null; speed: SpeedRow; budget: number | null; budgetCls: string }
+    >();
     for (const o of opts) {
       const rit = ritmoFromInsight(o.monthlyInvestment, mon[o.id]);
       const daily = ins[o.id]?.daily_budget ?? 0;
-      const metas = computeMetas(
-        { invested: mon[o.id]?.spend ?? 0, monthlyTarget: o.monthlyInvestment, cpa: ins[o.id]?.cost_per_result ?? null, cpaTarget: o.cpaTarget, dailyBudget: daily, ritmo: rit },
-        cal.elapsedDays,
-        cal.daysInMonth,
-      );
+      const monthIns = monFull?.[o.id] && !monFull[o.id].insights_failed ? monFull[o.id] : null;
+      const spentSoFar = monthIns?.spend ?? (mon[o.id] && !mon[o.id].insights_failed ? mon[o.id].spend : null);
+      const untilIns = until?.[o.id];
+      const speed = computeSpeed({
+        monthlyTarget: o.monthlyInvestment,
+        spentSoFar,
+        spentUntilYesterday: firstDay ? 0 : untilIns && !untilIns.insights_failed ? untilIns.spend : null,
+        cpa: monthIns?.cost_per_result ?? null,
+        cpaTarget: o.cpaTarget,
+        dailyBudget: daily,
+      });
       m.set(o.id, {
         cpa: ins[o.id]?.cost_per_result ?? null,
-        cpaStatus: metas.cpaStatus,
-        cpaDiff: metas.cpaDiff ?? null,
-        ritmo: rit,
-        ritmoCls: rit != null && ins[o.id] ? ritmoColorClass(rit, daily) : "",
-        // Mesmo número do quadro "Orçamento e ritmo" do Foco: Invest. diário (orçamento) em cima e, embaixo, Invest. diário − Ritmo
-        // (+ = orçamento acima do que precisa; − = falta). Cor pela regra do Ritmo.
+        cpaStatus: speedCpaStatus(ins[o.id]?.cost_per_result ?? null, o.cpaTarget),
+        cpaDiff: ins[o.id]?.cost_per_result != null && o.cpaTarget != null ? ins[o.id].cost_per_result! - o.cpaTarget : null,
         budget: ins[o.id] ? daily : null,
-        budgetDiff: rit != null && ins[o.id] ? daily - rit : null,
+        ritmo: rit,
+        speed,
+        budgetCls: speed.gastarAmanha != null && ins[o.id] ? ritmoColorClass(speed.gastarAmanha, daily) : "",
       });
     }
     return m;
-  }, [opts, cache, cal, insightsAll]);
+  }, [opts, cache, insightsAll]);
 
   // Busca na Meta os números de TODOS os clientes da lista (mesmas chamadas do Desempenho) e grava no backup local. Só roda quando clica.
   async function refresh() {
@@ -124,9 +165,16 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
       writeTabCache(`acomp-insights:${preset}`, period);
       setCache(readDesempenhoCache());
       setPeriod(preset);
-      const month = await call({ datePreset: "this_month", spendOnly: true });
+      // Etapa 185: mês até agora COM CPA (sem as chamadas de orçamento — 1 por conta) + gasto até ontem (backup diário).
+      const month = await call({ datePreset: "this_month", skipBudget: true });
       writeTabCache("acomp-mensal", month);
+      writeTabCache(FOCO_MONTH_KEY, month);
       setCache(readDesempenhoCache());
+      if (monthCalendarSP().day > 1) {
+        const until = await call({ datePreset: "this_month_until_yesterday", spendOnly: true });
+        writeTabCache(FOCO_UNTIL_YESTERDAY_KEY, until);
+        setCache(readDesempenhoCache());
+      }
     } catch (e) {
       const m = (e as Error).message;
       setRefreshErr(/failed to fetch|networkerror|load failed/i.test(m) ? "Sem conexão com o servidor agora. Tente de novo." : m);
@@ -164,11 +212,10 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         return o.cpaTarget != null && actual != null && actual > o.cpaTarget;
       })
       .filter((o) => {
+        // Etapa 185: Investimento Baixo/Alto = status da Speed (gasto até ontem × ideal até hoje, folga de 2%).
         if (invest === "all") return true;
-        const r = info.get(o.id)?.ritmo;
-        if (r == null) return false;
-        const diff = r - (ins[o.id]?.daily_budget ?? 0);
-        return invest === "low" ? diff > RITMO_BAND : diff < -RITMO_BAND;
+        const st = info.get(o.id)?.speed.investStatus;
+        return invest === "low" ? st === "below" : st === "above";
       })
       .filter((o) => optimized === "all" || (optimized === "optimized" ? o.optimized : !o.optimized))
       .filter((o) => attentionF === "all" || !!attention[o.id.replace(/^act_/, "")])
@@ -176,6 +223,12 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         if (sort === "manual") {
           const k = (o: FiltroOpt) => o.sortOrder ?? 1_000_000_000 - (ins[o.id]?.spend ?? 0);
           return k(a) - k(b) || a.name.localeCompare(b.name, "pt-BR");
+        }
+        if (sort === SPEED_SORT) {
+          const ka = info.get(a.id) ? speedSortKey(info.get(a.id)!.speed) : Number.NEGATIVE_INFINITY;
+          const kb = info.get(b.id) ? speedSortKey(info.get(b.id)!.speed) : Number.NEGATIVE_INFINITY;
+          if (ka !== kb) return kb > ka ? 1 : -1;
+          return a.name.localeCompare(b.name, "pt-BR");
         }
         if (sort === PRIORITY_CPA_SORT) {
           const rk = priorityRank(a.priority) - priorityRank(b.priority);
@@ -209,7 +262,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
           <button
             onClick={() => void refresh()}
             disabled={refreshing || opts.length === 0}
-            title="Busca na Meta os números de todos os clientes da lista (CPA e Ritmo) no período escolhido. Pode levar alguns segundos."
+            title="Busca na Meta os números de todos os clientes da lista (CPA do período, mês ao vivo e gasto até ontem). Pode levar alguns segundos."
             className="h-8 shrink-0 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
           >
             {refreshing ? "Atualizando…" : "↻ Atualizar"}
@@ -218,7 +271,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         {refreshErr ? <p className="text-xs text-red-600">{refreshErr}</p> : null}
         <div className="grid grid-cols-2 gap-x-2 gap-y-1.5">
           <label>
-            <span className={lblCls}>Status</span>
+            <span className={lblCls}>Prioridade</span>
             <select value={priority} onChange={(e) => setPriority(e.target.value)} className={selCls}>
               <option value="all">Todos</option>
               {priorityOptions.map((p) => (
@@ -243,12 +296,12 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
               <option value="high">CPA alto</option>
             </select>
           </label>
-          <label title={noData ? noDataHint : undefined}>
+          <label title={noData ? noDataHint : "Status de investimento da Speed: gasto até ontem × ideal até hoje, com 2% de folga."}>
             <span className={lblCls}>Investimento</span>
             <select value={invest} onChange={(e) => setInvest(e.target.value as "all" | "low" | "high")} disabled={noData} className={selCls}>
               <option value="all">Todos</option>
-              <option value="low">Baixo</option>
-              <option value="high">Alto</option>
+              <option value="low">Abaixo (Speed)</option>
+              <option value="high">Acima (Speed)</option>
             </select>
           </label>
           <label>
@@ -274,6 +327,9 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
             <span className={lblCls}>Ordem</span>
             <select value={sort} onChange={(e) => setSort(e.target.value as FocoSort)} className={selCls}>
               <option value="manual">Ordem salva</option>
+              <option value={SPEED_SORT} disabled={noData}>
+                Fora da meta (Speed)
+              </option>
               <option value={PRIORITY_CPA_SORT} disabled={noData}>
                 Prioridade + dif. do CPA
               </option>
@@ -309,9 +365,16 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
 
       <div className={`grid ${COLS} shrink-0 gap-x-1.5 border-b border-zinc-100 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-zinc-400 dark:border-zinc-800`}>
         <span>Cliente</span>
-        <span className="text-center">Status</span>
+        <span className="text-center">Prioridade</span>
         <span className="text-right">CPA</span>
-        <span className="text-right" title="Invest. diário (orçamento) e, embaixo, quanto passou (+) ou falta (−) do Ritmo">Ritmo</span>
+        <button
+          type="button"
+          onClick={() => setBudgetMode((m) => (m === "hoje" ? "amanha" : "hoje"))}
+          title={budgetMode === "hoje" ? "Gastar hoje: quanto ainda falta gastar hoje. Clique pra ver Gastar amanhã." : "Gastar amanhã: orçamento pra configurar. Clique pra ver Gastar hoje."}
+          className="text-right font-medium uppercase tracking-wide text-sky-600 underline decoration-dotted underline-offset-2 hover:text-sky-800 dark:text-sky-400"
+        >
+          {budgetMode === "hoje" ? "Hoje ⇄" : "Amanhã ⇄"}
+        </button>
       </div>
       <ul className="min-h-0 flex-1 overflow-auto">
         {list.length === 0 ? <li className="px-3 py-6 text-center text-sm text-zinc-500">Nenhum cliente com esses filtros.</li> : null}
@@ -319,12 +382,19 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
           const i = info.get(o.id);
           const p = prio(o.priority);
           const att = attention[o.id.replace(/^act_/, "")];
+          const sp = i?.speed;
+          const speedTitle = sp?.overall
+            ? `Speed (mês): investimento ${sp.investStatus ? SPEED_INVEST_LABEL[sp.investStatus] : "—"} · CPA ${sp.cpaStatus ? SPEED_CPA_LABEL[sp.cpaStatus] : "—"}`
+            : "Speed: sem dado do mês — clique em ↻ Atualizar";
+          const budgetVal = budgetMode === "hoje" ? sp?.gastarHoje : sp?.gastarAmanha;
           return (
             <li key={o.id}>
               <button
                 onClick={() => onChoose(o.id)}
-                title={att ? `Precisa de atenção: ${att.reasons.join(", ")}` : o.name}
-                className={`grid ${COLS} w-full items-center gap-x-1.5 border-b border-zinc-100 px-2.5 py-1.5 text-left text-sm transition-colors dark:border-zinc-800/60 ${
+                title={`${att ? `Precisa de atenção: ${att.reasons.join(", ")}` : o.name}\n${speedTitle}`}
+                className={`grid ${COLS} w-full items-center gap-x-1.5 border-b border-l-4 border-zinc-100 px-2.5 py-1.5 text-left text-sm transition-colors dark:border-zinc-800/60 ${
+                  sp?.overall ? SPEED_STRIPE[sp.overall] : "border-l-transparent"
+                } ${
                   o.id === value ? "bg-zinc-100 font-semibold dark:bg-zinc-800" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
                 }`}
               >
@@ -352,11 +422,14 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
                   {i?.cpa != null && i.cpaDiff != null ? <span className="block text-[10px] leading-tight opacity-70">{signed(i.cpaDiff)}</span> : null}
                 </span>
                 <span
-                  className={`text-right tabular-nums ${i?.budget != null ? i.ritmoCls : "text-zinc-400"}`}
-                  title={i?.budget != null ? `Invest. diário (orçamento) · embaixo: diferença pro Ritmo${i.ritmo != null ? ` (ritmo ${num(i.ritmo)}/dia)` : ""}` : "Invest. diário"}
+                  title={sp ? speedBudgetTooltip(sp, o.monthlyInvestment) : undefined}
+                  className={`text-right text-xs tabular-nums ${budgetVal == null ? "text-zinc-400" : budgetMode === "amanha" ? i?.budgetCls : ""}`}
                 >
-                  <span className="block text-xs leading-tight">{i?.budget != null ? num(i.budget) : "—"}</span>
-                  {i?.budgetDiff != null ? <span className="block text-[10px] leading-tight opacity-70">{signed(i.budgetDiff)}</span> : null}
+                  <span className="block text-xs leading-tight">{budgetVal != null ? num(budgetVal) : "—"}</span>
+                  {/* Embaixo (modo Amanhã): orçamento atual − recomendado (+ = orçamento acima; − = falta subir). */}
+                  {budgetMode === "amanha" && budgetVal != null && i?.budget != null ? (
+                    <span className="block text-[10px] leading-tight opacity-70">{signed(i.budget - budgetVal)}</span>
+                  ) : null}
                 </span>
               </button>
             </li>

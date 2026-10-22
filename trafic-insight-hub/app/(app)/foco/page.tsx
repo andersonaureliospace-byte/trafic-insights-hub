@@ -11,6 +11,7 @@ import { VideosGeral } from "@/components/painel/videos-geral";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import type { DailyCpaPoint } from "@/lib/meta/daily-cpa";
 import type { AccountInsight } from "@/lib/meta/insights";
+import { monthCalendarSP } from "@/lib/meta/ritmo";
 
 // Modo Foco: uma conta só, tudo numa tela — Acompanhamento de Resultados (metade de cima), Acompanhamento de metas e Análise (Vídeos de Geral /
 // Melhor público) embaixo. A conta escolhida fica na própria aba do navegador (endereço ?conta=…), então dá pra deixar uma conta diferente em cada aba.
@@ -60,6 +61,8 @@ export default function FocoPage() {
   const [daily, setDaily] = useState<DailyCpaPoint[]>([]);
   const [month, setMonth] = useState<DailyCpaPoint | null>(null);
   const [insight, setInsight] = useState<AccountInsight | null>(null);
+  // Etapa 185: gasto do dia 01 até ONTEM — é o número que a Speed mostra (status do investimento igual ao dela).
+  const [untilYesterday, setUntilYesterday] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [at, setAt] = useState<number | null>(null);
@@ -123,7 +126,8 @@ export default function FocoPage() {
     setLoading(true);
     setError(null);
     try {
-      const [dRes, iRes] = await Promise.all([
+      const firstDay = monthCalendarSP().day === 1;
+      const [dRes, iRes, yRes] = await Promise.all([
         fetch("/api/meta/daily-cpa", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -136,12 +140,25 @@ export default function FocoPage() {
           signal: AbortSignal.timeout(90_000),
           body: JSON.stringify({ accountIds: [id], datePreset: "this_month" }),
         }).then((r) => r.json()),
+        // Dias fechados vêm do backup diário (Supabase) — normalmente nem chega na Meta.
+        firstDay
+          ? Promise.resolve(null)
+          : fetch("/api/meta/insights", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              signal: AbortSignal.timeout(90_000),
+              body: JSON.stringify({ accountIds: [id], datePreset: "this_month_until_yesterday", spendOnly: true }),
+            })
+              .then((r) => r.json())
+              .catch(() => null),
       ]);
       if (my !== run.current) return;
       if (dRes.error) throw new Error(dRes.error);
       setDaily((dRes.daily?.[id] ?? []) as DailyCpaPoint[]);
       setMonth((dRes.month?.[id] ?? null) as DailyCpaPoint | null);
       setInsight((iRes.insights?.[id] ?? null) as AccountInsight | null);
+      const y = (yRes as { insights?: Record<string, AccountInsight> } | null)?.insights?.[id];
+      setUntilYesterday(firstDay ? 0 : y && !y.insights_failed ? y.spend : null);
       if (iRes.error) setError(String(iRes.error));
       setAt(Date.now());
     } catch (e) {
@@ -253,7 +270,7 @@ export default function FocoPage() {
               <FocoResultados daily={daily} month={month} cpaTarget={opt.cpaTarget} insight={insight} monthlyTarget={opt.monthlyInvestment} />
             </Quadro>
             <Quadro title="Acompanhamento de metas" className="min-h-[16rem]">
-              <FocoMetas insight={insight} cpaTarget={opt.cpaTarget} monthlyTarget={opt.monthlyInvestment} whatsapp={opt.whatsapp} />
+              <FocoMetas insight={insight} untilYesterday={untilYesterday} cpaTarget={opt.cpaTarget} monthlyTarget={opt.monthlyInvestment} whatsapp={opt.whatsapp} />
             </Quadro>
             <div className="flex min-h-[16rem] min-w-0 flex-col gap-3 lg:min-h-0">
               <Quadro title="Ofertas ativas" className="shrink-0">

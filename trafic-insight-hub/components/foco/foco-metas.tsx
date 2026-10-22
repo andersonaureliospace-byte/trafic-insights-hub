@@ -1,40 +1,50 @@
 "use client";
 
-import { useMemo } from "react";
 import { fmtCurrency, fmtCurrencySigned } from "@/lib/format";
-import { computeMetas, metasCalendar, type CpaStatus, type InvestStatus } from "@/lib/meta/metas";
-import { ritmoColorClass, ritmoFromInsight, ritmoTooltip } from "@/lib/meta/ritmo";
+import { ritmoColorClass } from "@/lib/meta/ritmo";
+import {
+  SPEED_CPA_ACCEPTABLE,
+  SPEED_CPA_LABEL,
+  SPEED_INVEST_LABEL,
+  computeSpeed,
+  speedBudgetTooltip,
+  speedOkText,
+  type SpeedCpa,
+  type SpeedInvest,
+} from "@/lib/meta/speed";
 import type { AccountInsight } from "@/lib/meta/insights";
 
-// Modo Foco — quadro "Acompanhamento de metas" de UMA conta, em 4 blocos com a mesma hierarquia (rótulo pequeno → número grande → uma linha de apoio):
-// Investimento do mês, CPA do mês × CPA ideal, Orçamento e ritmo, WhatsApp. As contas são as mesmas das abas Metas e Desempenho. Só mostra; quem busca o mês é a página.
+// Modo Foco — quadro "Acompanhamento de metas" de UMA conta, em 4 blocos (rótulo pequeno → número grande → uma linha de apoio):
+// Investimento do mês, CPA do mês × CPA ideal, Orçamento (atual × Gastar hoje × Gastar amanhã), WhatsApp.
+// Etapa 185: status e contas iguais aos da Speed (lib/meta/speed.ts), com o dado ao vivo. Só mostra; quem busca é a página.
 
 const LABEL = "text-[11px] font-medium uppercase tracking-wide text-zinc-400";
 const SUB = "text-xs text-zinc-500 dark:text-zinc-400";
 
-const INVEST_BAR: Record<InvestStatus, string> = { below: "bg-orange-500", ok: "bg-emerald-500", above: "bg-red-500" };
-const INVEST_TEXT: Record<InvestStatus, string> = {
+const INVEST_BAR: Record<SpeedInvest, string> = { below: "bg-orange-500", ok: "bg-emerald-500", above: "bg-red-500" };
+const INVEST_TEXT: Record<SpeedInvest, string> = {
   below: "text-orange-600 dark:text-orange-400",
   ok: "text-emerald-600 dark:text-emerald-400",
   above: "text-red-600 dark:text-red-400",
 };
-const INVEST_PILL: Record<InvestStatus, string> = {
+const INVEST_PILL: Record<SpeedInvest, string> = {
   below: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
   ok: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
   above: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
 };
-const INVEST_LABEL: Record<InvestStatus, string> = { below: "Abaixo do ideal", ok: "Dentro do ideal", above: "Acima do ideal" };
-const CPA_TEXT: Record<CpaStatus, string> = {
-  good: "text-emerald-600 dark:text-emerald-400",
+const CPA_TEXT: Record<SpeedCpa, string> = {
+  ok: "text-emerald-600 dark:text-emerald-400",
   acceptable: "text-orange-600 dark:text-orange-400",
   high: "text-red-600 dark:text-red-400",
 };
-const CPA_PILL: Record<CpaStatus, string> = {
-  good: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+const CPA_PILL: Record<SpeedCpa, string> = {
+  ok: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
   acceptable: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
   high: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
 };
-const CPA_BANDS = "Verde: no ideal ou abaixo · Laranja: até R$ 2,50 acima do ideal · Vermelho: mais de R$ 2,50 acima do ideal";
+const CPA_BANDS = `Regra da Speed — OK: no CPA ideal ou abaixo · Aceitável: até ${fmtCurrency(SPEED_CPA_ACCEPTABLE)} acima · Acima: mais que isso. CPA = investimento total ÷ conversas.`;
+const INVEST_RULE =
+  "Regra da Speed: compara o gasto ATÉ ONTEM com o ideal ATÉ HOJE (meta ÷ dias do mês × dia de hoje), com 2% de folga pros dois lados.";
 
 function Pill({ cls, children, title }: { cls: string; children: React.ReactNode; title?: string }) {
   return (
@@ -44,18 +54,21 @@ function Pill({ cls, children, title }: { cls: string; children: React.ReactNode
   );
 }
 
+const pctTxt = (n: number) => `${n >= 0 ? "+" : "−"}${Math.abs(n * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+
 export function FocoMetas({
   insight,
+  untilYesterday,
   cpaTarget,
   monthlyTarget,
   whatsapp,
 }: {
   insight: AccountInsight | null;
+  untilYesterday: number | null;
   cpaTarget: number | null;
   monthlyTarget: number | null;
   whatsapp?: string | null;
 }) {
-  const { elapsedDays, daysInMonth } = useMemo(() => metasCalendar(), []);
   if (!insight || insight.insights_failed) {
     return (
       <p className="p-4 text-sm text-zinc-500 dark:text-zinc-400">
@@ -63,16 +76,22 @@ export function FocoMetas({
       </p>
     );
   }
-  const rit = ritmoFromInsight(monthlyTarget, insight);
-  const m = computeMetas(
-    { invested: insight.spend, monthlyTarget, cpa: insight.cost_per_result, cpaTarget, dailyBudget: insight.daily_budget, ritmo: rit },
-    elapsedDays,
-    daysInMonth,
-  );
-  const fill = m.pctOfTarget != null ? Math.min(m.pctOfTarget, 1) * 100 : 0;
-  const marker = Math.min((elapsedDays / daysInMonth) * 100, 100);
-  const avg = monthlyTarget != null && monthlyTarget > 0 ? monthlyTarget / daysInMonth : null;
-  const dailyCls = rit != null ? ritmoColorClass(rit, insight.daily_budget) : "";
+  const s = computeSpeed({
+    monthlyTarget,
+    spentSoFar: insight.spend,
+    spentUntilYesterday: untilYesterday,
+    cpa: insight.cost_per_result,
+    cpaTarget,
+    dailyBudget: insight.daily_budget,
+  });
+  const hasTarget = s.normal != null && monthlyTarget != null;
+  const pctOfTarget = hasTarget ? insight.spend / monthlyTarget : null;
+  const fill = pctOfTarget != null ? Math.min(pctOfTarget, 1) * 100 : 0;
+  const marker = Math.min((s.day / s.daysInMonth) * 100, 100);
+  const tip = speedBudgetTooltip(s, monthlyTarget);
+  const budgetDiff = s.gastarAmanha != null ? insight.daily_budget - s.gastarAmanha : null;
+  const budgetCls = s.gastarAmanha != null ? ritmoColorClass(s.gastarAmanha, insight.daily_budget) : "";
+  const okTxt = speedOkText(s);
   const wa = whatsapp?.trim();
 
   return (
@@ -81,27 +100,39 @@ export function FocoMetas({
       <section className="space-y-1.5 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           <p className={LABEL}>Investimento do mês</p>
-          {m.investStatus ? <Pill cls={INVEST_PILL[m.investStatus]}>{INVEST_LABEL[m.investStatus]}</Pill> : null}
+          {s.investStatus ? (
+            <Pill cls={INVEST_PILL[s.investStatus]} title={INVEST_RULE}>
+              Speed: {SPEED_INVEST_LABEL[s.investStatus]}
+            </Pill>
+          ) : hasTarget ? (
+            <span className={SUB} title="Sem o gasto até ontem (o backup diário não respondeu) — clique em Atualizar.">
+              status indisponível
+            </span>
+          ) : null}
         </div>
-        {m.monthlyTarget == null ? (
+        {!hasTarget ? (
           <p className={SUB}>
-            Investido <span className="text-base font-semibold text-zinc-900 dark:text-zinc-50">{fmtCurrency(m.invested)}</span> · sem Investimento mensal cadastrado
+            Investido <span className="text-base font-semibold text-zinc-900 dark:text-zinc-50">{fmtCurrency(insight.spend)}</span> · sem Investimento mensal cadastrado
           </p>
         ) : (
           <>
-            <p className="flex flex-wrap items-baseline gap-x-2">
-              <span className={`text-xl font-semibold tabular-nums ${m.investStatus ? INVEST_TEXT[m.investStatus] : ""}`}>{fmtCurrency(m.invested)}</span>
+            <p className="flex flex-wrap items-baseline gap-x-2" title="Gasto do dia 01 até agora, contando hoje">
+              <span className={`text-xl font-semibold tabular-nums ${s.investStatus ? INVEST_TEXT[s.investStatus] : ""}`}>{fmtCurrency(insight.spend)}</span>
               <span className={SUB}>
-                de {fmtCurrency(m.monthlyTarget)} · {Math.round((m.pctOfTarget ?? 0) * 100)}%
+                de {fmtCurrency(monthlyTarget)} · {Math.round((pctOfTarget ?? 0) * 100)}%
               </span>
             </p>
             <div className="relative h-1.5 w-full rounded-full bg-zinc-200 dark:bg-zinc-700">
-              <div className={`h-full rounded-full ${m.investStatus ? INVEST_BAR[m.investStatus] : "bg-zinc-400"}`} style={{ width: `${fill}%` }} />
+              <div className={`h-full rounded-full ${s.investStatus ? INVEST_BAR[s.investStatus] : "bg-zinc-400"}`} style={{ width: `${fill}%` }} />
               <div className="absolute -top-0.5 h-2.5 w-0.5 bg-zinc-900 dark:bg-zinc-100" style={{ left: `${marker}%` }} title="Ideal até hoje" />
             </div>
-            <p className={SUB}>
-              Ideal até hoje: {fmtCurrency(m.idealUntilToday ?? 0)}
-              {m.investDiff != null ? <span className={`ml-1 ${m.investStatus ? INVEST_TEXT[m.investStatus] : ""}`}>({fmtCurrencySigned(m.investDiff)})</span> : null}
+            <p className={SUB} title={INVEST_RULE}>
+              Até ontem: {untilYesterday != null ? fmtCurrency(untilYesterday) : "—"} · ideal até hoje {fmtCurrency(s.idealToday ?? 0)}
+              {s.speedDiff != null && s.speedDiffPct != null ? (
+                <span className={`ml-1 ${s.investStatus ? INVEST_TEXT[s.investStatus] : ""}`}>
+                  ({fmtCurrencySigned(s.speedDiff)} · {pctTxt(s.speedDiffPct)})
+                </span>
+              ) : null}
             </p>
           </>
         )}
@@ -111,18 +142,19 @@ export function FocoMetas({
       <section className="space-y-1.5 px-3 py-2">
         <div className="flex items-center justify-between gap-2">
           <p className={LABEL}>CPA do mês</p>
-          {m.cpaStatus && m.cpaDiff != null ? (
-            <Pill cls={CPA_PILL[m.cpaStatus]} title={CPA_BANDS}>
-              {m.cpaDiff > 0 ? `${fmtCurrency(m.cpaDiff)} acima do ideal` : m.cpaDiff < 0 ? `${fmtCurrency(Math.abs(m.cpaDiff))} abaixo do ideal` : "No ideal"}
+          {s.cpaStatus && s.cpaDiff != null ? (
+            <Pill cls={CPA_PILL[s.cpaStatus]} title={CPA_BANDS}>
+              Speed: {SPEED_CPA_LABEL[s.cpaStatus]}
+              {s.cpaDiff > 0.004 ? ` · +${fmtCurrency(s.cpaDiff)}` : s.cpaDiff < -0.004 ? ` · −${fmtCurrency(Math.abs(s.cpaDiff))}` : ""}
             </Pill>
           ) : (
             <span className={SUB}>{cpaTarget == null ? "CPA ideal não cadastrado" : "Sem conversas no mês"}</span>
           )}
         </div>
         <div className="flex items-end justify-between gap-3">
-          <div>
+          <div title="Investimento total do mês ÷ conversas (regra da Speed), contando hoje">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">Realizado</p>
-            <p className={`text-xl font-semibold leading-tight tabular-nums ${m.cpaStatus ? CPA_TEXT[m.cpaStatus] : ""}`}>{m.cpa != null ? fmtCurrency(m.cpa) : "—"}</p>
+            <p className={`text-xl font-semibold leading-tight tabular-nums ${s.cpaStatus ? CPA_TEXT[s.cpaStatus] : ""}`}>{s.cpa != null ? fmtCurrency(s.cpa) : "—"}</p>
           </div>
           <div className="rounded-lg bg-sky-100 px-3 py-1 text-right text-sky-900 ring-1 ring-sky-300 dark:bg-sky-950 dark:text-sky-100 dark:ring-sky-700">
             <p className="text-[10px] font-semibold uppercase tracking-wide">CPA ideal</p>
@@ -131,29 +163,36 @@ export function FocoMetas({
         </div>
       </section>
 
-      {/* 3 · Orçamento e ritmo */}
-      <section className="space-y-1.5 px-3 py-2">
-        <p className={LABEL}>Orçamento e ritmo (por dia)</p>
+      {/* 3 · Orçamento: atual × Gastar hoje × Gastar amanhã */}
+      <section className="space-y-1.5 px-3 py-2" title={tip}>
+        <p className={LABEL}>Orçamento (por dia)</p>
         <div className="grid grid-cols-3 gap-2">
           <div>
             <p className="text-lg font-semibold leading-tight tabular-nums">{fmtCurrency(insight.daily_budget)}</p>
             <p className="text-[11px] text-zinc-400">
-              orçamento
-              {m.dailyDiff != null ? (
-                <span className={`ml-1 tabular-nums ${dailyCls}`}>({m.dailyDiff < 0 ? "−" : "+"}{fmtCurrency(Math.abs(m.dailyDiff))})</span>
+              atual
+              {budgetDiff != null && Math.abs(budgetDiff) >= 0.01 ? (
+                <span className={`ml-1 tabular-nums ${budgetCls}`}>({budgetDiff < 0 ? "−" : "+"}{fmtCurrency(Math.abs(budgetDiff))})</span>
               ) : null}
             </p>
           </div>
-          <div title={ritmoTooltip(monthlyTarget, insight)}>
-            <p className={`text-lg font-semibold leading-tight tabular-nums ${rit != null ? dailyCls : ""}`}>{rit != null ? fmtCurrency(rit) : "—"}</p>
-            <p className="text-[11px] text-zinc-400">ritmo · precisa</p>
+          <div>
+            <p className="text-lg font-semibold leading-tight tabular-nums">{s.gastarHoje != null ? fmtCurrency(s.gastarHoje) : "—"}</p>
+            <p className="text-[11px] text-zinc-400">gastar hoje · falta</p>
           </div>
-          <div title="Investimento mensal ÷ dias do mês">
-            <p className="text-lg font-semibold leading-tight tabular-nums">{avg != null ? fmtCurrency(avg) : "—"}</p>
-            <p className="text-[11px] text-zinc-400">ritmo médio</p>
+          <div>
+            <p className={`text-lg font-semibold leading-tight tabular-nums ${budgetCls}`}>{s.gastarAmanha != null ? fmtCurrency(s.gastarAmanha) : "—"}</p>
+            <p className="text-[11px] text-zinc-400">gastar amanhã</p>
           </div>
         </div>
-        {monthlyTarget == null ? <p className={SUB}>Sem Investimento mensal cadastrado — não dá pra calcular o ritmo.</p> : null}
+        {!hasTarget ? (
+          <p className={SUB}>Sem Investimento mensal cadastrado — não dá pra calcular.</p>
+        ) : (
+          <p className={SUB}>
+            Ritmo médio {fmtCurrency(s.normal ?? 0)} · teto {fmtCurrency(s.cap ?? 0)}
+            {okTxt ? <span className={`ml-1 ${s.okInDays === 0 ? "text-emerald-600 dark:text-emerald-400" : "text-orange-600 dark:text-orange-400"}`}>· {okTxt}</span> : null}
+          </p>
+        )}
       </section>
 
       {/* 4 · WhatsApp */}
