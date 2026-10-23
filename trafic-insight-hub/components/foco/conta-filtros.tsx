@@ -20,7 +20,6 @@ import {
   SPEED_INVEST_LABEL,
   budgetReference,
   computeSpeed,
-  speedBudgetTooltip,
   speedCpaStatus,
   speedSortKey,
   type SpeedCpa,
@@ -461,9 +460,10 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
                   title={
                     i?.budget == null
                       ? "A Meta não devolveu o orçamento desta conta (limite de chamadas). Clique em ↻ Atualizar."
-                      : sp
-                        ? speedBudgetTooltip(sp, o.monthlyInvestment)
-                        : undefined
+                      : sp?.normal != null
+                        ? // Etapa 201: dica curta — só o ritmo médio e quanto o orçamento atual está abaixo/acima dele.
+                          `Ritmo médio: R$ ${num(sp.normal)}\n${i.budget - sp.normal >= 0 ? "Acima" : "Falta"}: ${signed(i.budget - sp.normal)}`
+                        : "Sem Investimento mensal cadastrado — não dá pra calcular o ritmo médio."
                   }
                   className={`text-right text-xs tabular-nums ${i?.budget == null ? "text-zinc-400" : ""}`}
                 >
