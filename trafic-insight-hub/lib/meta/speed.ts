@@ -12,6 +12,13 @@
 // Gastar hoje / Gastar amanhã (regra do Anderson): alvo é a META CHEIA (100%), não os 98% da folga.
 // Conta no ritmo = ritmo médio (meta ÷ dias do mês); conta atrasada = ritmo + atraso, com teto fixo de
 // 2x o ritmo médio por dia pra recuperar o quanto antes sem forçar o CPA.
+// Etapa 193 (regra do Anderson):
+//  - Meta de hoje   = ritmo médio + o que falta pra ficar na média (até ontem), no teto de 2x o ritmo.
+//    "Gastar hoje · falta" = meta de hoje − o gasto real de hoje.
+//  - Gastar amanhã  = ritmo médio + (meta de hoje SEM teto − gasto REAL de hoje), no teto de 2x o ritmo.
+//    Usa o gasto real (não supõe que o resto de hoje vai ser gasto): à noite, sem gastar mais nada, o que
+//    faltou de hoje vai inteiro pra amanhã. O que passar do teto amanhã fica pro dia seguinte.
+//    Ex.: ritmo 100, faltam 150 → hoje 200 (teto); gastou 200 hoje → amanhã 100 + 50 = 150; 3º dia = 100.
 
 import { monthCalendarSP } from "./ritmo";
 
@@ -43,7 +50,8 @@ export interface SpeedRow {
   investStatus: SpeedInvest | null;
   custoDia: number | null; // "Custo/dia" da Speed
   spentToday: number | null;
-  gastarHoje: number | null; // quanto ainda falta gastar HOJE (ao vivo)
+  metaHoje: number | null; // Etapa 193: quanto gastar no dia de hoje inteiro (ritmo + atraso, no teto)
+  gastarHoje: number | null; // quanto ainda falta gastar HOJE (meta de hoje − gasto real de hoje)
   gastarAmanha: number | null; // orçamento pra amanhã (null no último dia do mês)
   okInDays: number | null; // 0 = já OK na Speed hoje; N = a Speed mostra OK daqui a N dia(s); null = não volta este mês
   cpa: number | null;
@@ -83,6 +91,7 @@ export function computeSpeed(input: SpeedInput, now: Date = new Date()): SpeedRo
   let investStatus: SpeedInvest | null = null;
   let custoDia: number | null = null;
   let spentToday: number | null = null;
+  let metaHoje: number | null = null;
   let gastarHoje: number | null = null;
   let gastarAmanha: number | null = null;
   let okInDays: number | null = null;
@@ -104,13 +113,15 @@ export function computeSpeed(input: SpeedInput, now: Date = new Date()): SpeedRo
     // Etapa 188: sem o gasto até ontem (backup de outro dia / busca falhou) não dá pra saber o gasto de hoje
     // nem aplicar o teto — não chuta número.
     if (spentSoFar != null && spentToday != null) {
-      // Hoje: amanhã a Speed compara o gasto até o fim de hoje com o ideal de amanhã.
-      let hoje = Math.max(0, ideal(day + 1) - spentSoFar);
-      hoje = Math.min(hoje, Math.max(0, cap - spentToday));
+      // Hoje: ritmo + o que falta até ontem (= ideal até o fim de hoje − gasto até ontem), no teto.
+      const until0 = spentSoFar - spentToday;
+      metaHoje = Math.min(cap, Math.max(0, ideal(day + 1) - until0));
+      const hoje = Math.max(0, metaHoje - spentToday);
       gastarHoje = hoje;
       const endToday = spentSoFar + hoje;
       if (day < daysInMonth) {
-        gastarAmanha = Math.min(cap, Math.max(0, ideal(day + 2) - endToday));
+        // Amanhã: ritmo + (o que faltava hoje − gasto REAL de hoje) = ideal até amanhã − gasto real até agora.
+        gastarAmanha = Math.min(cap, Math.max(0, ideal(day + 2) - spentSoFar));
       }
       // Em quantos dias a Speed mostra OK, seguindo as recomendações daqui pra frente.
       if (investStatus === "ok") okInDays = 0;
@@ -147,6 +158,7 @@ export function computeSpeed(input: SpeedInput, now: Date = new Date()): SpeedRo
     investStatus,
     custoDia,
     spentToday,
+    metaHoje,
     gastarHoje,
     gastarAmanha,
     okInDays,
@@ -193,8 +205,9 @@ export function speedBudgetTooltip(r: SpeedRow, monthlyTarget: number | null): s
     lines.push(`Gasto até ontem (o que a Speed vê): ${brl((r.idealToday ?? 0) + r.speedDiff)} (${pct(r.speedDiffPct)} do ideal; folga da Speed ±2%)`);
     lines.push(`Gasto hoje até agora: ${brl(r.spentToday)}`);
   }
-  if (r.gastarHoje != null) lines.push(`Gastar hoje: ${brl(r.gastarHoje)} a mais até o fim do dia`);
-  if (r.gastarAmanha != null) lines.push(`Gastar amanhã: ${brl(r.gastarAmanha)} (orçamento pra configurar)`);
+  if (r.metaHoje != null) lines.push(`Gastar hoje: ${brl(r.metaHoje)} no dia (ritmo + atraso, teto ${brl(r.cap ?? 0)})`);
+  if (r.gastarHoje != null) lines.push(`Falta hoje: ${brl(r.gastarHoje)} a mais até o fim do dia`);
+  if (r.gastarAmanha != null) lines.push(`Gastar amanhã: ${brl(r.gastarAmanha)} = ritmo + o que faltou hoje pelo gasto real (orçamento pra configurar)`);
   else lines.push("Último dia do mês: não tem amanhã.");
   if (r.custoDia != null) lines.push(`Custo/dia da Speed: ${brl(r.custoDia)}`);
   const ok = speedOkText(r);

@@ -174,8 +174,11 @@ export function FocoMetas({
             </p>
           </div>
           <div>
-            <p className="text-lg font-semibold leading-tight tabular-nums">{s.gastarHoje != null ? fmtCurrency(s.gastarHoje) : "—"}</p>
-            <p className="text-[11px] text-zinc-400">gastar hoje · falta</p>
+            {/* Etapa 193: o valor do dia (ritmo + atraso, no teto); embaixo, quanto ainda falta gastar hoje. */}
+            <p className="text-lg font-semibold leading-tight tabular-nums">{s.metaHoje != null ? fmtCurrency(s.metaHoje) : "—"}</p>
+            <p className="text-[11px] text-zinc-400">
+              gastar hoje{s.gastarHoje != null ? <span className="tabular-nums"> · falta {fmtCurrency(s.gastarHoje)}</span> : null}
+            </p>
           </div>
           <div>
             <p className={`text-lg font-semibold leading-tight tabular-nums ${budgetCls}`}>{s.gastarAmanha != null ? fmtCurrency(s.gastarAmanha) : "—"}</p>

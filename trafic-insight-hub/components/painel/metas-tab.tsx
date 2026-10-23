@@ -270,7 +270,7 @@ export function MetasTab({
                 <button
                   type="button"
                   onClick={() => setBudgetMode((m) => (m === "hoje" ? "amanha" : "hoje"))}
-                  title={budgetMode === "hoje" ? "Gastar hoje: quanto ainda falta gastar hoje. Clique pra ver Gastar amanhã." : "Gastar amanhã: orçamento pra configurar. Clique pra ver Gastar hoje."}
+                  title={budgetMode === "hoje" ? "Gastar hoje: ritmo médio + o que falta pra ficar na média, no teto de 2x (a dica mostra quanto ainda falta). Clique pra ver Gastar amanhã." : "Gastar amanhã: orçamento pra configurar. Clique pra ver Gastar hoje."}
                   className="font-medium uppercase tracking-wide text-sky-600 underline decoration-dotted underline-offset-2 hover:text-sky-800 dark:text-sky-400"
                 >
                   {budgetMode === "hoje" ? "Gastar hoje ⇄" : "Gastar amanhã ⇄"}
@@ -292,7 +292,7 @@ export function MetasTab({
                 r.monthlyTarget != null
                   ? `Meta do mês: ${fmtCurrency(r.monthlyTarget)}\nIdeal até hoje: ${fmtCurrency(s.idealToday)}\nAté ontem (o que a Speed vê): ${fmtCurrency(r.untilYesterday)}\nInvestido até agora: ${fmtCurrency(r.invested)}`
                   : "Sem Investimento mensal cadastrado";
-              const budgetVal = budgetMode === "hoje" ? s.gastarHoje : s.gastarAmanha;
+              const budgetVal = budgetMode === "hoje" ? s.metaHoje : s.gastarAmanha;
               const budgetCls = budgetMode === "amanha" && s.gastarAmanha != null && r.dailyBudget != null ? ritmoColorClass(s.gastarAmanha, r.dailyBudget) : "";
               return (
                 <tr key={r.accountId} className="group border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
