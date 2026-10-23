@@ -180,6 +180,18 @@ export async function runErrorAudit(
     }
     byAccount[b.ad_account_id] = issues;
 
+    // Etapa 199: avisa cada erro UMA vez só. O que já estava na lista desta conta (audit_error_status) já foi avisado;
+    // só entra no alerta o que é novo. Se o erro some (a linha é apagada) e volta depois, avisa de novo.
+    let seen = new Set<string>();
+    if (issues.length > 0) {
+      const { data: prev } = await supabase
+        .from("audit_error_status")
+        .select("entity_id")
+        .eq("user_id", userId)
+        .eq("ad_account_id", b.ad_account_id);
+      seen = new Set((prev ?? []).map((r) => r.entity_id as string));
+    }
+
     let byId = new Map<string, { id: string; ok: boolean; error?: string }>();
     if (issues.length > 0) {
       const targets = new Map<string, { id: string; type: "adset" }>();
@@ -198,6 +210,7 @@ export async function runErrorAudit(
       }
 
       for (const i of issues) {
+        if (seen.has(i.entity_id)) continue; // já avisado
         const r = i.adset_id ? byId.get(i.adset_id) : undefined;
         const note =
           i.entity_type === "adset" && i.adset_id
@@ -239,6 +252,6 @@ export async function runErrorAudit(
     await (currentEntityIds.length > 0 ? del.not("entity_id", "in", inFilterList(currentEntityIds)) : del);
   }
 
-  await publishAudit(supabase, userId, "audit-errors", "⚠️ Anúncios/conjuntos com erro de veiculação", alertLines);
+  await publishAudit(supabase, userId, "audit-errors", "⚠️ Novo erro de veiculação", alertLines);
   return { pausedCount, failedCount, checkedAccounts: bindings.length, byAccount };
 }
