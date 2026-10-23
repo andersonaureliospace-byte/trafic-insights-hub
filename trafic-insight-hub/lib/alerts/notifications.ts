@@ -34,7 +34,9 @@ export type AlertKind =
   | "adsets-no-spend" // Conjunto sem anúncio ativo e sem gasto: só avisa, não pausa (Etapa 158)
   | "pause-backup" // Backup: conjuntos/criativos reativados porque melhoraram (Etapa 158)
   | "weekend-standby" // Fim de semana: conjuntos em standby (R$10) e a volta de segunda (Etapa 158)
-  | "exam-missing"; // Conta que precisa de EXAME sem nenhum conjunto de EXAME ativo (Etapa 163)
+  | "exam-missing" // Conta que precisa de EXAME sem nenhum conjunto de EXAME ativo (Etapa 163)
+  | "audit-location" // Verificação de localização: Brasil inteiro pausado / expansão desligada (Etapa 197)
+  | "audit-errors"; // Verificação de erros de veiculação: reprovado, com problema, sem anúncio ativo (Etapa 197)
 
 // Os únicos tipos que também vão pro grupo do WhatsApp (os mais urgentes).
 export const GROUP_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>([
@@ -46,6 +48,7 @@ export const GROUP_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>([
   "payment-error",
   "morning-summary",
   "no-delivery",
+  "audit-errors", // Etapa 198: erros de veiculação também vão pro grupo (celular)
 ]);
 
 // Avisos que se repetem a cada rodada enquanto o problema durar: em vez de empilhar uma
@@ -59,6 +62,9 @@ export interface PublishAlertInput {
   count?: number; // quantos itens (contas/anúncios/conjuntos)
   // Texto do grupo, quando precisa ser diferente de "título + linha em branco + corpo".
   groupText?: string;
+  // Etapa 198: não reenvia pro grupo se já existe um alerta aberto IGUAL (mesmo tipo, título e texto) — pra
+  // verificações que rodam toda hora e acham a mesma coisa. Só manda de novo quando a lista muda.
+  skipGroupIfUnchanged?: boolean;
 }
 
 export function isGroupKind(kind: AlertKind): boolean {
@@ -133,6 +139,23 @@ export async function publishAlert(db: Db, userId: string, input: PublishAlertIn
     await recordAlert(db, userId, input, false);
     await purgeExpiredAlerts(db, userId).catch(() => undefined);
     return;
+  }
+
+  // Etapa 198: mesma lista de antes ainda aberta → só renova na aba, sem mandar de novo pro grupo.
+  if (input.skipGroupIfUnchanged) {
+    const { data: same } = await db
+      .from("alert_notifications")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("kind", input.kind)
+      .eq("title", input.title)
+      .eq("body", input.body)
+      .gt("expires_at", new Date().toISOString())
+      .limit(1);
+    if (same && same.length > 0) {
+      await recordAlert(db, userId, input, true).catch(() => undefined);
+      return;
+    }
   }
 
   // Urgente: grava na aba sem deixar uma falha daqui derrubar o aviso do grupo.

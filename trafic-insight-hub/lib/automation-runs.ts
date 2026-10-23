@@ -33,6 +33,7 @@ const AUTOMATION_KINDS: Record<string, string[]> = {
   "weekend-standby": ["weekend-standby"],
   "weekend-release": ["weekend-standby"],
   "exam-check": ["exam-missing"],
+  audit: ["audit-location", "audit-errors"],
 };
 
 // Rótulos dos números que os hooks devolvem (o resto aparece com o nome original).

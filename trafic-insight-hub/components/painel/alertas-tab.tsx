@@ -65,6 +65,8 @@ const KIND_LABELS: Record<string, string> = {
   "pause-backup": "Reativado (backup)",
   "weekend-standby": "Standby de fim de semana",
   "exam-missing": "Sem exame ativo",
+  "audit-location": "Localização dos conjuntos",
+  "audit-errors": "Erros de veiculação",
 };
 
 // Cor da barrinha da esquerda: vermelho = o que também vai pro grupo (urgente); âmbar = o resto.
@@ -440,7 +442,7 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
       <>
       <p className="border-b border-zinc-100 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800/60 dark:text-zinc-400">
         Aqui aparecem todas as notificações das verificações automáticas. No grupo do WhatsApp vão só as urgentes
-        (CPA acima da meta, Invest. diário em 80% do Ritmo, saldo baixo, saldo de sexta e erro no pagamento). Cada
+        (CPA acima da meta, Invest. diário em 80% do Ritmo, saldo baixo, saldo de sexta, erro no pagamento e erros de veiculação). Cada
         alerta some sozinho em 72 horas ou quando você clica em OK.
       </p>
 

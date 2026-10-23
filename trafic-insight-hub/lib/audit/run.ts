@@ -7,6 +7,7 @@ import type { createClient } from "@/lib/supabase/server";
 import { auditAccountLocation, disableLocationExpansion, type AuditLocationIssue } from "./location";
 import { auditAccountErrors, type AuditErrorIssue } from "./errors";
 import { setEntitiesStatus } from "@/lib/meta/status";
+import { publishAlert } from "@/lib/alerts/notifications";
 
 // Aceita tanto o cliente com sessão (createClient, usado pela rota que o
 // botão "Verificar agora" chama) quanto o cliente com service role
@@ -29,6 +30,26 @@ function inFilterList(ids: string[]): string {
   return `(${ids.join(",")})`;
 }
 
+// Etapa 197: as Verificações (localização + erros) viraram alertas — tudo que elas acham/pausam/corrigem aparece na
+// aba Alertas (não vai pro grupo). A tela "Verificações" saiu da Auditoria. Mesma lista de novo = atualiza o alerta
+// aberto em vez de empilhar (as linhas vão em ordem fixa pra o texto bater).
+async function publishAudit(supabase: Db, userId: string, kind: "audit-location" | "audit-errors", title: string, lines: string[]) {
+  if (lines.length === 0) return;
+  const sorted = [...lines].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  try {
+    // Erros de veiculação vão também pro grupo do WhatsApp (GROUP_KINDS) — só quando a lista muda.
+    await publishAlert(supabase, userId, {
+      kind,
+      title: `${title} (${sorted.length})`,
+      body: sorted.join("\n"),
+      count: sorted.length,
+      skipGroupIfUnchanged: true,
+    });
+  } catch (e) {
+    console.error("audit alert err (non-fatal)", kind, e);
+  }
+}
+
 export async function runLocationAudit(
   supabase: Db,
   userId: string,
@@ -41,6 +62,7 @@ export async function runLocationAudit(
   let fixedCount = 0;
   const byAccount: Record<string, AuditLocationIssue[]> = {};
   const now = new Date().toISOString();
+  const alertLines: string[] = [];
 
   for (const b of bindings) {
     let issues: AuditLocationIssue[] = [];
@@ -84,6 +106,13 @@ export async function runLocationAudit(
     const remaining = issues.filter((i) => i.pause || (i.expansion && !fixById.get(i.adset_id)?.ok));
     byAccount[b.ad_account_id] = remaining;
 
+    for (const i of issues) {
+      const acts: string[] = [];
+      if (i.pause) acts.push(pauseById.get(i.adset_id)?.ok ? "Brasil inteiro → conjunto pausado" : `Brasil inteiro → falha ao pausar (${pauseById.get(i.adset_id)?.error ?? "erro"})`);
+      if (i.expansion) acts.push(fixById.get(i.adset_id)?.ok ? "expansão de público desligada" : `falha ao desligar a expansão (${fixById.get(i.adset_id)?.error ?? "erro"})`);
+      alertLines.push(`${b.client_name ?? b.ad_account_id} — ${i.adset_name}: ${acts.join(" · ")}`);
+    }
+
     if (remaining.length > 0) {
       await supabase.from("audit_location_status").upsert(
         remaining.map((i) => {
@@ -125,6 +154,7 @@ export async function runLocationAudit(
     }
   }
 
+  await publishAudit(supabase, userId, "audit-location", "📍 Localização dos conjuntos corrigida", alertLines);
   return { pausedCount, failedCount, fixedCount, checkedAccounts: bindings.length, byAccount };
 }
 
@@ -138,6 +168,7 @@ export async function runErrorAudit(
   let failedCount = 0;
   const byAccount: Record<string, AuditErrorIssue[]> = {};
   const now = new Date().toISOString();
+  const alertLines: string[] = [];
 
   for (const b of bindings) {
     let issues: AuditErrorIssue[] = [];
@@ -164,6 +195,19 @@ export async function runErrorAudit(
           if (r.ok) pausedCount++;
           else failedCount++;
         }
+      }
+
+      for (const i of issues) {
+        const r = i.adset_id ? byId.get(i.adset_id) : undefined;
+        const note =
+          i.entity_type === "adset" && i.adset_id
+            ? i.hold
+              ? ` · mantido ativo (${i.hold})`
+              : r?.ok
+                ? " · conjunto pausado"
+                : ` · falha ao pausar: ${r?.error ?? "erro desconhecido"}`
+            : "";
+        alertLines.push(`${b.client_name ?? b.ad_account_id} — ${i.entity_name}: ${i.reasons.join(" · ")}${note}`);
       }
 
       await supabase.from("audit_error_status").upsert(
@@ -195,5 +239,6 @@ export async function runErrorAudit(
     await (currentEntityIds.length > 0 ? del.not("entity_id", "in", inFilterList(currentEntityIds)) : del);
   }
 
+  await publishAudit(supabase, userId, "audit-errors", "⚠️ Anúncios/conjuntos com erro de veiculação", alertLines);
   return { pausedCount, failedCount, checkedAccounts: bindings.length, byAccount };
 }
