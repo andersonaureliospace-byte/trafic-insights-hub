@@ -65,7 +65,8 @@ const SPEED_STRIPE: Record<SpeedOverall, string> = {
 const selCls = "h-7 w-full min-w-0 rounded-md border border-zinc-300 bg-transparent px-1.5 text-xs disabled:opacity-40 dark:border-zinc-700";
 const lblCls = "mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-zinc-400";
 // Colunas fixas: Nome ocupa o que sobra; Status centralizado; CPA e Ritmo alinhados à direita (cabeçalho e valores com o mesmo recuo).
-const COLS = "grid-cols-[minmax(0,1fr)_4.2rem_3.6rem_3.9rem]";
+// Etapa 196: colunas de número mais estreitas e coladas no Ritmo — sobra mais espaço pro nome do cliente.
+const COLS = "grid-cols-[minmax(0,1fr)_4rem_3.3rem_3.8rem]";
 const num = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const signed = (v: number) => `${v < 0 ? "−" : "+"}${num(Math.abs(v))}`;
 
@@ -395,9 +396,9 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         </div>
       </div>
 
-      <div className={`grid ${COLS} shrink-0 gap-x-1.5 border-b border-zinc-100 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-zinc-400 dark:border-zinc-800`}>
+      <div className={`grid ${COLS} shrink-0 gap-x-1 border-b border-zinc-100 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-zinc-400 dark:border-zinc-800`}>
         <span>Cliente</span>
-        <span className="text-center">Prioridade</span>
+        <span className="text-center tracking-normal">Prioridade</span>
         <span className="text-right">CPA</span>
         <span
           className="text-right"
@@ -422,7 +423,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
               <button
                 onClick={() => onChoose(o.id)}
                 title={`${att ? `Precisa de atenção: ${att.reasons.join(", ")}` : o.name}\n${speedTitle}`}
-                className={`grid ${COLS} w-full items-center gap-x-1.5 border-b border-l-4 border-zinc-100 px-2.5 py-1.5 text-left text-sm transition-colors dark:border-zinc-800/60 ${
+                className={`grid ${COLS} w-full items-center gap-x-1 border-b border-l-4 border-zinc-100 px-2.5 py-1.5 text-left text-sm transition-colors dark:border-zinc-800/60 ${
                   sp?.overall ? SPEED_STRIPE[sp.overall] : "border-l-transparent"
                 } ${
                   o.id === value ? "bg-zinc-100 font-semibold dark:bg-zinc-800" : "hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
@@ -433,7 +434,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
                     className={`inline-block h-2 w-2 shrink-0 rounded-full ${o.optimized ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-600"}`}
                     title={o.optimized ? "Otimizada hoje" : "Pendente"}
                   />
-                  <span className="truncate">
+                  <span className={`truncate ${sp?.overall === "off" ? "text-red-600 dark:text-red-400" : ""}`}>
                     {att ? "🚨 " : ""}
                     {o.name}
                   </span>

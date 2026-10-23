@@ -206,7 +206,7 @@ export default function FocoPage() {
   return (
     <div className="flex flex-col gap-3 p-3 lg:h-[calc(100vh-3.6rem)] lg:flex-row">
       {listOpen ? (
-        <aside className="flex min-h-0 shrink-0 flex-col max-lg:h-[26rem] lg:w-[21rem]">
+        <aside className="flex min-h-0 shrink-0 flex-col max-lg:h-[26rem] lg:w-[25rem]">
           <ContaLateral opts={optList} value={sel} onChoose={choose} />
         </aside>
       ) : null}
