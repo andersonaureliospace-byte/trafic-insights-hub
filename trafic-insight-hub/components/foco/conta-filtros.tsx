@@ -256,6 +256,22 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
           if (db == null) return -1;
           return db - da;
         }
+        // Etapa 195: "Investimento fora pra baixo/cima" segue a coluna Ritmo — orçamento atual − Gastar hoje (até 17h)
+        // ou − Gastar amanhã (depois das 17h). Pra baixo: maior pendência (mais negativo) primeiro; pra cima: maior sobra
+        // primeiro. Sem orçamento/meta vai pro final.
+        if (sort === "invest_below" || sort === "invest_above") {
+          const gap = (o: FiltroOpt) => {
+            const it = info.get(o.id);
+            const ref = it ? budgetReference(it.speed).value : null;
+            return it?.budget != null && ref != null ? it.budget - ref : null;
+          };
+          const ga = gap(a);
+          const gb = gap(b);
+          if (ga == null && gb == null) return a.name.localeCompare(b.name, "pt-BR");
+          if (ga == null) return 1;
+          if (gb == null) return -1;
+          return (sort === "invest_below" ? ga - gb : gb - ga) || a.name.localeCompare(b.name, "pt-BR");
+        }
         return compareMetas(metasOf(a), metasOf(b), sort) || a.name.localeCompare(b.name, "pt-BR");
       });
   }, [opts, q, priority, cpa, invest, optimized, attentionF, attention, sort, cache, cal, info, insightsAll]);
