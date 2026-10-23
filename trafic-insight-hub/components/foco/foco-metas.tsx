@@ -6,6 +6,7 @@ import {
   SPEED_CPA_ACCEPTABLE,
   SPEED_CPA_LABEL,
   SPEED_INVEST_LABEL,
+  budgetReference,
   computeSpeed,
   speedBudgetTooltip,
   speedOkText,
@@ -87,8 +88,11 @@ export function FocoMetas({
   const fill = pctOfTarget != null ? Math.min(pctOfTarget, 1) * 100 : 0;
   const marker = Math.min((s.day / s.daysInMonth) * 100, 100);
   const tip = speedBudgetTooltip(s, monthlyTarget);
-  const budgetDiff = s.gastarAmanha != null ? insight.daily_budget - s.gastarAmanha : null;
-  const budgetCls = s.gastarAmanha != null ? ritmoColorClass(s.gastarAmanha, insight.daily_budget) : "";
+  // Etapa 194: até 17h (Brasília) o orçamento atual é comparado com o Gastar hoje; depois, com o Gastar amanhã.
+  const ref = budgetReference(s);
+  const budgetDiff = ref.value != null ? insight.daily_budget - ref.value : null;
+  const budgetCls = ref.value != null ? ritmoColorClass(ref.value, insight.daily_budget) : "";
+  const refRing = "rounded-md ring-1 ring-sky-400/60 px-1 -mx-1";
   const okTxt = speedOkText(s);
 
   return (
@@ -166,22 +170,22 @@ export function FocoMetas({
         <div className="grid grid-cols-3 gap-2">
           <div>
             <p className="text-lg font-semibold leading-tight tabular-nums">{fmtCurrency(insight.daily_budget)}</p>
-            <p className="text-[11px] text-zinc-400">
+            <p className="text-[11px] text-zinc-400" title={`Diferença do orçamento atual pro ${ref.label} (até 17h compara com o gastar hoje; depois, com o gastar amanhã)`}>
               atual
               {budgetDiff != null && Math.abs(budgetDiff) >= 0.01 ? (
                 <span className={`ml-1 tabular-nums ${budgetCls}`}>({budgetDiff < 0 ? "−" : "+"}{fmtCurrency(Math.abs(budgetDiff))})</span>
               ) : null}
             </p>
           </div>
-          <div>
+          <div className={ref.mode === "hoje" ? refRing : ""}>
             {/* Etapa 193: o valor do dia (ritmo + atraso, no teto); embaixo, quanto ainda falta gastar hoje. */}
             <p className="text-lg font-semibold leading-tight tabular-nums">{s.metaHoje != null ? fmtCurrency(s.metaHoje) : "—"}</p>
             <p className="text-[11px] text-zinc-400">
               gastar hoje{s.gastarHoje != null ? <span className="tabular-nums"> · falta {fmtCurrency(s.gastarHoje)}</span> : null}
             </p>
           </div>
-          <div>
-            <p className={`text-lg font-semibold leading-tight tabular-nums ${budgetCls}`}>{s.gastarAmanha != null ? fmtCurrency(s.gastarAmanha) : "—"}</p>
+          <div className={ref.mode === "amanha" ? refRing : ""}>
+            <p className={`text-lg font-semibold leading-tight tabular-nums ${ref.mode === "amanha" ? budgetCls : ""}`}>{s.gastarAmanha != null ? fmtCurrency(s.gastarAmanha) : "—"}</p>
             <p className="text-[11px] text-zinc-400">gastar amanhã</p>
           </div>
         </div>

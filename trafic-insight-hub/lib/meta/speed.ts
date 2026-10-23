@@ -170,6 +170,21 @@ export function computeSpeed(input: SpeedInput, now: Date = new Date()): SpeedRo
   };
 }
 
+// Etapa 194: com quem o ORÇAMENTO ATUAL é comparado (a diferença "atual (−R$ X)" e a coluna Ritmo), pelo horário de
+// Brasília: da meia-noite às 17h = Gastar hoje (valor do dia); das 17h à meia-noite = Gastar amanhã (é quando o
+// Anderson programa o dia seguinte). No último dia do mês não tem amanhã → usa o de hoje.
+export const SPEED_SWITCH_HOUR = 17;
+
+export function hourSP(now: Date = new Date()): number {
+  const h = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(now);
+  return Number(h) % 24;
+}
+
+export function budgetReference(r: SpeedRow, now: Date = new Date()): { mode: "hoje" | "amanha"; value: number | null; label: string } {
+  if (hourSP(now) >= SPEED_SWITCH_HOUR && r.gastarAmanha != null) return { mode: "amanha", value: r.gastarAmanha, label: "gastar amanhã" };
+  return { mode: "hoje", value: r.metaHoje, label: "gastar hoje" };
+}
+
 // Ordem "Fora da meta (Speed)": fora (vermelho) → aceitável (laranja) → OK (verde) → sem dado.
 // Dentro do grupo, quem está mais longe (CPA acima em % do ideal + distância do investimento em %).
 export function speedSortKey(r: SpeedRow): number {

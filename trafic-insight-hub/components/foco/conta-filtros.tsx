@@ -18,6 +18,7 @@ import { monthCalendarSP, ritmoColorClass, ritmoFromInsight } from "@/lib/meta/r
 import {
   SPEED_CPA_LABEL,
   SPEED_INVEST_LABEL,
+  budgetReference,
   computeSpeed,
   speedBudgetTooltip,
   speedCpaStatus,
@@ -150,7 +151,8 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         budget: budgetOk,
         ritmo: rit,
         speed,
-        budgetCls: speed.gastarAmanha != null && budgetOk != null ? ritmoColorClass(speed.gastarAmanha, daily) : "",
+        // Etapa 194: até 17h (Brasília) compara com o Gastar hoje; depois, com o Gastar amanhã.
+        budgetCls: budgetReference(speed).value != null && budgetOk != null ? ritmoColorClass(budgetReference(speed).value!, daily) : "",
       });
     }
     return m;
@@ -383,7 +385,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         <span className="text-right">CPA</span>
         <span
           className="text-right"
-          title="Ritmo (igual ao Orçamento por dia do Acompanhamento de metas): em cima = orçamento atual por dia; embaixo = diferença pro Gastar amanhã (+ = acima; − = falta subir)."
+          title="Ritmo (igual ao Orçamento por dia do Acompanhamento de metas): em cima = orçamento atual por dia; embaixo = diferença pro Gastar hoje até 17h e pro Gastar amanhã depois das 17h (+ = acima; − = falta subir)."
         >
           Ritmo
         </span>
@@ -395,6 +397,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
           const p = prio(o.priority);
           const att = attention[o.id.replace(/^act_/, "")];
           const sp = i?.speed;
+          const refVal = sp ? budgetReference(sp).value : null;
           const speedTitle = sp?.overall
             ? `Speed (mês): investimento ${sp.investStatus ? SPEED_INVEST_LABEL[sp.investStatus] : "—"} · CPA ${sp.cpaStatus ? SPEED_CPA_LABEL[sp.cpaStatus] : "—"}`
             : "Speed: sem dado do mês — clique em ↻ Atualizar";
@@ -442,10 +445,10 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
                   }
                   className={`text-right text-xs tabular-nums ${i?.budget == null ? "text-zinc-400" : ""}`}
                 >
-                  {/* Ritmo = igual ao Orçamento (por dia) do Acompanhamento de metas: orçamento atual + (atual − Gastar amanhã). */}
+                  {/* Ritmo = igual ao Orçamento (por dia) do Acompanhamento de metas: orçamento atual + (atual − Gastar hoje até 17h / Gastar amanhã depois). */}
                   <span className="block text-xs leading-tight">{i?.budget != null ? num(i.budget) : "—"}</span>
-                  {i?.budget != null && sp?.gastarAmanha != null && Math.abs(i.budget - sp.gastarAmanha) >= 0.01 ? (
-                    <span className={`block text-[10px] leading-tight ${i.budgetCls}`}>{signed(i.budget - sp.gastarAmanha)}</span>
+                  {i?.budget != null && refVal != null && Math.abs(i.budget - refVal) >= 0.01 ? (
+                    <span className={`block text-[10px] leading-tight ${i.budgetCls}`}>{signed(i.budget - refVal)}</span>
                   ) : null}
                 </span>
               </button>
