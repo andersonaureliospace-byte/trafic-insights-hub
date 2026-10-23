@@ -75,7 +75,9 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
   const [q, setQ] = useState("");
   const [priority, setPriority] = useState("all");
   const [cpa, setCpa] = useState<"all" | "high">("all");
-  const [invest, setInvest] = useState<"all" | "low" | "high">("all");
+  // Etapa 200: "Investimento" virou ordem pelo investimento DIÁRIO atual (orçamento dos ativos + programados — o número de
+  // cima da coluna Ritmo), crescente/decrescente, sem olhar meta.
+  const [invest, setInvest] = useState<"all" | "asc" | "desc">("all");
   const [optimized, setOptimized] = useState<"all" | "optimized" | "pending">("all");
   const [attentionF, setAttentionF] = useState<"all" | "attention">("all");
   const [sort, setSort] = useState<FocoSort>("manual");
@@ -228,15 +230,18 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         const actual = ins[o.id]?.cost_per_result;
         return o.cpaTarget != null && actual != null && actual > o.cpaTarget;
       })
-      .filter((o) => {
-        // Etapa 185: Investimento Baixo/Alto = status da Speed (gasto até ontem × ideal até hoje, folga de 2%).
-        if (invest === "all") return true;
-        const st = info.get(o.id)?.speed.investStatus;
-        return invest === "low" ? st === "below" : st === "above";
-      })
       .filter((o) => optimized === "all" || (optimized === "optimized" ? o.optimized : !o.optimized))
       .filter((o) => attentionF === "all" || !!attention[o.id.replace(/^act_/, "")])
       .sort((a, b) => {
+        // Etapa 200: Investimento crescente/decrescente manda na ordem (orçamento diário atual + programados). Sem dado vai pro final.
+        if (invest !== "all") {
+          const va = info.get(a.id)?.budget ?? null;
+          const vb = info.get(b.id)?.budget ?? null;
+          if (va == null && vb == null) return a.name.localeCompare(b.name, "pt-BR");
+          if (va == null) return 1;
+          if (vb == null) return -1;
+          return (invest === "asc" ? va - vb : vb - va) || a.name.localeCompare(b.name, "pt-BR");
+        }
         if (sort === "manual") {
           const k = (o: FiltroOpt) => o.sortOrder ?? 1_000_000_000 - (ins[o.id]?.spend ?? 0);
           return k(a) - k(b) || a.name.localeCompare(b.name, "pt-BR");
@@ -329,12 +334,12 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
               <option value="high">CPA alto</option>
             </select>
           </label>
-          <label title={noData ? noDataHint : "Status de investimento da Speed: gasto até ontem × ideal até hoje, com 2% de folga."}>
+          <label title={noData ? noDataHint : "Ordena pelo investimento diário atual (orçamento dos conjuntos/campanhas ativos + programados — o número de cima do Ritmo). Quando escolhido, manda na ordem da lista."}>
             <span className={lblCls}>Investimento</span>
-            <select value={invest} onChange={(e) => setInvest(e.target.value as "all" | "low" | "high")} disabled={noData} className={selCls}>
+            <select value={invest} onChange={(e) => setInvest(e.target.value as "all" | "asc" | "desc")} disabled={noData} className={selCls}>
               <option value="all">Todos</option>
-              <option value="low">Abaixo (Speed)</option>
-              <option value="high">Acima (Speed)</option>
+              <option value="asc">Crescente</option>
+              <option value="desc">Decrescente</option>
             </select>
           </label>
           <label>
