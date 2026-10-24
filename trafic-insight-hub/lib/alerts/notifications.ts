@@ -19,9 +19,10 @@ export type AlertKind =
   | "adsets-paused" // conjuntos pausados
   | "adsets-cut" // orçamento do conjunto reduzido em R$10
   | "adsets-cut-failed" // conjunto que pedia corte, mas não deu pra cortar
-  | "low-budget" // Invest. diário em 80% ou menos do Ritmo
+  | "low-budget" // Invest. diário em 55% ou menos do Ritmo
   | "low-investment" // Investimento baixo (banda de R$10)
-  | "cpa-yesterday" // CPA acima da meta ontem
+  | "cpa-yesterday" // CPA acima da meta ontem (> R$4, 06h)
+  | "cpa-today" // CPA de hoje até agora acima da meta (12h > R$20; 18h30 > R$10) — Etapa 202
   | "bulk-status" // Status em massa
   | "balance-low" // Saldo baixo
   | "balance-friday" // Saldo de sexta
@@ -41,6 +42,7 @@ export type AlertKind =
 // Os únicos tipos que também vão pro grupo do WhatsApp (os mais urgentes).
 export const GROUP_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>([
   "cpa-yesterday",
+  "cpa-today",
   "low-budget",
   "balance-low",
   "balance-friday",

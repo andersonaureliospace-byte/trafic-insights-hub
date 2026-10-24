@@ -119,7 +119,7 @@
     },
     {
       "parameters": {
-        "content": "## 2. CPA ontem (06h00)\n\nTodo dia às 06h00: lista as contas com CPA de ontem R$2+ acima do ideal (vai pro grupo).",
+        "content": "## 2. CPA acima da meta (3x ao dia)\n\n06h00: contas com CPA de ONTEM mais de R$4 acima do ideal. 12h00: CPA de HOJE até o momento mais de R$20 acima. 18h30: CPA de HOJE até o momento mais de R$10 acima. O mesmo nó HTTP serve as três: o sistema descobre a rodada pelo horário de Brasília (ou pelo corpo {\"window\": \"yesterday\" | \"midday\" | \"evening\"}). Tudo vai pro grupo.",
         "height": 90,
         "width": 900,
         "color": 2
@@ -131,7 +131,7 @@
         220
       ],
       "id": "31231e06-996d-42eb-8a8a-5a429202ffd4",
-      "name": "Nota - 2. CPA ontem (06h00)"
+      "name": "Nota - 2. CPA acima da meta (3x ao dia)"
     },
     {
       "parameters": {
@@ -139,7 +139,11 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0 6 * * *"
+              "expression": "0 6,12 * * *"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "30 18 * * *"
             }
           ]
         }
@@ -151,7 +155,7 @@
         330
       ],
       "id": "08cbfe50-1cd7-47fa-aab3-6d3901683a0c",
-      "name": "Agenda - CPA acima da meta ontem (06h00)"
+      "name": "Agenda - CPA acima da meta (06h, 12h, 18h30)"
     },
     {
       "parameters": {
@@ -1557,17 +1561,6 @@
         ]
       ]
     },
-    "Agenda - CPA acima da meta ontem (06h00)": {
-      "main": [
-        [
-          {
-            "node": "Avisar CPA acima da meta",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Agenda - Invest. diário em 80% do Ritmo (07h e 16h)": {
       "main": [
         [
@@ -1804,6 +1797,17 @@
         [
           {
             "node": "Ajustar Cópia/idade/data nos nomes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - CPA acima da meta (06h, 12h, 18h30)": {
+      "main": [
+        [
+          {
+            "node": "Avisar CPA acima da meta",
             "type": "main",
             "index": 0
           }

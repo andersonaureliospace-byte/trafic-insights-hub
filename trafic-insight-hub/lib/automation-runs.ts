@@ -21,7 +21,7 @@ const AUTOMATION_KINDS: Record<string, string[]> = {
   "pause-backup": ["pause-backup"],
   "low-budget": ["low-budget"],
   "low-investment": ["low-investment"],
-  "cpa-alert": ["cpa-yesterday"],
+  "cpa-alert": ["cpa-yesterday", "cpa-today"],
   "bulk-status": ["bulk-status"],
   "balance-alert": ["balance-low", "balance-friday", "payment-error"],
   "balance-evening": ["balance-evening"],

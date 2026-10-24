@@ -267,7 +267,7 @@ export function AvisosTab() {
     } else if (critical > 0) {
       alert(`Aviso enviado pro grupo — ${critical} conta(s) com CPA acima da meta ontem.`);
     } else {
-      alert("Nenhuma conta com CPA mais de R$2 acima da meta ontem.");
+      alert("Nenhuma conta com CPA mais de R$4 acima da meta ontem.");
     }
   }
 
@@ -518,7 +518,7 @@ export function AvisosTab() {
       <div className="flex flex-col gap-4">
         <div className="rounded-xl border border-zinc-200 bg-white p-4 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
           Considera toda conta com CPA ideal cadastrado (Clientes/Acompanhamento). Entra no aviso quem
-          teve o CPA de ONTEM mais de R$2 acima do CPA ideal — quem ficou na média ou abaixo não aparece
+          teve o CPA de ONTEM mais de R$4 acima do CPA ideal — quem ficou na média ou abaixo não aparece
           na mensagem. Vai numa única mensagem pro mesmo grupo de Configurações → WhatsApp, da conta mais
           crítica pra menos crítica. Pensado pra rodar automaticamente uma vez por dia, de manhã (veja o
           ⚠️ no README sobre o agendamento no n8n) — sem cooldown de 24h, então &quot;Verificar agora&quot;

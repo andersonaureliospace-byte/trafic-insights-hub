@@ -4,7 +4,7 @@ import { checkLowBudget } from "@/lib/alerts/low-budget";
 import { withRunLog } from "@/lib/automation-runs";
 
 // Endpoint público chamado pelo n8n (Etapa 124: só às 07h e às 16h, todo dia; antes de 3 em 3 horas) — só avisa (nunca pausa nem muda nada) o grupo de WhatsApp configurado com as contas
-// cujo Invest. diário atual está em 80% ou menos do Ritmo. Protegido pelo mesmo segredo
+// cujo Invest. diário atual está em 55% ou menos do Ritmo. Protegido pelo mesmo segredo
 // compartilhado dos outros hooks internos (WHATSAPP_DISPATCH_SECRET).
 // Varre muitas contas na Meta: pede o tempo máximo de função (evita corte silencioso).
 export const maxDuration = 60;

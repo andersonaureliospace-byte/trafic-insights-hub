@@ -1,7 +1,5 @@
-// Checagem de CPA acima da meta ONTEM (Etapa 48) — pensada pra rodar uma vez
-// por dia, de manhã (07h sugerido no n8n), avisando o grupo de WhatsApp
-// configurado com uma lista única de contas cujo CPA de ontem ficou mais de
-// R$2 acima do CPA ideal cadastrado, da mais crítica pra menos crítica.
+// Checagem de CPA acima da meta (Etapa 48; Etapa 202: 3 rodadas por dia — veja CPA_WINDOWS) — avisa o grupo de
+// WhatsApp configurado com uma lista única de contas acima do corte, da mais crítica pra menos crítica.
 // Ao contrário de saldo/pagamento (lib/alerts/balance.ts, lib/alerts/payment.ts),
 // não tem cooldown de 24h — o controle de frequência é o próprio agendamento
 // do n8n (uma vez ao dia); rodar "Verificar agora" no mesmo dia reenvia de
@@ -15,16 +13,31 @@ import { fmtCurrency } from "@/lib/format";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
-// Mesma banda usada na cor da tela Evolução (Etapa 48): mais de R$2 acima
-// do CPA ideal = crítico o bastante pra entrar no aviso.
-const CRITICAL_DIFF = 2;
+// Etapa 202: três rodadas, cada uma com o seu corte (R$ acima do CPA ideal):
+//  - "yesterday" (06h): CPA de ONTEM mais de R$4 acima do ideal;
+//  - "midday"    (12h): CPA de HOJE até o momento mais de R$20 acima;
+//  - "evening"   (18h30): CPA de HOJE até o momento mais de R$10 acima.
+export type CpaWindow = "yesterday" | "midday" | "evening";
+export const CPA_WINDOWS: Record<CpaWindow, { diff: number; preset: "yesterday" | "today"; label: string }> = {
+  yesterday: { diff: 4, preset: "yesterday", label: "ontem" },
+  midday: { diff: 20, preset: "today", label: "hoje até o meio-dia" },
+  evening: { diff: 10, preset: "today", label: "hoje até as 18h" },
+};
+
+// Qual rodada pelo horário de Brasília (quando o n8n não manda): antes das 10h = ontem; até 17h = meio-dia; depois = noite.
+export function cpaWindowByHour(now: Date = new Date()): CpaWindow {
+  const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(now)) % 24;
+  if (h < 10) return "yesterday";
+  if (h < 17) return "midday";
+  return "evening";
+}
 
 export interface CpaAlertStatus {
   ad_account_id: string;
   client_name: string;
   cpa_target: number;
-  cpa_yesterday: number | null;
-  diff: number | null; // CPA de ontem − CPA ideal (null sem dado/conversão ontem)
+  cpa_yesterday: number | null; // CPA do período da rodada (ontem, ou hoje até agora nas rodadas do dia)
+  diff: number | null; // CPA do período − CPA ideal (null sem dado/conversão)
   critical: boolean;
 }
 
@@ -37,8 +50,10 @@ export async function checkCpaAlerts(
   db: Db,
   userId: string,
   token: string,
-  opts: { send: boolean } = { send: false },
+  opts: { send: boolean; window?: CpaWindow } = { send: false },
 ): Promise<CheckCpaAlertsResult> {
+  const window = opts.window ?? "yesterday";
+  const cfg = CPA_WINDOWS[window];
   const off = await inactiveAccountIds(db, userId);
   const { data: bindingsAll, error: bindingsErr } = await db
     .from("account_bindings")
@@ -50,7 +65,7 @@ export async function checkCpaAlerts(
   if (!bindings || bindings.length === 0) return { statuses: [], sendError: null };
 
   const accountIds = bindings.map((b) => b.ad_account_id as string);
-  const insights = await getAccountsInsights(token, accountIds, "yesterday");
+  const insights = await getAccountsInsights(token, accountIds, cfg.preset);
 
   const statuses: CpaAlertStatus[] = bindings.map((b) => {
     const accountId = b.ad_account_id as string;
@@ -64,7 +79,7 @@ export async function checkCpaAlerts(
       cpa_target: cpaTarget,
       cpa_yesterday: cpaYesterday,
       diff,
-      critical: diff != null && diff > CRITICAL_DIFF,
+      critical: diff != null && diff > cfg.diff,
     };
   });
 
@@ -75,11 +90,12 @@ export async function checkCpaAlerts(
   if (opts.send && critical.length > 0) {
     try {
       const lines = critical.map(
-        (s, i) => `${i + 1}. ${s.client_name} — CPA ideal ${fmtCurrency(s.cpa_target)} | CPA de ontem ${fmtCurrency(s.cpa_yesterday)}`,
+        (s, i) =>
+          `${i + 1}. ${s.client_name} — CPA ideal ${fmtCurrency(s.cpa_target)} | CPA ${window === "yesterday" ? "de ontem" : "de hoje"} ${fmtCurrency(s.cpa_yesterday)} (+${fmtCurrency(s.diff ?? 0)})`,
       );
       await publishAlert(db, userId, {
-        kind: "cpa-yesterday",
-        title: `🔴 CPA acima da meta ontem (${critical.length} conta${critical.length > 1 ? "s" : ""})`,
+        kind: window === "yesterday" ? "cpa-yesterday" : "cpa-today",
+        title: `🔴 CPA mais de ${fmtCurrency(cfg.diff)} acima da meta — ${cfg.label} (${critical.length} conta${critical.length > 1 ? "s" : ""})`,
         body: lines.join("\n"),
         count: critical.length,
       });
