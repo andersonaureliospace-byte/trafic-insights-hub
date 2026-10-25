@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { fmtCurrency } from "@/lib/format";
 
 // Etapa 158: conjuntos em "standby" — no sábado/domingo o orçamento cai pra R$10 (bom desempenho, mais de 3 dias ativos ou acima da meta)
-// e na segunda 05h todos voltam pra R$15 e saem desta lista. "Não reduzido" = CBO, orçamento vitalício ou já em R$10 ou menos.
+// e no domingo 05h todos voltam pra R$15 e saem desta lista. "Não reduzido" = CBO, orçamento vitalício ou já em R$10 ou menos.
 interface StandbyItem {
   adset_id: string;
   ad_account_id: string;
@@ -75,7 +75,7 @@ export function StandbySection() {
       <p className="border-b border-zinc-100 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800/60 dark:text-zinc-400">
         No sábado e no domingo o orçamento dos conjuntos de bom desempenho ou com mais de 3 dias ativos cai pra R$10 (os criativos continuam ativos).
         Também entram aqui os conjuntos que ficaram acima da meta no fim de semana — primeiro reduz o orçamento, depois pausa criativo e conjunto.
-        Na segunda às 05h todos voltam pra R$15 e saem desta lista. Bom momento pra duplicar os melhores no domingo.
+        No domingo às 05h todos voltam pra R$15 e saem desta lista.
       </p>
       {error ? <p className="px-4 py-3 text-sm text-red-600">{error}</p> : null}
       {items === null ? (
@@ -112,7 +112,7 @@ export function StandbySection() {
                   </td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-zinc-600 dark:text-zinc-400">{fmtWhen(i.started_at)}</td>
                   <td className="whitespace-nowrap px-3 py-1.5 text-zinc-600 dark:text-zinc-400">
-                    {i.kind === "standby" ? "segunda 05h → R$ 15,00" : "segunda 05h (sai da lista)"}
+                    {i.kind === "standby" ? "domingo 05h → R$ 15,00" : "domingo 05h (sai da lista)"}
                   </td>
                 </tr>
               ))}

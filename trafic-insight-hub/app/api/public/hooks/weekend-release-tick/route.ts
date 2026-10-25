@@ -3,8 +3,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { releaseStandby } from "@/lib/alerts/weekend-standby";
 import { withRunLog } from "@/lib/automation-runs";
 
-// Endpoint público chamado pelo n8n na segunda às 05h (Etapa 158) — todos os conjuntos em standby voltam pra R$15 e saem da tela Standby.
-// Em sábado/domingo não faz nada. Protegido pelo segredo dos outros hooks.
+// Endpoint público chamado pelo n8n no DOMINGO às 05h (Etapa 158; Etapa 203: era segunda) — todos os conjuntos em standby voltam
+// pra R$15 e saem da tela Standby. No sábado e no domingo antes das 05h não faz nada. Protegido pelo segredo dos outros hooks.
 export const maxDuration = 60;
 
 export const POST = withRunLog("weekend-release", async (request: Request) => {

@@ -3,8 +3,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { runWeekendStandby } from "@/lib/alerts/weekend-standby";
 import { withRunLog } from "@/lib/automation-runs";
 
-// Endpoint público chamado pelo n8n sábado e domingo de madrugada (Etapa 158) — põe em standby (orçamento R$10) os conjuntos de bom
-// desempenho ou com mais de 3 dias ativos. Fora de sábado/domingo não faz nada. Protegido pelo segredo dos outros hooks.
+// Endpoint público chamado pelo n8n sábado de madrugada (Etapa 158; Etapa 203: domingo não roda mais) — põe em standby (orçamento R$10) os conjuntos de bom
+// desempenho ou com mais de 3 dias ativos. Fora de sábado não faz nada. Protegido pelo segredo dos outros hooks.
 export const maxDuration = 60;
 
 export const POST = withRunLog("weekend-standby", async (request: Request) => {

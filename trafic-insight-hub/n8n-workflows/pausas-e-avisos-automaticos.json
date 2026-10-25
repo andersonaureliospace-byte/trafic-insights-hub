@@ -1109,7 +1109,7 @@
     },
     {
       "parameters": {
-        "content": "## 15. Standby de fim de semana (sábado e domingo, 00h30)\n\nConjuntos de bom desempenho (CPA dos 7 dias abaixo da meta) ou com mais de 3 dias ativos têm o orçamento reduzido pra R$10 (criativos intocados) e aparecem em Auditoria → Standby. Roda 3 vezes (00h30, 00h40, 00h50) pra dar tempo de todas as contas — o que já foi feito é pulado.",
+        "content": "## 15. Standby de fim de semana (sábado, 00h30)\n\nConjuntos de bom desempenho (CPA dos 7 dias abaixo da meta) ou com mais de 3 dias ativos têm o orçamento reduzido pra R$10 (criativos intocados) e aparecem em Auditoria → Standby. Roda 3 vezes (00h30, 00h40, 00h50) pra dar tempo de todas as contas — o que já foi feito é pulado.",
         "height": 130,
         "width": 900,
         "color": 5
@@ -1121,7 +1121,7 @@
         4460
       ],
       "id": "7645db9e-5958-4f37-a4e9-bdc5e9bc3af5",
-      "name": "Nota - 15. Standby de fim de semana (sáb e dom 00h30)"
+      "name": "Nota - 15. Standby de fim de semana (sábado 00h30)"
     },
     {
       "parameters": {
@@ -1129,7 +1129,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "30,40,50 0 * * 6,0"
+              "expression": "30,40,50 0 * * 6"
             }
           ]
         }
@@ -1141,7 +1141,7 @@
         4600
       ],
       "id": "98968876-63fc-493f-87ff-538241cea792",
-      "name": "Agenda - Standby de fim de semana (sáb e dom 00h30)"
+      "name": "Agenda - Standby de fim de semana (sábado 00h30)"
     },
     {
       "parameters": {
@@ -1174,7 +1174,7 @@
     },
     {
       "parameters": {
-        "content": "## 16. Volta do standby (segunda, 05h)\n\nTodo conjunto em standby volta pra R$15 e sai da lista Standby. Roda 05h00 e 05h20 (o que já voltou é pulado). Conjunto pausado ou já com R$15+ só sai da lista.",
+        "content": "## 16. Volta do standby (domingo, 05h)\n\nTodo conjunto em standby volta pra R$15 e sai da lista Standby. Roda 05h00 e 05h20 (o que já voltou é pulado). Conjunto pausado ou já com R$15+ só sai da lista.",
         "height": 130,
         "width": 900,
         "color": 5
@@ -1186,7 +1186,7 @@
         4760
       ],
       "id": "b7540298-bf3e-427e-b25d-8aa3fed2db07",
-      "name": "Nota - 16. Volta do standby (segunda 05h)"
+      "name": "Nota - 16. Volta do standby (domingo 05h)"
     },
     {
       "parameters": {
@@ -1194,7 +1194,7 @@
           "interval": [
             {
               "field": "cronExpression",
-              "expression": "0,20 5 * * 1"
+              "expression": "0,20 5 * * 0"
             }
           ]
         }
@@ -1206,7 +1206,7 @@
         4900
       ],
       "id": "6473b2cc-8999-48de-929c-082f9c517756",
-      "name": "Agenda - Volta do standby (segunda 05h)"
+      "name": "Agenda - Volta do standby (domingo 05h)"
     },
     {
       "parameters": {
@@ -1704,28 +1704,6 @@
         ]
       ]
     },
-    "Agenda - Standby de fim de semana (sáb e dom 00h30)": {
-      "main": [
-        [
-          {
-            "node": "Colocar conjuntos em standby (R$10)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Agenda - Volta do standby (segunda 05h)": {
-      "main": [
-        [
-          {
-            "node": "Voltar conjuntos do standby pra R$15",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "Agenda - Vídeos de Geral (05h40)": {
       "main": [
         [
@@ -1808,6 +1786,28 @@
         [
           {
             "node": "Avisar CPA acima da meta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Standby de fim de semana (sábado 00h30)": {
+      "main": [
+        [
+          {
+            "node": "Colocar conjuntos em standby (R$10)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agenda - Volta do standby (domingo 05h)": {
+      "main": [
+        [
+          {
+            "node": "Voltar conjuntos do standby pra R$15",
             "type": "main",
             "index": 0
           }

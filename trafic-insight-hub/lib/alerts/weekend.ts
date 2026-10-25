@@ -5,7 +5,9 @@
 //   2º se 6h depois continua acima da meta, pausa o CRIATIVO que está caro;
 //   3º se ainda não melhorou, pausa o CONJUNTO (as regras de sempre: criado há 48h+, algum criativo já pausado…).
 // Além disso, sábado e domingo de madrugada os conjuntos de bom desempenho (CPA dos 7 dias abaixo da meta) ou com mais
-// de 3 dias ativos vão pra standby (R$10). Segunda 05h todos os que estão em standby voltam pra R$15 e saem da tela Standby.
+// de 3 dias ativos vão pra standby (R$10). Domingo 05h todos os que estão em standby voltam pra R$15 e saem da tela Standby.
+// Etapa 203: a volta passou de segunda 05h pra DOMINGO 05h. A "janela de fim de semana" agora é sábado inteiro + domingo
+// até 05h (Brasília); domingo a partir das 05h as pausas automáticas já seguem a regra de dia útil.
 // Estado: tabela weekend_standby (supabase/migrations/0034_pause_backup_and_standby.sql).
 
 import type { createClient } from "@/lib/supabase/server";
@@ -16,9 +18,22 @@ type Db = Awaited<ReturnType<typeof createClient>>;
 // Espera entre "reduziu o orçamento" e "pode pausar criativo/conjunto" (2 rodadas de 3h).
 export const STANDBY_STEP_WAIT_MS = 6 * 60 * 60 * 1000;
 
-export function isWeekendBR(now: Date = new Date()): boolean {
+export const STANDBY_RELEASE_HOUR = 5; // domingo 05h (Brasília)
+
+function weekdayHourBR(now: Date): { wd: string; hour: number } {
   const wd = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", weekday: "short" }).format(now);
-  return wd === "Sat" || wd === "Sun";
+  const hour = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(now)) % 24;
+  return { wd, hour };
+}
+
+// Janela de fim de semana (Etapa 203): sábado inteiro + domingo antes das 05h.
+export function isWeekendBR(now: Date = new Date()): boolean {
+  const { wd, hour } = weekdayHourBR(now);
+  return wd === "Sat" || (wd === "Sun" && hour < STANDBY_RELEASE_HOUR);
+}
+
+export function isSaturdayBR(now: Date = new Date()): boolean {
+  return weekdayHourBR(now).wd === "Sat";
 }
 
 export interface StandbyRecord {
@@ -36,7 +51,21 @@ export interface StandbyRecord {
 
 const COLS = "adset_id, ad_account_id, client_name, adset_name, campaign_id, kind, reason, from_budget, to_budget, started_at";
 
-// Conjuntos em standby agora (ainda não liberados na segunda).
+// Etapa 204: conjunto que saiu do standby fica protegido por 48h — igual conjunto novo: por desempenho não é pausado
+// nem tem orçamento cortado (sem anúncio ativo continua podendo ser pausado).
+export const STANDBY_PROTECT_HOURS = 48;
+
+export async function loadRecentlyReleased(db: Db, userId: string, now: Date = new Date()): Promise<Set<string>> {
+  const since = new Date(now.getTime() - STANDBY_PROTECT_HOURS * 3_600_000).toISOString();
+  const { data, error } = await db.from("weekend_standby").select("adset_id").eq("user_id", userId).gte("released_at", since);
+  if (error) {
+    console.error("weekend_standby (liberados) indisponível — segue sem a proteção de 48h:", error.message);
+    return new Set();
+  }
+  return new Set((data ?? []).map((r) => r.adset_id as string));
+}
+
+// Conjuntos em standby agora (ainda não liberados no domingo 05h).
 export async function loadStandby(db: Db, userId: string): Promise<Map<string, StandbyRecord>> {
   const { data, error } = await db.from("weekend_standby").select(COLS).eq("user_id", userId).is("released_at", null);
   if (error) {

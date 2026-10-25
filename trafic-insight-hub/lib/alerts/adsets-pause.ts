@@ -34,7 +34,7 @@ import { getMultiMediaAds, type MultiMediaAds } from "@/lib/meta/multi-media";
 import { setEntitiesStatusSequential } from "@/lib/meta/status";
 import { applyBudgetCut, getAdSetBudgetInfo, setAdSetDailyBudget, BIG_BUDGET_CENTS, STANDBY_BUDGET_CENTS } from "@/lib/meta/budget";
 import { allAdsActive, decideAdSetAction, isNewAdSet, needsSevenDayData, passesCutGate } from "@/lib/alerts/adset-decision";
-import { isWeekendBR, loadStandby, putAdsetOnStandby, standbyStepDone, type StandbyRecord } from "@/lib/alerts/weekend";
+import { isWeekendBR, loadRecentlyReleased, loadStandby, putAdsetOnStandby, standbyStepDone, type StandbyRecord } from "@/lib/alerts/weekend";
 import { logAutoPauses } from "@/lib/alerts/pause-log";
 import { spDate } from "@/lib/meta/client";
 import { clearQuarantine, loadQuarantine, saveQuarantine } from "@/lib/alerts/adset-quarantine";
@@ -180,6 +180,8 @@ export async function checkAndPauseAdSets(
       console.error("adsets-pause standby err", (e as Error).message);
     }
   }
+  // Etapa 204: saiu do standby há menos de 48h → protegido como conjunto novo.
+  const released = await loadRecentlyReleased(db, userId, now);
   const toTen: ToTenAdSet[] = [];
   const standbyPut: StandbyPut[] = [];
   const noSpend: NoSpendAdSet[] = [];
@@ -237,6 +239,8 @@ export async function checkAndPauseAdSets(
           const r7 = by7.get(r.id);
           // Etapa 173: por desempenho, conjunto com menos de 48h nunca é mexido. Sem anúncio ativo segue pra decisão (pode ser pausado).
           if (r.has_active_ad && isNewAdSet(r.created_time, now)) continue;
+          // Etapa 204: idem pra quem saiu do standby há menos de 48h.
+          if (r.has_active_ad && released.has(r.id)) continue;
           const inQuarantine = !!rec && new Date(rec.quarantine_until).getTime() > now.getTime();
 
           // Etapa 158 — orçamento diário acima de R$25 e CPA ontem + hoje R$4+ acima da meta: vai pra R$10 (só ABO).

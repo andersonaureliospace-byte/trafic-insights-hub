@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 
-// Etapa 158: lista dos conjuntos em standby (orçamento reduzido no fim de semana, voltam pra R$15 na segunda 05h).
+// Etapa 158: lista dos conjuntos em standby (orçamento reduzido no fim de semana, voltam pra R$15 no domingo 05h).
 export async function GET() {
   try {
     const { supabase, user } = await requireUser();

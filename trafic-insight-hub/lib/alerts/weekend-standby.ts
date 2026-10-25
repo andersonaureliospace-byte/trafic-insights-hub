@@ -1,8 +1,8 @@
 // Standby de fim de semana (Etapa 158) — as duas automações do n8n:
-//  1) runWeekendStandby (sábado e domingo de madrugada): conjuntos ATIVOS de bom desempenho (CPA de 7 dias abaixo da meta)
+//  1) runWeekendStandby (sábado de madrugada — Etapa 203: domingo não roda mais, é o dia da volta): conjuntos ATIVOS de bom desempenho (CPA de 7 dias abaixo da meta)
 //     ou criados há mais de 3 dias, com orçamento diário (ABO) acima de R$10, vão pra standby: orçamento = R$10,
 //     criativos intocados. Fica registrado em weekend_standby (tela Auditoria → Standby).
-//  2) releaseStandby (segunda 05h): todo conjunto em standby volta pra R$15 e sai da tela. Conjunto que já foi pausado
+//  2) releaseStandby (domingo 05h — Etapa 203, antes era segunda): todo conjunto em standby volta pra R$15 e sai da tela. Conjunto que já foi pausado
 //     ou que já está com orçamento de R$15 ou mais só sai da lista (não mexe no orçamento).
 // Idempotente: pode rodar várias vezes (a 1ª pode não dar tempo de todas as contas — o que já foi feito é pulado).
 
@@ -11,7 +11,7 @@ import { getAdSetCostAnalysis } from "@/lib/meta/adset-cost-analysis";
 import { getAdSetBudgetInfo, setAdSetDailyBudget, RESUME_BUDGET_CENTS, STANDBY_BUDGET_CENTS } from "@/lib/meta/budget";
 import { metaGet } from "@/lib/meta/client";
 import { isBelowIdeal7d, isNewAdSet } from "@/lib/alerts/adset-decision";
-import { isWeekendBR, loadStandby, putAdsetOnStandby } from "@/lib/alerts/weekend";
+import { isSaturdayBR, isWeekendBR, loadStandby, putAdsetOnStandby } from "@/lib/alerts/weekend";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { fmtCurrency } from "@/lib/format";
@@ -32,7 +32,7 @@ export interface StandbyRunResult {
 
 export async function runWeekendStandby(db: Db, userId: string, token: string, opts: { send: boolean; force?: boolean } = { send: false }): Promise<StandbyRunResult> {
   const startedAt = Date.now();
-  if (!opts.force && !isWeekendBR()) return { skipped: "não é sábado nem domingo", put: 0, noCut: 0, errors: 0, more: false, sendError: null };
+  if (!opts.force && !isSaturdayBR()) return { skipped: "não é sábado", put: 0, noCut: 0, errors: 0, more: false, sendError: null };
 
   const { data: selected, error: selErr } = await db.from("user_selected_accounts").select("ad_account_id").eq("user_id", userId);
   if (selErr) throw selErr;
@@ -109,7 +109,7 @@ export async function runWeekendStandby(db: Db, userId: string, token: string, o
       const lines = [...putByClient.entries()].sort((a, b) => b[1] - a[1]).map(([c, n]) => `• ${c}: ${n} conjunto${n > 1 ? "s" : ""}`);
       await publishAlert(db, userId, {
         kind: "weekend-standby",
-        title: `🌙 Standby de fim de semana: ${put} conjunto${put > 1 ? "s" : ""} com orçamento reduzido pra ${fmtCurrency(STANDBY_BUDGET_CENTS / 100)} (bom desempenho ou mais de ${OLD_ADSET_DAYS} dias ativos). Segunda 05h voltam pra ${fmtCurrency(RESUME_BUDGET_CENTS / 100)}.`,
+        title: `🌙 Standby de fim de semana: ${put} conjunto${put > 1 ? "s" : ""} com orçamento reduzido pra ${fmtCurrency(STANDBY_BUDGET_CENTS / 100)} (bom desempenho ou mais de ${OLD_ADSET_DAYS} dias ativos). Domingo 05h voltam pra ${fmtCurrency(RESUME_BUDGET_CENTS / 100)}.`,
         body: lines.join("\n"),
         count: put,
       });
@@ -131,7 +131,7 @@ export interface ReleaseResult {
 
 export async function releaseStandby(db: Db, userId: string, token: string, opts: { send: boolean; force?: boolean } = { send: false }): Promise<ReleaseResult> {
   const startedAt = Date.now();
-  if (!opts.force && isWeekendBR()) return { skipped: "ainda é fim de semana", raised: 0, listedOnly: 0, errors: 0, more: false, sendError: null };
+  if (!opts.force && isWeekendBR()) return { skipped: "ainda não é domingo 05h", raised: 0, listedOnly: 0, errors: 0, more: false, sendError: null };
 
   const standby = await loadStandby(db, userId);
   let raised = 0;
@@ -189,7 +189,7 @@ export async function releaseStandby(db: Db, userId: string, token: string, opts
     try {
       await publishAlert(db, userId, {
         kind: "weekend-standby",
-        title: `☀️ Segunda: ${raised} conjunto${raised > 1 ? "s" : ""} saíram do standby (orçamento de volta pra ${fmtCurrency(RESUME_BUDGET_CENTS / 100)})`,
+        title: `☀️ Domingo: ${raised} conjunto${raised > 1 ? "s" : ""} saíram do standby (orçamento de volta pra ${fmtCurrency(RESUME_BUDGET_CENTS / 100)})`,
         body: lines.slice(0, 60).join("\n") + (lines.length > 60 ? `\n… e mais ${lines.length - 60}` : ""),
         count: raised,
       });
