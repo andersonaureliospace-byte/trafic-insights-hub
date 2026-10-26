@@ -39,7 +39,8 @@ export const POST = withRunLog("creatives-no-result", async (request: Request) =
       const { paused, sendError, diag } = await checkAndPauseCreatives(supabase, userId, token, { send: true, onlyNoResult: true });
       // Etapa 206: conta em que a busca na Meta falhou (mesmo tentando de novo) aparece como erro no Registro das automações.
       const failed = diag.filter((x) => x.error).map((x) => `${x.client_name}: ${x.error}`);
-      const errText = [sendError, failed.length ? `contas não verificadas — ${failed.join(" | ")}` : null].filter(Boolean).join(" · ");
+      const notPaused = paused.filter((p) => !p.ok).length;
+      const errText = [sendError, failed.length ? `contas não verificadas — ${failed.join(" | ")}` : null, notPaused ? `${notPaused} criativo(s) não pausado(s) (erro ou falta de tempo)` : null].filter(Boolean).join(" · ");
       results.push({ userId, paused: paused.filter((p) => p.ok).length, accounts: diag.length, ...(errText ? { error: errText } : {}) });
     } catch (e) {
       results.push({ userId, error: (e as Error).message });

@@ -160,8 +160,15 @@ export async function checkAndPauseCreatives(
       ? `${fmtCurrency(r.cost_per_conversation)}/conversa`
       : `gasto ${fmtCurrency(r.spend)} sem conversa`;
 
-  await Promise.all(
-    bindings.map(async (b) => {
+  // Etapa 207: a função tem 60s no servidor. Antes, todas as contas eram varridas ao mesmo tempo e a pausa esperava 3s entre
+  // um criativo e outro — com muitas contas a rodada estourava os 60s e era cortada no meio (sem pausar nem registrar nada).
+  // Agora: no máximo 4 contas por vez (ordem embaralhada, pra não sobrar sempre a mesma), nenhuma conta nova começa depois
+  // de 35s, a pausa espera 1s entre criativos e para aos 52s. O que ficou de fora aparece como erro no Registro.
+  const startedAt = Date.now();
+  const ANALYSIS_DEADLINE = startedAt + 35_000;
+  const HARD_DEADLINE = startedAt + 52_000;
+  const queue = [...bindings].sort(() => Math.random() - 0.5);
+  const runAccount = async (b: (typeof bindings)[number]) => {
       const accountId = b.ad_account_id as string;
       const cpaTarget = b.cpa_target as number;
       const clientName = (b.client_name as string | null) || accountId;
@@ -335,6 +342,10 @@ export async function checkAndPauseCreatives(
         await attempt();
       } catch (e1) {
         console.error("creatives-pause conta falhou, tentando de novo", accountId, (e1 as Error).message);
+        if (Date.now() > ANALYSIS_DEADLINE) {
+          d.error = `${(e1 as Error).message.slice(0, 200)} (sem tempo pra tentar de novo nesta rodada)`;
+          return;
+        }
         d.retried = true;
         await new Promise((r) => setTimeout(r, 2500));
         try {
@@ -344,16 +355,39 @@ export async function checkAndPauseCreatives(
           console.error("creatives-pause analysis err (non-fatal)", accountId, e);
         }
       }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(4, queue.length) }, async () => {
+      while (queue.length > 0) {
+        const b = queue.shift()!;
+        if (Date.now() > ANALYSIS_DEADLINE) {
+          diag.push({
+            ad_account_id: b.ad_account_id as string,
+            client_name: (b.client_name as string | null) || (b.ad_account_id as string),
+            cpa_target: b.cpa_target as number,
+            error: "não deu tempo nesta rodada (limite de 60s do servidor) — fica pra próxima",
+            retried: false,
+            notes: [],
+          });
+          continue;
+        }
+        await runAccount(b);
+      }
     }),
   );
 
   let paused: PausedCreative[] = [];
   if (flagged.length > 0) {
-    const results = await setEntitiesStatusSequential(
-      token,
-      flagged.map((f) => ({ id: f.ad_id, type: "ad" as const })),
-      "PAUSED",
-    );
+    // Etapa 207: 1s entre uma pausa e outra (era 3s) e para antes do limite do servidor.
+    const results: { id: string; ok: boolean; error?: string }[] = [];
+    for (let i = 0; i < flagged.length; i++) {
+      if (Date.now() > HARD_DEADLINE) {
+        results.push({ id: flagged[i].ad_id, ok: false, error: "não deu tempo de pausar nesta rodada — fica pra próxima" });
+        continue;
+      }
+      results.push(...(await setEntitiesStatusSequential(token, [{ id: flagged[i].ad_id, type: "ad" as const }], "PAUSED")));
+      if (i < flagged.length - 1) await new Promise((r) => setTimeout(r, 1000));
+    }
     const byId = new Map(results.map((r) => [r.id, r]));
     paused = flagged.map((f) => {
       const r = byId.get(f.ad_id);
