@@ -26,6 +26,14 @@ export interface AuditRunSummary {
   checkedAccounts: number;
 }
 
+// Etapa 205: o que NÃO é erro de verdade não vira aviso (nem no grupo nem na aba Alertas) — anúncio em análise /
+// pré-aprovado e "conjunto ativo sem anúncio ativo" (a verificação continua pausando esse conjunto, só não avisa).
+// Avisa: reprovado, com problemas, pendência de cobrança.
+const NOT_AN_ERROR = new Set(["Anúncio em análise", "Anúncio pré-aprovado (em análise)", "Conjunto ativo sem anúncio ativo"]);
+function isRealError(i: AuditErrorIssue): boolean {
+  return !i.reasons.some((r) => NOT_AN_ERROR.has(r));
+}
+
 function inFilterList(ids: string[]): string {
   return `(${ids.join(",")})`;
 }
@@ -211,6 +219,7 @@ export async function runErrorAudit(
 
       for (const i of issues) {
         if (seen.has(i.entity_id)) continue; // já avisado
+        if (!isRealError(i)) continue; // em análise / sem anúncio ativo: não é erro, não avisa
         const r = i.adset_id ? byId.get(i.adset_id) : undefined;
         const note =
           i.entity_type === "adset" && i.adset_id
