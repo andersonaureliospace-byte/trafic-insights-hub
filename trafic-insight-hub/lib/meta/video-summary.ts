@@ -1,4 +1,5 @@
 // Junta os números de cada conta numa visão por VÍDEO (Etapa 160) — código puro, sem Meta, testável.
+// Etapa 211: por padrão tudo olha os ÚLTIMOS 30 DIAS (até ontem) — "bom" e "caro" usam o CPA médio dos 30 dias.
 // Situações (limites ajustáveis nas constantes abaixo):
 //  - "alta": bom desempenho (CPA do mês ou dos 7 dias abaixo da meta da conta, com conversas suficientes) em pelo menos uma conta e
 //    NENHUM anúncio ativo dele em conta nenhuma — ou seja, é um vídeo bom parado;
@@ -36,6 +37,7 @@ export interface VideoAccountRow {
   activeAdsets: number;
   cpaMonth: number | null;
   cpa7d: number | null;
+  cpa30: number | null; // Etapa 211: CPA médio dos 30 dias
   spend30: number;
   conv30: number;
   daysSinceCreated: number | null;
@@ -49,6 +51,7 @@ export interface VideoSummary {
   tags: VideoTag[];
   cpa7d: number | null; // da rede de contas
   cpaMonth: number | null;
+  cpa30: number | null; // Etapa 211: CPA médio dos 30 dias (rede de contas)
   convMonth: number;
   spend30: number;
   conv30: number;
@@ -83,12 +86,13 @@ export function summarizeVideos(inputs: AccountVideoInput[], bank: readonly stri
     for (const a of inputs) {
       const s = a.stats.find((x) => x.key === m.key);
       if (!s) {
-        rows.push({ accountId: a.accountId, clientName: a.clientName, cpaTarget: a.cpaTarget, state: "nunca", activeAds: 0, activeAdsets: 0, cpaMonth: null, cpa7d: null, spend30: 0, conv30: 0, daysSinceCreated: null, good: false });
+        rows.push({ accountId: a.accountId, clientName: a.clientName, cpaTarget: a.cpaTarget, state: "nunca", activeAds: 0, activeAdsets: 0, cpaMonth: null, cpa7d: null, cpa30: null, spend30: 0, conv30: 0, daysSinceCreated: null, good: false });
         continue;
       }
       const cm = cpa(s.month);
       const c7 = cpa(s.d7);
-      const good = (c7 != null && s.d7.conv >= GOOD_MIN_CONV && c7 < a.cpaTarget) || (cm != null && s.month.conv >= GOOD_MIN_CONV && cm < a.cpaTarget);
+      const c30v = cpa(s.d30);
+      const good = c30v != null && s.d30.conv >= GOOD_MIN_CONV && c30v < a.cpaTarget;
       if (s.activeAdsets >= 2) repeated = true;
       spendMonth += s.month.spend; convMonth += s.month.conv;
       spend7 += s.d7.spend; conv7 += s.d7.conv;
@@ -103,6 +107,7 @@ export function summarizeVideos(inputs: AccountVideoInput[], bank: readonly stri
         activeAdsets: s.activeAdsets,
         cpaMonth: cm,
         cpa7d: c7,
+        cpa30: c30v,
         spend30: s.d30.spend,
         conv30: s.d30.conv,
         daysSinceCreated: daysSince(s.lastCreated, now),
@@ -125,6 +130,7 @@ export function summarizeVideos(inputs: AccountVideoInput[], bank: readonly stri
       tags,
       cpa7d: conv7 > 0 ? spend7 / conv7 : null,
       cpaMonth: convMonth > 0 ? spendMonth / convMonth : null,
+      cpa30: conv30 > 0 ? spend30 / conv30 : null,
       convMonth,
       spend30,
       conv30,
@@ -136,13 +142,13 @@ export function summarizeVideos(inputs: AccountVideoInput[], bank: readonly stri
     });
   }
   const weight = (v: VideoSummary) => (v.tags.includes("alta") ? 0 : v.tags.includes("parado") ? 1 : v.tags.includes("pouco") ? 2 : v.tags.includes("repetido") ? 3 : 4);
-  return out.sort((a, b) => weight(a) - weight(b) || (a.cpa7d ?? 9999) - (b.cpa7d ?? 9999) || a.label.localeCompare(b.label, "pt-BR"));
+  return out.sort((a, b) => weight(a) - weight(b) || (a.cpa30 ?? 9999) - (b.cpa30 ?? 9999) || a.label.localeCompare(b.label, "pt-BR"));
 }
 
 // ---------- Visão por CONTA (Etapa 162) ----------
 // Pra cada conta, cada vídeo do banco ganha etiquetas olhando só aquela conta:
-//  - "reativar": bom na conta (CPA 7 dias ou do mês abaixo da meta, 3+ conversas) e SEM anúncio ativo nela;
-//  - "caro": gasto com CPA (mês, ou 30 dias se o mês não tem conversas suficientes) R$ CARO_MARGEM+ acima da meta — evitar trazer de volta;
+//  - "reativar": bom na conta (CPA médio dos 30 dias abaixo da meta, 3+ conversas) e SEM anúncio ativo nela;
+//  - "caro": CPA médio dos 30 dias (3+ conversas) R$ CARO_MARGEM+ acima da meta — evitar trazer de volta;
 //  - "nunca": nunca usado nessa conta (candidato a teste);
 //  - "parado": já usado, sem anúncio ativo e último anúncio criado há mais de RECENT_DAYS dias;
 //  - "pouco": usado, mas com pouco gasto/conversas nos últimos 30 dias na conta;
@@ -190,8 +196,9 @@ export function summarizeAccounts(inputs: AccountVideoInput[], labels: readonly 
       const cm = s ? cpa(s.month) : null;
       const c30 = s ? cpa(s.d30) : null;
       const state: AccountVideoItem["state"] = !s || s.totalAds === 0 ? "nunca" : s.activeAds > 0 ? "ativo" : "pausado";
-      const good = !!s && ((c7 != null && s.d7.conv >= GOOD_MIN_CONV && c7 < a.cpaTarget) || (cm != null && s.month.conv >= GOOD_MIN_CONV && cm < a.cpaTarget));
-      const costRef = !s ? null : s.month.conv >= GOOD_MIN_CONV ? cm : s.d30.conv >= GOOD_MIN_CONV ? c30 : null;
+      // Etapa 211: tudo pelos últimos 30 dias.
+      const good = !!s && c30 != null && s.d30.conv >= GOOD_MIN_CONV && c30 < a.cpaTarget;
+      const costRef = s && s.d30.conv >= GOOD_MIN_CONV ? c30 : null;
       const days = s ? daysSince(s.lastCreated, now) : null;
       const tags: AccountVideoTag[] = [];
       if (good && state !== "ativo") tags.push("reativar");
@@ -219,7 +226,7 @@ export function summarizeAccounts(inputs: AccountVideoInput[], labels: readonly 
       const idx = ACCOUNT_ORDER.findIndex((t) => i.tags.includes(t));
       return idx === -1 ? 9 : idx;
     };
-    items.sort((x, y) => rank(x) - rank(y) || (x.cpa7d ?? 9999) - (y.cpa7d ?? 9999) || x.label.localeCompare(y.label, "pt-BR"));
+    items.sort((x, y) => rank(x) - rank(y) || (x.cpa30 ?? 9999) - (y.cpa30 ?? 9999) || x.label.localeCompare(y.label, "pt-BR"));
     const counts: Record<AccountVideoTag, number> = { reativar: 0, caro: 0, nunca: 0, parado: 0, pouco: 0, repetido: 0 };
     for (const i of items) for (const t of i.tags) counts[t]++;
     out.push({

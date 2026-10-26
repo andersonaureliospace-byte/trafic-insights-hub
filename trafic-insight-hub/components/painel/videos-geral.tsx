@@ -39,7 +39,7 @@ const TAGS: Record<VideoTag, { label: string; cls: string; hint: string }> = {
   alta: {
     label: "Alta performance, parado",
     cls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-    hint: `CPA do mês ou dos 7 dias abaixo da meta (com ${GOOD_MIN_CONV}+ conversas) em alguma conta, e nenhum anúncio ativo dele em conta nenhuma.`,
+    hint: `CPA médio dos últimos 30 dias abaixo da meta (com ${GOOD_MIN_CONV}+ conversas) em alguma conta, e nenhum anúncio ativo dele em conta nenhuma.`,
   },
   parado: {
     label: "Não usado recentemente",
@@ -63,7 +63,7 @@ const CONTA_TAGS: Record<AccountVideoTag, { label: string; short: string; cls: s
     label: "Bom, reativar/duplicar",
     short: "Reativar",
     cls: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
-    hint: `Nessa conta o CPA dos 7 dias ou do mês está abaixo da meta (${GOOD_MIN_CONV}+ conversas) e não há anúncio ativo dele.`,
+    hint: `Nessa conta o CPA médio dos últimos 30 dias está abaixo da meta (${GOOD_MIN_CONV}+ conversas) e não há anúncio ativo dele.`,
   },
   repetido: {
     label: "Ativo em 2+ conjuntos",
@@ -93,7 +93,7 @@ const CONTA_TAGS: Record<AccountVideoTag, { label: string; short: string; cls: s
     label: "Caro (evitar)",
     short: "Caro",
     cls: "bg-zinc-200 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-200",
-    hint: `CPA ${fmtCurrency(CARO_MARGEM)} ou mais acima da meta da conta (mês, ou 30 dias), com ${GOOD_MIN_CONV}+ conversas.`,
+    hint: `CPA ${fmtCurrency(CARO_MARGEM)} ou mais acima da meta da conta (CPA médio dos últimos 30 dias), com ${GOOD_MIN_CONV}+ conversas.`,
   },
 };
 
@@ -386,7 +386,7 @@ export function VideosGeral({ accounts, focusAccountId }: { accounts: Array<{ ac
                 <th className="px-4 py-1.5 font-medium">Vídeo</th>
                 <th className="px-4 py-1.5 font-medium">Situação</th>
                 <th className="px-4 py-1.5 text-right font-medium">CPA 7 dias</th>
-                <th className="px-4 py-1.5 text-right font-medium">CPA mês</th>
+                <th className="px-4 py-1.5 text-right font-medium" title="Custo por conversa médio dos últimos 30 dias (até ontem)">CPA médio 30d</th>
                 <th className="px-4 py-1.5 text-right font-medium">Gasto 30d</th>
                 <th className="px-4 py-1.5 text-right font-medium">Ativo em</th>
                 <th className="px-4 py-1.5 text-right font-medium">Bom em</th>
@@ -412,7 +412,7 @@ export function VideosGeral({ accounts, focusAccountId }: { accounts: Array<{ ac
                       </div>
                     </td>
                     <td className="px-4 py-2 text-right tabular-nums">{cpaTxt(v.cpa7d)}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{cpaTxt(v.cpaMonth)}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{cpaTxt(v.cpa30)}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{fmtCurrency(v.spend30)}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{v.activeAccounts} conta{v.activeAccounts === 1 ? "" : "s"}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{v.goodAccounts} conta{v.goodAccounts === 1 ? "" : "s"}</td>
@@ -434,7 +434,7 @@ export function VideosGeral({ accounts, focusAccountId }: { accounts: Array<{ ac
 
       {focus ? null : (
       <p className="border-t border-zinc-100 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800/60 dark:text-zinc-400">
-        “Bom” = CPA do mês ou dos 7 dias abaixo da Meta CPA da conta, com {GOOD_MIN_CONV}+ conversas. Só entram anúncios com nome no padrão “GERAL | …”
+        “Bom” = CPA médio dos últimos 30 dias abaixo da Meta CPA da conta, com {GOOD_MIN_CONV}+ conversas. Só entram anúncios com nome no padrão “GERAL | …”
         (os nomes antigos e os vídeos fora da lista ficam de fora). Limites usados: parado = mais de {RECENT_DAYS} dias; pouco testado = menos de {fmtCurrency(LOW_SPEND_30D)} ou menos de {LOW_CONV_30D} conversas em 30 dias.
         {data && data.errors.length > 0 ? ` Erro em ${data.errors.length} lote(s)/conta(s): ${data.errors[0].slice(0, 100)}` : ""}
       </p>
@@ -454,7 +454,7 @@ function AccountsTable({ v }: { v: VideoSummary }) {
           <th className="px-3 py-1 font-medium">Conta</th>
           <th className="px-3 py-1 font-medium">Nesta conta</th>
           <th className="px-3 py-1 text-right font-medium">CPA 7 dias</th>
-          <th className="px-3 py-1 text-right font-medium">CPA mês</th>
+          <th className="px-3 py-1 text-right font-medium" title="Custo por conversa médio dos últimos 30 dias (até ontem)">CPA médio 30d</th>
           <th className="px-3 py-1 text-right font-medium">Meta</th>
           <th className="px-3 py-1 text-right font-medium">Gasto 30d</th>
           <th className="px-3 py-1 text-right font-medium">Último anúncio</th>
@@ -477,7 +477,7 @@ function AccountsTable({ v }: { v: VideoSummary }) {
               {r.good ? <span className="ml-2 rounded-full bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">bom aqui</span> : null}
             </td>
             <td className="px-3 py-1.5 text-right tabular-nums">{cpaTxt(r.cpa7d)}</td>
-            <td className="px-3 py-1.5 text-right tabular-nums">{cpaTxt(r.cpaMonth)}</td>
+            <td className="px-3 py-1.5 text-right tabular-nums">{cpaTxt(r.cpa30)}</td>
             <td className="px-3 py-1.5 text-right tabular-nums text-zinc-500">{fmtCurrency(r.cpaTarget)}</td>
             <td className="px-3 py-1.5 text-right tabular-nums">{fmtCurrency(r.spend30)}</td>
             <td className="px-3 py-1.5 text-right text-zinc-500 dark:text-zinc-400">{dayTxt(r.daysSinceCreated)}</td>
@@ -561,7 +561,7 @@ function VideosDaConta({ items, lean = false }: { items: AccountSummary["items"]
           <th className="px-3 py-1 font-medium">Nesta conta</th>
           <th className="px-3 py-1 font-medium">Situação</th>
           <th className="px-3 py-1 text-right font-medium">CPA 7 dias</th>
-          <th className="px-3 py-1 text-right font-medium">CPA mês</th>
+          <th className="px-3 py-1 text-right font-medium" title="Custo por conversa médio dos últimos 30 dias (até ontem)">CPA médio 30d</th>
           {lean ? null : <th className="px-3 py-1 text-right font-medium">Gasto 30d</th>}
           {lean ? null : <th className="px-3 py-1 text-right font-medium">Conv. 30d</th>}
           {lean ? null : <th className="px-3 py-1 text-right font-medium">Último anúncio</th>}
@@ -593,7 +593,7 @@ function VideosDaConta({ items, lean = false }: { items: AccountSummary["items"]
               </div>
             </td>
             <td className="px-3 py-1.5 text-right tabular-nums">{cpaTxt(i.cpa7d)}</td>
-            <td className="px-3 py-1.5 text-right tabular-nums">{cpaTxt(i.cpaMonth)}</td>
+            <td className="px-3 py-1.5 text-right tabular-nums">{cpaTxt(i.cpa30)}</td>
             {lean ? null : <td className="px-3 py-1.5 text-right tabular-nums">{fmtCurrency(i.spend30)}</td>}
             {lean ? null : <td className="px-3 py-1.5 text-right tabular-nums">{i.conv30}</td>}
             {lean ? null : <td className="px-3 py-1.5 text-right text-zinc-500 dark:text-zinc-400">{dayTxt(i.daysSinceCreated)}</td>}
