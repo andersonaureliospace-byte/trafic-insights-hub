@@ -23,6 +23,16 @@ export const POST = withRunLog("creatives-no-result", async (request: Request) =
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // Etapa 209: corpo { "step": "analyze" } = 1ª etapa (só analisa e grava a fila; quem pausa é creatives-pause-queue-tick).
+  // Sem corpo = jeito antigo (analisa e pausa na mesma chamada).
+  let queueMode = false;
+  try {
+    const body = (await request.json()) as { step?: string };
+    queueMode = body?.step === "analyze";
+  } catch {
+    // sem corpo
+  }
+
   const supabase = createServiceClient();
   const { data: creds, error: credsErr } = await supabase
     .from("user_meta_credentials")
@@ -30,22 +40,24 @@ export const POST = withRunLog("creatives-no-result", async (request: Request) =
     .not("access_token", "is", null);
   if (credsErr) return NextResponse.json({ error: credsErr.message }, { status: 500 });
 
-  const results: Array<{ userId: string; paused?: number; accounts?: number; error?: string }> = [];
+  const results: Array<{ userId: string; paused?: number; accounts?: number; queued?: number; error?: string }> = [];
   for (const cred of creds ?? []) {
     const userId = cred.user_id as string;
     const token = cred.access_token as string;
     if (!token) continue;
     try {
-      const { paused, sendError, diag } = await checkAndPauseCreatives(supabase, userId, token, { send: true, onlyNoResult: true });
+      const { paused, sendError, diag, queued } = await checkAndPauseCreatives(supabase, userId, token, { send: true, onlyNoResult: true, mode: queueMode ? "queue" : "full" });
       // Etapa 206: conta em que a busca na Meta falhou (mesmo tentando de novo) aparece como erro no Registro das automações.
       const failed = diag.filter((x) => x.error).map((x) => `${x.client_name}: ${x.error}`);
-      const notPaused = paused.filter((p) => !p.ok).length;
-      const errText = [sendError, failed.length ? `contas não verificadas — ${failed.join(" | ")}` : null, notPaused ? `${notPaused} criativo(s) não pausado(s) (erro ou falta de tempo)` : null].filter(Boolean).join(" · ");
-      results.push({ userId, paused: paused.filter((p) => p.ok).length, accounts: diag.length, ...(errText ? { error: errText } : {}) });
+      const notPausedList = paused.filter((p) => !p.ok);
+      const notPaused = notPausedList.length;
+      const whyNot = [...new Set(notPausedList.map((p) => p.error ?? "erro"))].slice(0, 2).join(" / ");
+      const errText = [sendError, failed.length ? `contas não verificadas — ${failed.join(" | ")}` : null, notPaused ? `${notPaused} criativo(s) não pausado(s): ${whyNot}` : null].filter(Boolean).join(" · ");
+      results.push({ userId, paused: paused.filter((p) => p.ok).length, accounts: diag.length, ...(queueMode ? { queued } : {}), ...(errText ? { error: errText } : {}) });
     } catch (e) {
       results.push({ userId, error: (e as Error).message });
     }
   }
 
-  return NextResponse.json({ processed: results.length, results });
+  return NextResponse.json({ mode: queueMode ? "analisar" : "completo", processed: results.length, results });
 });

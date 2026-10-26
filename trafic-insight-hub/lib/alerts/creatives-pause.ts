@@ -89,11 +89,25 @@ export interface CreativeAccountDiag {
   notes: string[];
 }
 
+interface FlaggedCreative {
+  ad_account_id: string;
+  client_name: string;
+  ad_id: string;
+  ad_name: string;
+  spend: number;
+  conversations: number | null;
+  cost_per_conversation: number | null;
+  good_history: boolean;
+  cpa_target: number;
+  age_hours: number | null;
+}
+
 export interface CheckCreativesPauseResult {
   paused: PausedCreative[];
   held: HeldCreative[];
   sendError: string | null;
   diag: CreativeAccountDiag[];
+  queued: number; // Etapa 209: no modo "queue", quantos criativos foram pra fila (a pausa é a 2ª chamada)
 }
 
 export async function checkAndPauseCreatives(
@@ -104,7 +118,8 @@ export async function checkAndPauseCreatives(
   // resultado). Roda com mais frequência (de hora em hora) que a verificação completa, já que o
   // criativo ruim (com conversa, só caro) ainda pode reverter.
   // onlyAccountId (Etapa 206): varre só essa conta (botão "Verificar criativos de uma conta" no Registro das automações).
-  opts: { send: boolean; onlyNoResult?: boolean; onlyAccountId?: string } = { send: false },
+  // mode "queue" (Etapa 209): só analisa e grava a fila (creative_pause_queue); quem pausa é processCreativePauseQueue.
+  opts: { send: boolean; onlyNoResult?: boolean; onlyAccountId?: string; mode?: "full" | "queue" } = { send: false },
 ): Promise<CheckCreativesPauseResult> {
   const { data: selected, error: selectedErr } = await db
     .from("user_selected_accounts")
@@ -114,7 +129,7 @@ export async function checkAndPauseCreatives(
   const off = await inactiveAccountIds(db, userId);
   let accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
   if (opts.onlyAccountId) accountIds = accountIds.filter((id) => id === opts.onlyAccountId);
-  if (accountIds.length === 0) return { paused: [], held: [], sendError: null, diag: [] };
+  if (accountIds.length === 0) return { paused: [], held: [], sendError: null, diag: [], queued: 0 };
 
   const { data: bindings, error: bindingsErr } = await db
     .from("account_bindings")
@@ -123,7 +138,7 @@ export async function checkAndPauseCreatives(
     .in("ad_account_id", accountIds)
     .not("cpa_target", "is", null);
   if (bindingsErr) throw bindingsErr;
-  if (!bindings || bindings.length === 0) return { paused: [], held: [], sendError: null, diag: [] };
+  if (!bindings || bindings.length === 0) return { paused: [], held: [], sendError: null, diag: [], queued: 0 };
 
   const nowDate = new Date();
   // Etapa 158: no fim de semana a escada é 1º reduzir o orçamento do conjunto (R$10), 2º pausar o criativo (6h depois,
@@ -141,18 +156,7 @@ export async function checkAndPauseCreatives(
     }
   }
   const standbyLines: string[] = [];
-  const flagged: {
-    ad_account_id: string;
-    client_name: string;
-    ad_id: string;
-    ad_name: string;
-    spend: number;
-    conversations: number | null;
-    cost_per_conversation: number | null;
-    good_history: boolean;
-    cpa_target: number;
-    age_hours: number | null;
-  }[] = [];
+  const flagged: FlaggedCreative[] = [];
   const heldAll: HeldCreative[] = [];
   const diag: CreativeAccountDiag[] = [];
   const metric = (r: { spend: number; conversations: number | null; cost_per_conversation: number | null }) =>
@@ -168,6 +172,9 @@ export async function checkAndPauseCreatives(
   const ANALYSIS_DEADLINE = startedAt + 35_000;
   const HARD_DEADLINE = startedAt + 52_000;
   const queue = [...bindings].sort(() => Math.random() - 0.5);
+  const pauseResults = new Map<string, { id: string; ok: boolean; error?: string }>();
+  const queueMode = opts.mode === "queue";
+  let queued = 0;
   const runAccount = async (b: (typeof bindings)[number]) => {
       const accountId = b.ad_account_id as string;
       const cpaTarget = b.cpa_target as number;
@@ -175,8 +182,10 @@ export async function checkAndPauseCreatives(
       const d: CreativeAccountDiag = { ad_account_id: accountId, client_name: clientName, cpa_target: cpaTarget, error: null, retried: false, notes: [] };
       diag.push(d);
       // Etapa 206: se a busca na Meta falhar, tenta a conta de novo uma vez (antes pulava a conta calada).
+      const accFlagged: typeof flagged = [];
       const attempt = async () => {
         d.notes = [];
+        accFlagged.length = 0;
         const rows = await getCreativeCostAnalysis(token, accountId, DATE_PRESET);
         const allActive = rows.filter((r) => STATUSES.includes((r.status ?? "").toUpperCase()));
         const active = allActive.filter((r) => !opts.onlyNoResult || !r.conversations || r.conversations <= 0);
@@ -325,8 +334,8 @@ export async function checkAndPauseCreatives(
               cpa_target: cpaTarget,
             };
             if (pauseIds.has(t.r.id)) {
-              d.notes.push(`${t.r.name} (${metric(t.r)}): PAUSADO`);
-              flagged.push({
+              d.notes.push(`${t.r.name} (${metric(t.r)}): PAUSAR`);
+              accFlagged.push({
                 ...base,
                 good_history: t.goodHistory,
                 age_hours: t.r.created_time ? Math.round((nowDate.getTime() - new Date(t.r.created_time).getTime()) / 3_600_000) : null,
@@ -353,7 +362,33 @@ export async function checkAndPauseCreatives(
         } catch (e) {
           d.error = (e as Error).message.slice(0, 300);
           console.error("creatives-pause analysis err (non-fatal)", accountId, e);
+          return;
         }
+      }
+      if (queueMode) {
+        // Etapa 209: grava na fila (a 2ª chamada pausa). Falha ao gravar = erro da conta no Registro.
+        try {
+          await enqueueCreatives(db, userId, accFlagged, !!opts.onlyNoResult);
+          queued += accFlagged.length;
+          d.notes = d.notes.map((n) => (n.endsWith(": PAUSAR") ? n.replace(/: PAUSAR$/, ": NA FILA PRA PAUSAR") : n));
+        } catch (e) {
+          d.error = (e as Error).message.slice(0, 300);
+        }
+        return;
+      }
+      // Etapa 208: pausa os criativos DESTA conta logo depois de analisá-la (antes ficava tudo pro fim da rodada e o tempo
+      // acabava antes de pausar). 1s entre uma pausa e outra; para no limite do servidor.
+      for (let i = 0; i < accFlagged.length; i++) {
+        const f = accFlagged[i];
+        flagged.push(f);
+        if (Date.now() > HARD_DEADLINE) {
+          pauseResults.set(f.ad_id, { id: f.ad_id, ok: false, error: "não deu tempo de pausar nesta rodada — fica pra próxima" });
+          continue;
+        }
+        const [r] = await setEntitiesStatusSequential(token, [{ id: f.ad_id, type: "ad" as const }], "PAUSED");
+        pauseResults.set(f.ad_id, r);
+        d.notes = d.notes.map((n) => (n.startsWith(`${f.ad_name} (`) && n.endsWith(": PAUSAR") ? n.replace(/: PAUSAR$/, r.ok ? ": PAUSADO" : `: falhou ao pausar (${r.error ?? "erro"})`) : n));
+        if (i < accFlagged.length - 1) await new Promise((res) => setTimeout(res, 1000));
       }
   };
   await Promise.all(
@@ -378,16 +413,8 @@ export async function checkAndPauseCreatives(
 
   let paused: PausedCreative[] = [];
   if (flagged.length > 0) {
-    // Etapa 207: 1s entre uma pausa e outra (era 3s) e para antes do limite do servidor.
-    const results: { id: string; ok: boolean; error?: string }[] = [];
-    for (let i = 0; i < flagged.length; i++) {
-      if (Date.now() > HARD_DEADLINE) {
-        results.push({ id: flagged[i].ad_id, ok: false, error: "não deu tempo de pausar nesta rodada — fica pra próxima" });
-        continue;
-      }
-      results.push(...(await setEntitiesStatusSequential(token, [{ id: flagged[i].ad_id, type: "ad" as const }], "PAUSED")));
-      if (i < flagged.length - 1) await new Promise((r) => setTimeout(r, 1000));
-    }
+    // Etapa 208: as pausas já foram feitas conta a conta (pauseResults).
+    const results = flagged.map((f) => pauseResults.get(f.ad_id) ?? { id: f.ad_id, ok: false, error: "não pausado" });
     const byId = new Map(results.map((r) => [r.id, r]));
     paused = flagged.map((f) => {
       const r = byId.get(f.ad_id);
@@ -408,26 +435,7 @@ export async function checkAndPauseCreatives(
   }
 
   const pausedOk = paused.filter((p) => p.ok).sort((a, b) => b.spend - a.spend);
-
-  // Etapa 158: registro das pausas (o backup da rodada seguinte reativa quem melhorou).
-  if (pausedOk.length > 0) {
-    const convById = new Map(flagged.map((f) => [f.ad_id, f.conversations]));
-    await logAutoPauses(
-      db,
-      userId,
-      pausedOk.map((p) => ({
-        entity_type: "ad" as const,
-        entity_id: p.ad_id,
-        ad_account_id: p.ad_account_id,
-        client_name: p.client_name,
-        entity_name: p.ad_name,
-        spend: p.spend,
-        conversations: convById.get(p.ad_id) ?? null,
-        cpa: p.cost_per_conversation,
-        reason: "desempenho",
-      })),
-    );
-  }
+  if (pausedOk.length > 0) await logCreativePauses(db, userId, pausedOk, new Map(flagged.map((f) => [f.ad_id, f.conversations])));
 
   let sendError: string | null = null;
   if (opts.send && standbyLines.length > 0) {
@@ -449,44 +457,175 @@ export async function checkAndPauseCreatives(
         h.cost_per_conversation != null ? `${fmtCurrency(h.cost_per_conversation)}/conversa` : `gasto ${fmtCurrency(h.spend)} sem conversa`
       } (meta ${fmtCurrency(h.cpa_target)})`,
   );
+  if (opts.send && (pausedOk.length > 0 || heldLines.length > 0)) {
+    try {
+      await publishPausedAlert(db, userId, pausedOk, heldLines, !!opts.onlyNoResult);
+    } catch (e) {
+      sendError = (e as Error).message;
+    }
+  }
+
+  return { paused, held: heldAll, sendError, diag, queued };
+}
+
+// Etapa 158: registro das pausas (o backup da rodada seguinte reativa quem melhorou).
+async function logCreativePauses(db: Db, userId: string, pausedOk: PausedCreative[], convById: Map<string, number | null>) {
+  await logAutoPauses(
+    db,
+    userId,
+    pausedOk.map((p) => ({
+      entity_type: "ad" as const,
+      entity_id: p.ad_id,
+      ad_account_id: p.ad_account_id,
+      client_name: p.client_name,
+      entity_name: p.ad_name,
+      spend: p.spend,
+      conversations: convById.get(p.ad_id) ?? null,
+      cpa: p.cost_per_conversation,
+      reason: "desempenho",
+    })),
+  );
+}
+
+// Alerta "Criativos pausados automaticamente" (+ o que o freio manteve ativo).
+async function publishPausedAlert(db: Db, userId: string, pausedOk: PausedCreative[], heldLines: string[], onlyNoResult: boolean) {
   const heldBlock =
     heldLines.length > 0
       ? `\n\n🛑 Freio de segurança (mais de ${Math.round(BRAKE_MAX_SHARE * 100)}% do conjunto passaria do limite): ${heldLines.length} criativo${
           heldLines.length > 1 ? "s" : ""
         } acima do limite ${heldLines.length > 1 ? "foram mantidos ativos" : "foi mantido ativo"} por segurança, os menos ruins — a próxima rodada reavalia:\n${heldLines.join("\n")}`
       : "";
-  if (opts.send && (pausedOk.length > 0 || heldLines.length > 0)) {
-    try {
-      const lines = pausedOk.map((p, i) => {
-        const metric =
-          p.cost_per_conversation != null
-            ? `${fmtCurrency(p.cost_per_conversation)}/conversa`
-            : `gasto ${fmtCurrency(p.spend)} sem conversa`;
-        const extra = [
-          p.cpa_target != null ? `meta ${fmtCurrency(p.cpa_target)}` : null,
-          p.age_hours != null ? `criado há ${p.age_hours < 48 ? `${p.age_hours}h` : `${Math.round(p.age_hours / 24)} d`}` : null,
-        ]
-          .filter(Boolean)
-          .join(" · ");
-        return `${i + 1}. ${p.client_name} — ${p.ad_name}: ${metric}${extra ? ` (${extra})` : ""}${
-          p.good_history ? " · 7 dias bom, mas acima nos 2 dias + hoje" : ""
-        }`;
-      });
-      await publishAlert(db, userId, {
-        kind: opts.onlyNoResult ? "creatives-no-result" : "creatives-pause",
-        title:
-          pausedOk.length > 0
-            ? `⏸️ ${
-                opts.onlyNoResult ? "Criativos sem resultado pausados automaticamente (gasto acima da meta sem nenhuma conversa, ontem + hoje)" : "Criativos pausados automaticamente (CPA acima da meta ontem + hoje)"
-              } — ${pausedOk.length} anúncio${pausedOk.length > 1 ? "s" : ""}`
-            : `🛑 Freio de segurança: criativos acima do limite mantidos ativos — ${heldLines.length}`,
-        body: `${lines.join("\n")}${heldBlock}`.trim(),
-        count: Math.max(pausedOk.length, heldLines.length),
-      });
-    } catch (e) {
-      sendError = (e as Error).message;
+  const lines = pausedOk.map((p, i) => {
+    const metric =
+      p.cost_per_conversation != null ? `${fmtCurrency(p.cost_per_conversation)}/conversa` : `gasto ${fmtCurrency(p.spend)} sem conversa`;
+    const extra = [
+      p.cpa_target != null ? `meta ${fmtCurrency(p.cpa_target)}` : null,
+      p.age_hours != null ? `criado há ${p.age_hours < 48 ? `${p.age_hours}h` : `${Math.round(p.age_hours / 24)} d`}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return `${i + 1}. ${p.client_name} — ${p.ad_name}: ${metric}${extra ? ` (${extra})` : ""}${p.good_history ? " · 7 dias bom, mas acima nos 2 dias + hoje" : ""}`;
+  });
+  await publishAlert(db, userId, {
+    kind: onlyNoResult ? "creatives-no-result" : "creatives-pause",
+    title:
+      pausedOk.length > 0
+        ? `⏸️ ${
+            onlyNoResult
+              ? "Criativos sem resultado pausados automaticamente (gasto acima da meta sem nenhuma conversa, ontem + hoje)"
+              : "Criativos pausados automaticamente (CPA acima da meta ontem + hoje)"
+          } — ${pausedOk.length} anúncio${pausedOk.length > 1 ? "s" : ""}`
+        : `🛑 Freio de segurança: criativos acima do limite mantidos ativos — ${heldLines.length}`,
+    body: `${lines.join("\n")}${heldBlock}`.trim(),
+    count: Math.max(pausedOk.length, heldLines.length),
+  });
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Etapa 209: DUAS ETAPAS. 1ª chamada (mode "queue"): analisa e grava a fila em creative_pause_queue, sem pausar.
+// 2ª chamada (processCreativePauseQueue): lê a fila e pausa um por um (1s entre cada), até o limite de tempo. O que
+// sobrar fica "pending" e a próxima chamada continua. Cada etapa tem os 60s inteiros do servidor.
+const QUEUE_TABLE = "creative_pause_queue";
+const QUEUE_HARD_DEADLINE_MS = 50_000;
+
+async function enqueueCreatives(db: Db, userId: string, items: FlaggedCreative[], onlyNoResult: boolean): Promise<void> {
+  if (items.length === 0) return;
+  const now = new Date().toISOString();
+  const { error } = await db.from(QUEUE_TABLE).upsert(
+    items.map((f) => ({
+      user_id: userId,
+      ad_id: f.ad_id,
+      ad_account_id: f.ad_account_id,
+      client_name: f.client_name,
+      ad_name: f.ad_name,
+      spend: f.spend,
+      conversations: f.conversations,
+      cost_per_conversation: f.cost_per_conversation,
+      cpa_target: f.cpa_target,
+      good_history: f.good_history,
+      age_hours: f.age_hours,
+      kind: onlyNoResult ? "no-result" : "cpa",
+      status: "pending",
+      error: null,
+      queued_at: now,
+      processed_at: null,
+    })),
+    { onConflict: "user_id,ad_id" },
+  );
+  if (error) {
+    throw new Error(`Não consegui gravar a fila de pausas (${error.message}). Rode a migration 0038_creative_pause_queue.sql no Supabase.`);
+  }
+}
+
+export interface QueueRunResult {
+  paused: PausedCreative[];
+  remaining: number;
+  sendError: string | null;
+}
+
+export async function processCreativePauseQueue(db: Db, userId: string, token: string, opts: { send: boolean }): Promise<QueueRunResult> {
+  const startedAt = Date.now();
+  const { data, error } = await db
+    .from(QUEUE_TABLE)
+    .select("ad_id, ad_account_id, client_name, ad_name, spend, conversations, cost_per_conversation, cpa_target, good_history, age_hours, kind")
+    .eq("user_id", userId)
+    .eq("status", "pending")
+    .order("queued_at", { ascending: true })
+    .limit(200);
+  if (error) throw new Error(`Fila de pausas indisponível (${error.message}). Rode a migration 0038_creative_pause_queue.sql no Supabase.`);
+  const items = data ?? [];
+  const paused: (PausedCreative & { kind: string; conversations: number | null })[] = [];
+  let remaining = 0;
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if (Date.now() - startedAt > QUEUE_HARD_DEADLINE_MS) {
+      remaining = items.length - i;
+      break;
+    }
+    const [r] = await setEntitiesStatusSequential(token, [{ id: it.ad_id as string, type: "ad" as const }], "PAUSED");
+    await db
+      .from(QUEUE_TABLE)
+      .update({ status: r.ok ? "paused" : "failed", error: r.ok ? null : (r.error ?? "erro"), processed_at: new Date().toISOString() })
+      .eq("user_id", userId)
+      .eq("ad_id", it.ad_id as string);
+    paused.push({
+      ad_account_id: it.ad_account_id as string,
+      client_name: (it.client_name as string | null) ?? (it.ad_account_id as string),
+      ad_id: it.ad_id as string,
+      ad_name: (it.ad_name as string | null) ?? (it.ad_id as string),
+      spend: Number(it.spend ?? 0),
+      cost_per_conversation: it.cost_per_conversation != null ? Number(it.cost_per_conversation) : null,
+      good_history: !!it.good_history,
+      cpa_target: it.cpa_target != null ? Number(it.cpa_target) : undefined,
+      age_hours: it.age_hours != null ? Number(it.age_hours) : null,
+      ok: r.ok,
+      error: r.ok ? undefined : (r.error ?? "erro"),
+      kind: (it.kind as string) ?? "cpa",
+      conversations: it.conversations != null ? Number(it.conversations) : null,
+    });
+    if (i < items.length - 1) await new Promise((res) => setTimeout(res, 1000));
+  }
+  const pausedOk = paused.filter((p) => p.ok).sort((a, b) => b.spend - a.spend);
+  if (pausedOk.length > 0) await logCreativePauses(db, userId, pausedOk, new Map(paused.map((p) => [p.ad_id, p.conversations])));
+  // Limpa da fila o que já foi processado há mais de 3 dias.
+  await db
+    .from(QUEUE_TABLE)
+    .delete()
+    .eq("user_id", userId)
+    .neq("status", "pending")
+    .lt("processed_at", new Date(Date.now() - 3 * 86_400_000).toISOString());
+
+  let sendError: string | null = null;
+  if (opts.send) {
+    for (const kind of ["cpa", "no-result"] as const) {
+      const list = pausedOk.filter((p) => p.kind === kind);
+      if (list.length === 0) continue;
+      try {
+        await publishPausedAlert(db, userId, list, [], kind === "no-result");
+      } catch (e) {
+        sendError = (e as Error).message;
+      }
     }
   }
-
-  return { paused, held: heldAll, sendError, diag };
+  return { paused, remaining, sendError };
 }

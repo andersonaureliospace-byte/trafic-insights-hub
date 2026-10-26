@@ -17,6 +17,7 @@ export const RUN_TTL_DAYS = 30;
 const AUTOMATION_KINDS: Record<string, string[]> = {
   "creatives-pause": ["creatives-pause", "adsets-cut"],
   "creatives-no-result": ["creatives-no-result", "adsets-cut"],
+  "creatives-pause-queue": ["creatives-pause", "creatives-no-result"],
   "adsets-pause": ["adsets-paused", "adsets-cut", "adsets-cut-failed", "adsets-no-spend"],
   "pause-backup": ["pause-backup"],
   "low-budget": ["low-budget"],
@@ -50,6 +51,9 @@ const FIELD_LABELS: Record<string, string> = {
   cut: "cortados",
   reactivated: "reativados",
   sent: "enviados",
+  queued: "na fila",
+  remaining: "pendentes",
+  accounts: "contas",
 };
 
 type Json = Record<string, unknown>;
@@ -122,7 +126,7 @@ async function logRuns(automation: string, startedAt: Date, res: Response): Prom
     const nums = numbersLine(entry);
     const summary =
       status === "error"
-        ? errors.join(" | ")
+        ? [...errors, ...alerts.map((x) => x.title)].join(" | ") // Etapa 208: erro + o que a rodada fez mesmo assim
         : status === "changed"
           ? alerts.map((a) => a.title).join(" | ")
           : `Verificou — nenhuma alteração${nums ? ` (${nums})` : ""}`;

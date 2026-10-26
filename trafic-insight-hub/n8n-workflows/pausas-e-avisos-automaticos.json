@@ -73,7 +73,10 @@
         },
         "options": {
           "timeout": 120000
-        }
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"step\": \"analyze\" }"
       },
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
@@ -82,7 +85,7 @@
         60
       ],
       "id": "1cf97a87-5325-493c-ab75-647ca0460e11",
-      "name": "Pausar criativos acima da meta (e sem resultado)",
+      "name": "Analisar criativos (1ª etapa — monta a fila)",
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000,
@@ -108,7 +111,7 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
-        900,
+        1050,
         60
       ],
       "id": "2e9048b9-8181-425e-9bab-5f6137122ef5",
@@ -1535,6 +1538,36 @@
       "retryOnFail": true,
       "maxTries": 2,
       "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU_DOMINIO/api/public/hooks/creatives-pause-queue-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        750,
+        60
+      ],
+      "id": "7f1c2b9e-1a4d-4f7a-9c3e-2b5d8e6a0f11",
+      "name": "Pausar criativos da fila (2ª etapa)",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000,
+      "onError": "continueRegularOutput"
     }
   ],
   "pinData": {},
@@ -1544,17 +1577,6 @@
         [
           {
             "node": "Backup: reativar o que melhorou",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Pausar criativos acima da meta (e sem resultado)": {
-      "main": [
-        [
-          {
-            "node": "Pausar conjuntos",
             "type": "main",
             "index": 0
           }
@@ -1697,7 +1719,7 @@
       "main": [
         [
           {
-            "node": "Pausar criativos acima da meta (e sem resultado)",
+            "node": "Analisar criativos (1ª etapa — monta a fila)",
             "type": "main",
             "index": 0
           }
@@ -1808,6 +1830,28 @@
         [
           {
             "node": "Voltar conjuntos do standby pra R$15",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analisar criativos (1ª etapa — monta a fila)": {
+      "main": [
+        [
+          {
+            "node": "Pausar criativos da fila (2ª etapa)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pausar criativos da fila (2ª etapa)": {
+      "main": [
+        [
+          {
+            "node": "Pausar conjuntos",
             "type": "main",
             "index": 0
           }

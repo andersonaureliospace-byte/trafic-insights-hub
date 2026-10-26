@@ -4,6 +4,7 @@
 export const AUTOMATION_LABELS: Record<string, string> = {
   "creatives-pause": "Pausa de criativos (CPA)",
   "creatives-no-result": "Criativos sem resultado",
+  "creatives-pause-queue": "Pausa de criativos (fila — 2ª etapa)",
   "adsets-pause": "Pausa/corte de conjuntos",
   "pause-backup": "Backup (reativação)",
   "low-budget": "Invest. diário ≤ 55% do Ritmo",
