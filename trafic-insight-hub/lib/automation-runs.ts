@@ -122,13 +122,17 @@ async function logRuns(automation: string, startedAt: Date, res: Response): Prom
       alerts = (data ?? []).map((a) => ({ kind: a.kind as string, title: a.title as string, count: (a.item_count as number) ?? 1 }));
     }
     const errors = collectErrors(entry);
-    const status = errors.length ? "error" : alerts.length ? "changed" : "no-change";
+    // Etapa 210: 1ª etapa da pausa de criativos — mandar criativos pra fila conta como "mexeu em algo".
+    const queued = typeof entry.queued === "number" ? entry.queued : 0;
+    const queuedText = queued > 0 ? `${queued} criativo${queued > 1 ? "s" : ""} na fila pra pausar (a 2ª etapa pausa)` : null;
+    const status = errors.length ? "error" : alerts.length || queued > 0 ? "changed" : "no-change";
     const nums = numbersLine(entry);
+    const done = [...(queuedText ? [queuedText] : []), ...alerts.map((x) => x.title)];
     const summary =
       status === "error"
-        ? [...errors, ...alerts.map((x) => x.title)].join(" | ") // Etapa 208: erro + o que a rodada fez mesmo assim
+        ? [...errors, ...done].join(" | ") // Etapa 208: erro + o que a rodada fez mesmo assim
         : status === "changed"
-          ? alerts.map((a) => a.title).join(" | ")
+          ? done.join(" | ")
           : `Verificou — nenhuma alteração${nums ? ` (${nums})` : ""}`;
 
     await db.from("automation_runs").insert({
