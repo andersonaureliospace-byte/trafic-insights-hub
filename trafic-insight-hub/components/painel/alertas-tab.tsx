@@ -133,18 +133,49 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
   const [to, setTo] = useState("");
   // Nomes dos clientes vêm direto do banco (rápido). Antes dependiam da lista da Meta, que demora e deixava o filtro vazio.
   const [boundNames, setBoundNames] = useState<string[]>([]);
+  // Etapa 206: id + nome das contas ativas (botão "Verificar criativos de uma conta" do Registro).
+  const [boundAccounts, setBoundAccounts] = useState<Array<{ id: string; name: string }>>([]);
   useEffect(() => {
     fetch("/api/account-bindings", { cache: "no-store" })
       .then((r) => r.json())
-      .then((d: { bindings?: Array<{ client_name?: string | null; active?: boolean | null }> }) =>
-        setBoundNames(
-          (d.bindings ?? [])
-            .filter((b) => b.active !== false && b.client_name && b.client_name.trim())
-            .map((b) => (b.client_name as string).trim()),
-        ),
-      )
+      .then((d: { bindings?: Array<{ ad_account_id?: string; client_name?: string | null; active?: boolean | null }> }) => {
+        const list = (d.bindings ?? []).filter((b) => b.active !== false && b.client_name && b.client_name.trim());
+        setBoundNames(list.map((b) => (b.client_name as string).trim()));
+        setBoundAccounts(
+          list
+            .filter((b) => b.ad_account_id)
+            .map((b) => ({ id: b.ad_account_id as string, name: (b.client_name as string).trim() }))
+            .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+        );
+      })
       .catch(() => {});
   }, []);
+  const [diagAccount, setDiagAccount] = useState("");
+  const [diagBusy, setDiagBusy] = useState(false);
+  const [diagResult, setDiagResult] = useState<
+    | { error: string }
+    | { paused: number; diag: Array<{ client_name: string; cpa_target: number; error: string | null; retried: boolean; notes: string[] }> }
+    | null
+  >(null);
+  async function runDiag() {
+    if (!diagAccount) return;
+    setDiagBusy(true);
+    setDiagResult(null);
+    try {
+      const res = await fetch("/api/alerts/creatives-pause", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId: diagAccount }),
+      });
+      const d = await res.json();
+      if (d.error) setDiagResult({ error: d.error });
+      else setDiagResult({ paused: ((d.paused ?? []) as Array<{ ok: boolean }>).filter((p) => p.ok).length, diag: d.diag ?? [] });
+    } catch (e) {
+      setDiagResult({ error: (e as Error).message });
+    } finally {
+      setDiagBusy(false);
+    }
+  }
   const accountOptions = useMemo(
     () => [...new Set([...accountNames, ...boundNames])].sort((a, b) => a.localeCompare(b, "pt-BR")),
     [accountNames, boundNames],
@@ -394,6 +425,53 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
 
       {view === "registro" ? (
         <>
+          {/* Etapa 206: força a pausa de criativos numa conta só e mostra o porquê de cada criativo. */}
+          <div className="space-y-2 border-b border-zinc-100 px-4 py-2 text-xs dark:border-zinc-800/60">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-zinc-700 dark:text-zinc-300">Verificar criativos de uma conta:</span>
+              <select
+                value={diagAccount}
+                onChange={(e) => setDiagAccount(e.target.value)}
+                className="h-8 max-w-[260px] rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+              >
+                <option value="">Escolha a conta…</option>
+                {boundAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => void runDiag()}
+                disabled={!diagAccount || diagBusy}
+                title="Roda agora a pausa automática de criativos só nesta conta (pausa de verdade o que estiver na regra) e mostra o motivo de cada criativo."
+                className="h-8 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
+              >
+                {diagBusy ? "Verificando…" : "Verificar e pausar agora"}
+              </button>
+            </div>
+            {diagResult && "error" in diagResult ? <p className="text-red-600 dark:text-red-400">{diagResult.error}</p> : null}
+            {diagResult && "diag" in diagResult ? (
+              diagResult.diag.length === 0 ? (
+                <p className="text-zinc-500">Conta fora da varredura (sem CPA ideal cadastrado, desativada ou fora das contas exibidas).</p>
+              ) : (
+                diagResult.diag.map((x, i) => (
+                  <div key={i} className="rounded-md bg-zinc-50 p-2 dark:bg-zinc-950">
+                    <p className="font-medium text-zinc-800 dark:text-zinc-200">
+                      {x.client_name} · CPA ideal {x.cpa_target.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} · {diagResult.paused} pausado(s)
+                      {x.retried ? " · a Meta falhou na 1ª tentativa" : ""}
+                    </p>
+                    {x.error ? <p className="text-red-600 dark:text-red-400">Não deu pra verificar: {x.error}</p> : null}
+                    <ul className="mt-1 list-disc space-y-0.5 pl-4 text-zinc-600 dark:text-zinc-400">
+                      {x.notes.map((n, j) => (
+                        <li key={j}>{n}</li>
+                      ))}
+                    </ul>
+                  </div>
+                ))
+              )
+            ) : null}
+          </div>
           <p className="border-b border-zinc-100 px-4 py-2 text-xs text-zinc-500 dark:border-zinc-800/60 dark:text-zinc-400">
             Toda vez que uma automação roda fica um registro aqui — inclusive quando ela verificou e não precisou mexer em
             nada. Verde = sem alteração, âmbar = mexeu em algo (gerou alerta), vermelho = deu erro. Fica guardado por 30 dias.

@@ -33,7 +33,6 @@
 
 import type { createClient } from "@/lib/supabase/server";
 import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";
-import { getMultiMediaAds } from "@/lib/meta/multi-media";
 import { decideCreativePause, holdBecauseTodayIsGood } from "@/lib/alerts/creative-decision";
 import { applyPauseBrake, isTripleOverTarget, severityOf, BRAKE_MAX_SHARE } from "@/lib/alerts/pause-brake";
 import { spDate, type DateRangeInput } from "@/lib/meta/client";
@@ -80,10 +79,21 @@ export interface HeldCreative {
   cpa_target: number;
 }
 
+// Etapa 206: diagnóstico por conta — o que a rodada viu e por que cada criativo acima do limite foi (ou não) pausado.
+export interface CreativeAccountDiag {
+  ad_account_id: string;
+  client_name: string;
+  cpa_target: number;
+  error: string | null; // a busca na Meta falhou mesmo depois de tentar de novo
+  retried: boolean;
+  notes: string[];
+}
+
 export interface CheckCreativesPauseResult {
   paused: PausedCreative[];
   held: HeldCreative[];
   sendError: string | null;
+  diag: CreativeAccountDiag[];
 }
 
 export async function checkAndPauseCreatives(
@@ -93,7 +103,8 @@ export async function checkAndPauseCreatives(
   // onlyNoResult (Etapa 105): só criativo SEM nenhuma conversa no período (gastou e não trouxe
   // resultado). Roda com mais frequência (de hora em hora) que a verificação completa, já que o
   // criativo ruim (com conversa, só caro) ainda pode reverter.
-  opts: { send: boolean; onlyNoResult?: boolean } = { send: false },
+  // onlyAccountId (Etapa 206): varre só essa conta (botão "Verificar criativos de uma conta" no Registro das automações).
+  opts: { send: boolean; onlyNoResult?: boolean; onlyAccountId?: string } = { send: false },
 ): Promise<CheckCreativesPauseResult> {
   const { data: selected, error: selectedErr } = await db
     .from("user_selected_accounts")
@@ -101,8 +112,9 @@ export async function checkAndPauseCreatives(
     .eq("user_id", userId);
   if (selectedErr) throw selectedErr;
   const off = await inactiveAccountIds(db, userId);
-  const accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
-  if (accountIds.length === 0) return { paused: [], held: [], sendError: null };
+  let accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
+  if (opts.onlyAccountId) accountIds = accountIds.filter((id) => id === opts.onlyAccountId);
+  if (accountIds.length === 0) return { paused: [], held: [], sendError: null, diag: [] };
 
   const { data: bindings, error: bindingsErr } = await db
     .from("account_bindings")
@@ -111,7 +123,7 @@ export async function checkAndPauseCreatives(
     .in("ad_account_id", accountIds)
     .not("cpa_target", "is", null);
   if (bindingsErr) throw bindingsErr;
-  if (!bindings || bindings.length === 0) return { paused: [], held: [], sendError: null };
+  if (!bindings || bindings.length === 0) return { paused: [], held: [], sendError: null, diag: [] };
 
   const nowDate = new Date();
   // Etapa 158: no fim de semana a escada é 1º reduzir o orçamento do conjunto (R$10), 2º pausar o criativo (6h depois,
@@ -142,13 +154,22 @@ export async function checkAndPauseCreatives(
     age_hours: number | null;
   }[] = [];
   const heldAll: HeldCreative[] = [];
+  const diag: CreativeAccountDiag[] = [];
+  const metric = (r: { spend: number; conversations: number | null; cost_per_conversation: number | null }) =>
+    r.conversations && r.conversations > 0 && r.cost_per_conversation != null
+      ? `${fmtCurrency(r.cost_per_conversation)}/conversa`
+      : `gasto ${fmtCurrency(r.spend)} sem conversa`;
 
   await Promise.all(
     bindings.map(async (b) => {
       const accountId = b.ad_account_id as string;
       const cpaTarget = b.cpa_target as number;
       const clientName = (b.client_name as string | null) || accountId;
-      try {
+      const d: CreativeAccountDiag = { ad_account_id: accountId, client_name: clientName, cpa_target: cpaTarget, error: null, retried: false, notes: [] };
+      diag.push(d);
+      // Etapa 206: se a busca na Meta falhar, tenta a conta de novo uma vez (antes pulava a conta calada).
+      const attempt = async () => {
+        d.notes = [];
         const rows = await getCreativeCostAnalysis(token, accountId, DATE_PRESET);
         const allActive = rows.filter((r) => STATUSES.includes((r.status ?? "").toUpperCase()));
         const active = allActive.filter((r) => !opts.onlyNoResult || !r.conversations || r.conversations <= 0);
@@ -161,31 +182,30 @@ export async function checkAndPauseCreatives(
             decideCreativePause({ cpaTarget, m2: r, m7: undefined, sevenDayFetched: false, m3: undefined, threeDayFetched: false })
               .action !== "none",
         );
+        d.notes.push(`${active.length} criativo(s) ativo(s); ${flaggedRaw.length} acima do limite (${fmtCurrency(cpaTarget + 4)}+ ontem + hoje)`);
         if (flaggedRaw.length === 0) return;
-        // Etapa 195: anúncio com várias mídias dentro (formato flexível) NÃO é pausado nem passa pelo standby — por enquanto.
-        const multi = await getMultiMediaAds(token, accountId);
-        const flaggedAll = flaggedRaw.filter((r) => !multi.adIds.has(r.id));
-        if (flaggedAll.length === 0) return;
+        // Etapa 206: anúncio com várias mídias (formato flexível) voltou a ser pausado normalmente (a trava da Etapa 195 saiu).
+        const flaggedAll = flaggedRaw;
         // Etapa 133: olha só o dia de hoje antes de pausar. Se a busca falhar, não decide no escuro (pula a conta).
         let rowsToday: CreativeCostRow[];
         try {
           const todayStr = spDate(new Date());
           rowsToday = await getCreativeCostAnalysis(token, accountId, { since: todayStr, until: todayStr });
         } catch (e) {
-          console.error("creatives-pause hoje err (não decide sem olhar hoje)", accountId, e);
-          return;
+          throw new Error(`busca de hoje na Meta falhou: ${(e as Error).message.slice(0, 160)}`);
         }
         const byToday = new Map(rowsToday.map((r) => [r.id, r]));
-        const first = flaggedAll.filter(
-          (r) =>
-            !holdBecauseTodayIsGood({ cpaTarget, createdTime: r.created_time, now: nowDate, m2: r, mToday: byToday.get(r.id) }),
-        );
+        const first = flaggedAll.filter((r) => {
+          const hold = holdBecauseTodayIsGood({ cpaTarget, createdTime: r.created_time, now: nowDate, m2: r, mToday: byToday.get(r.id) });
+          if (hold) d.notes.push(`${r.name} (${metric(r)}): mantido — criativo novo e hoje já está dentro da meta`);
+          return !hold;
+        });
         if (first.length === 0) return;
         let rows7: CreativeCostRow[] | null = null;
         try {
           rows7 = await getCreativeCostAnalysis(token, accountId, DATE_PRESET_7D);
         } catch (e) {
-          console.error("creatives-pause 7d err (não decide sem o histórico)", accountId, e);
+          throw new Error(`busca dos 7 dias na Meta falhou: ${(e as Error).message.slice(0, 160)}`);
         }
         const by7 = new Map((rows7 ?? []).map((r) => [r.id, r]));
         const needs3 = rows7 !== null && first.some((r) => {
@@ -200,8 +220,7 @@ export async function checkAndPauseCreatives(
           try {
             rows3 = await getCreativeCostAnalysis(token, accountId, twoDaysPlusToday());
           } catch (e) {
-            console.error("creatives-pause 2d+hoje err (não decide sem o histórico)", accountId, e);
-            rows3 = null;
+            throw new Error(`busca dos 2 dias + hoje na Meta falhou: ${(e as Error).message.slice(0, 160)}`);
           }
         }
         const by3 = new Map((rows3 ?? []).map((r) => [r.id, r]));
@@ -215,7 +234,10 @@ export async function checkAndPauseCreatives(
             m3: by3.get(r.id),
             threeDayFetched: rows3 !== null,
           });
-          if (decision.action !== "pause") continue;
+          if (decision.action !== "pause") {
+            d.notes.push(`${r.name} (${metric(r)}): mantido — ${decision.reason}`);
+            continue;
+          }
           toPause.push({ r, goodHistory: decision.goodHistory });
         }
         // Etapa 158: fim de semana — passo 1 (reduzir o conjunto pra R$10) antes de pausar criativo.
@@ -256,9 +278,13 @@ export async function checkAndPauseCreatives(
                       ? `• ${clientName} — ${t.r.adset_name ?? adsetId}: não reduzi (${out.why})`
                       : `• ${clientName} — ${t.r.adset_name ?? adsetId}: erro ao reduzir (${out.error}) — tento de novo na próxima rodada`,
                 );
+                d.notes.push(`${t.r.name} (${metric(t.r)}): fim de semana — conjunto reduzido pra R$10 primeiro (pausa só 6h depois, se não melhorar)`);
                 continue;
               }
-              if (!standbyStepDone(sb, nowDate)) continue;
+              if (!standbyStepDone(sb, nowDate)) {
+                d.notes.push(`${t.r.name} (${metric(t.r)}): fim de semana — esperando as 6h do standby do conjunto`);
+                continue;
+              }
               kept.push(t);
             }
           }
@@ -292,18 +318,31 @@ export async function checkAndPauseCreatives(
               cpa_target: cpaTarget,
             };
             if (pauseIds.has(t.r.id)) {
+              d.notes.push(`${t.r.name} (${metric(t.r)}): PAUSADO`);
               flagged.push({
                 ...base,
                 good_history: t.goodHistory,
                 age_hours: t.r.created_time ? Math.round((nowDate.getTime() - new Date(t.r.created_time).getTime()) / 3_600_000) : null,
               });
             } else {
+              d.notes.push(`${t.r.name} (${metric(t.r)}): mantido pelo freio de segurança (70% do conjunto)`);
               heldAll.push(base);
             }
           }
         }
-      } catch (e) {
-        console.error("creatives-pause analysis err (non-fatal)", accountId, e);
+      };
+      try {
+        await attempt();
+      } catch (e1) {
+        console.error("creatives-pause conta falhou, tentando de novo", accountId, (e1 as Error).message);
+        d.retried = true;
+        await new Promise((r) => setTimeout(r, 2500));
+        try {
+          await attempt();
+        } catch (e) {
+          d.error = (e as Error).message.slice(0, 300);
+          console.error("creatives-pause analysis err (non-fatal)", accountId, e);
+        }
       }
     }),
   );
@@ -415,5 +454,5 @@ export async function checkAndPauseCreatives(
     }
   }
 
-  return { paused, held: heldAll, sendError };
+  return { paused, held: heldAll, sendError, diag };
 }

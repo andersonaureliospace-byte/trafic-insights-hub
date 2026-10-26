@@ -30,14 +30,17 @@ export const POST = withRunLog("creatives-no-result", async (request: Request) =
     .not("access_token", "is", null);
   if (credsErr) return NextResponse.json({ error: credsErr.message }, { status: 500 });
 
-  const results: Array<{ userId: string; paused?: number; error?: string }> = [];
+  const results: Array<{ userId: string; paused?: number; accounts?: number; error?: string }> = [];
   for (const cred of creds ?? []) {
     const userId = cred.user_id as string;
     const token = cred.access_token as string;
     if (!token) continue;
     try {
-      const { paused, sendError } = await checkAndPauseCreatives(supabase, userId, token, { send: true, onlyNoResult: true });
-      results.push({ userId, paused: paused.filter((p) => p.ok).length, ...(sendError ? { error: sendError } : {}) });
+      const { paused, sendError, diag } = await checkAndPauseCreatives(supabase, userId, token, { send: true, onlyNoResult: true });
+      // Etapa 206: conta em que a busca na Meta falhou (mesmo tentando de novo) aparece como erro no Registro das automações.
+      const failed = diag.filter((x) => x.error).map((x) => `${x.client_name}: ${x.error}`);
+      const errText = [sendError, failed.length ? `contas não verificadas — ${failed.join(" | ")}` : null].filter(Boolean).join(" · ");
+      results.push({ userId, paused: paused.filter((p) => p.ok).length, accounts: diag.length, ...(errText ? { error: errText } : {}) });
     } catch (e) {
       results.push({ userId, error: (e as Error).message });
     }

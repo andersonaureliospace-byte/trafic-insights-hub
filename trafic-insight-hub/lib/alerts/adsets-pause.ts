@@ -30,7 +30,6 @@
 
 import type { createClient } from "@/lib/supabase/server";
 import { getAdSetCostAnalysis, type AdSetCostRow } from "@/lib/meta/adset-cost-analysis";
-import { getMultiMediaAds, type MultiMediaAds } from "@/lib/meta/multi-media";
 import { setEntitiesStatusSequential } from "@/lib/meta/status";
 import { applyBudgetCut, getAdSetBudgetInfo, setAdSetDailyBudget, BIG_BUDGET_CENTS, STANDBY_BUDGET_CENTS } from "@/lib/meta/budget";
 import { allAdsActive, decideAdSetAction, isNewAdSet, needsSevenDayData, passesCutGate } from "@/lib/alerts/adset-decision";
@@ -233,7 +232,6 @@ export async function checkAndPauseAdSets(
           }
         }
         // Etapa 195: consulta (só se algum conjunto da conta chegar a "pausar") quais conjuntos têm anúncio com várias mídias.
-        let multiP: Promise<MultiMediaAds> | null = null;
         for (const r of rows3) {
           const rec = quarantine.get(r.id);
           const r7 = by7.get(r.id);
@@ -313,15 +311,7 @@ export async function checkAndPauseAdSets(
           });
           if (decision.action === "notify_no_spend") noSpend.push({ adset_id: r.id, client_name: clientName, adset_name: r.name });
           if (decision.action === "clear") toClear.push(r.id);
-          // Etapa 195: conjunto com anúncio de várias mídias NÃO é pausado automaticamente (por enquanto). Corte de orçamento não muda.
-          if (decision.action === "pause") {
-            multiP ??= getMultiMediaAds(token, accountId);
-            const multi = await multiP;
-            if (multi.adsetIds.has(r.id)) {
-              console.log("adsets-pause: conjunto com várias mídias, pausa travada", accountId, r.id);
-              continue;
-            }
-          }
+          // Etapa 206: a trava de "várias mídias" (Etapa 195) saiu — esses conjuntos voltam a ser pausados normalmente.
           if (decision.action === "cut" || decision.action === "pause") {
             candidates.push({
               ad_account_id: accountId,

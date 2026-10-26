@@ -7,12 +7,21 @@ import { checkAndPauseCreatives } from "@/lib/alerts/creatives-pause";
 // mesmo comportamento já usado em Auditoria > Erros de veiculação. Por isso
 // só existe o botão "Verificar e pausar agora" (POST), nunca roda sozinho
 // ao abrir a aba.
-export async function POST() {
+// Etapa 206: corpo opcional { "accountId": "..." } = varre só essa conta e devolve o diagnóstico (o que viu e por que
+// cada criativo acima do limite foi ou não pausado). Usado pelo botão do Registro das automações.
+export async function POST(request: Request) {
   try {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
-    const { paused, held, sendError } = await checkAndPauseCreatives(supabase, user.id, token, { send: true });
-    return NextResponse.json({ paused, held, sendError });
+    let onlyAccountId: string | undefined;
+    try {
+      const body = (await request.json()) as { accountId?: string };
+      if (body?.accountId) onlyAccountId = body.accountId;
+    } catch {
+      // sem corpo: todas as contas
+    }
+    const { paused, held, sendError, diag } = await checkAndPauseCreatives(supabase, user.id, token, { send: true, onlyAccountId });
+    return NextResponse.json({ paused, held, sendError, diag });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }
