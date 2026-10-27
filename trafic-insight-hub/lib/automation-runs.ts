@@ -127,7 +127,10 @@ async function logRuns(automation: string, startedAt: Date, res: Response): Prom
     const queuedText = queued > 0 ? `${queued} criativo${queued > 1 ? "s" : ""} na fila pra pausar (a 2ª etapa pausa)` : null;
     const status = errors.length ? "error" : alerts.length || queued > 0 ? "changed" : "no-change";
     const nums = numbersLine(entry);
-    const done = [...(queuedText ? [queuedText] : []), ...alerts.map((x) => x.title)];
+    // Etapa 212: fila que sobrou na 2ª etapa é informação, não erro.
+    const remaining = typeof entry.remaining === "number" ? entry.remaining : 0;
+    const remainingText = remaining > 0 ? `${remaining} ainda na fila (a próxima chamada continua)` : null;
+    const done = [...(queuedText ? [queuedText] : []), ...alerts.map((x) => x.title), ...(remainingText ? [remainingText] : [])];
     const summary =
       status === "error"
         ? [...errors, ...done].join(" | ") // Etapa 208: erro + o que a rodada fez mesmo assim

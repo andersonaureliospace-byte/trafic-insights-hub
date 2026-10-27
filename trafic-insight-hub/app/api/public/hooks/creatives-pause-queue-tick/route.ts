@@ -36,7 +36,6 @@ export const POST = withRunLog("creatives-pause-queue", async (request: Request)
       const errText = [
         sendError,
         failed.length ? `${failed.length} criativo(s) não pausado(s): ${why}` : null,
-        remaining ? `${remaining} ainda na fila (sem tempo nesta chamada — a próxima continua)` : null,
       ]
         .filter(Boolean)
         .join(" · ");

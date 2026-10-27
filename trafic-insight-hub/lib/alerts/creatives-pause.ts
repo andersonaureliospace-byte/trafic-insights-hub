@@ -368,7 +368,7 @@ export async function checkAndPauseCreatives(
       if (queueMode) {
         // Etapa 209: grava na fila (a 2ª chamada pausa). Falha ao gravar = erro da conta no Registro.
         try {
-          await enqueueCreatives(db, userId, accFlagged, !!opts.onlyNoResult);
+          await enqueueCreatives(db, userId, accountId, accFlagged, !!opts.onlyNoResult);
           queued += accFlagged.length;
           d.notes = d.notes.map((n) => (n.endsWith(": PAUSAR") ? n.replace(/: PAUSAR$/, ": NA FILA PRA PAUSAR") : n));
         } catch (e) {
@@ -528,7 +528,14 @@ async function publishPausedAlert(db: Db, userId: string, pausedOk: PausedCreati
 const QUEUE_TABLE = "creative_pause_queue";
 const QUEUE_HARD_DEADLINE_MS = 50_000;
 
-async function enqueueCreatives(db: Db, userId: string, items: FlaggedCreative[], onlyNoResult: boolean): Promise<void> {
+async function enqueueCreatives(db: Db, userId: string, accountId: string, items: FlaggedCreative[], onlyNoResult: boolean): Promise<void> {
+  // Etapa 212: a análise nova manda. O que estava pendente desta conta (deste tipo) e não foi marcado de novo sai da fila —
+  // não pausa criativo com dado velho (ex.: entrou às 13h40, melhorou e só seria pausado às 22h).
+  const kind = onlyNoResult ? "no-result" : "cpa";
+  const keep = items.map((f) => f.ad_id);
+  let del = db.from(QUEUE_TABLE).delete().eq("user_id", userId).eq("ad_account_id", accountId).eq("kind", kind).eq("status", "pending");
+  if (keep.length > 0) del = del.not("ad_id", "in", `(${keep.join(",")})`);
+  await del;
   if (items.length === 0) return;
   const now = new Date().toISOString();
   const { error } = await db.from(QUEUE_TABLE).upsert(
@@ -575,36 +582,39 @@ export async function processCreativePauseQueue(db: Db, userId: string, token: s
   if (error) throw new Error(`Fila de pausas indisponível (${error.message}). Rode a migration 0038_creative_pause_queue.sql no Supabase.`);
   const items = data ?? [];
   const paused: (PausedCreative & { kind: string; conversations: number | null })[] = [];
+  // Etapa 212: 4 pausas ao mesmo tempo (antes era uma por vez + 1s de espera — dava ~12 por chamada e a fila crescia).
+  let next = 0;
   let remaining = 0;
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    if (Date.now() - startedAt > QUEUE_HARD_DEADLINE_MS) {
-      remaining = items.length - i;
-      break;
+  const worker = async () => {
+    while (next < items.length) {
+      if (Date.now() - startedAt > QUEUE_HARD_DEADLINE_MS) return;
+      const it = items[next++];
+      const [r] = await setEntitiesStatusSequential(token, [{ id: it.ad_id as string, type: "ad" as const }], "PAUSED");
+      await db
+        .from(QUEUE_TABLE)
+        .update({ status: r.ok ? "paused" : "failed", error: r.ok ? null : (r.error ?? "erro"), processed_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("ad_id", it.ad_id as string);
+      paused.push({
+        ad_account_id: it.ad_account_id as string,
+        client_name: (it.client_name as string | null) ?? (it.ad_account_id as string),
+        ad_id: it.ad_id as string,
+        ad_name: (it.ad_name as string | null) ?? (it.ad_id as string),
+        spend: Number(it.spend ?? 0),
+        cost_per_conversation: it.cost_per_conversation != null ? Number(it.cost_per_conversation) : null,
+        good_history: !!it.good_history,
+        cpa_target: it.cpa_target != null ? Number(it.cpa_target) : undefined,
+        age_hours: it.age_hours != null ? Number(it.age_hours) : null,
+        ok: r.ok,
+        error: r.ok ? undefined : (r.error ?? "erro"),
+        kind: (it.kind as string) ?? "cpa",
+        conversations: it.conversations != null ? Number(it.conversations) : null,
+      });
+      await new Promise((res) => setTimeout(res, 300));
     }
-    const [r] = await setEntitiesStatusSequential(token, [{ id: it.ad_id as string, type: "ad" as const }], "PAUSED");
-    await db
-      .from(QUEUE_TABLE)
-      .update({ status: r.ok ? "paused" : "failed", error: r.ok ? null : (r.error ?? "erro"), processed_at: new Date().toISOString() })
-      .eq("user_id", userId)
-      .eq("ad_id", it.ad_id as string);
-    paused.push({
-      ad_account_id: it.ad_account_id as string,
-      client_name: (it.client_name as string | null) ?? (it.ad_account_id as string),
-      ad_id: it.ad_id as string,
-      ad_name: (it.ad_name as string | null) ?? (it.ad_id as string),
-      spend: Number(it.spend ?? 0),
-      cost_per_conversation: it.cost_per_conversation != null ? Number(it.cost_per_conversation) : null,
-      good_history: !!it.good_history,
-      cpa_target: it.cpa_target != null ? Number(it.cpa_target) : undefined,
-      age_hours: it.age_hours != null ? Number(it.age_hours) : null,
-      ok: r.ok,
-      error: r.ok ? undefined : (r.error ?? "erro"),
-      kind: (it.kind as string) ?? "cpa",
-      conversations: it.conversations != null ? Number(it.conversations) : null,
-    });
-    if (i < items.length - 1) await new Promise((res) => setTimeout(res, 1000));
-  }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, items.length) }, worker));
+  remaining = Math.max(0, items.length - paused.length);
   const pausedOk = paused.filter((p) => p.ok).sort((a, b) => b.spend - a.spend);
   if (pausedOk.length > 0) await logCreativePauses(db, userId, pausedOk, new Map(paused.map((p) => [p.ad_id, p.conversations])));
   // Limpa da fila o que já foi processado há mais de 3 dias.
