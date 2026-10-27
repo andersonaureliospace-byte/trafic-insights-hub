@@ -166,10 +166,48 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
     | { paused: number; diag: Array<{ client_name: string; cpa_target: number; error: string | null; retried: boolean; notes: string[] }> }
     | null
   >(null);
+  const [diagProgress, setDiagProgress] = useState<{ done: number; total: number } | null>(null);
   async function runDiag() {
     if (!diagAccount) return;
     setDiagBusy(true);
     setDiagResult(null);
+    // Etapa 214: "Todas as contas" = uma chamada por conta (3 ao mesmo tempo). Numa chamada só não cabia no limite de 60s
+    // do servidor e várias contas ficavam com "não deu tempo".
+    if (diagAccount === "__all__") {
+      type Diag = { client_name: string; cpa_target: number; error: string | null; retried: boolean; notes: string[] };
+      const queue = [...boundAccounts];
+      const all: Diag[] = [];
+      let pausedTotal = 0;
+      let done = 0;
+      setDiagProgress({ done: 0, total: queue.length });
+      const worker = async () => {
+        while (queue.length > 0) {
+          const a = queue.shift()!;
+          try {
+            const res = await fetch("/api/alerts/creatives-pause", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ accountId: a.id }),
+            });
+            const d = await res.json();
+            if (d.error) all.push({ client_name: a.name, cpa_target: 0, error: d.error, retried: false, notes: [] });
+            else {
+              pausedTotal += ((d.paused ?? []) as Array<{ ok: boolean }>).filter((p) => p.ok).length;
+              all.push(...((d.diag ?? []) as Diag[]));
+            }
+          } catch (e) {
+            all.push({ client_name: a.name, cpa_target: 0, error: (e as Error).message, retried: false, notes: [] });
+          }
+          done++;
+          setDiagProgress({ done, total: boundAccounts.length });
+          setDiagResult({ paused: pausedTotal, diag: [...all].sort((x, y) => x.client_name.localeCompare(y.client_name, "pt-BR")) });
+        }
+      };
+      await Promise.all(Array.from({ length: 3 }, worker));
+      setDiagProgress(null);
+      setDiagBusy(false);
+      return;
+    }
     try {
       const res = await fetch("/api/alerts/creatives-pause", {
         method: "POST",
@@ -462,11 +500,11 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
                 title="Roda agora a pausa automática de criativos só nesta conta (pausa de verdade o que estiver na regra) e mostra o motivo de cada criativo."
                 className="h-8 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
               >
-                {diagBusy ? "Verificando…" : "Verificar e pausar agora"}
+                {diagBusy ? (diagProgress ? `Verificando ${diagProgress.done}/${diagProgress.total}…` : "Verificando…") : "Verificar e pausar agora"}
               </button>
             </div>
             {diagResult && "error" in diagResult ? <p className="text-red-600 dark:text-red-400">{diagResult.error}</p> : null}
-            {diagResult && "diag" in diagResult && diagResult.diag.length > 1 ? (
+            {diagResult && "diag" in diagResult && (diagResult.diag.length > 1 || diagAccount === "__all__") ? (
               <p className="font-medium text-zinc-700 dark:text-zinc-300">
                 {diagResult.diag.length} contas verificadas · {diagResult.paused} criativo(s) pausado(s)
                 {diagResult.diag.some((x) => x.error) ? ` · ${diagResult.diag.filter((x) => x.error).length} conta(s) com erro` : ""}
