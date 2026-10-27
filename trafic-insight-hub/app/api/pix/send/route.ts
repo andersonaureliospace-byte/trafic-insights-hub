@@ -22,6 +22,9 @@ export async function POST(request: Request) {
     const pix_text = String(body.pix_text ?? "").trim();
     const image = body.image as { url?: string; mime?: string; fileName?: string } | undefined;
     const schedule_at = body.schedule_at ? String(body.schedule_at) : "";
+    // Etapa 216: opcionais — nome do cliente na saudação e mensagem personalizada (vazio = padrão).
+    const greeting_name = String(body.greeting_name ?? "").trim().slice(0, 80);
+    const fixed_text = String(body.fixed_text ?? "").trim().slice(0, 1000) || PIX_FIXED_TEXT;
 
     if (!ad_account_id) throw new Error("Conta obrigatória.");
     if (!pix_text) throw new Error("Cole o texto do Pix (copia e cola).");
@@ -59,7 +62,7 @@ export async function POST(request: Request) {
       targetLabel = ((binding?.wa_group_name as string | null) ?? "").trim() || target;
     }
 
-    const parts = buildPixParts(pix_text, { url: image.url, mime: image.mime, fileName: image.fileName });
+    const parts = buildPixParts(pix_text, { url: image.url, mime: image.mime, fileName: image.fileName }, { name: greeting_name, fixedText: fixed_text });
 
     if (!schedule_at) {
       // Envio imediato: manda a sequência agora mesmo (saudação já resolvida
@@ -86,9 +89,9 @@ export async function POST(request: Request) {
 
       let errMsg: string | null = null;
       try {
-        await sendText(creds, target, greetingNow());
+        await sendText(creds, target, greetingNow(new Date(), greeting_name));
         await sleep(1_500);
-        await sendText(creds, target, PIX_FIXED_TEXT);
+        await sendText(creds, target, fixed_text);
         await sleep(1_500);
         await sendText(creds, target, pix_text);
         await sleep(1_500);

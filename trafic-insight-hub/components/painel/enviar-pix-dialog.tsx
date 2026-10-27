@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PixRow } from "@/components/painel/personalizar-alertas-dialog";
+import { PIX_FIXED_TEXT, greetingNow } from "@/lib/whatsapp/pix-message";
 
 // Etapa 73: modal do botão "Enviar Pix" (coluna Ação de Controle de Saldo) —
 // destino (grupo do cliente ou número) já vem configurado em Personalizar
@@ -32,6 +33,12 @@ export function EnviarPixDialog({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // Etapa 216: nome do cliente na saudação (desligado por padrão) e mensagem personalizada (desligada = texto padrão).
+  const [useName, setUseName] = useState(false);
+  const [greetName, setGreetName] = useState("");
+  const [customMsg, setCustomMsg] = useState(false);
+  const [fixedText, setFixedText] = useState(PIX_FIXED_TEXT);
+
   const [mode, setMode] = useState<"now" | "schedule">("now");
   const [scheduleAt, setScheduleAt] = useState("");
   const [sending, setSending] = useState(false);
@@ -43,6 +50,10 @@ export function EnviarPixDialog({
     setPixText("");
     setImage(null);
     setUploadError(null);
+    setUseName(false);
+    setGreetName(clientName);
+    setCustomMsg(false);
+    setFixedText(PIX_FIXED_TEXT);
     setMode("now");
     setScheduleAt("");
     setMsg(null);
@@ -59,7 +70,7 @@ export function EnviarPixDialog({
         setBinding(found ? { wa_group_id: found.wa_group_id, wa_group_name: found.wa_group_name } : null);
       })
       .finally(() => setLoadingBinding(false));
-  }, [open, accountId]);
+  }, [open, accountId, clientName]);
 
   async function uploadImage(file: File) {
     setUploading(true);
@@ -156,6 +167,8 @@ export function EnviarPixDialog({
           pix_text: pixText,
           image: { url: image.url, mime: image.mime, fileName: image.fileName },
           schedule_at: mode === "schedule" ? new Date(scheduleAt).toISOString() : undefined,
+          greeting_name: useName ? greetName.trim() : undefined,
+          fixed_text: customMsg ? fixedText.trim() : undefined,
         }),
       });
       const d = await res.json();
@@ -202,6 +215,41 @@ export function EnviarPixDialog({
               </span>
             )}
           </p>
+        </div>
+
+        {/* Etapa 216: saudação com nome e mensagem personalizada (opcionais). */}
+        <div className="mt-3 space-y-2 rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800">
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={useName} onChange={(e) => setUseName(e.target.checked)} />
+            Colocar o nome do cliente na saudação
+          </label>
+          {useName ? (
+            <input
+              value={greetName}
+              onChange={(e) => setGreetName(e.target.value)}
+              placeholder="Nome que vai na saudação"
+              className="w-full rounded-md border border-zinc-300 bg-transparent px-3 py-1.5 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
+            />
+          ) : null}
+          <label className="flex items-center gap-2">
+            <input type="checkbox" checked={customMsg} onChange={(e) => setCustomMsg(e.target.checked)} />
+            Personalizar a mensagem
+          </label>
+          {customMsg ? (
+            <textarea
+              value={fixedText}
+              onChange={(e) => setFixedText(e.target.value)}
+              rows={3}
+              className="w-full resize-none rounded-md border border-zinc-300 bg-transparent px-3 py-2 text-sm outline-none focus:border-zinc-900 dark:border-zinc-700 dark:focus:border-zinc-100"
+            />
+          ) : null}
+          <div className="rounded bg-zinc-50 px-2 py-1.5 text-xs text-zinc-600 dark:bg-zinc-950 dark:text-zinc-400">
+            <p className="mb-0.5 font-medium text-zinc-500">Vai assim (uma mensagem por linha):</p>
+            <p>1. {greetingNow(mode === "schedule" && scheduleAt ? new Date(scheduleAt) : new Date(), useName ? greetName : null)}</p>
+            <p>2. {(customMsg ? fixedText.trim() : "") || PIX_FIXED_TEXT}</p>
+            <p>3. [código do Pix]</p>
+            <p>4. [print do Pix]</p>
+          </div>
         </div>
 
         <div className="mt-3 flex flex-col gap-1.5">

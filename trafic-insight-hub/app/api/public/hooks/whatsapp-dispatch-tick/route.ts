@@ -86,7 +86,7 @@ export async function POST(request: Request) {
             for (let p = 0; p < d.parts.length; p++) {
               const part = d.parts[p];
               if (part.type === "greeting") {
-                await sendText({ api_url: apiUrl, token }, t.wa_group_id, greetingNow());
+                await sendText({ api_url: apiUrl, token }, t.wa_group_id, greetingNow(new Date(), part.name));
               } else if (part.type === "text") {
                 await sendText({ api_url: apiUrl, token }, t.wa_group_id, part.text);
               } else {

@@ -8,17 +8,18 @@
 export const PIX_FIXED_TEXT = "Segue pix para adicionar saldo na conta de anúncios";
 
 // Horário de Brasília, sempre — independente de onde o servidor rodar.
-export function greetingNow(at: Date = new Date()): string {
+// Etapa 216: `name` opcional — "Bom dia, Fulano, tudo bem?". Sem nome fica como sempre foi.
+export function greetingNow(at: Date = new Date(), name?: string | null): string {
   const hour = Number(
     new Intl.DateTimeFormat("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }).format(at),
   );
-  if (hour < 12) return "Bom dia, tudo bem?";
-  if (hour < 18) return "Boa tarde, tudo bem?";
-  return "Boa noite, tudo bem?";
+  const base = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  const n = (name ?? "").trim();
+  return n ? `${base}, ${n}, tudo bem?` : `${base}, tudo bem?`;
 }
 
 export type PixMessagePart =
-  | { type: "greeting" }
+  | { type: "greeting"; name?: string }
   | { type: "text"; text: string }
   | { type: "image"; url: string; mime: string; fileName?: string };
 
@@ -26,10 +27,16 @@ export type PixMessagePart =
 // propósito: só vira texto de verdade na hora do envio (imediato = agora
 // mesmo; agendado = quando o hook efetivamente disparar), pra bater com o
 // horário real, não o horário em que o usuário preencheu o formulário.
-export function buildPixParts(pixText: string, image: { url: string; mime: string; fileName?: string }): PixMessagePart[] {
+// Etapa 216: opts.name = nome do cliente na saudação; opts.fixedText = mensagem personalizada no lugar do texto padrão.
+export function buildPixParts(
+  pixText: string,
+  image: { url: string; mime: string; fileName?: string },
+  opts: { name?: string | null; fixedText?: string | null } = {},
+): PixMessagePart[] {
+  const name = (opts.name ?? "").trim();
   return [
-    { type: "greeting" },
-    { type: "text", text: PIX_FIXED_TEXT },
+    name ? { type: "greeting", name } : { type: "greeting" },
+    { type: "text", text: (opts.fixedText ?? "").trim() || PIX_FIXED_TEXT },
     { type: "text", text: pixText },
     { type: "image", url: image.url, mime: image.mime, fileName: image.fileName },
   ];
