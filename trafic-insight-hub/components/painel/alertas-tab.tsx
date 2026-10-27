@@ -635,7 +635,7 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
 function AutomacoesView() {
   const [last, setLast] = useState<Record<string, AutomationRun> | null>(null);
   useEffect(() => {
-    fetch("/api/automation-runs", { cache: "no-store" })
+    fetch("/api/automation-runs?limit=3000", { cache: "no-store" })
       .then((r) => r.json())
       .then((d: { runs?: AutomationRun[] }) => {
         const m: Record<string, AutomationRun> = {};
@@ -660,7 +660,11 @@ function AutomacoesView() {
           <h3 className="bg-zinc-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:bg-zinc-950">{g}</h3>
           <ul className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
             {AUTOMATION_CATALOG.filter((a) => a.group === g).map((a) => {
-              const r = last ? (last[`${a.id}|${a.mode ?? ""}`] ?? (a.mode ? undefined : last[`${a.id}|`])) : undefined;
+              // Etapa 215: a rodada "full" da auditoria (sem modo no n8n) faz localização + erros — vale pras três linhas.
+              const r = last
+                ? (last[`${a.id}|${a.mode ?? ""}`] ?? (a.mode ? last[`${a.id}|full`] : last[`${a.id}|`]))
+                : undefined;
+              const viaFull = !!r && !!a.mode && r.details?.mode === "full";
               return (
                 <li key={`${a.id}|${a.mode ?? ""}`} className="px-4 py-2.5">
                   <div className="flex flex-wrap items-center gap-2">
@@ -673,6 +677,7 @@ function AutomacoesView() {
                     {r ? (
                       <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${RUN_STATUS[r.status].badge}`} title={r.summary}>
                         última: {clock(r.started_at)} · {RUN_STATUS[r.status].label}
+                        {viaFull ? " (varredura completa)" : ""}
                       </span>
                     ) : last ? (
                       <span className="text-[11px] text-zinc-400">sem rodada registrada nos últimos dias</span>

@@ -13,7 +13,7 @@ export async function GET(request: Request) {
       .select("id, automation, status, summary, details, started_at, finished_at")
       .eq("user_id", user.id)
       .order("started_at", { ascending: false })
-      .limit(500);
+      .limit(Math.min(3000, Math.max(1, Number(p.get("limit")) || 500))); // Etapa 215: a visão "Automações" pede mais (última rodada de cada uma)
     const automation = p.get("automation");
     const status = p.get("status");
     const from = p.get("from");
