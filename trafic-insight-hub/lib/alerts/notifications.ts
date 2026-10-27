@@ -37,7 +37,8 @@ export type AlertKind =
   | "weekend-standby" // Fim de semana: conjuntos em standby (R$10) e a volta de domingo 05h (Etapas 158/203)
   | "exam-missing" // Conta que precisa de EXAME sem nenhum conjunto de EXAME ativo (Etapa 163)
   | "audit-location" // Verificação de localização: Brasil inteiro pausado / expansão desligada (Etapa 197)
-  | "audit-errors"; // Verificação de erros de veiculação: reprovado, com problema, sem anúncio ativo (Etapa 197)
+  | "audit-errors" // Verificação de erros de veiculação: reprovado, com problema, sem anúncio ativo (Etapa 197)
+  | "automation-error"; // Etapa 213: alguma automação terminou com erro (vai pro grupo)
 
 // Os únicos tipos que também vão pro grupo do WhatsApp (os mais urgentes).
 export const GROUP_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>([
@@ -51,6 +52,7 @@ export const GROUP_KINDS: ReadonlySet<AlertKind> = new Set<AlertKind>([
   "morning-summary",
   "no-delivery",
   "audit-errors", // Etapa 198: erros de veiculação também vão pro grupo (celular)
+  "automation-error", // Etapa 213: automação com erro
 ]);
 
 // Avisos que se repetem a cada rodada enquanto o problema durar: em vez de empilhar uma

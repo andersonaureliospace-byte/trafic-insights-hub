@@ -8,6 +8,8 @@
 // Aparece em Auditoria → Alertas → "Registro das automações".
 
 import { createServiceClient } from "@/lib/supabase/server";
+import { publishAlert } from "@/lib/alerts/notifications";
+import { AUTOMATION_LABELS as LABELS } from "@/lib/automation-labels";
 export { AUTOMATION_LABELS } from "@/lib/automation-labels";
 
 export const RUN_TTL_DAYS = 30;
@@ -137,6 +139,22 @@ async function logRuns(automation: string, startedAt: Date, res: Response): Prom
         : status === "changed"
           ? done.join(" | ")
           : `Verificou — nenhuma alteração${nums ? ` (${nums})` : ""}`;
+
+    // Etapa 213: rodada com erro → aviso no grupo do WhatsApp. Mesmo erro ainda aberto não é reenviado (só quando muda).
+    if (status === "error") {
+      const label = LABELS[automation] ?? automation;
+      const mode = typeof (extra as { mode?: unknown }).mode === "string" ? ` · ${(extra as { mode: string }).mode}` : "";
+      try {
+        await publishAlert(db, userId, {
+          kind: "automation-error",
+          title: `❗ Automação com erro: ${label}${mode}`,
+          body: errors.join("\n").slice(0, 1500),
+          skipGroupIfUnchanged: true,
+        });
+      } catch {
+        // sem grupo cadastrado etc.: o erro continua no Registro
+      }
+    }
 
     await db.from("automation_runs").insert({
       user_id: userId,

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AUTOMATION_LABELS } from "@/lib/automation-labels";
+import { AUTOMATION_CATALOG } from "@/lib/automation-catalog";
 
 interface AlertNotification {
   id: string;
@@ -68,6 +69,7 @@ const KIND_LABELS: Record<string, string> = {
   "exam-missing": "Sem exame ativo",
   "audit-location": "Localização dos conjuntos",
   "audit-errors": "Erros de veiculação",
+  "automation-error": "Automação com erro",
 };
 
 // Cor da barrinha da esquerda: vermelho = o que também vai pro grupo (urgente); âmbar = o resto.
@@ -123,7 +125,7 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<"todos" | "grupo" | "painel">("todos");
   // Etapa 190: "Alertas" (notificações abertas) ou "Registro" (toda rodada das automações, até sem alteração).
-  const [view, setView] = useState<"alertas" | "registro">("alertas");
+  const [view, setView] = useState<"alertas" | "registro" | "automacoes">("alertas");
   const [automation, setAutomation] = useState("");
   const [runStatus, setRunStatus] = useState<"todos" | AutomationRun["status"]>("todos");
   const [runs, setRuns] = useState<AutomationRun[] | null>(null);
@@ -136,10 +138,17 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
   // Etapa 206: id + nome das contas ativas (botão "Verificar criativos de uma conta" do Registro).
   const [boundAccounts, setBoundAccounts] = useState<Array<{ id: string; name: string }>>([]);
   useEffect(() => {
-    fetch("/api/account-bindings", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d: { bindings?: Array<{ ad_account_id?: string; client_name?: string | null; active?: boolean | null }> }) => {
-        const list = (d.bindings ?? []).filter((b) => b.active !== false && b.client_name && b.client_name.trim());
+    // Etapa 213: só as contas que o sistema usa (ativas e nas "Contas exibidas") — cadastro antigo fora da seleção
+    // (ex.: clientes que você não atende mais) não aparece nos filtros nem no botão de verificar.
+    Promise.all([
+      fetch("/api/account-bindings", { cache: "no-store" }).then((r) => r.json()),
+      fetch("/api/selected-accounts", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
+    ])
+      .then(([d, sel]: [{ bindings?: Array<{ ad_account_id?: string; client_name?: string | null; active?: boolean | null }> }, { accountIds?: string[] }]) => {
+        const selected = sel.accountIds ? new Set(sel.accountIds) : null;
+        const list = (d.bindings ?? []).filter(
+          (b) => b.active !== false && b.client_name && b.client_name.trim() && (!selected || (b.ad_account_id && selected.has(b.ad_account_id))),
+        );
         setBoundNames(list.map((b) => (b.client_name as string).trim()));
         setBoundAccounts(
           list
@@ -165,7 +174,7 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
       const res = await fetch("/api/alerts/creatives-pause", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountId: diagAccount }),
+        body: JSON.stringify(diagAccount === "__all__" ? {} : { accountId: diagAccount }),
       });
       const d = await res.json();
       if (d.error) setDiagResult({ error: d.error });
@@ -287,7 +296,7 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <div className="flex flex-wrap items-center gap-2">
-          {(["alertas", "registro"] as const).map((v) => (
+          {(["alertas", "registro", "automacoes"] as const).map((v) => (
             <button
               key={v}
               onClick={() => {
@@ -298,7 +307,7 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
                 view === v ? "text-zinc-900 dark:text-zinc-50" : "text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
               }`}
             >
-              {v === "alertas" ? "Alertas" : "Registro das automações"}
+              {v === "alertas" ? "Alertas" : v === "registro" ? "Registro das automações" : "Automações"}
             </button>
           ))}
           <span className="h-4 w-px bg-zinc-200 dark:bg-zinc-700" />
@@ -334,6 +343,7 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
         <div className="flex items-center gap-2">
           <button
             onClick={() => void (view === "alertas" ? load() : loadRuns())}
+            hidden={view === "automacoes"}
             className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium dark:border-zinc-700"
           >
             ↻ Atualizar
@@ -341,7 +351,7 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
           <button
             onClick={() => void okAll()}
             disabled={!items || items.length === 0}
-            hidden={view === "registro"}
+            hidden={view !== "alertas"}
             className="h-8 rounded-md bg-zinc-900 px-2.5 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
           >
             OK em todos
@@ -349,6 +359,7 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
         </div>
       </div>
 
+      {view !== "automacoes" ? (
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-100 px-4 py-2 text-xs dark:border-zinc-800/60">
         <select
           value={account}
@@ -422,8 +433,11 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
           </span>
         ) : null}
       </div>
+      ) : null}
 
-      {view === "registro" ? (
+      {view === "automacoes" ? (
+        <AutomacoesView />
+      ) : view === "registro" ? (
         <>
           {/* Etapa 206: força a pausa de criativos numa conta só e mostra o porquê de cada criativo. */}
           <div className="space-y-2 border-b border-zinc-100 px-4 py-2 text-xs dark:border-zinc-800/60">
@@ -435,6 +449,7 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
                 className="h-8 max-w-[260px] rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
               >
                 <option value="">Escolha a conta…</option>
+                <option value="__all__">Todas as contas</option>
                 {boundAccounts.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -451,6 +466,12 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
               </button>
             </div>
             {diagResult && "error" in diagResult ? <p className="text-red-600 dark:text-red-400">{diagResult.error}</p> : null}
+            {diagResult && "diag" in diagResult && diagResult.diag.length > 1 ? (
+              <p className="font-medium text-zinc-700 dark:text-zinc-300">
+                {diagResult.diag.length} contas verificadas · {diagResult.paused} criativo(s) pausado(s)
+                {diagResult.diag.some((x) => x.error) ? ` · ${diagResult.diag.filter((x) => x.error).length} conta(s) com erro` : ""}
+              </p>
+            ) : null}
             {diagResult && "diag" in diagResult ? (
               diagResult.diag.length === 0 ? (
                 <p className="text-zinc-500">Conta fora da varredura (sem CPA ideal cadastrado, desativada ou fora das contas exibidas).</p>
@@ -458,7 +479,8 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
                 diagResult.diag.map((x, i) => (
                   <div key={i} className="rounded-md bg-zinc-50 p-2 dark:bg-zinc-950">
                     <p className="font-medium text-zinc-800 dark:text-zinc-200">
-                      {x.client_name} · CPA ideal {x.cpa_target.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} · {diagResult.paused} pausado(s)
+                      {x.client_name} · CPA ideal {x.cpa_target.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                      {diagResult.diag.length === 1 ? ` · ${diagResult.paused} pausado(s)` : ""}
                       {x.retried ? " · a Meta falhou na 1ª tentativa" : ""}
                     </p>
                     {x.error ? <p className="text-red-600 dark:text-red-400">Não deu pra verificar: {x.error}</p> : null}
@@ -567,6 +589,65 @@ export function AlertasTab({ accountNames = [] }: { accountNames?: string[] }) {
       </ul>
       </>
       )}
+    </div>
+  );
+}
+
+// Etapa 213: "Automações" — o que cada automação faz, quando roda, se avisa no WhatsApp e como foi a última rodada.
+function AutomacoesView() {
+  const [last, setLast] = useState<Record<string, AutomationRun> | null>(null);
+  useEffect(() => {
+    fetch("/api/automation-runs", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { runs?: AutomationRun[] }) => {
+        const m: Record<string, AutomationRun> = {};
+        for (const r of d.runs ?? []) {
+          const key = `${r.automation}|${r.details?.mode ?? ""}`;
+          if (!m[key]) m[key] = r; // a lista já vem da mais nova pra mais antiga
+          if (!m[`${r.automation}|`]) m[`${r.automation}|`] = r;
+        }
+        setLast(m);
+      })
+      .catch(() => setLast({}));
+  }, []);
+  const groups = [...new Set(AUTOMATION_CATALOG.map((a) => a.group))];
+  return (
+    <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+      <p className="px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+        Todas as automações que rodam sozinhas pelo n8n (horário de Brasília). Se alguma terminar com erro, chega um aviso no grupo do
+        WhatsApp. O histórico de cada rodada fica em &quot;Registro das automações&quot;.
+      </p>
+      {groups.map((g) => (
+        <section key={g}>
+          <h3 className="bg-zinc-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-wide text-zinc-500 dark:bg-zinc-950">{g}</h3>
+          <ul className="divide-y divide-zinc-100 dark:divide-zinc-800/60">
+            {AUTOMATION_CATALOG.filter((a) => a.group === g).map((a) => {
+              const r = last ? (last[`${a.id}|${a.mode ?? ""}`] ?? (a.mode ? undefined : last[`${a.id}|`])) : undefined;
+              return (
+                <li key={`${a.id}|${a.mode ?? ""}`} className="px-4 py-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">{a.name}</span>
+                    {a.whatsapp ? (
+                      <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-700 dark:bg-red-950/40 dark:text-red-300">
+                        avisa no WhatsApp
+                      </span>
+                    ) : null}
+                    {r ? (
+                      <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${RUN_STATUS[r.status].badge}`} title={r.summary}>
+                        última: {clock(r.started_at)} · {RUN_STATUS[r.status].label}
+                      </span>
+                    ) : last ? (
+                      <span className="text-[11px] text-zinc-400">sem rodada registrada nos últimos dias</span>
+                    ) : null}
+                  </div>
+                  <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">🕒 {a.when}</p>
+                  <p className="mt-0.5 text-sm text-zinc-700 dark:text-zinc-300">{a.what}</p>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ))}
     </div>
   );
 }

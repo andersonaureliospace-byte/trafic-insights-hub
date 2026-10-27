@@ -26,7 +26,7 @@ async function loadBindings(supabase: Awaited<ReturnType<typeof createClient>>, 
   if (error) throw error;
   const off = await inactiveAccountIds(supabase, userId);
   // Etapa 187: só as "Contas exibidas" do Painel (user_selected_accounts), como o resto do sistema — conta fora da seleção
-  // (ex.: Marcia Dantas / Dra. Natália) não é auditada nem mexida pela auditoria.
+  // não é auditada nem mexida pela auditoria.
   const { data: sel, error: selErr } = await supabase.from("user_selected_accounts").select("ad_account_id").eq("user_id", userId);
   if (selErr) throw selErr;
   const selected = new Set((sel ?? []).map((s) => s.ad_account_id as string));

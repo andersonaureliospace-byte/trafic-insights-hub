@@ -28,8 +28,7 @@
 // bulk-status-update.ts. Antes, essa automação varria TODO account_bindings
 // com cpa_target preenchido, então uma conta desmarcada do Painel (mas ainda
 // com meta de CPA cadastrada de antes) continuava tendo criativos pausados
-// sozinha, sem aparecer em lugar nenhum da tela — bug relatado com a conta
-// "Marcia Dantas".
+// sozinha, sem aparecer em lugar nenhum da tela.
 
 import type { createClient } from "@/lib/supabase/server";
 import { getCreativeCostAnalysis, type CreativeCostRow } from "@/lib/meta/creative-analysis";

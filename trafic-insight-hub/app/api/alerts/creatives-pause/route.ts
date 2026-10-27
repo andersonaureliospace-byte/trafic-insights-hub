@@ -9,6 +9,9 @@ import { checkAndPauseCreatives } from "@/lib/alerts/creatives-pause";
 // ao abrir a aba.
 // Etapa 206: corpo opcional { "accountId": "..." } = varre só essa conta e devolve o diagnóstico (o que viu e por que
 // cada criativo acima do limite foi ou não pausado). Usado pelo botão do Registro das automações.
+// Etapa 213: "Todas as contas" no botão do Registro varre tudo — pede o tempo máximo (a rotina se limita a ~52s).
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   try {
     const { supabase, user } = await requireUser();
