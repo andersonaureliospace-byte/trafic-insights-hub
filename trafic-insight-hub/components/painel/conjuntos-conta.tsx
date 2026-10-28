@@ -59,6 +59,73 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
   const [cache, setCache] = useState<Record<string, Data>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Etapa 218: ações por conjunto — pausar, reativar e mudar o orçamento diário.
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [newBudget, setNewBudget] = useState("");
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function patchRow(id: string, patch: Partial<Row>) {
+    setCache((c) => {
+      const d = c[accountId];
+      if (!d) return c;
+      return { ...c, [accountId]: { ...d, adsets: d.adsets.map((r) => (r.id === id ? { ...r, ...patch } : r)) } };
+    });
+  }
+
+  async function setStatus(r: Row, status: "ACTIVE" | "PAUSED") {
+    if (status === "PAUSED" && !confirm(`Pausar o conjunto "${r.name}"?`)) return;
+    setBusyId(r.id);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/meta/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: [{ id: r.id, type: "adset" }], status }),
+      });
+      const d = await res.json();
+      const result = d.results?.[0];
+      if (!result?.ok) throw new Error(result?.error ?? d.error ?? "Erro desconhecido");
+      patchRow(r.id, { status });
+      setNotice({ ok: true, text: `${status === "PAUSED" ? "Pausado" : "Reativado"}: ${r.name}` });
+    } catch (e) {
+      setNotice({ ok: false, text: `Não deu pra ${status === "PAUSED" ? "pausar" : "reativar"}: ${(e as Error).message}` });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function saveBudget(r: Row) {
+    const value = Number(newBudget.replace(",", "."));
+    if (!Number.isFinite(value) || value < 6) {
+      setNotice({ ok: false, text: "Orçamento mínimo de R$ 6,00." });
+      return;
+    }
+    setBusyId(r.id);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/analysis/set-budget", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adsetId: r.id, dailyBudget: value }),
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error ?? "Erro desconhecido");
+      if (d.scope === "adset") patchRow(r.id, { daily_budget: d.newBudget });
+      setEditId(null);
+      setNotice({
+        ok: true,
+        text:
+          d.scope === "campaign"
+            ? `Orçamento da CAMPANHA (CBO) de ${r.name}: ${fmtCurrency(d.fromBudget)} → ${fmtCurrency(d.newBudget)}`
+            : `Orçamento de ${r.name}: ${fmtCurrency(d.fromBudget)} → ${fmtCurrency(d.newBudget)}`,
+      });
+    } catch (e) {
+      setNotice({ ok: false, text: `Não deu pra mudar o orçamento: ${(e as Error).message}` });
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/account-bindings", { cache: "no-store" })
@@ -178,6 +245,9 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
         </p>
       ) : null}
       {error ? <p className="px-4 py-3 text-sm text-red-600">{error}</p> : null}
+      {notice ? (
+        <p className={`px-4 py-2 text-sm ${notice.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600"}`}>{notice.text}</p>
+      ) : null}
       {accountId && loading && !data ? <p className="px-4 py-6 text-sm text-zinc-500">Buscando na Meta…</p> : null}
       {data && rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum conjunto nesse filtro.</p> : null}
 
@@ -193,6 +263,7 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
                 <th className="px-3 py-1.5 text-right font-medium">Impressões</th>
                 <th className="px-3 py-1.5 text-right font-medium">Conversas</th>
                 <th className="px-3 py-1.5 text-right font-medium">CPA 30d</th>
+                <th className="px-3 py-1.5 text-right font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -226,6 +297,69 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
                           {fmtCurrency(Math.abs(r.cpa - target))}
                         </div>
                       ) : null}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {editId === r.id ? (
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          <span className="text-xs text-zinc-500">R$</span>
+                          <input
+                            value={newBudget}
+                            onChange={(e) => setNewBudget(e.target.value)}
+                            inputMode="decimal"
+                            className="h-7 w-16 rounded border border-zinc-300 bg-transparent px-1.5 text-right text-sm dark:border-zinc-700"
+                          />
+                          {[5, 10].map((inc) => (
+                            <button
+                              key={inc}
+                              onClick={() => setNewBudget(String(((Number(newBudget.replace(",", ".")) || 0) + inc).toFixed(2)))}
+                              className="h-7 rounded border border-zinc-300 px-1.5 text-xs dark:border-zinc-700"
+                            >
+                              +{inc}
+                            </button>
+                          ))}
+                          <button
+                            onClick={() => void saveBudget(r)}
+                            disabled={busyId === r.id}
+                            className="h-7 rounded bg-zinc-900 px-2 text-xs font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                          >
+                            {busyId === r.id ? "…" : "Salvar"}
+                          </button>
+                          <button onClick={() => setEditId(null)} className="h-7 px-1 text-xs text-zinc-500">
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          {r.status === "ACTIVE" ? (
+                            <button
+                              onClick={() => void setStatus(r, "PAUSED")}
+                              disabled={busyId === r.id}
+                              className="h-7 rounded border border-red-300 px-2 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+                            >
+                              Pausar
+                            </button>
+                          ) : r.status === "PAUSED" ? (
+                            <button
+                              onClick={() => void setStatus(r, "ACTIVE")}
+                              disabled={busyId === r.id}
+                              className="h-7 rounded border border-emerald-400 px-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                            >
+                              Reativar
+                            </button>
+                          ) : null}
+                          <button
+                            onClick={() => {
+                              setEditId(r.id);
+                              setNewBudget(r.daily_budget != null ? (r.daily_budget + 5).toFixed(2) : "");
+                            }}
+                            disabled={busyId === r.id}
+                            title={r.cbo ? "Orçamento na campanha (CBO): muda o orçamento da campanha inteira" : "Mudar o orçamento diário do conjunto"}
+                            className="h-7 rounded border border-zinc-300 px-2 text-xs font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                          >
+                            Orçamento
+                          </button>
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );
