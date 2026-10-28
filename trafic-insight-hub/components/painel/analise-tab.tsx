@@ -13,6 +13,7 @@ import { AumentoProgramado } from "@/components/painel/aumento-programado";
 import { ExameTab } from "@/components/painel/exame-tab";
 import { PublicoTab } from "@/components/painel/publico-tab";
 import { VideosGeral } from "@/components/painel/videos-geral";
+import { ConjuntosConta } from "@/components/painel/conjuntos-conta";
 import { DuplicarConjuntoDialog, type DuplicateAdsetInput } from "@/components/painel/duplicar-conjunto-dialog";
 
 // "Últimos 3 dias + hoje" (padrão recomendado — pega problema recente
@@ -1474,12 +1475,13 @@ export function AnaliseTab(props: {
   initialFilters?: Record<string, unknown>;
   onFiltersChange?: (filters: AnaliseFilters) => void;
 }) {
-  const [area, setArea] = useState<"analise" | "aumento" | "videos" | "exame" | "publico">("analise");
+  const [area, setArea] = useState<"analise" | "conjuntos" | "aumento" | "videos" | "exame" | "publico">("analise");
   return (
     <div className="space-y-3">
       <div className="inline-flex rounded-md border border-zinc-300 p-0.5 dark:border-zinc-700">
         {([
           ["analise", "Análise"],
+          ["conjuntos", "Conjuntos da conta"],
           ["aumento", "Aumento programado"],
           ["videos", "Vídeos (Geral)"],
           ["exame", "Exame"],
@@ -1501,6 +1503,7 @@ export function AnaliseTab(props: {
       <div className={area === "analise" ? "" : "hidden"}>
         <AnaliseTabInner {...props} />
       </div>
+      {area === "conjuntos" ? <ConjuntosConta accounts={props.accounts} /> : null}
       {area === "aumento" ? <AumentoProgramado /> : null}
       {area === "videos" ? <VideosGeral accounts={props.accounts} /> : null}
       {area === "exame" ? <ExameTab /> : null}
