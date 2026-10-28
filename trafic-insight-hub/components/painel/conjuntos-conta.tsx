@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -18,6 +18,7 @@ interface Row {
   id: string;
   name: string;
   campaign_name: string | null;
+  campaign_status: string | null;
   status: string;
   daily_budget: number | null;
   cbo: boolean;
@@ -32,6 +33,23 @@ interface Data {
   fetchedAt: string;
   adsets: Row[];
 }
+function statusBadge(status: string | null) {
+  const st = (status && STATUS[status]) || { label: (status ?? "—").toLowerCase(), cls: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" };
+  return <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>;
+}
+
+// Etapa 220: criativo de um conjunto (aberto ao clicar no conjunto).
+interface AdRow {
+  id: string;
+  name: string;
+  status: string;
+  created_time: string | null;
+  spend: number;
+  impressions: number;
+  conversations: number;
+  cpl: number | null;
+}
+
 const periodOf = (f: FilterId): "d2" | "d15" => (f === "impressao" ? "d15" : "d2");
 const PERIOD_LABEL = { d2: "ontem + hoje", d15: "últimos 15 dias" } as const;
 
@@ -49,6 +67,11 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   CAMPAIGN_PAUSED: { label: "Campanha pausada", cls: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" },
   IN_PROCESS: { label: "Processando", cls: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300" },
   WITH_ISSUES: { label: "Com problema", cls: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300" },
+  ADSET_PAUSED: { label: "Conjunto pausado", cls: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" },
+  PENDING_REVIEW: { label: "Em análise", cls: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300" },
+  PREAPPROVED: { label: "Pré-aprovado", cls: "bg-sky-50 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300" },
+  DISAPPROVED: { label: "Reprovado", cls: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300" },
+  PENDING_BILLING_INFO: { label: "Cobrança pendente", cls: "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300" },
 };
 
 // Acima: com conversa e CPA acima da meta, ou sem conversa e gasto acima da meta. Abaixo: com conversa e CPA na meta ou abaixo.
@@ -70,6 +93,59 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [newBudget, setNewBudget] = useState("");
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
+  // Etapa 220: criativos por conjunto (busca só ao abrir; guarda por conjunto + período).
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [adsCache, setAdsCache] = useState<Record<string, AdRow[] | { error: string }>>({});
+
+  async function toggleAds(r: Row) {
+    if (openId === r.id) {
+      setOpenId(null);
+      return;
+    }
+    setOpenId(r.id);
+    const key = `${r.id}|${periodOf(filter)}`;
+    if (adsCache[key]) return;
+    try {
+      const res = await fetch("/api/analysis/adset-ads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adsetId: r.id, period: periodOf(filter) }),
+      });
+      const d = await res.json();
+      setAdsCache((c) => ({ ...c, [key]: d.error ? { error: d.error } : (d.ads as AdRow[]) }));
+    } catch (e) {
+      setAdsCache((c) => ({ ...c, [key]: { error: (e as Error).message } }));
+    }
+  }
+
+  async function setAdStatus(adsetId: string, ad: AdRow, status: "ACTIVE" | "PAUSED") {
+    if (status === "PAUSED" && !confirm(`Pausar o criativo "${ad.name}"?`)) return;
+    setBusyId(ad.id);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/meta/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: [{ id: ad.id, type: "ad" }], status }),
+      });
+      const d = await res.json();
+      const result = d.results?.[0];
+      if (!result?.ok) throw new Error(result?.error ?? d.error ?? "Erro desconhecido");
+      setAdsCache((c) => {
+        const next = { ...c };
+        for (const k of Object.keys(next)) {
+          const v = next[k];
+          if (k.startsWith(`${adsetId}|`) && Array.isArray(v)) next[k] = v.map((a) => (a.id === ad.id ? { ...a, status } : a));
+        }
+        return next;
+      });
+      setNotice({ ok: true, text: `Criativo ${status === "PAUSED" ? "pausado" : "reativado"}: ${ad.name}` });
+    } catch (e) {
+      setNotice({ ok: false, text: `Não deu pra ${status === "PAUSED" ? "pausar" : "reativar"} o criativo: ${(e as Error).message}` });
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   function patchRow(id: string, patch: Partial<Row>) {
     setCache((c) => {
@@ -266,7 +342,8 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
             <thead>
               <tr className="border-b border-zinc-100 text-left text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
                 <th className="px-4 py-1.5 font-medium">Conjunto</th>
-                <th className="px-3 py-1.5 font-medium">Status</th>
+                <th className="px-3 py-1.5 font-medium">Status campanha</th>
+                <th className="px-3 py-1.5 font-medium">Status conjunto</th>
                 <th className="px-3 py-1.5 text-right font-medium">Orçamento/dia</th>
                 <th className="px-3 py-1.5 text-right font-medium">Gasto</th>
                 <th className="px-3 py-1.5 text-right font-medium">Impressões</th>
@@ -281,13 +358,18 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
                 const side = cpaSide(m, target);
                 const st = STATUS[r.status] ?? { label: r.status.toLowerCase(), cls: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" };
                 return (
-                  <tr key={r.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                  <Fragment key={r.id}>
+                  <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
                     <td className="px-4 py-2">
-                      <div className="font-medium text-zinc-900 dark:text-zinc-50">{r.name}</div>
-                      <div className="text-xs text-zinc-500 dark:text-zinc-400">{r.campaign_name ?? ""}</div>
+                      <button onClick={() => void toggleAds(r)} className="text-left" title="Ver os criativos deste conjunto">
+                        <span className="mr-1 inline-block w-3 text-zinc-400">{openId === r.id ? "▾" : "▸"}</span>
+                        <span className="font-medium text-zinc-900 hover:underline dark:text-zinc-50">{r.name}</span>
+                      </button>
+                      <div className="pl-4 text-xs text-zinc-500 dark:text-zinc-400">{r.campaign_name ?? ""}</div>
                     </td>
+                    <td className="px-3 py-2">{statusBadge(r.campaign_status)}</td>
                     <td className="px-3 py-2">
-                      <span className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
+                      <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {r.daily_budget != null ? fmtCurrency(r.daily_budget) : <span className="text-xs text-zinc-400">{r.cbo ? "na campanha" : "—"}</span>}
@@ -372,6 +454,75 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
                       )}
                     </td>
                   </tr>
+                  {openId === r.id ? (
+                    <tr className="border-b border-zinc-100 bg-zinc-50/60 dark:border-zinc-800/60 dark:bg-zinc-950/40">
+                      <td colSpan={9} className="px-6 py-2">
+                        {(() => {
+                          const v = adsCache[`${r.id}|${periodOf(filter)}`];
+                          if (!v) return <p className="text-xs text-zinc-500">Buscando os criativos…</p>;
+                          if (!Array.isArray(v)) return <p className="text-xs text-red-600">{v.error}</p>;
+                          if (v.length === 0) return <p className="text-xs text-zinc-500">Nenhum criativo neste conjunto.</p>;
+                          return (
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-zinc-500 dark:text-zinc-400">
+                                  <th className="py-1 font-medium">Criativo</th>
+                                  <th className="px-2 py-1 font-medium">Status</th>
+                                  <th className="px-2 py-1 text-right font-medium">Gasto</th>
+                                  <th className="px-2 py-1 text-right font-medium">Conversas</th>
+                                  <th className="px-2 py-1 text-right font-medium">Custo por lead</th>
+                                  <th className="px-2 py-1 text-right font-medium">Ação</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {v.map((a) => {
+                                  const aside = target == null ? null : a.cpl != null ? (a.cpl > target ? "acima" : "abaixo") : a.spend > target ? "acima" : null;
+                                  return (
+                                    <tr key={a.id} className="border-t border-zinc-100 dark:border-zinc-800/60">
+                                      <td className="py-1.5 pr-2 text-zinc-800 dark:text-zinc-200">{a.name}</td>
+                                      <td className="px-2 py-1.5">{statusBadge(a.status)}</td>
+                                      <td className="px-2 py-1.5 text-right tabular-nums">{fmtCurrency(a.spend)}</td>
+                                      <td className="px-2 py-1.5 text-right tabular-nums">{a.conversations}</td>
+                                      <td
+                                        className={`px-2 py-1.5 text-right font-semibold tabular-nums ${
+                                          aside === "acima" ? "text-red-600 dark:text-red-400" : aside === "abaixo" ? "text-emerald-600 dark:text-emerald-400" : ""
+                                        }`}
+                                      >
+                                        {a.cpl != null ? fmtCurrency(a.cpl) : <span className="font-normal text-zinc-400">{a.spend > 0 ? "sem lead" : "—"}</span>}
+                                      </td>
+                                      <td className="px-2 py-1.5 text-right">
+                                        {a.status === "ACTIVE" ? (
+                                          <button
+                                            onClick={() => void setAdStatus(r.id, a, "PAUSED")}
+                                            disabled={busyId === a.id}
+                                            className="h-6 rounded border border-red-300 px-2 font-medium text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
+                                          >
+                                            Pausar
+                                          </button>
+                                        ) : a.status === "PAUSED" ? (
+                                          <button
+                                            onClick={() => void setAdStatus(r.id, a, "ACTIVE")}
+                                            disabled={busyId === a.id}
+                                            className="h-6 rounded border border-emerald-400 px-2 font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-700 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                                          >
+                                            Reativar
+                                          </button>
+                                        ) : null}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          );
+                        })()}
+                        <p className="mt-1 text-[11px] text-zinc-400">
+                          Números de {PERIOD_LABEL[periodOf(filter)]}. Custo por lead = gasto ÷ conversas iniciadas no WhatsApp.
+                        </p>
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
                 );
               })}
             </tbody>

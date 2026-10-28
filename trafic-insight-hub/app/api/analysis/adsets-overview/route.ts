@@ -17,7 +17,7 @@ interface AdsetRow {
   lifetime_budget?: string;
   created_time?: string;
   campaign_id?: string;
-  campaign?: { name?: string; daily_budget?: string };
+  campaign?: { name?: string; daily_budget?: string; effective_status?: string };
 }
 interface InsightRow {
   adset_id?: string;
@@ -37,6 +37,7 @@ export interface OverviewAdset {
   id: string;
   name: string;
   campaign_name: string | null;
+  campaign_status: string | null; // Etapa 220: status da campanha (ACTIVE, PAUSED…)
   status: string;
   daily_budget: number | null; // R$ por dia do conjunto (null = orçamento na campanha/CBO ou vitalício)
   cbo: boolean;
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
     });
     const [adsets, campaigns, ins2Rows, ins15Rows] = await Promise.all([
       metaGetAll<AdsetRow>(token, `/${act}/adsets`, {
-        fields: "id,name,effective_status,status,daily_budget,lifetime_budget,created_time,campaign_id,campaign{name,daily_budget}",
+        fields: "id,name,effective_status,status,daily_budget,lifetime_budget,created_time,campaign_id,campaign{name,daily_budget,effective_status}",
         limit: "500",
       }),
       metaGetAll<{ id?: string; objective?: string; name?: string }>(token, `/${act}/campaigns`, { fields: "id,name,objective", limit: "500" }),
@@ -115,6 +116,7 @@ export async function POST(request: Request) {
         id: a.id,
         name: a.name || a.id,
         campaign_name: a.campaign?.name ?? null,
+        campaign_status: (a.campaign?.effective_status ?? "").toUpperCase() || null,
         status,
         daily_budget: daily > 0 ? daily / 100 : null,
         cbo: !(daily > 0) && Number(a.campaign?.daily_budget ?? 0) > 0,
