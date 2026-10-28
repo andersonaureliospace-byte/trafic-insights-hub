@@ -6,8 +6,14 @@ import { fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 
 // Etapa 217: Análise → "Conjuntos da conta". Escolhe UMA conta e só então busca na Meta (economiza requisição).
-// Números dos últimos 30 dias. Filtros: todos ativos · com impressão nos 30 dias (inclusive pausados) · CPA acima · CPA abaixo.
+// Etapa 219: "Todos ativos" e "CPA acima/abaixo" usam ONTEM + HOJE; "Com impressão" usa os ÚLTIMOS 15 DIAS (inclui pausados).
 
+interface Metrics {
+  spend: number;
+  impressions: number;
+  conversations: number;
+  cpa: number | null;
+}
 interface Row {
   id: string;
   name: string;
@@ -16,10 +22,8 @@ interface Row {
   daily_budget: number | null;
   cbo: boolean;
   created_time: string | null;
-  spend: number;
-  impressions: number;
-  conversations: number;
-  cpa: number | null;
+  d2: Metrics; // ontem + hoje
+  d15: Metrics; // últimos 15 dias
 }
 interface Data {
   accountId: string;
@@ -28,11 +32,13 @@ interface Data {
   fetchedAt: string;
   adsets: Row[];
 }
+const periodOf = (f: FilterId): "d2" | "d15" => (f === "impressao" ? "d15" : "d2");
+const PERIOD_LABEL = { d2: "ontem + hoje", d15: "últimos 15 dias" } as const;
 
 type FilterId = "ativos" | "impressao" | "acima" | "abaixo";
 const FILTERS: { id: FilterId; label: string }[] = [
   { id: "ativos", label: "Todos ativos" },
-  { id: "impressao", label: "Com impressão nos 30 dias (inclui pausados)" },
+  { id: "impressao", label: "Com impressão nos 15 dias (inclui pausados)" },
   { id: "acima", label: "CPA acima da meta" },
   { id: "abaixo", label: "CPA abaixo da meta" },
 ];
@@ -46,10 +52,10 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 // Acima: com conversa e CPA acima da meta, ou sem conversa e gasto acima da meta. Abaixo: com conversa e CPA na meta ou abaixo.
-function cpaSide(r: Row, target: number | null): "acima" | "abaixo" | null {
-  if (target == null || r.impressions <= 0) return null;
-  if (r.conversations > 0 && r.cpa != null) return r.cpa > target ? "acima" : "abaixo";
-  return r.spend > target ? "acima" : null;
+function cpaSide(m: Metrics, target: number | null): "acima" | "abaixo" | null {
+  if (target == null || m.impressions <= 0) return null;
+  if (m.conversations > 0 && m.cpa != null) return m.cpa > target ? "acima" : "abaixo";
+  return m.spend > target ? "acima" : null;
 }
 
 export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
@@ -171,18 +177,21 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
     const c: Record<FilterId, number> = { ativos: 0, impressao: 0, acima: 0, abaixo: 0 };
     for (const r of data?.adsets ?? []) {
       if (r.status === "ACTIVE") c.ativos++;
-      if (r.impressions > 0) c.impressao++;
-      const side = cpaSide(r, target);
+      if (r.d15.impressions > 0) c.impressao++;
+      const side = cpaSide(r.d2, target);
       if (side) c[side]++;
     }
     return c;
   }, [data, target]);
   const rows = useMemo(() => {
+    const per = periodOf(filter);
     const list = (data?.adsets ?? []).filter((r) =>
-      filter === "ativos" ? r.status === "ACTIVE" : filter === "impressao" ? r.impressions > 0 : cpaSide(r, target) === filter,
+      filter === "ativos" ? r.status === "ACTIVE" : filter === "impressao" ? r.d15.impressions > 0 : cpaSide(r.d2, target) === filter,
     );
-    const key = (r: Row) => r.cpa ?? (r.spend > 0 ? r.spend : Number.POSITIVE_INFINITY);
-    return list.sort((a, b) => (filter === "abaixo" ? key(a) - key(b) : filter === "acima" ? key(b) - key(a) : b.spend - a.spend));
+    const key = (r: Row) => r[per].cpa ?? (r[per].spend > 0 ? r[per].spend : Number.POSITIVE_INFINITY);
+    return list.sort((a, b) =>
+      filter === "abaixo" ? key(a) - key(b) : filter === "acima" ? key(b) - key(a) : b[per].spend - a[per].spend,
+    );
   }, [data, filter, target]);
 
   return (
@@ -214,7 +223,7 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
         ) : null}
         {data ? (
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
-            Últimos 30 dias · CPA ideal {target != null ? fmtCurrency(target) : "não cadastrado"} · buscado às{" "}
+            Números de {PERIOD_LABEL[periodOf(filter)]} · CPA ideal {target != null ? fmtCurrency(target) : "não cadastrado"} · buscado às{" "}
             {new Date(data.fetchedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </span>
         ) : null}
@@ -259,16 +268,17 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
                 <th className="px-4 py-1.5 font-medium">Conjunto</th>
                 <th className="px-3 py-1.5 font-medium">Status</th>
                 <th className="px-3 py-1.5 text-right font-medium">Orçamento/dia</th>
-                <th className="px-3 py-1.5 text-right font-medium">Gasto 30d</th>
+                <th className="px-3 py-1.5 text-right font-medium">Gasto</th>
                 <th className="px-3 py-1.5 text-right font-medium">Impressões</th>
                 <th className="px-3 py-1.5 text-right font-medium">Conversas</th>
-                <th className="px-3 py-1.5 text-right font-medium">CPA 30d</th>
+                <th className="px-3 py-1.5 text-right font-medium">CPA ({PERIOD_LABEL[periodOf(filter)]})</th>
                 <th className="px-3 py-1.5 text-right font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
-                const side = cpaSide(r, target);
+                const m = r[periodOf(filter)];
+                const side = cpaSide(m, target);
                 const st = STATUS[r.status] ?? { label: r.status.toLowerCase(), cls: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" };
                 return (
                   <tr key={r.id} className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
@@ -282,19 +292,19 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
                     <td className="px-3 py-2 text-right tabular-nums">
                       {r.daily_budget != null ? fmtCurrency(r.daily_budget) : <span className="text-xs text-zinc-400">{r.cbo ? "na campanha" : "—"}</span>}
                     </td>
-                    <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(r.spend)}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.impressions.toLocaleString("pt-BR")}</td>
-                    <td className="px-3 py-2 text-right tabular-nums">{r.conversations}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(m.spend)}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{m.impressions.toLocaleString("pt-BR")}</td>
+                    <td className="px-3 py-2 text-right tabular-nums">{m.conversations}</td>
                     <td
                       className={`px-3 py-2 text-right font-semibold tabular-nums ${
                         side === "acima" ? "text-red-600 dark:text-red-400" : side === "abaixo" ? "text-emerald-600 dark:text-emerald-400" : ""
                       }`}
                     >
-                      {r.cpa != null ? fmtCurrency(r.cpa) : <span className="text-xs font-normal text-zinc-400">sem conversa</span>}
-                      {target != null && r.cpa != null ? (
+                      {m.cpa != null ? fmtCurrency(m.cpa) : <span className="text-xs font-normal text-zinc-400">sem conversa</span>}
+                      {target != null && m.cpa != null ? (
                         <div className="text-[11px] font-normal opacity-70">
-                          {r.cpa - target >= 0 ? "+" : "−"}
-                          {fmtCurrency(Math.abs(r.cpa - target))}
+                          {m.cpa - target >= 0 ? "+" : "−"}
+                          {fmtCurrency(Math.abs(m.cpa - target))}
                         </div>
                       ) : null}
                     </td>
@@ -367,7 +377,7 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
             </tbody>
           </table>
           <p className="px-4 py-2 text-xs text-zinc-400">
-            <a href={adsManagerUrl(data.accountId, "last_30d")} target="_blank" rel="noopener noreferrer" className="underline decoration-dotted">
+            <a href={adsManagerUrl(data.accountId, "today_yesterday")} target="_blank" rel="noopener noreferrer" className="underline decoration-dotted">
               Abrir a conta no Gerenciador ↗
             </a>{" "}
             · Ficam de fora as campanhas de vaga/seguidores/tráfego e objetivos que não contam pro CPA (mesma regra da Análise).
