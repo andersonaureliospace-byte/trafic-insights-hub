@@ -28,6 +28,7 @@ import {
 } from "@/lib/meta/speed";
 import type { AccountInsight } from "@/lib/meta/insights";
 import { usePriorityOptions } from "@/lib/priority-context";
+import { OPT_DOT, OPT_FILTERS, OPT_LABEL, matchesOptFilter, optState, type OptFilter } from "@/lib/optimize-state";
 
 // Etapa 185: colunas viraram Nome | Prioridade | CPA | Hoje⇄Amanhã. "Status" passou a se chamar "Prioridade" (o mesmo nome do campo no
 // Asana — é a classificação dos últimos 3 dias); o status da Speed (mensal) aparece como uma faixa colorida à esquerda de cada linha.
@@ -45,6 +46,7 @@ export interface FiltroOpt {
   cpaTarget: number | null;
   monthlyInvestment: number | null;
   optimized: boolean;
+  toOptimize?: boolean; // Etapa 226: marcado como "Otimizar"
 }
 
 type Att = Record<string, { points: number; reasons: string[] }>;
@@ -77,7 +79,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
   // Etapa 200: "Investimento" virou ordem pelo investimento DIÁRIO atual (orçamento dos ativos + programados — o número de
   // cima da coluna Ritmo), crescente/decrescente, sem olhar meta.
   const [invest, setInvest] = useState<"all" | "asc" | "desc">("all");
-  const [optimized, setOptimized] = useState<"all" | "optimized" | "pending">("all");
+  const [optimized, setOptimized] = useState<OptFilter>("all");
   const [attentionF, setAttentionF] = useState<"all" | "attention">("all");
   const [sort, setSort] = useState<FocoSort>("manual");
   const [period, setPeriod] = useState(""); // "" = o período salvo mais recente
@@ -229,7 +231,7 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
         const actual = ins[o.id]?.cost_per_result;
         return o.cpaTarget != null && actual != null && actual > o.cpaTarget;
       })
-      .filter((o) => optimized === "all" || (optimized === "optimized" ? o.optimized : !o.optimized))
+      .filter((o) => matchesOptFilter(optimized, optState(o.optimized, o.toOptimize)))
       .filter((o) => attentionF === "all" || !!attention[o.id.replace(/^act_/, "")])
       .sort((a, b) => {
         // Etapa 200: Investimento crescente/decrescente manda na ordem (orçamento diário atual + programados). Sem dado vai pro final.
@@ -320,10 +322,12 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
           </label>
           <label>
             <span className={lblCls}>Otimizado</span>
-            <select value={optimized} onChange={(e) => setOptimized(e.target.value as "all" | "optimized" | "pending")} className={selCls}>
-              <option value="all">Todos</option>
-              <option value="optimized">Otimizado</option>
-              <option value="pending">Pendente</option>
+            <select value={optimized} onChange={(e) => setOptimized(e.target.value as OptFilter)} className={selCls}>
+              {OPT_FILTERS.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.label}
+                </option>
+              ))}
             </select>
           </label>
           <label title={noData ? noDataHint : undefined}>
@@ -435,8 +439,8 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
               >
                 <span className="flex min-w-0 items-center gap-1">
                   <span
-                    className={`inline-block h-2 w-2 shrink-0 rounded-full ${o.optimized ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-600"}`}
-                    title={o.optimized ? "Otimizada hoje" : "Pendente"}
+                    className={`inline-block h-2 w-2 shrink-0 rounded-full ${OPT_DOT[optState(o.optimized, o.toOptimize)]}`}
+                    title={OPT_LABEL[optState(o.optimized, o.toOptimize)]}
                   />
                   <span className={`truncate ${sp?.overall === "off" ? "text-red-600 dark:text-red-400" : ""}`}>
                     {att ? "🚨 " : ""}

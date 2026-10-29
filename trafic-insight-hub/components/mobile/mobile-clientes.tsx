@@ -11,6 +11,7 @@ interface Binding {
   cpa_target?: number | null;
   monthly_investment?: number | null;
   optimized?: boolean;
+  to_optimize?: boolean;
   priority?: string | null;
   sort_order?: number | null;
   active?: boolean;
@@ -38,6 +39,7 @@ export function MobileClientes() {
               cpaTarget: x.cpa_target ?? null,
               monthlyInvestment: x.monthly_investment ?? null,
               optimized: !!x.optimized,
+              toOptimize: !!x.to_optimize,
               priority: x.priority ?? null,
               sortOrder: x.sort_order ?? null,
             })),

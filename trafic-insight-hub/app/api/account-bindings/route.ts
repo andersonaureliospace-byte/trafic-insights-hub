@@ -23,6 +23,8 @@ export async function GET() {
       ...b,
       optimized: b.optimized && b.optimized_date === todayBRT,
       tab_optimized: !!b.tab_optimized && b.tab_optimized_date === todayBRT,
+      // Etapa 226: "Otimizar" (não reseta à meia-noite). Se já está Otimizado hoje, vale o Otimizado.
+      to_optimize: !!b.to_optimize && !(b.optimized && b.optimized_date === todayBRT),
     }));
     return NextResponse.json({ bindings });
   } catch (e) {
@@ -68,6 +70,15 @@ export async function PATCH(request: Request) {
       patch.optimized_date = optimized ? spDate(new Date()) : null;
     }
 
+    // Etapa 226: 3º estado "Otimizar". Marcar Otimizar tira o Otimizado (e vice-versa, quem manda os dois é a tela).
+    if ("to_optimize" in body) {
+      patch.to_optimize = !!body.to_optimize;
+      if (body.to_optimize) {
+        patch.optimized = false;
+        patch.optimized_date = null;
+      }
+    }
+
     // Etapa 83: marcação da coluna Otimizado de Acompanhamento de metas — mesma
     // regra, colunas próprias.
     if ("tab_optimized" in body) {
@@ -77,7 +88,12 @@ export async function PATCH(request: Request) {
     }
 
     const { error } = await supabase.from("account_bindings").upsert(patch, { onConflict: "user_id,ad_account_id" });
-    if (error) throw error;
+    if (error) {
+      if (/to_optimize/.test(error.message)) {
+        throw new Error("Rode o SQL supabase/migrations/0040_to_optimize.sql no Supabase pra ativar o \"Otimizar\".");
+      }
+      throw error;
+    }
     return NextResponse.json({ ok: true });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });

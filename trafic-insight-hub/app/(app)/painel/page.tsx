@@ -17,6 +17,7 @@ import { PIN_BLUR, PinCell } from "@/components/painel/pin-cell";
 import { MetasTab } from "@/components/painel/metas-tab";
 import { InlineNumber } from "@/components/painel/inline-number";
 import { OptimizedCell } from "@/components/painel/optimized-cell";
+import { OPT_FILTERS, isOptFilter, matchesOptFilter, optPatch, optState, type OptFilter } from "@/lib/optimize-state";
 import { ClientNameHover } from "@/components/painel/client-name-hover";
 import { ColorLegend } from "@/components/painel/color-legend";
 import { usePainelUiState } from "@/lib/hooks/use-painel-ui-state";
@@ -48,6 +49,8 @@ interface AccountBinding {
   optimized: boolean | null;
   // Etapa 83: marcação própria da aba "Otimizado", separada de `optimized`.
   tab_optimized: boolean | null;
+  // Etapa 226: 3º estado "Otimizar" (Pendente → Otimizar → Otimizado).
+  to_optimize?: boolean | null;
   // Etapa 131: cliente ativo (padrão) ou desativado. Ausente/null = ativo.
   active?: boolean | null;
 }
@@ -70,6 +73,7 @@ function defaultBinding(accountId: string): AccountBinding {
     sort_order: null,
     optimized: false,
     tab_optimized: false,
+    to_optimize: false,
   };
 }
 
@@ -191,7 +195,7 @@ export default function PainelPage() {
   const [investFilter, setInvestFilter] = useState<"all" | "low" | "high">("all");
   // Filtro da coluna "Otimizado" (Etapa 36) — mesmo padrão dos outros 3:
   // começa fixo em "Todos".
-  const [optimizedFilter, setOptimizedFilter] = useState<"all" | "optimized" | "pending">("all");
+  const [optimizedFilter, setOptimizedFilter] = useState<OptFilter>("all");
   // Filtro "Atenção": só as contas que o Resumo das 7h marcou como críticas (mesma lista/pontuação — lib/alerts/priority-score.ts).
   const [attentionFilter, setAttentionFilter] = useState<"all" | "attention">("all");
   const [attention, setAttention] = useState<Record<string, { points: number; reasons: string[] }>>({});
@@ -431,8 +435,7 @@ export default function PainelPage() {
     if (typeof a.priorityFilter === "string") setPriorityFilter(a.priorityFilter);
     if (a.cpaFilter === "all" || a.cpaFilter === "high") setCpaFilter(a.cpaFilter);
     if (a.investFilter === "all" || a.investFilter === "low" || a.investFilter === "high") setInvestFilter(a.investFilter);
-    if (a.optimizedFilter === "all" || a.optimizedFilter === "optimized" || a.optimizedFilter === "pending")
-      setOptimizedFilter(a.optimizedFilter);
+    if (isOptFilter(a.optimizedFilter)) setOptimizedFilter(a.optimizedFilter);
     if (a.attentionFilter === "all" || a.attentionFilter === "attention") setAttentionFilter(a.attentionFilter);
     const strList = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
     if (a.sortMode === "manual" || a.sortMode === PRIORITY_CPA_SORT || METAS_SORTS.some((s) => s.id === a.sortMode)) setSortMode(a.sortMode as SortMode);
@@ -774,9 +777,7 @@ export default function PainelPage() {
         return diff < -RITMO_BAND;
       })
       .filter((r) => {
-        if (optimizedFilter === "all") return true;
-        const isOptimized = !!r.binding?.optimized;
-        return optimizedFilter === "optimized" ? isOptimized : !isOptimized;
+        return matchesOptFilter(optimizedFilter, optState(r.binding?.optimized, r.binding?.to_optimize));
       })
       .filter((r) => attentionFilter === "all" || !!attention[r.acc.account_id.replace(/^act_/, "")])
       .sort((a, b) => {
@@ -1065,12 +1066,14 @@ export default function PainelPage() {
                     <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Otimizado</span>
                     <select
                       value={optimizedFilter}
-                      onChange={(e) => setOptimizedFilter(e.target.value as "all" | "optimized" | "pending")}
+                      onChange={(e) => setOptimizedFilter(e.target.value as OptFilter)}
                       className="h-7 rounded-md border border-zinc-300 bg-transparent px-2 text-xs dark:border-zinc-700"
                     >
-                      <option value="all">Todos</option>
-                      <option value="optimized">Otimizado</option>
-                      <option value="pending">Pendente</option>
+                      {OPT_FILTERS.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                   <div className="flex items-center gap-1.5">
@@ -1202,8 +1205,8 @@ export default function PainelPage() {
                             </td>
                             <td className="px-4 py-2">
                               <OptimizedCell
-                                optimized={!!binding?.optimized}
-                                onToggle={(next) => patchBinding(acc.account_id, { optimized: next })}
+                                state={optState(binding?.optimized, binding?.to_optimize)}
+                                onChange={(next) => patchBinding(acc.account_id, optPatch(next))}
                               />
                             </td>
                             <td className="px-4 py-2">

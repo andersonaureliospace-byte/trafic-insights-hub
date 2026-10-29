@@ -12,6 +12,7 @@ import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import type { DailyCpaPoint } from "@/lib/meta/daily-cpa";
 import type { AccountInsight } from "@/lib/meta/insights";
 import { monthCalendarSP } from "@/lib/meta/ritmo";
+import { NEXT_STATE, OPT_DOT, OPT_LABEL, OPT_PILL, OPT_TITLE, optPatch, optState } from "@/lib/optimize-state";
 
 // Modo Foco: uma conta só, tudo numa tela — Acompanhamento de Resultados (metade de cima), Acompanhamento de metas e Análise (Vídeos de Geral /
 // Melhor público) embaixo. A conta escolhida fica na própria aba do navegador (endereço ?conta=…), então dá pra deixar uma conta diferente em cada aba.
@@ -22,6 +23,7 @@ interface Opt {
   cpaTarget: number | null;
   monthlyInvestment: number | null;
   optimized: boolean;
+  toOptimize: boolean;
   priority: string | null;
   sortOrder: number | null;
   whatsapp: string | null;
@@ -32,6 +34,7 @@ interface Binding {
   cpa_target?: number | null;
   monthly_investment?: number | null;
   optimized?: boolean;
+  to_optimize?: boolean;
   priority?: string | null;
   sort_order?: number | null;
   whatsapp_contact?: string | null;
@@ -86,6 +89,7 @@ export default function FocoPage() {
             cpaTarget: x.cpa_target ?? null,
             monthlyInvestment: x.monthly_investment ?? null,
             optimized: !!x.optimized,
+            toOptimize: !!x.to_optimize,
             priority: x.priority ?? null,
             sortOrder: x.sort_order ?? null,
             whatsapp: x.whatsapp_contact ?? null,
@@ -174,26 +178,28 @@ export default function FocoPage() {
 
   // Otimizado × Pendente: a mesma marcação da coluna Otimizado do Desempenho (vale pro dia de hoje). Avisa o Painel aberto em outra aba na hora.
   async function toggleOptimized(o: Opt) {
-    const next = !o.optimized;
+    // Etapa 226: um clique avança Pendente → Otimizar → Otimizado → Pendente.
+    const p = optPatch(NEXT_STATE[optState(o.optimized, o.toOptimize)]);
+    const prevState = { optimized: o.optimized, toOptimize: o.toOptimize };
     setSavingOpt(true);
-    setOpts((prev) => (prev ?? []).map((x) => (x.id === o.id ? { ...x, optimized: next } : x)));
+    setOpts((prev) => (prev ?? []).map((x) => (x.id === o.id ? { ...x, optimized: p.optimized, toOptimize: p.to_optimize } : x)));
     try {
       const res = await fetch("/api/account-bindings", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ad_account_id: o.id, optimized: next }),
+        body: JSON.stringify({ ad_account_id: o.id, ...p }),
       });
       const d = (await res.json().catch(() => ({ error: "Resposta inválida do servidor." }))) as { error?: string };
       if (d.error) throw new Error(d.error);
       try {
         const ch = new BroadcastChannel("trafic-bindings");
-        ch.postMessage({ accountId: o.id, patch: { optimized: next } });
+        ch.postMessage({ accountId: o.id, patch: p });
         ch.close();
       } catch {
         /* sem BroadcastChannel: o Painel relê ao voltar pra aba */
       }
     } catch (e) {
-      setOpts((prev) => (prev ?? []).map((x) => (x.id === o.id ? { ...x, optimized: !next } : x)));
+      setOpts((prev) => (prev ?? []).map((x) => (x.id === o.id ? { ...x, ...prevState } : x)));
       setError(`Não deu pra salvar: ${(e as Error).message}`);
     } finally {
       setSavingOpt(false);
@@ -229,15 +235,13 @@ export default function FocoPage() {
             <button
               onClick={() => void toggleOptimized(opt)}
               disabled={savingOpt}
-              title={opt.optimized ? "Marcada como otimizada hoje — clique pra voltar a Pendente" : "Clique pra marcar como otimizada hoje"}
+              title={OPT_TITLE[optState(opt.optimized, opt.toOptimize)]}
               className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-sm font-medium transition-colors disabled:opacity-50 ${
-                opt.optimized
-                  ? "border-emerald-400 bg-emerald-100 text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                  : "border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-300"
+                OPT_PILL[optState(opt.optimized, opt.toOptimize)]
               }`}
             >
-              <span className={`inline-block h-2.5 w-2.5 rounded-full ${opt.optimized ? "bg-emerald-500" : "bg-zinc-300 dark:bg-zinc-600"}`} />
-              {opt.optimized ? "Otimizado" : "Pendente"}
+              <span className={`inline-block h-2.5 w-2.5 rounded-full ${OPT_DOT[optState(opt.optimized, opt.toOptimize)]}`} />
+              {OPT_LABEL[optState(opt.optimized, opt.toOptimize)]}
             </button>
             <button
               onClick={() => void load(opt.id)}
