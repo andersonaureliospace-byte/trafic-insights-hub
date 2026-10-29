@@ -81,9 +81,16 @@ function cpaSide(m: Metrics, target: number | null): "acima" | "abaixo" | null {
   return m.spend > target ? "acima" : null;
 }
 
-export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
+// Etapa 221: também usado no app do celular (/m/conjuntos), que já chega com a conta escolhida (initialAccountId).
+export function ConjuntosConta({
+  accounts,
+  initialAccountId,
+}: {
+  accounts: Array<Pick<AdAccount, "account_id" | "name">>;
+  initialAccountId?: string;
+}) {
   const [names, setNames] = useState<Record<string, string>>({});
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState(initialAccountId ?? "");
   const [filter, setFilter] = useState<FilterId>("ativos");
   const [cache, setCache] = useState<Record<string, Data>>({});
   const [loading, setLoading] = useState(false);
@@ -225,6 +232,11 @@ export function ConjuntosConta({ accounts }: { accounts: AdAccount[] }) {
         .sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
     [accounts, names],
   );
+
+  useEffect(() => {
+    if (initialAccountId) void load(initialAccountId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só ao abrir com a conta já escolhida
+  }, [initialAccountId]);
 
   async function load(id: string, force = false) {
     if (!id) return;

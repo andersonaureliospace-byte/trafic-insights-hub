@@ -22,7 +22,11 @@ export default function LoginPage() {
       setError("E-mail ou senha incorretos.");
       return;
     }
-    router.push("/painel");
+    // Etapa 221: aberto pelo app do celular (tela de início) → vai direto pras telas rápidas.
+    const standalone =
+      typeof window !== "undefined" &&
+      (window.matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true);
+    router.push(standalone ? "/m" : "/painel");
     router.refresh();
   }
 

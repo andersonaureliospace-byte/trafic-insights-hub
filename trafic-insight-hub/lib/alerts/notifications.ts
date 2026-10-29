@@ -8,6 +8,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
+import { sendPushToUser } from "@/lib/push";
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -165,6 +166,15 @@ export async function publishAlert(db: Db, userId: string, input: PublishAlertIn
   // Urgente: grava na aba sem deixar uma falha daqui derrubar o aviso do grupo.
   await recordAlert(db, userId, input, true).catch(() => undefined);
   await purgeExpiredAlerts(db, userId).catch(() => undefined);
+
+  // Etapa 221: o mesmo aviso urgente vai como notificação pro app no celular (antes do WhatsApp — se o grupo não
+  // estiver cadastrado, a notificação chega mesmo assim). Nunca lança erro.
+  await sendPushToUser(db, userId, {
+    title: input.title,
+    body: input.body.replace(/\n+/g, " · "),
+    url: "/m",
+    tag: input.kind,
+  });
 
   const instance = await requireWhatsappInstance(db, userId);
   if (!instance.alerts_group_id) {

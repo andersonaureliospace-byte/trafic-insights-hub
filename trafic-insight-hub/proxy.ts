@@ -2,7 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 // Rotas que não exigem login.
-const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/redefinir-senha"];
+// Etapa 221: /sw.js e /manifest.webmanifest são do app no celular e precisam abrir sem login.
+const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/redefinir-senha", "/sw.js", "/manifest.webmanifest"];
 const isPublicApi = (pathname: string) =>
   pathname.startsWith("/c/") ||
   pathname.startsWith("/api/public") ||
