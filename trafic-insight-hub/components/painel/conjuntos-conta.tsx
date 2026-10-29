@@ -1,12 +1,14 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
+import { ANALYSIS_PERIODS, type AnalysisPeriod } from "@/lib/analysis-periods";
 
 // Etapa 217: Análise → "Conjuntos da conta". Escolhe UMA conta e só então busca na Meta (economiza requisição).
 // Etapa 219: "Todos ativos" e "CPA acima/abaixo" usam ONTEM + HOJE; "Com impressão" usa os ÚLTIMOS 15 DIAS (inclui pausados).
+// Etapa 224: filtro de período (Hoje, Ontem, Ontem + hoje, 7, 15 e 30 dias, Este mês) troca o período de todos os filtros.
 
 interface Metrics {
   spend: number;
@@ -50,8 +52,12 @@ interface AdRow {
   cpl: number | null;
 }
 
-const periodOf = (f: FilterId): "d2" | "d15" => (f === "impressao" ? "d15" : "d2");
-const PERIOD_LABEL = { d2: "ontem + hoje", d15: "últimos 15 dias" } as const;
+// Etapa 224: filtro de período. "Padrão" = ontem + hoje (Com impressão: 15 dias). Os dois períodos padrão já vêm na
+// 1ª busca; outro período busca só os números (1 chamada) e fica guardado por conta + período.
+type PeriodSel = "auto" | AnalysisPeriod;
+const autoPeriod = (f: FilterId): AnalysisPeriod => (f === "impressao" ? "15d" : "ontem_hoje");
+const periodLabel = (p: AnalysisPeriod) => (ANALYSIS_PERIODS.find((x) => x.id === p)?.label ?? p).toLowerCase();
+const EMPTY_M: Metrics = { spend: 0, impressions: 0, conversations: 0, cpa: null };
 
 type FilterId = "ativos" | "impressao" | "acima" | "abaixo";
 const FILTERS: { id: FilterId; label: string }[] = [
@@ -102,6 +108,10 @@ export function ConjuntosConta({
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   // Etapa 220: criativos por conjunto (busca só ao abrir; guarda por conjunto + período).
   const [openId, setOpenId] = useState<string | null>(null);
+  const [periodSel, setPeriodSel] = useState<PeriodSel>("auto");
+  const [periodCache, setPeriodCache] = useState<Record<string, Record<string, Metrics> | { error: string }>>({});
+  const [periodLoading, setPeriodLoading] = useState(false);
+  const period: AnalysisPeriod = periodSel === "auto" ? autoPeriod(filter) : periodSel;
   const [adsCache, setAdsCache] = useState<Record<string, AdRow[] | { error: string }>>({});
 
   async function toggleAds(r: Row) {
@@ -110,13 +120,13 @@ export function ConjuntosConta({
       return;
     }
     setOpenId(r.id);
-    const key = `${r.id}|${periodOf(filter)}`;
+    const key = `${r.id}|${period}`;
     if (adsCache[key]) return;
     try {
       const res = await fetch("/api/analysis/adset-ads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ adsetId: r.id, period: periodOf(filter) }),
+        body: JSON.stringify({ adsetId: r.id, period }),
       });
       const d = await res.json();
       setAdsCache((c) => ({ ...c, [key]: d.error ? { error: d.error } : (d.ads as AdRow[]) }));
@@ -264,26 +274,66 @@ export function ConjuntosConta({
 
   const data = accountId ? cache[accountId] : undefined;
   const target = data?.cpaTarget ?? null;
+
+  // Números do período escolhido: ontem + hoje e 15 dias já vêm na busca da conta; os outros, da busca do período.
+  const extra = period === "ontem_hoje" || period === "15d" ? null : periodCache[`${accountId}|${period}`];
+  const extraError = extra && typeof extra.error === "string" ? (extra.error as string) : null;
+  const periodReady = period === "ontem_hoje" || period === "15d" || (extra != null && !extraError);
+  const metricsOf = useCallback(
+    (r: Row): Metrics => {
+      if (period === "ontem_hoje") return r.d2;
+      if (period === "15d") return r.d15;
+      return extra && !extraError ? ((extra as Record<string, Metrics>)[r.id] ?? EMPTY_M) : EMPTY_M;
+    },
+    [period, extra, extraError],
+  );
+
+  useEffect(() => {
+    if (!accountId || !data || period === "ontem_hoje" || period === "15d") return;
+    const key = `${accountId}|${period}`;
+    if (periodCache[key]) return;
+    let cancelled = false;
+    setPeriodLoading(true);
+    fetch("/api/analysis/adsets-overview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ accountId, period }),
+    })
+      .then((res) => res.json())
+      .then((d: { metrics?: Record<string, Metrics>; error?: string }) => {
+        if (!cancelled) setPeriodCache((c) => ({ ...c, [key]: d.error ? { error: d.error } : (d.metrics ?? {}) }));
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setPeriodCache((c) => ({ ...c, [key]: { error: e.message } }));
+      })
+      .finally(() => {
+        if (!cancelled) setPeriodLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, data, period, periodCache]);
   const counts = useMemo(() => {
     const c: Record<FilterId, number> = { ativos: 0, impressao: 0, acima: 0, abaixo: 0 };
+    // Contagem de cada filtro no período que ele vai mostrar (padrão: 15 dias pro "Com impressão", ontem + hoje nos outros).
+    const mOf = (r: Row, f: FilterId) => (periodSel === "auto" ? (autoPeriod(f) === "15d" ? r.d15 : r.d2) : metricsOf(r));
     for (const r of data?.adsets ?? []) {
       if (r.status === "ACTIVE") c.ativos++;
-      if (r.d15.impressions > 0) c.impressao++;
-      const side = cpaSide(r.d2, target);
+      if (mOf(r, "impressao").impressions > 0) c.impressao++;
+      const side = cpaSide(mOf(r, "acima"), target);
       if (side) c[side]++;
     }
     return c;
-  }, [data, target]);
+  }, [data, target, periodSel, metricsOf]);
   const rows = useMemo(() => {
-    const per = periodOf(filter);
     const list = (data?.adsets ?? []).filter((r) =>
-      filter === "ativos" ? r.status === "ACTIVE" : filter === "impressao" ? r.d15.impressions > 0 : cpaSide(r.d2, target) === filter,
+      filter === "ativos" ? r.status === "ACTIVE" : filter === "impressao" ? metricsOf(r).impressions > 0 : cpaSide(metricsOf(r), target) === filter,
     );
-    const key = (r: Row) => r[per].cpa ?? (r[per].spend > 0 ? r[per].spend : Number.POSITIVE_INFINITY);
+    const key = (r: Row) => metricsOf(r).cpa ?? (metricsOf(r).spend > 0 ? metricsOf(r).spend : Number.POSITIVE_INFINITY);
     return list.sort((a, b) =>
-      filter === "abaixo" ? key(a) - key(b) : filter === "acima" ? key(b) - key(a) : b[per].spend - a[per].spend,
+      filter === "abaixo" ? key(a) - key(b) : filter === "acima" ? key(b) - key(a) : metricsOf(b).spend - metricsOf(a).spend,
     );
-  }, [data, filter, target]);
+  }, [data, filter, target, metricsOf]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -312,9 +362,42 @@ export function ConjuntosConta({
             {loading ? "Buscando…" : "↻ Atualizar"}
           </button>
         ) : null}
+        {accountId ? (
+          <select
+            value={periodSel}
+            onChange={(e) => setPeriodSel(e.target.value as PeriodSel)}
+            title="Período dos números (gasto, impressões, conversas e CPA) — também vale pros criativos"
+            className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          >
+            <option value="auto">Período: padrão do filtro</option>
+            {ANALYSIS_PERIODS.map((p) => (
+              <option key={p.id} value={p.id}>
+                Período: {p.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {periodLoading ? <span className="text-xs text-zinc-500">Buscando o período…</span> : null}
+        {extraError ? (
+          <span className="text-xs text-red-600">
+            Não deu pra buscar o período: {extraError}{" "}
+            <button
+              className="underline"
+              onClick={() =>
+                setPeriodCache((c) => {
+                  const n = { ...c };
+                  delete n[`${accountId}|${period}`];
+                  return n;
+                })
+              }
+            >
+              tentar de novo
+            </button>
+          </span>
+        ) : null}
         {data ? (
           <span className="text-xs text-zinc-500 dark:text-zinc-400">
-            Números de {PERIOD_LABEL[periodOf(filter)]} · CPA ideal {target != null ? fmtCurrency(target) : "não cadastrado"} · buscado às{" "}
+            Números de {periodLabel(period)} · CPA ideal {target != null ? fmtCurrency(target) : "não cadastrado"} · buscado às{" "}
             {new Date(data.fetchedAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </span>
         ) : null}
@@ -333,7 +416,8 @@ export function ConjuntosConta({
                   : "border border-zinc-300 text-zinc-600 dark:border-zinc-700 dark:text-zinc-400"
               }`}
             >
-              {f.label} {data ? `(${counts[f.id]})` : ""}
+              {f.id === "impressao" && periodSel !== "auto" ? "Com impressão no período (inclui pausados)" : f.label}{" "}
+              {data && (periodSel === "auto" || periodReady || f.id === "ativos") ? `(${counts[f.id]})` : ""}
             </button>
           ))}
         </div>
@@ -349,9 +433,10 @@ export function ConjuntosConta({
         <p className={`px-4 py-2 text-sm ${notice.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600"}`}>{notice.text}</p>
       ) : null}
       {accountId && loading && !data ? <p className="px-4 py-6 text-sm text-zinc-500">Buscando na Meta…</p> : null}
-      {data && rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum conjunto nesse filtro.</p> : null}
+      {data && !periodReady && !extraError ? <p className="px-4 py-6 text-sm text-zinc-500">Buscando os números de {periodLabel(period)}…</p> : null}
+      {data && periodReady && rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum conjunto nesse filtro.</p> : null}
 
-      {data && rows.length > 0 ? (
+      {data && periodReady && rows.length > 0 ? (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -363,13 +448,13 @@ export function ConjuntosConta({
                 <th className="px-3 py-1.5 text-right font-medium">Gasto</th>
                 <th className="px-3 py-1.5 text-right font-medium">Impressões</th>
                 <th className="px-3 py-1.5 text-right font-medium">Conversas</th>
-                <th className="px-3 py-1.5 text-right font-medium">CPA ({PERIOD_LABEL[periodOf(filter)]})</th>
+                <th className="px-3 py-1.5 text-right font-medium">CPA ({periodLabel(period)})</th>
                 <th className="px-3 py-1.5 text-right font-medium">Ações</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => {
-                const m = r[periodOf(filter)];
+                const m = metricsOf(r);
                 const side = cpaSide(m, target);
                 const st = STATUS[r.status] ?? { label: r.status.toLowerCase(), cls: "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" };
                 return (
@@ -473,7 +558,7 @@ export function ConjuntosConta({
                     <tr className="border-b border-zinc-100 bg-zinc-50/60 dark:border-zinc-800/60 dark:bg-zinc-950/40">
                       <td colSpan={9} className="px-6 py-2">
                         {(() => {
-                          const v = adsCache[`${r.id}|${periodOf(filter)}`];
+                          const v = adsCache[`${r.id}|${period}`];
                           if (!v) return <p className="text-xs text-zinc-500">Buscando os criativos…</p>;
                           if (!Array.isArray(v)) return <p className="text-xs text-red-600">{v.error}</p>;
                           if (v.length === 0) return <p className="text-xs text-zinc-500">Nenhum criativo neste conjunto.</p>;
@@ -532,7 +617,7 @@ export function ConjuntosConta({
                           );
                         })()}
                         <p className="mt-1 text-[11px] text-zinc-400">
-                          Números de {PERIOD_LABEL[periodOf(filter)]}. Custo por lead = gasto ÷ conversas iniciadas no WhatsApp.
+                          Números de {periodLabel(period)}. Custo por lead = gasto ÷ conversas iniciadas no WhatsApp.
                         </p>
                       </td>
                     </tr>

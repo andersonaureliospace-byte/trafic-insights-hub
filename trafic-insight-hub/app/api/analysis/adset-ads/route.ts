@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
-import { metaGetAll, spDate } from "@/lib/meta/client";
+import { metaGetAll } from "@/lib/meta/client";
+import { analysisRange, isAnalysisPeriod, type AnalysisPeriod } from "@/lib/analysis-periods";
 
 // Etapa 220: Análise → "Conjuntos da conta" — criativos de UM conjunto (só quando você abre o conjunto: 2 chamadas).
 // Status de cada anúncio + gasto, conversas e custo por conversa (lead) no período do filtro (ontem + hoje ou 15 dias).
@@ -8,12 +9,12 @@ export async function POST(request: Request) {
   try {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
-    const body = (await request.json()) as { adsetId?: string; period?: "d2" | "d15" };
+    const body = (await request.json()) as { adsetId?: string; period?: string };
     const adsetId = String(body.adsetId ?? "").trim();
     if (!adsetId) throw new Error("Conjunto obrigatório.");
-    const now = new Date();
-    const today = spDate(now);
-    const since = spDate(new Date(now.getTime() - (body.period === "d15" ? 14 : 1) * 86_400_000));
+    // Etapa 224: período do filtro (d2/d15 = nomes antigos de "ontem + hoje" e "15 dias").
+    const period: AnalysisPeriod = isAnalysisPeriod(body.period) ? body.period : body.period === "d15" ? "15d" : "ontem_hoje";
+    const { since, until: today } = analysisRange(period);
 
     const [ads, insights] = await Promise.all([
       metaGetAll<{ id: string; name?: string; effective_status?: string; status?: string; created_time?: string }>(token, `/${adsetId}/ads`, {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { metaGetAll, spDate } from "@/lib/meta/client";
 import { isVaga, EXCLUDED_OBJECTIVES } from "@/lib/meta/shared";
+import { analysisRange, isAnalysisPeriod } from "@/lib/analysis-periods";
 
 // Etapa 217: Análise → "Conjuntos da conta". UMA conta por vez (economiza requisição): 4 chamadas à Meta —
 // conjuntos (status/orçamento), campanhas (objetivo) e insights por conjunto em dois períodos (Etapa 219):
@@ -63,10 +64,24 @@ export async function POST(request: Request) {
   try {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
-    const body = (await request.json()) as { accountId?: string };
+    const body = (await request.json()) as { accountId?: string; period?: string };
     const accountId = String(body.accountId ?? "").trim();
     if (!accountId) throw new Error("Escolha a conta.");
     const act = accountId.startsWith("act_") ? accountId : `act_${accountId}`;
+
+    // Etapa 224: filtro de período — com `period`, busca SÓ os números por conjunto nesse período (1 chamada à Meta).
+    if (body.period != null) {
+      if (!isAnalysisPeriod(body.period)) throw new Error("Período inválido.");
+      const range = analysisRange(body.period);
+      const insRows = await metaGetAll<InsightRow>(token, `/${act}/insights`, {
+        fields: "adset_id,spend,impressions,actions",
+        level: "adset",
+        time_range: JSON.stringify(range),
+        limit: "500",
+        use_unified_attribution_setting: "true",
+      });
+      return NextResponse.json({ period: body.period, range, fetchedAt: new Date().toISOString(), metrics: Object.fromEntries(toMetrics(insRows)) });
+    }
 
     const { data: binding } = await supabase
       .from("account_bindings")
