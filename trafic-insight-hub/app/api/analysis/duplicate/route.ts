@@ -27,6 +27,9 @@ export async function POST(request: Request) {
       name?: string;
       ads?: Array<{ id: string; name: string }>;
       dailyBudget?: number | null;
+      ageMin?: number | null;
+      ageMax?: number | null;
+      startTime?: string | null;
     };
     if (!body.adsetId) return NextResponse.json({ ok: false, error: "adsetId obrigatório" }, { status: 400 });
     const name = (body.name ?? "").trim();
@@ -34,7 +37,18 @@ export async function POST(request: Request) {
     const ads = (body.ads ?? []).filter((a) => a?.id);
     if (ads.length === 0) return NextResponse.json({ ok: false, error: "Escolha pelo menos um criativo." }, { status: 400 });
     const budgetCents = body.dailyBudget != null && Number.isFinite(body.dailyBudget) && body.dailyBudget > 0 ? Math.round(body.dailyBudget * 100) : null;
-    const result = await duplicateAdSet(token, { adsetId: body.adsetId, adIds: ads, newName: name, dailyBudgetCents: budgetCents });
+    // Etapa 231: idade (18–65) e início (ISO com fuso) opcionais.
+    const ageOk = Number.isInteger(body.ageMin) && Number.isInteger(body.ageMax) && (body.ageMin as number) >= 18 && (body.ageMax as number) <= 65 && (body.ageMin as number) <= (body.ageMax as number);
+    const startTime = typeof body.startTime === "string" && !Number.isNaN(Date.parse(body.startTime)) ? body.startTime : null;
+    const result = await duplicateAdSet(token, {
+      adsetId: body.adsetId,
+      adIds: ads,
+      newName: name,
+      dailyBudgetCents: budgetCents,
+      ageMin: ageOk ? body.ageMin : null,
+      ageMax: ageOk ? body.ageMax : null,
+      startTime,
+    });
     return NextResponse.json(result);
   } catch (e) {
     return NextResponse.json({ ok: false, error: (e as Error).message }, { status: 400 });

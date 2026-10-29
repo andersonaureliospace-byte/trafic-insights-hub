@@ -33,15 +33,21 @@ export interface DuplicateInfo {
   dailyBudget: number | null;
   budgetNote: string | null;
   ads: Array<{ id: string; name: string; status: string }>;
+  // Etapa 231: idade e WhatsApp do conjunto modelo (o novo herda; idade dá pra mudar).
+  ageMin: number | null;
+  ageMax: number | null;
+  whatsapp: string | null;
 }
 
 interface AdsetFields {
   name?: string;
   campaign_id?: string;
+  targeting?: { age_min?: number; age_max?: number };
+  promoted_object?: { whatsapp_phone_number?: string };
 }
 
 export async function getDuplicateInfo(token: string, adsetId: string): Promise<DuplicateInfo> {
-  const adset = await metaGet<AdsetFields>(token, `/${adsetId}`, { fields: "name,campaign_id" });
+  const adset = await metaGet<AdsetFields>(token, `/${adsetId}`, { fields: "name,campaign_id,targeting{age_min,age_max},promoted_object" });
   const ads = await metaGetAll<{ id?: string; name?: string; effective_status?: string }>(token, `/${adsetId}/ads`, {
     fields: "id,name,effective_status",
     effective_status: JSON.stringify(["ACTIVE"]),
@@ -63,6 +69,9 @@ export async function getDuplicateInfo(token: string, adsetId: string): Promise<
     campaignId: adset.campaign_id ?? null,
     dailyBudget,
     budgetNote,
+    ageMin: adset.targeting?.age_min ?? null,
+    ageMax: adset.targeting?.age_max ?? null,
+    whatsapp: adset.promoted_object?.whatsapp_phone_number ?? null,
     ads: ads.filter((a) => a.id).map((a) => ({ id: a.id as string, name: a.name ?? (a.id as string), status: (a.effective_status ?? "").toUpperCase() })),
   };
 }
@@ -153,6 +162,15 @@ export interface DuplicateResult {
   warnings: string[]; // problemas de verdade (algo não ficou como pedido)
   notes: string[]; // só informação sobre o método usado
   error?: string; // falha na cópia do conjunto (nada foi criado)
+  // Etapa 231: conferência lendo o conjunto novo de volta (WhatsApp igual ao do modelo, idade, início, campanha).
+  check?: {
+    whatsapp: string | null;
+    modelWhatsapp: string | null;
+    ageMin: number | null;
+    ageMax: number | null;
+    startTime: string | null;
+    campaignStatus: string | null;
+  };
 }
 
 interface CopyResponse {
@@ -163,7 +181,15 @@ interface CopyResponse {
 
 export async function duplicateAdSet(
   token: string,
-  p: { adsetId: string; adIds: Array<{ id: string; name: string }>; newName: string; dailyBudgetCents?: number | null },
+  p: {
+    adsetId: string;
+    adIds: Array<{ id: string; name: string }>;
+    newName: string;
+    dailyBudgetCents?: number | null;
+    ageMin?: number | null; // Etapa 231
+    ageMax?: number | null;
+    startTime?: string | null; // ISO com fuso; null = mantém o da cópia
+  },
 ): Promise<DuplicateResult> {
   const out: DuplicateResult = { ok: false, copiedAds: [], failedAds: [], warnings: [], notes: [] };
 
@@ -210,6 +236,23 @@ export async function duplicateAdSet(
     out.warnings.push(`Conjunto criado, mas não consegui acertar nome/orçamento: ${(e as Error).message}`);
   }
 
+  // 2b) Etapa 231: idade e início (o conjunto é novo, então o início ainda pode ser mudado).
+  if ((p.ageMin != null && p.ageMax != null) || p.startTime) {
+    try {
+      const patch: Record<string, string> = {};
+      if (p.ageMin != null && p.ageMax != null) {
+        const cur = await metaGet<{ targeting?: Record<string, unknown> }>(token, `/${newId}`, { fields: "targeting" });
+        if (cur.targeting && (cur.targeting.age_min !== p.ageMin || cur.targeting.age_max !== p.ageMax)) {
+          patch.targeting = JSON.stringify({ ...cur.targeting, age_min: p.ageMin, age_max: p.ageMax });
+        }
+      }
+      if (p.startTime) patch.start_time = p.startTime;
+      if (Object.keys(patch).length) await metaPost(token, `/${newId}`, patch);
+    } catch (e) {
+      out.warnings.push(`Conjunto criado, mas não consegui acertar idade/início: ${(e as Error).message}`);
+    }
+  }
+
   // 3) os criativos escolhidos
   let usedAdFallback = false;
   for (let i = 0; i < p.adIds.length; i++) {
@@ -247,6 +290,33 @@ export async function duplicateAdSet(
     }
   } catch (e) {
     out.warnings.push(`Não consegui conferir os nomes dos criativos novos: ${(e as Error).message}`);
+  }
+
+  // 5) Etapa 231: lê o conjunto novo de volta e confere o WhatsApp com o do modelo (o número trava depois de criado).
+  try {
+    const [n, m] = await Promise.all([
+      metaGet<{ promoted_object?: { whatsapp_phone_number?: string }; targeting?: { age_min?: number; age_max?: number }; start_time?: string; campaign?: { effective_status?: string } }>(
+        token,
+        `/${newId}`,
+        { fields: "promoted_object,targeting{age_min,age_max},start_time,campaign{effective_status}" },
+      ),
+      metaGet<{ promoted_object?: { whatsapp_phone_number?: string } }>(token, `/${p.adsetId}`, { fields: "promoted_object" }),
+    ]);
+    out.check = {
+      whatsapp: n.promoted_object?.whatsapp_phone_number ?? null,
+      modelWhatsapp: m.promoted_object?.whatsapp_phone_number ?? null,
+      ageMin: n.targeting?.age_min ?? null,
+      ageMax: n.targeting?.age_max ?? null,
+      startTime: n.start_time ?? null,
+      campaignStatus: (n.campaign?.effective_status ?? "").toUpperCase() || null,
+    };
+    if (out.check.whatsapp !== out.check.modelWhatsapp) {
+      out.warnings.push(
+        `O WhatsApp do conjunto novo (${out.check.whatsapp ?? "não informado — vai usar o padrão da página"}) é diferente do modelo (${out.check.modelWhatsapp ?? "não informado"}). Não ative sem conferir.`,
+      );
+    }
+  } catch (e) {
+    out.warnings.push(`Não consegui ler o conjunto novo de volta pra conferir o WhatsApp: ${(e as Error).message}`);
   }
 
   if (usedAdFallback) out.notes.push("Anúncios criados reaproveitando o criativo do original (a cópia nativa da Meta recusa esse criativo).");

@@ -7,6 +7,7 @@ import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { ANALYSIS_PERIODS, type AnalysisPeriod } from "@/lib/analysis-periods";
 import { AdsetSettings } from "@/components/painel/adset-settings";
 import { AdPreviewDialog } from "@/components/painel/ad-preview-dialog";
+import { DuplicarConjuntoDialog, type DuplicateAdsetInput } from "@/components/painel/duplicar-conjunto-dialog";
 
 // Etapa 217: Análise → "Conjuntos da conta". Escolhe UMA conta e só então busca na Meta (economiza requisição).
 // Etapa 219: "Todos ativos" e "CPA acima/abaixo" usam ONTEM + HOJE; "Com impressão" usa os ÚLTIMOS 15 DIAS (inclui pausados).
@@ -22,6 +23,7 @@ interface Row {
   id: string;
   name: string;
   campaign_name: string | null;
+  campaign_id?: string | null;
   campaign_status: string | null;
   status: string;
   daily_budget: number | null;
@@ -114,6 +116,8 @@ export function ConjuntosConta({
   const [ageEditId, setAgeEditId] = useState<string | null>(null);
   // Etapa 229: prévia de um criativo (janela).
   const [preview, setPreview] = useState<{ id: string; name: string } | null>(null);
+  // Etapa 231: duplicar conjunto / novo conjunto a partir do mais recente da campanha.
+  const [dupTarget, setDupTarget] = useState<DuplicateAdsetInput | null>(null);
   const [ageMin, setAgeMin] = useState("");
   const [ageMax, setAgeMax] = useState("");
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
@@ -205,6 +209,18 @@ export function ConjuntosConta({
     } finally {
       setBusyId(null);
     }
+  }
+
+  function openDuplicate(r: Row, title?: string) {
+    setDupTarget({
+      id: r.id,
+      name: r.name,
+      accountId,
+      cpaTarget: cache[accountId]?.cpaTarget ?? null,
+      ads: [],
+      statsPeriod: period,
+      title: title ?? "Duplicar conjunto",
+    });
   }
 
   async function saveAge(r: Row) {
@@ -383,8 +399,21 @@ export function ConjuntosConta({
     );
   }, [data, filter, target, metricsOf, search]);
 
+  // Campanhas da conta com o conjunto mais recente de cada uma (modelo do "Novo conjunto").
+  const campaigns = useMemo(() => {
+    const m = new Map<string, { id: string; name: string; latest: Row }>();
+    for (const r of data?.adsets ?? []) {
+      const cid = r.campaign_id ?? r.campaign_name ?? "";
+      if (!cid) continue;
+      const cur = m.get(cid);
+      if (!cur || (r.created_time ?? "") > (cur.latest.created_time ?? "")) m.set(cid, { id: cid, name: r.campaign_name ?? cid, latest: r });
+    }
+    return [...m.values()].sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+  }, [data]);
+
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      {dupTarget ? <DuplicarConjuntoDialog adset={dupTarget} onClose={() => setDupTarget(null)} /> : null}
       {preview ? <AdPreviewDialog adId={preview.id} name={preview.name} onClose={() => setPreview(null)} /> : null}
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <select
@@ -422,6 +451,24 @@ export function ConjuntosConta({
             {ANALYSIS_PERIODS.map((p) => (
               <option key={p.id} value={p.id}>
                 Período: {p.label}
+              </option>
+            ))}
+          </select>
+        ) : null}
+        {data && campaigns.length ? (
+          <select
+            value=""
+            onChange={(e) => {
+              const c = campaigns.find((x) => x.id === e.target.value);
+              if (c) openDuplicate(c.latest, `Novo conjunto · modelo: ${c.latest.name}`);
+            }}
+            title="Cria um conjunto novo copiando o conjunto mais recente da campanha (localização, WhatsApp, criativos e legendas)"
+            className="h-8 rounded-md border border-emerald-400 bg-white px-2 text-sm font-medium text-emerald-700 dark:border-emerald-700 dark:bg-zinc-900 dark:text-emerald-300"
+          >
+            <option value="">＋ Novo conjunto…</option>
+            {campaigns.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
               </option>
             ))}
           </select>
@@ -661,6 +708,14 @@ export function ConjuntosConta({
                             className="h-7 rounded border border-zinc-300 px-2 text-xs font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
                           >
                             Orçamento
+                          </button>
+                          <button
+                            onClick={() => openDuplicate(r)}
+                            disabled={busyId === r.id}
+                            title="Duplicar este conjunto (nasce pausado, com o mesmo WhatsApp e os criativos escolhidos)"
+                            className="h-7 rounded border border-zinc-300 px-2 text-xs font-medium hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                          >
+                            Duplicar
                           </button>
                         </div>
                       )}

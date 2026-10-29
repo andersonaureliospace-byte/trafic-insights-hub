@@ -39,6 +39,7 @@ export interface OverviewAdset {
   id: string;
   name: string;
   campaign_name: string | null;
+  campaign_id: string | null; // Etapa 231
   campaign_status: string | null; // Etapa 220: status da campanha (ACTIVE, PAUSED…)
   status: string;
   daily_budget: number | null; // R$ por dia do conjunto (null = orçamento na campanha/CBO ou vitalício)
@@ -135,6 +136,7 @@ export async function POST(request: Request) {
         id: a.id,
         name: a.name || a.id,
         campaign_name: a.campaign?.name ?? null,
+        campaign_id: a.campaign_id ?? null,
         campaign_status: (a.campaign?.effective_status ?? "").toUpperCase() || null,
         status,
         daily_budget: daily > 0 ? daily / 100 : null,
