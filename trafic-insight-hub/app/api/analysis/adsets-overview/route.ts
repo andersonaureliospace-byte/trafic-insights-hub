@@ -19,6 +19,7 @@ interface AdsetRow {
   created_time?: string;
   campaign_id?: string;
   campaign?: { name?: string; daily_budget?: string; effective_status?: string };
+  targeting?: { age_min?: number; age_max?: number; targeting_automation?: { advantage_audience?: number } };
 }
 interface InsightRow {
   adset_id?: string;
@@ -43,6 +44,9 @@ export interface OverviewAdset {
   daily_budget: number | null; // R$ por dia do conjunto (null = orçamento na campanha/CBO ou vitalício)
   cbo: boolean;
   created_time: string | null;
+  age_min: number | null; // Etapa 227: faixa etária do público
+  age_max: number | null;
+  advantage: boolean; // público Advantage+ (a idade máxima vira só sugestão pra Meta)
   d2: PeriodMetrics; // ontem + hoje
   d15: PeriodMetrics; // últimos 15 dias (contando hoje)
 }
@@ -103,7 +107,7 @@ export async function POST(request: Request) {
     });
     const [adsets, campaigns, ins2Rows, ins15Rows] = await Promise.all([
       metaGetAll<AdsetRow>(token, `/${act}/adsets`, {
-        fields: "id,name,effective_status,status,daily_budget,lifetime_budget,created_time,campaign_id,campaign{name,daily_budget,effective_status}",
+        fields: "id,name,effective_status,status,daily_budget,lifetime_budget,created_time,campaign_id,campaign{name,daily_budget,effective_status},targeting{age_min,age_max,targeting_automation}",
         limit: "500",
       }),
       metaGetAll<{ id?: string; objective?: string; name?: string }>(token, `/${act}/campaigns`, { fields: "id,name,objective", limit: "500" }),
@@ -136,6 +140,9 @@ export async function POST(request: Request) {
         daily_budget: daily > 0 ? daily / 100 : null,
         cbo: !(daily > 0) && Number(a.campaign?.daily_budget ?? 0) > 0,
         created_time: a.created_time ?? null,
+        age_min: a.targeting?.age_min ?? null,
+        age_max: a.targeting?.age_max ?? null,
+        advantage: Number(a.targeting?.targeting_automation?.advantage_audience ?? 0) === 1,
         d2: ins2.get(a.id) ?? EMPTY,
         d15: ins15.get(a.id) ?? EMPTY,
       });

@@ -25,6 +25,9 @@ interface Row {
   daily_budget: number | null;
   cbo: boolean;
   created_time: string | null;
+  age_min: number | null;
+  age_max: number | null;
+  advantage: boolean;
   d2: Metrics; // ontem + hoje
   d15: Metrics; // últimos 15 dias
 }
@@ -105,6 +108,10 @@ export function ConjuntosConta({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [newBudget, setNewBudget] = useState("");
+  // Etapa 227: edição da faixa etária (conjuntos ativos).
+  const [ageEditId, setAgeEditId] = useState<string | null>(null);
+  const [ageMin, setAgeMin] = useState("");
+  const [ageMax, setAgeMax] = useState("");
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   // Etapa 220: criativos por conjunto (busca só ao abrir; guarda por conjunto + período).
   const [openId, setOpenId] = useState<string | null>(null);
@@ -189,6 +196,33 @@ export function ConjuntosConta({
       setNotice({ ok: true, text: `${status === "PAUSED" ? "Pausado" : "Reativado"}: ${r.name}` });
     } catch (e) {
       setNotice({ ok: false, text: `Não deu pra ${status === "PAUSED" ? "pausar" : "reativar"}: ${(e as Error).message}` });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function saveAge(r: Row) {
+    const min = Number(ageMin);
+    const max = Number(ageMax);
+    if (!Number.isInteger(min) || !Number.isInteger(max) || min < 18 || max > 65 || min > max) {
+      setNotice({ ok: false, text: "Faixa etária inválida — de 18 a 65 anos, mínima menor ou igual à máxima." });
+      return;
+    }
+    setBusyId(r.id);
+    setNotice(null);
+    try {
+      const res = await fetch("/api/analysis/set-age", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adsetId: r.id, ageMin: min, ageMax: max }),
+      });
+      const d = await res.json();
+      if (!d.ok) throw new Error(d.error ?? "Erro desconhecido");
+      patchRow(r.id, { age_min: min, age_max: max });
+      setAgeEditId(null);
+      setNotice({ ok: true, text: `Faixa etária de ${r.name}: ${d.from.min}–${d.from.max} → ${min}–${max} anos` });
+    } catch (e) {
+      setNotice({ ok: false, text: `Não deu pra mudar a faixa etária: ${(e as Error).message}` });
     } finally {
       setBusyId(null);
     }
@@ -444,6 +478,7 @@ export function ConjuntosConta({
                 <th className="px-4 py-1.5 font-medium">Conjunto</th>
                 <th className="px-3 py-1.5 font-medium">Status campanha</th>
                 <th className="px-3 py-1.5 font-medium">Status conjunto</th>
+                <th className="px-3 py-1.5 font-medium">Idade</th>
                 <th className="px-3 py-1.5 text-right font-medium">Orçamento/dia</th>
                 <th className="px-3 py-1.5 text-right font-medium">Gasto</th>
                 <th className="px-3 py-1.5 text-right font-medium">Impressões</th>
@@ -470,6 +505,54 @@ export function ConjuntosConta({
                     <td className="px-3 py-2">{statusBadge(r.campaign_status)}</td>
                     <td className="px-3 py-2">
                       <span className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-medium ${st.cls}`}>{st.label}</span>
+                    </td>
+                    <td className="px-3 py-2">
+                      {ageEditId === r.id ? (
+                        <div className="flex items-center gap-1">
+                          <input
+                            value={ageMin}
+                            onChange={(e) => setAgeMin(e.target.value.replace(/\D/g, ""))}
+                            inputMode="numeric"
+                            className="h-7 w-10 rounded border border-zinc-300 bg-transparent px-1 text-center text-sm dark:border-zinc-700"
+                          />
+                          <span className="text-xs text-zinc-400">a</span>
+                          <input
+                            value={ageMax}
+                            onChange={(e) => setAgeMax(e.target.value.replace(/\D/g, ""))}
+                            inputMode="numeric"
+                            className="h-7 w-10 rounded border border-zinc-300 bg-transparent px-1 text-center text-sm dark:border-zinc-700"
+                          />
+                          <button
+                            onClick={() => void saveAge(r)}
+                            disabled={busyId === r.id}
+                            className="h-7 rounded bg-zinc-900 px-2 text-xs font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+                          >
+                            {busyId === r.id ? "…" : "Salvar"}
+                          </button>
+                          <button onClick={() => setAgeEditId(null)} className="h-7 px-1 text-xs text-zinc-500">
+                            ✕
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            if (r.status !== "ACTIVE") return;
+                            setAgeEditId(r.id);
+                            setAgeMin(String(r.age_min ?? 18));
+                            setAgeMax(String(r.age_max ?? 65));
+                          }}
+                          disabled={r.status !== "ACTIVE"}
+                          title={
+                            r.status === "ACTIVE"
+                              ? `Clique pra mudar a faixa etária${r.advantage ? " (público Advantage+: a Meta pode passar da idade máxima)" : ""}`
+                              : "Só dá pra editar a faixa etária de conjunto ativo"
+                          }
+                          className={`whitespace-nowrap tabular-nums ${r.status === "ACTIVE" ? "underline decoration-dotted underline-offset-2 hover:text-sky-600" : "cursor-default"}`}
+                        >
+                          {r.age_min != null || r.age_max != null ? `${r.age_min ?? 18}–${r.age_max ?? 65}` : "—"}
+                          {r.advantage ? <span className="ml-1 text-[10px] text-zinc-400">A+</span> : null}
+                        </button>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums">
                       {r.daily_budget != null ? fmtCurrency(r.daily_budget) : <span className="text-xs text-zinc-400">{r.cbo ? "na campanha" : "—"}</span>}
@@ -556,7 +639,7 @@ export function ConjuntosConta({
                   </tr>
                   {openId === r.id ? (
                     <tr className="border-b border-zinc-100 bg-zinc-50/60 dark:border-zinc-800/60 dark:bg-zinc-950/40">
-                      <td colSpan={9} className="px-6 py-2">
+                      <td colSpan={10} className="px-6 py-2">
                         {(() => {
                           const v = adsCache[`${r.id}|${period}`];
                           if (!v) return <p className="text-xs text-zinc-500">Buscando os criativos…</p>;
