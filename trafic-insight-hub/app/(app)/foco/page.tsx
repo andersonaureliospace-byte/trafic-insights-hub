@@ -204,9 +204,12 @@ export default function FocoPage() {
   const optList = useMemo(() => opts ?? [], [opts]);
 
   return (
-    <div className="flex flex-col gap-3 p-3 lg:h-[calc(100vh-3.6rem)] lg:flex-row">
+    // Etapa 223: tela cheia sem rolagem (3 colunas) só a partir de xl (computador). No tablet deitado (lg), a lista fica fixa
+    // à esquerda e os quadros ficam maiores, com rolagem da página: Resultados em toda a largura, Metas | Ofertas + Descrição,
+    // e Vídeos e Melhor público um embaixo do outro.
+    <div className="flex flex-col gap-3 p-3 lg:flex-row xl:h-[calc(100vh-3.6rem)]">
       {listOpen ? (
-        <aside className="flex min-h-0 shrink-0 flex-col max-lg:h-[26rem] lg:w-[25rem]">
+        <aside className="flex min-h-0 shrink-0 flex-col max-lg:h-[26rem] lg:sticky lg:top-[4.3rem] lg:h-[calc(100vh-5.2rem)] lg:w-[23rem] xl:static xl:h-auto xl:w-[25rem]">
           <ContaLateral opts={optList} value={sel} onChoose={choose} />
         </aside>
       ) : null}
@@ -268,15 +271,15 @@ export default function FocoPage() {
           Escolha um cliente na lista ao lado para abrir o modo Foco.
         </div>
       ) : (
-        <div key={opt.id} className="grid min-h-0 flex-1 gap-3 lg:grid-rows-[minmax(0,11fr)_minmax(0,12fr)]">
-          <div className="grid min-h-0 gap-3 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <Quadro title="Acompanhamento de Resultados" className="min-h-[16rem]">
+        <div key={opt.id} className="grid min-h-0 flex-1 gap-3 xl:grid-rows-[minmax(0,11fr)_minmax(0,12fr)]">
+          <div className="grid min-h-0 gap-3 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)]">
+            <Quadro title="Acompanhamento de Resultados" className="min-h-[16rem] lg:col-span-2 xl:col-span-1">
               <FocoResultados daily={daily} cpaTarget={opt.cpaTarget} />
             </Quadro>
             <Quadro title="Acompanhamento de metas" className="min-h-[16rem]">
               <FocoMetas insight={insight} untilYesterday={untilYesterday} cpaTarget={opt.cpaTarget} monthlyTarget={opt.monthlyInvestment} />
             </Quadro>
-            <div className="flex min-h-[16rem] min-w-0 flex-col gap-3 lg:min-h-0">
+            <div className="flex min-h-[16rem] min-w-0 flex-col gap-3 xl:min-h-0">
               <Quadro title="Ofertas ativas" className="shrink-0">
                 <FocoOfertas accountId={opt.id} />
               </Quadro>
@@ -285,7 +288,7 @@ export default function FocoPage() {
               </Quadro>
             </div>
           </div>
-          <div className="grid min-h-0 gap-3 lg:grid-cols-2">
+          <div className="grid min-h-0 gap-3 xl:grid-cols-2">
             <Quadro title="Vídeos (Geral)" className="min-h-[22rem]">
               <div className="[&>div]:rounded-none [&>div]:border-0">
                 <VideosGeral accounts={[{ account_id: opt.id }]} focusAccountId={opt.id} />
