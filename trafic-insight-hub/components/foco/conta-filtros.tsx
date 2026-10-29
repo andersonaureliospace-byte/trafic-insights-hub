@@ -203,6 +203,37 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
     }
   }
 
+  // Etapa 228: escolher um período que ainda não foi carregado neste navegador busca SÓ esse período na Meta
+  // (todas as contas da lista, uma chamada) e já mostra. Antes ficava "(sem dados)" e não dava pra escolher.
+  async function choosePeriod(preset: string) {
+    if (!preset) return;
+    if (cache?.periods[preset]) {
+      setPeriod(preset);
+      return;
+    }
+    if (refreshing || opts.length === 0) return;
+    setRefreshing(true);
+    setRefreshErr(null);
+    try {
+      const res = await fetch("/api/meta/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(90_000),
+        body: JSON.stringify({ accountIds: opts.map((o) => o.id), datePreset: preset }),
+      });
+      const d = (await res.json()) as { insights?: Record<string, AccountInsight>; error?: string };
+      if (!d.insights) throw new Error(d.error ?? "A Meta não respondeu.");
+      writeTabCache(`acomp-insights:${preset}`, d.insights);
+      setCache(readDesempenhoCache());
+      setPeriod(preset);
+    } catch (e) {
+      const m = (e as Error).message;
+      setRefreshErr(/failed to fetch|networkerror|load failed/i.test(m) ? "Sem conexão com o servidor agora. Tente de novo." : m);
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   const list = useMemo(() => {
     const ins = insightsAll;
     const needle = flat(q.trim());
@@ -352,14 +383,14 @@ export function ContaLateral({ opts, value, onChoose }: { opts: FiltroOpt[]; val
               <option value="attention">🚨 Atenção ({Object.keys(attention).length})</option>
             </select>
           </label>
-          <label title={noData ? noDataHint : "Período dos números da lista (CPA, Ritmo e filtros). Só aparecem os que o Desempenho já carregou neste navegador."}>
+          <label title="Período dos números da lista (CPA, Ritmo e filtros). Período ainda não carregado neste navegador é buscado na Meta ao escolher.">
             <span className={lblCls}>Período</span>
-            <select value={periodId} onChange={(e) => setPeriod(e.target.value)} disabled={noData} className={selCls}>
+            <select value={periodId} onChange={(e) => void choosePeriod(e.target.value)} disabled={refreshing} className={selCls}>
               {noData ? <option value="">—</option> : null}
               {DATE_PRESETS.map((p) => (
-                <option key={p.id} value={p.id} disabled={!cache?.periods[p.id]}>
+                <option key={p.id} value={p.id}>
                   {p.label}
-                  {cache?.periods[p.id] ? "" : " (sem dados)"}
+                  {cache?.periods[p.id] ? "" : " (buscar)"}
                 </option>
               ))}
             </select>
