@@ -534,10 +534,24 @@ export default function PainelPage() {
   }, [allAccounts, selectedIds]);
 
   // Contas dos clientes ATIVOS: é o que todas as outras abas, buscas na Meta e filtros usam. Cliente desativado some daqui.
+  // Etapa 222: ao voltar pra guia do navegador, os vínculos são relidos (pra pegar marcações feitas em outra guia). Isso
+  // criava uma lista "nova" com as mesmas contas e as abas buscavam tudo de novo na Meta. Agora, se as contas são as
+  // mesmas, a lista continua a mesma e nada é recarregado.
+  const activeIdsKey = useMemo(
+    () =>
+      bindingsLoaded
+        ? selectedAccountsAll
+            .filter((a) => bindings[a.account_id]?.active !== false)
+            .map((a) => a.account_id)
+            .join(",")
+        : null,
+    [selectedAccountsAll, bindings, bindingsLoaded],
+  );
   const selectedAccounts = useMemo(() => {
-    if (!bindingsLoaded) return [];
-    return selectedAccountsAll.filter((a) => bindings[a.account_id]?.active !== false);
-  }, [selectedAccountsAll, bindings, bindingsLoaded]);
+    if (activeIdsKey == null) return [];
+    const ids = new Set(activeIdsKey.split(","));
+    return selectedAccountsAll.filter((a) => ids.has(a.account_id));
+  }, [selectedAccountsAll, activeIdsKey]);
 
   // Contas que o "↻ Atualizar" deve buscar: só as fixadas (se houver alguma
   // fixada entre as selecionadas), senão todas. A busca automática (entrar na

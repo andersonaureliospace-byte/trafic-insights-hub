@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { PriorityLabelsProvider } from "@/lib/priority-context";
 import { MobileTabs } from "@/components/mobile/mobile-tabs";
+import { MobileShell } from "@/components/mobile/mobile-shell";
 
 // Etapa 221: app no celular — telas rápidas (Alertas, Clientes, Conjuntos) com barra de abas embaixo.
 // Login: o proxy.ts já manda pra /login quem não estiver logado.
@@ -14,7 +15,10 @@ export default function MobileLayout({ children }: { children: ReactNode }) {
         <span className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">Traffic</span>
       </header>
       <main className="flex-1 px-3 py-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 4.5rem)" }}>
-        <PriorityLabelsProvider>{children}</PriorityLabelsProvider>
+        <PriorityLabelsProvider>
+          <MobileShell />
+          {children}
+        </PriorityLabelsProvider>
       </main>
       <MobileTabs />
     </div>

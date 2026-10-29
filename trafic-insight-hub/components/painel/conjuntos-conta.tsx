@@ -233,9 +233,12 @@ export function ConjuntosConta({
     [accounts, names],
   );
 
+  // App do celular: ao tocar num cliente, troca pra conta dele (o que já foi carregado fica guardado, sem buscar de novo).
   useEffect(() => {
-    if (initialAccountId) void load(initialAccountId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- só ao abrir com a conta já escolhida
+    if (!initialAccountId) return;
+    setAccountId(initialAccountId);
+    void load(initialAccountId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só quando a conta escolhida muda
   }, [initialAccountId]);
 
   async function load(id: string, force = false) {
