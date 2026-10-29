@@ -120,6 +120,8 @@ export function ConjuntosConta({
   // Etapa 220: criativos por conjunto (busca só ao abrir; guarda por conjunto + período).
   const [openId, setOpenId] = useState<string | null>(null);
   const [periodSel, setPeriodSel] = useState<PeriodSel>("auto");
+  // Etapa 230: pesquisa pela nomenclatura (nome do conjunto ou da campanha, sem diferenciar acento/maiúscula).
+  const [search, setSearch] = useState("");
   const [periodCache, setPeriodCache] = useState<Record<string, Record<string, Metrics> | { error: string }>>({});
   const [periodLoading, setPeriodLoading] = useState(false);
   const period: AnalysisPeriod = periodSel === "auto" ? autoPeriod(filter) : periodSel;
@@ -364,14 +366,22 @@ export function ConjuntosConta({
     return c;
   }, [data, target, periodSel, metricsOf]);
   const rows = useMemo(() => {
-    const list = (data?.adsets ?? []).filter((r) =>
-      filter === "ativos" ? r.status === "ACTIVE" : filter === "impressao" ? metricsOf(r).impressions > 0 : cpaSide(metricsOf(r), target) === filter,
-    );
+    const flat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const terms = flat(search).split(/\s+/).filter(Boolean);
+    const list = (data?.adsets ?? [])
+      .filter((r) =>
+        filter === "ativos" ? r.status === "ACTIVE" : filter === "impressao" ? metricsOf(r).impressions > 0 : cpaSide(metricsOf(r), target) === filter,
+      )
+      .filter((r) => {
+        if (!terms.length) return true;
+        const hay = flat(`${r.name} ${r.campaign_name ?? ""}`);
+        return terms.every((t) => hay.includes(t));
+      });
     const key = (r: Row) => metricsOf(r).cpa ?? (metricsOf(r).spend > 0 ? metricsOf(r).spend : Number.POSITIVE_INFINITY);
     return list.sort((a, b) =>
       filter === "abaixo" ? key(a) - key(b) : filter === "acima" ? key(b) - key(a) : metricsOf(b).spend - metricsOf(a).spend,
     );
-  }, [data, filter, target, metricsOf]);
+  }, [data, filter, target, metricsOf, search]);
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
@@ -443,7 +453,21 @@ export function ConjuntosConta({
       </div>
 
       {accountId ? (
-        <div className="flex flex-wrap gap-1.5 border-b border-zinc-100 px-4 py-2 dark:border-zinc-800/60">
+        <div className="flex flex-wrap items-center gap-1.5 border-b border-zinc-100 px-4 py-2 dark:border-zinc-800/60">
+          <div className="relative w-full sm:w-64">
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Pesquisar nomenclatura…"
+              title="Procura no nome do conjunto e da campanha (ex.: GERAL 20-65, EXAME, 28/10)"
+              className="h-7 w-full rounded-full border border-zinc-300 bg-transparent px-3 pr-7 text-xs dark:border-zinc-700"
+            />
+            {search ? (
+              <button onClick={() => setSearch("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400" aria-label="Limpar pesquisa">
+                ✕
+              </button>
+            ) : null}
+          </div>
           {FILTERS.map((f) => (
             <button
               key={f.id}
@@ -473,7 +497,7 @@ export function ConjuntosConta({
       ) : null}
       {accountId && loading && !data ? <p className="px-4 py-6 text-sm text-zinc-500">Buscando na Meta…</p> : null}
       {data && !periodReady && !extraError ? <p className="px-4 py-6 text-sm text-zinc-500">Buscando os números de {periodLabel(period)}…</p> : null}
-      {data && periodReady && rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-zinc-500">Nenhum conjunto nesse filtro.</p> : null}
+      {data && periodReady && rows.length === 0 ? <p className="px-4 py-8 text-center text-sm text-zinc-500">{search.trim() ? `Nenhum conjunto com "${search.trim()}" nesse filtro.` : "Nenhum conjunto nesse filtro."}</p> : null}
 
       {data && periodReady && rows.length > 0 ? (
         <div className="overflow-x-auto">
