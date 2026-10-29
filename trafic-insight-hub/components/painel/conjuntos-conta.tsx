@@ -5,6 +5,8 @@ import type { AdAccount } from "@/lib/meta/insights";
 import { fmtCurrency } from "@/lib/format";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { ANALYSIS_PERIODS, type AnalysisPeriod } from "@/lib/analysis-periods";
+import { AdsetSettings } from "@/components/painel/adset-settings";
+import { AdPreviewDialog } from "@/components/painel/ad-preview-dialog";
 
 // Etapa 217: Análise → "Conjuntos da conta". Escolhe UMA conta e só então busca na Meta (economiza requisição).
 // Etapa 219: "Todos ativos" e "CPA acima/abaixo" usam ONTEM + HOJE; "Com impressão" usa os ÚLTIMOS 15 DIAS (inclui pausados).
@@ -110,6 +112,8 @@ export function ConjuntosConta({
   const [newBudget, setNewBudget] = useState("");
   // Etapa 227: edição da faixa etária (conjuntos ativos).
   const [ageEditId, setAgeEditId] = useState<string | null>(null);
+  // Etapa 229: prévia de um criativo (janela).
+  const [preview, setPreview] = useState<{ id: string; name: string } | null>(null);
   const [ageMin, setAgeMin] = useState("");
   const [ageMax, setAgeMax] = useState("");
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
@@ -371,6 +375,7 @@ export function ConjuntosConta({
 
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
+      {preview ? <AdPreviewDialog adId={preview.id} name={preview.name} onClose={() => setPreview(null)} /> : null}
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <select
           value={accountId}
@@ -496,7 +501,7 @@ export function ConjuntosConta({
                   <Fragment key={r.id}>
                   <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
                     <td className="px-4 py-2">
-                      <button onClick={() => void toggleAds(r)} className="text-left" title="Ver os criativos deste conjunto">
+                      <button onClick={() => void toggleAds(r)} className="text-left" title="Ver as configurações e os criativos deste conjunto">
                         <span className="mr-1 inline-block w-3 text-zinc-400">{openId === r.id ? "▾" : "▸"}</span>
                         <span className="font-medium text-zinc-900 hover:underline dark:text-zinc-50">{r.name}</span>
                       </button>
@@ -640,6 +645,7 @@ export function ConjuntosConta({
                   {openId === r.id ? (
                     <tr className="border-b border-zinc-100 bg-zinc-50/60 dark:border-zinc-800/60 dark:bg-zinc-950/40">
                       <td colSpan={10} className="px-6 py-2">
+                        <AdsetSettings adsetId={r.id} />
                         {(() => {
                           const v = adsCache[`${r.id}|${period}`];
                           if (!v) return <p className="text-xs text-zinc-500">Buscando os criativos…</p>;
@@ -673,7 +679,13 @@ export function ConjuntosConta({
                                       >
                                         {a.cpl != null ? fmtCurrency(a.cpl) : <span className="font-normal text-zinc-400">{a.spend > 0 ? "sem lead" : "—"}</span>}
                                       </td>
-                                      <td className="px-2 py-1.5 text-right">
+                                      <td className="flex flex-wrap justify-end gap-1 px-2 py-1.5 text-right">
+                                        <button
+                                          onClick={() => setPreview({ id: a.id, name: a.name })}
+                                          className="h-6 rounded border border-zinc-300 px-2 font-medium hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                                        >
+                                          Prévia
+                                        </button>
                                         {a.status === "ACTIVE" ? (
                                           <button
                                             onClick={() => void setAdStatus(r.id, a, "PAUSED")}
