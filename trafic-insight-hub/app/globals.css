@@ -53,3 +53,14 @@ select option {
   background-color: #ffffff;
   color: #171717;
 }
+
+/* Etapa 235: tablet (até 1279px) — tabelas do Painel mais compactas pra caber sem rolar de lado. */
+@media (max-width: 1279px) {
+  .painel-main table :is(th, td) {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+  .painel-main table :is(th, td):first-child {
+    padding-left: 0.75rem;
+  }
+}

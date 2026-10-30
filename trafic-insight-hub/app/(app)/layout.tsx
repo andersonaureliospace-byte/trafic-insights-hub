@@ -13,12 +13,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen flex-1 flex-col bg-zinc-50 dark:bg-zinc-950">
       <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/80 backdrop-blur-xl dark:border-zinc-800 dark:bg-zinc-950/80">
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-4 px-4 py-3 md:px-8">
-          <div className="flex items-center gap-6">
-            <span className="text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
+        <div className="mx-auto flex max-w-[1400px] items-center justify-between gap-3 px-3 py-3 md:px-4 xl:px-8">
+          <div className="flex min-w-0 items-center gap-3 xl:gap-6">
+            <span className="whitespace-nowrap text-sm font-semibold tracking-tight text-zinc-900 dark:text-zinc-50">
               Trafic Insight Hub
             </span>
-            <nav className="flex flex-wrap items-center gap-0.5">
+            <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
               <NavLink href="/painel">Painel</NavLink>
               <NavLink href="/foco">Foco</NavLink>
               <NavLink href="/mensagens">Mensagens</NavLink>
@@ -30,7 +30,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             </nav>
           </div>
           <div className="flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
-            <span className="hidden sm:inline">{user?.email}</span>
+            <span className="hidden xl:inline">{user?.email}</span>
             <SignOutButton />
           </div>
         </div>

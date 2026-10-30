@@ -863,7 +863,7 @@ export default function PainelPage() {
   ];
 
   return (
-    <div className="w-full px-4 py-6 md:px-8">
+    <div className="painel-main w-full px-3 py-4 md:px-4 md:py-6 xl:px-8">
       <header className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-white p-5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900 md:p-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
@@ -881,9 +881,10 @@ export default function PainelPage() {
         </div>
       </header>
 
-      <div className="mt-6 grid grid-cols-1 gap-4 pb-40 md:grid-cols-[180px_1fr] md:gap-6">
+      {/* Etapa 235: menu lateral só a partir de xl (computador); no tablet vira uma linha em cima e a tabela ganha a largura toda. */}
+      <div className="mt-4 grid grid-cols-1 gap-3 pb-40 md:mt-6 xl:grid-cols-[180px_minmax(0,1fr)] xl:gap-6">
           {/* Etapa 119: menu fixo ao rolar (no PC) e sempre visível — mesmo carregando ou com erro. */}
-          <aside className="sticky top-14 z-20 -mx-4 flex gap-1 overflow-x-auto bg-zinc-50/95 px-4 py-1 backdrop-blur dark:bg-zinc-950/95 md:top-20 md:mx-0 md:max-h-[calc(100vh-6rem)] md:flex-col md:self-start md:overflow-x-visible md:overflow-y-auto md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none">
+          <aside className="sticky top-14 z-20 -mx-3 flex gap-1 overflow-x-auto bg-zinc-50/95 px-3 py-1 backdrop-blur md:-mx-4 md:px-4 dark:bg-zinc-950/95 xl:top-20 xl:mx-0 xl:max-h-[calc(100vh-6rem)] xl:flex-col xl:self-start xl:overflow-x-visible xl:overflow-y-auto xl:bg-transparent xl:px-0 xl:py-0 xl:backdrop-blur-none">
             {TABS.map((t) => (
               <button
                 key={t.id}
