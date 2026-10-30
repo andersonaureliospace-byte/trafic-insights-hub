@@ -53,7 +53,7 @@ interface Info {
   suggestedName: string;
   dailyBudget: number | null;
   budgetNote: string | null;
-  ads: Array<{ id: string; name: string; status: string }>;
+  ads: Array<{ id: string; name: string; status: string; effectiveStatus?: string }>;
   ageMin: number | null;
   ageMax: number | null;
   whatsapp: string | null;
@@ -144,6 +144,7 @@ export function DuplicarConjuntoDialog({ adset, onClose }: { adset: DuplicateAds
           new Set(
             d.ads
               .filter((a) => {
+                if (a.status !== "ACTIVE") return false; // Etapa 232: pausados vêm desmarcados
                 const st = statsById.get(a.id);
                 return !(st && adset.cpaTarget != null && isCreativeFlaggedAbove(st as Parameters<typeof isCreativeFlaggedAbove>[0], adset.cpaTarget));
               })
@@ -324,7 +325,7 @@ export function DuplicarConjuntoDialog({ adset, onClose }: { adset: DuplicateAds
                 Criativos que vão pra cópia ({selected.size} de {info.ads.length})
               </span>
               {info.ads.length === 0 ? (
-                <p className="text-sm text-zinc-500">Esse conjunto não tem criativo ativo.</p>
+                <p className="text-sm text-zinc-500">Esse conjunto não tem criativo.</p>
               ) : (
                 <div className="overflow-hidden rounded-md border border-zinc-200 dark:border-zinc-700">
                   {info.ads.map((a) => {
@@ -339,13 +340,19 @@ export function DuplicarConjuntoDialog({ adset, onClose }: { adset: DuplicateAds
                         <span className="whitespace-nowrap text-xs tabular-nums text-zinc-500">
                           {st ? (st.conversations && st.conversations > 0 ? `${fmtCurrency(st.cost_per_conversation)}/conv · ${st.conversations} conv` : `sem conversa · ${fmtCurrency(st.spend)}`) : "sem dados no período"}
                         </span>
+                        {a.status !== "ACTIVE" ? (
+                          <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">pausado</span>
+                        ) : null}
                         {flagged ? <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700 dark:bg-red-950 dark:text-red-300">acima da meta</span> : null}
                       </label>
                     );
                   })}
                 </div>
               )}
-              <p className="text-xs text-zinc-500">Só criativos ativos aparecem (mesma legenda, título e vídeo). A cópia nasce pausada: confira e ative aqui mesmo.</p>
+              <p className="text-xs text-zinc-500">
+                Mesma legenda, título e vídeo. Os ligados vêm marcados e entram ligados; os pausados vêm desmarcados e, se marcados, entram
+                pausados (igual ao modelo). O conjunto nasce pausado: confira e ative aqui mesmo.
+              </p>
             </div>
 
             <div className="flex justify-end gap-2">

@@ -32,7 +32,7 @@ export interface DuplicateInfo {
   // Orçamento diário do próprio conjunto (ABO). null = sem orçamento no conjunto (CBO ou vitalício): a cópia herda e não dá pra mudar aqui.
   dailyBudget: number | null;
   budgetNote: string | null;
-  ads: Array<{ id: string; name: string; status: string }>;
+  ads: Array<{ id: string; name: string; status: string; effectiveStatus?: string }>;
   // Etapa 231: idade e WhatsApp do conjunto modelo (o novo herda; idade dá pra mudar).
   ageMin: number | null;
   ageMax: number | null;
@@ -48,9 +48,10 @@ interface AdsetFields {
 
 export async function getDuplicateInfo(token: string, adsetId: string): Promise<DuplicateInfo> {
   const adset = await metaGet<AdsetFields>(token, `/${adsetId}`, { fields: "name,campaign_id,targeting{age_min,age_max},promoted_object" });
-  const ads = await metaGetAll<{ id?: string; name?: string; effective_status?: string }>(token, `/${adsetId}/ads`, {
-    fields: "id,name,effective_status",
-    effective_status: JSON.stringify(["ACTIVE"]),
+  // Etapa 232: todos os anúncios do conjunto (menos excluídos/arquivados). Com o conjunto PAUSADO, a Meta devolve os anúncios
+  // como ADSET_PAUSED — por isso olha o status configurado do anúncio (status), não o efetivo, pra saber se ele está ligado.
+  const ads = await metaGetAll<{ id?: string; name?: string; effective_status?: string; status?: string }>(token, `/${adsetId}/ads`, {
+    fields: "id,name,effective_status,status",
     limit: "100",
   });
   const budget = await getAdSetBudgetInfo(token, adsetId);
@@ -72,7 +73,15 @@ export async function getDuplicateInfo(token: string, adsetId: string): Promise<
     ageMin: adset.targeting?.age_min ?? null,
     ageMax: adset.targeting?.age_max ?? null,
     whatsapp: adset.promoted_object?.whatsapp_phone_number ?? null,
-    ads: ads.filter((a) => a.id).map((a) => ({ id: a.id as string, name: a.name ?? (a.id as string), status: (a.effective_status ?? "").toUpperCase() })),
+    ads: ads
+      .filter((a) => a.id && !["DELETED", "ARCHIVED"].includes((a.effective_status ?? a.status ?? "").toUpperCase()))
+      .map((a) => ({
+        id: a.id as string,
+        name: a.name ?? (a.id as string),
+        status: (a.status ?? a.effective_status ?? "").toUpperCase(), // ligado (ACTIVE) ou pausado (PAUSED) no próprio anúncio
+        effectiveStatus: (a.effective_status ?? "").toUpperCase(),
+      }))
+      .sort((x, y) => Number(y.status === "ACTIVE") - Number(x.status === "ACTIVE")),
   };
 }
 
@@ -137,15 +146,17 @@ async function createAdsetFromOriginal(token: string, adsetId: string, newName: 
 // descontinuado…") porque reenvia o criativo com um campo que a Meta aposentou. Alternativa: criar o anúncio novo APONTANDO pro mesmo
 // criativo do original (creative_id) — o criativo não é reenviado, então esse campo nem entra. É o que o Gerenciador faz ao duplicar.
 async function createAdFromOriginal(token: string, adId: string, newAdsetId: string): Promise<string> {
-  const o = await metaGet<{ account_id?: string; name?: string; creative?: { id?: string }; tracking_specs?: unknown }>(token, `/${adId}`, {
-    fields: "account_id,name,creative{id},tracking_specs",
+  const o = await metaGet<{ account_id?: string; name?: string; status?: string; creative?: { id?: string }; tracking_specs?: unknown }>(token, `/${adId}`, {
+    fields: "account_id,name,status,creative{id},tracking_specs",
   });
   if (!o.account_id || !o.creative?.id) throw new Error("A Meta não devolveu a conta ou o criativo do anúncio original.");
   const params: Record<string, string> = {
     name: o.name ?? adId,
     adset_id: newAdsetId,
     creative: JSON.stringify({ creative_id: o.creative.id }),
-    status: "ACTIVE", // fica ativo dentro do conjunto pausado: ativar o conjunto já liga tudo
+    // Mesmo status do original (Etapa 232): ligado fica ligado dentro do conjunto pausado (ativar o conjunto já liga);
+    // pausado continua pausado.
+    status: (o.status ?? "").toUpperCase() === "PAUSED" ? "PAUSED" : "ACTIVE",
   };
   if (o.tracking_specs) params.tracking_specs = typeof o.tracking_specs === "string" ? o.tracking_specs : JSON.stringify(o.tracking_specs);
   const res = await metaPost<{ id?: string }>(token, `/act_${o.account_id}/ads`, params);
