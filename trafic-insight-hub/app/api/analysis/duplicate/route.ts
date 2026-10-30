@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as {
       adsetId?: string;
       name?: string;
-      ads?: Array<{ id: string; name: string }>;
+      ads?: Array<{ id: string; name: string; status?: string }>;
       dailyBudget?: number | null;
       ageMin?: number | null;
       ageMax?: number | null;
@@ -34,7 +34,9 @@ export async function POST(request: Request) {
     if (!body.adsetId) return NextResponse.json({ ok: false, error: "adsetId obrigatório" }, { status: 400 });
     const name = (body.name ?? "").trim();
     if (!name) return NextResponse.json({ ok: false, error: "Informe o nome do conjunto novo." }, { status: 400 });
-    const ads = (body.ads ?? []).filter((a) => a?.id);
+    const ads = (body.ads ?? [])
+      .filter((a) => a?.id)
+      .map((a) => ({ id: a.id, name: a.name, status: a.status === "ACTIVE" || a.status === "PAUSED" ? (a.status as "ACTIVE" | "PAUSED") : undefined }));
     if (ads.length === 0) return NextResponse.json({ ok: false, error: "Escolha pelo menos um criativo." }, { status: 400 });
     const budgetCents = body.dailyBudget != null && Number.isFinite(body.dailyBudget) && body.dailyBudget > 0 ? Math.round(body.dailyBudget * 100) : null;
     // Etapa 231: idade (18–65) e início (ISO com fuso) opcionais.

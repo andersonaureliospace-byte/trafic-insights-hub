@@ -16,18 +16,18 @@ function brtParts(d: Date): { y: string; m: string; d: string } {
   return { y, m, d: dd };
 }
 // "AAAA-MM-DDTHH:MM" (horário de Brasília) → ISO com fuso -03:00.
-const brtIso = (local: string) => `${local}:00-0300`;
-function tomorrow5(): string {
+export const brtIso = (local: string) => `${local}:00-0300`;
+export function tomorrow5(): string {
   const p = brtParts(new Date(Date.now() + 86_400_000));
   return `${p.y}-${p.m}-${p.d}T05:00`;
 }
-function nowLocal(): string {
+export function nowLocal(): string {
   const p = brtParts(new Date());
   const hm = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date());
   return `${p.y}-${p.m}-${p.d}T${hm}`;
 }
 // Acerta a data (dd/mm) e a idade (nn-nn ou nn-nn+) do nome pelo padrão TEMA | OFERTA | CIDADE | IDADE | CRIATIVO | AND | DD/MM.
-function suggestName(base: string, startLocal: string, min: number | null, max: number | null): string {
+export function suggestName(base: string, startLocal: string, min: number | null, max: number | null): string {
   let n = base;
   const dm = startLocal ? `${startLocal.slice(8, 10)}/${startLocal.slice(5, 7)}` : null;
   if (dm) n = n.replace(/\b(0?[1-9]|[12]\d|3[01])\/(0?[1-9]|1[0-2])\b/g, dm);

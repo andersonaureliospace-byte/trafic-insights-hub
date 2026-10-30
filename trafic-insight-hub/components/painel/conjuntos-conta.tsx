@@ -8,6 +8,7 @@ import { ANALYSIS_PERIODS, type AnalysisPeriod } from "@/lib/analysis-periods";
 import { AdsetSettings } from "@/components/painel/adset-settings";
 import { AdPreviewDialog } from "@/components/painel/ad-preview-dialog";
 import { DuplicarConjuntoDialog, type DuplicateAdsetInput } from "@/components/painel/duplicar-conjunto-dialog";
+import { EditorMassa } from "@/components/painel/editor-massa";
 
 // Etapa 217: Análise → "Conjuntos da conta". Escolhe UMA conta e só então busca na Meta (economiza requisição).
 // Etapa 219: "Todos ativos" e "CPA acima/abaixo" usam ONTEM + HOJE; "Com impressão" usa os ÚLTIMOS 15 DIAS (inclui pausados).
@@ -118,6 +119,9 @@ export function ConjuntosConta({
   const [preview, setPreview] = useState<{ id: string; name: string } | null>(null);
   // Etapa 231: duplicar conjunto / novo conjunto a partir do mais recente da campanha.
   const [dupTarget, setDupTarget] = useState<DuplicateAdsetInput | null>(null);
+  // Etapa 234: seleção pro editor em massa.
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [ageMin, setAgeMin] = useState("");
   const [ageMax, setAgeMax] = useState("");
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
@@ -414,6 +418,18 @@ export function ConjuntosConta({
   return (
     <div className="overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
       {dupTarget ? <DuplicarConjuntoDialog adset={dupTarget} onClose={() => setDupTarget(null)} /> : null}
+      {bulkOpen && data ? (
+        <EditorMassa
+          accountId={accountId}
+          accountName={data.clientName}
+          models={(data.adsets ?? []).filter((r) => picked.has(r.id)).map((r) => ({ id: r.id, name: r.name }))}
+          onClose={() => setBulkOpen(false)}
+          onDone={() => {
+            setPicked(new Set());
+            void load(accountId, true);
+          }}
+        />
+      ) : null}
       {preview ? <AdPreviewDialog adId={preview.id} name={preview.name} onClose={() => setPreview(null)} /> : null}
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
         <select
@@ -472,6 +488,16 @@ export function ConjuntosConta({
               </option>
             ))}
           </select>
+        ) : null}
+        {data ? (
+          <button
+            onClick={() => setBulkOpen(true)}
+            disabled={picked.size === 0}
+            title={picked.size ? "Duplicar os conjuntos marcados, várias cópias de cada, tudo de uma vez" : "Marque os conjuntos na lista (caixinha à esquerda)"}
+            className="h-8 rounded-md bg-zinc-900 px-3 text-sm font-medium text-white disabled:opacity-40 dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            Editor em massa{picked.size ? ` (${picked.size})` : ""}
+          </button>
         ) : null}
         {periodLoading ? <span className="text-xs text-zinc-500">Buscando o período…</span> : null}
         {extraError ? (
@@ -551,6 +577,14 @@ export function ConjuntosConta({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-zinc-100 text-left text-xs text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
+                <th className="w-8 py-1.5 pl-4">
+                  <input
+                    type="checkbox"
+                    title="Selecionar todos os conjuntos da lista"
+                    checked={rows.length > 0 && rows.every((r) => picked.has(r.id))}
+                    onChange={(e) => setPicked(e.target.checked ? new Set(rows.map((r) => r.id)) : new Set())}
+                  />
+                </th>
                 <th className="px-4 py-1.5 font-medium">Conjunto</th>
                 <th className="px-3 py-1.5 font-medium">Status campanha</th>
                 <th className="px-3 py-1.5 font-medium">Status conjunto</th>
@@ -571,6 +605,20 @@ export function ConjuntosConta({
                 return (
                   <Fragment key={r.id}>
                   <tr className="border-b border-zinc-100 last:border-0 dark:border-zinc-800/60">
+                    <td className="py-2 pl-4 align-top">
+                      <input
+                        type="checkbox"
+                        checked={picked.has(r.id)}
+                        onChange={(e) =>
+                          setPicked((s) => {
+                            const n = new Set(s);
+                            if (e.target.checked) n.add(r.id);
+                            else n.delete(r.id);
+                            return n;
+                          })
+                        }
+                      />
+                    </td>
                     <td className="px-4 py-2">
                       <button onClick={() => void toggleAds(r)} className="text-left" title="Ver as configurações e os criativos deste conjunto">
                         <span className="mr-1 inline-block w-3 text-zinc-400">{openId === r.id ? "▾" : "▸"}</span>
@@ -723,7 +771,7 @@ export function ConjuntosConta({
                   </tr>
                   {openId === r.id ? (
                     <tr className="border-b border-zinc-100 bg-zinc-50/60 dark:border-zinc-800/60 dark:bg-zinc-950/40">
-                      <td colSpan={10} className="px-6 py-2">
+                      <td colSpan={11} className="px-6 py-2">
                         <AdsetSettings adsetId={r.id} />
                         {(() => {
                           const v = adsCache[`${r.id}|${period}`];

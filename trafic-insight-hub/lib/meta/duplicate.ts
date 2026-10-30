@@ -146,7 +146,7 @@ async function createAdsetFromOriginal(token: string, adsetId: string, newName: 
 // Etapa 159c: a cópia nativa de ANÚNCIO também falha às vezes ("O recurso de inclusão do campo de aprimoramentos padrão no criativo foi
 // descontinuado…") porque reenvia o criativo com um campo que a Meta aposentou. Alternativa: criar o anúncio novo APONTANDO pro mesmo
 // criativo do original (creative_id) — o criativo não é reenviado, então esse campo nem entra. É o que o Gerenciador faz ao duplicar.
-async function createAdFromOriginal(token: string, adId: string, newAdsetId: string): Promise<string> {
+async function createAdFromOriginal(token: string, adId: string, newAdsetId: string, statusOverride?: "ACTIVE" | "PAUSED"): Promise<string> {
   const o = await metaGet<{ account_id?: string; name?: string; status?: string; creative?: { id?: string }; tracking_specs?: unknown }>(token, `/${adId}`, {
     fields: "account_id,name,status,creative{id},tracking_specs",
   });
@@ -157,7 +157,7 @@ async function createAdFromOriginal(token: string, adId: string, newAdsetId: str
     creative: JSON.stringify({ creative_id: o.creative.id }),
     // Mesmo status do original (Etapa 232): ligado fica ligado dentro do conjunto pausado (ativar o conjunto já liga);
     // pausado continua pausado.
-    status: (o.status ?? "").toUpperCase() === "PAUSED" ? "PAUSED" : "ACTIVE",
+    status: statusOverride ?? ((o.status ?? "").toUpperCase() === "PAUSED" ? "PAUSED" : "ACTIVE"),
   };
   if (o.tracking_specs) params.tracking_specs = typeof o.tracking_specs === "string" ? o.tracking_specs : JSON.stringify(o.tracking_specs);
   const res = await metaPost<{ id?: string }>(token, `/act_${o.account_id}/ads`, params);
@@ -195,7 +195,7 @@ export async function duplicateAdSet(
   token: string,
   p: {
     adsetId: string;
-    adIds: Array<{ id: string; name: string }>;
+    adIds: Array<{ id: string; name: string; status?: "ACTIVE" | "PAUSED" }>; // Etapa 234: status escolhido (editor em massa)
     newName: string;
     dailyBudgetCents?: number | null;
     ageMin?: number | null; // Etapa 231
@@ -276,11 +276,19 @@ export async function duplicateAdSet(
         rename_options: NO_RENAME,
       });
       const copied = res.copied_ad_id ?? res.ad_object_ids?.find((o) => o.ad_object_type === "ad")?.copied_id ?? res.ad_object_ids?.[0]?.copied_id ?? null;
+      // Etapa 234: status escolhido no editor em massa (a cópia herda o do original; se for outro, acerta).
+      if (copied && ad.status) {
+        try {
+          await metaPost(token, `/${copied}`, { status: ad.status });
+        } catch (e) {
+          out.warnings.push(`Criativo ${ad.name}: não consegui deixar ${ad.status === "ACTIVE" ? "ativo" : "pausado"}: ${(e as Error).message}`);
+        }
+      }
       out.copiedAds.push({ sourceId: ad.id, newId: copied });
     } catch (e) {
       // Cópia nativa recusada: cria o anúncio apontando pro mesmo criativo do original.
       try {
-        const created = await createAdFromOriginal(token, ad.id, newId);
+        const created = await createAdFromOriginal(token, ad.id, newId, ad.status);
         out.copiedAds.push({ sourceId: ad.id, newId: created });
         usedAdFallback = true;
       } catch (e2) {
