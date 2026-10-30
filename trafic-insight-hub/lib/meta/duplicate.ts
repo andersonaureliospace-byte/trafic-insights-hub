@@ -88,7 +88,8 @@ export async function getDuplicateInfo(token: string, adsetId: string): Promise<
 // Etapa 159b: a cópia nativa da Meta (/copies) recusa conjuntos de conversas com "The click attribution window is optional…
 // use one of these supported windows: 1 days" — ela reaplica a janela de atribuição padrão (7 dias de clique) que não vale pra esse
 // objetivo. Nesse caso o conjunto é CRIADO a partir dos dados do original, já com a janela certa (1 dia de clique).
-const ATTRIBUTION_ERR = /attribution window/i;
+// Etapa 233: a Meta manda a mensagem no idioma da conta ("janela de atribuição" em português).
+const ATTRIBUTION_ERR = /attribution window|janela de atribui/i;
 const FALLBACK_ATTRIBUTION = JSON.stringify([{ event_type: "CLICK_THROUGH", window_days: 1 }]);
 
 interface FullAdset {
