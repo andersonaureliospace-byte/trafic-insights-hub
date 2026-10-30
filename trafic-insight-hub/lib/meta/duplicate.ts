@@ -11,6 +11,7 @@
 
 import { metaGet, metaGetAll, metaPost } from "./client";
 import { getAdSetBudgetInfo } from "./budget";
+import { cleanTargeting } from "./targeting-clean";
 import { brtDayMonth, hasCopy, stripCopy } from "@/lib/naming/rules";
 
 const NO_RENAME = JSON.stringify({ rename_strategy: "NO_RENAME" });
@@ -130,7 +131,7 @@ async function createAdsetFromOriginal(token: string, adsetId: string, newName: 
   put("bid_strategy", o.bid_strategy);
   put("bid_amount", o.bid_amount);
   put("promoted_object", o.promoted_object);
-  put("targeting", o.targeting);
+  put("targeting", o.targeting && typeof o.targeting === "object" ? cleanTargeting(o.targeting as Record<string, unknown>) : o.targeting);
   put("destination_type", o.destination_type);
   put("is_dynamic_creative", o.is_dynamic_creative);
   put("pacing_type", o.pacing_type);
@@ -255,7 +256,7 @@ export async function duplicateAdSet(
       if (p.ageMin != null && p.ageMax != null) {
         const cur = await metaGet<{ targeting?: Record<string, unknown> }>(token, `/${newId}`, { fields: "targeting" });
         if (cur.targeting && (cur.targeting.age_min !== p.ageMin || cur.targeting.age_max !== p.ageMax)) {
-          patch.targeting = JSON.stringify({ ...cur.targeting, age_min: p.ageMin, age_max: p.ageMax });
+          patch.targeting = JSON.stringify(cleanTargeting({ ...cur.targeting, age_min: p.ageMin, age_max: p.ageMax }));
         }
       }
       if (p.startTime) patch.start_time = p.startTime;

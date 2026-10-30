@@ -64,3 +64,11 @@ select option {
     padding-left: 0.75rem;
   }
 }
+
+/* Etapa 236: a página nunca fica mais larga que a tela (no iPad, um elemento largo fazia o Safari "afastar" a página e
+   sobrava uma faixa preta do lado). As tabelas largas rolam de lado dentro do próprio quadro. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
