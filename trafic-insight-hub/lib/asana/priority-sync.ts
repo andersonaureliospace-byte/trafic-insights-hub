@@ -1,8 +1,8 @@
 // Etapa 113: manda a prioridade (status) dos clientes direto pro Asana, sem passar pelo Claude.
 //
-// Projeto "ESTRATEGISTA SPEED DIGITAL", seção "Anderson - (Denner)": cada tarefa é um cliente e
+// Projeto "ESTRATEGISTA SPEED DIGITAL", seções com "Anderson" no nome (Etapa 237): cada tarefa é um cliente e
 // o campo personalizado "Prioridade" (single-select) recebe o status do Trafic Insight Hub.
-// Só mexe nesse campo, só em tarefas dessa seção, e só quando o valor atual é diferente.
+// Só mexe nesse campo, só em tarefas dessas seções, e só quando o valor atual é diferente.
 //
 // Precisa da variável ASANA_ACCESS_TOKEN (Personal Access Token do Asana) na Vercel. Sem ela,
 // a sincronização fica desligada e nada acontece (não dá erro).
@@ -75,26 +75,46 @@ export async function asanaFetch(path: string, init?: RequestInit): Promise<unkn
   return json;
 }
 
+// Etapa 237: a partir de 31/10 o Anderson virou estrategista — os clientes dele ficam nas seções dos gestores que ele
+// coordena ("Ana -(Anderson)", "Kauê (Anderson)"…) além da própria "Anderson". Busca as tarefas de TODAS as seções do
+// projeto com "Anderson" no nome (seção nova de gestor entra sozinha). Se a lista de seções falhar, usa só a "Anderson".
+export const ASANA_PROJECT = "1208798639166829"; // ESTRATEGISTA SPEED DIGITAL
+const SECTION_MATCH = /anderson/i;
+
+export async function listMySectionGids(): Promise<string[]> {
+  try {
+    const json = (await asanaFetch(`/projects/${ASANA_PROJECT}/sections?opt_fields=name&limit=100`)) as {
+      data?: Array<{ gid: string; name?: string }>;
+    };
+    const gids = (json.data ?? []).filter((s) => SECTION_MATCH.test(s.name ?? "")).map((s) => s.gid);
+    return gids.length ? gids : [ASANA_SECTION_GID];
+  } catch {
+    return [ASANA_SECTION_GID];
+  }
+}
+
 export async function listSectionTasks(
   optFields = "name,custom_fields.gid,custom_fields.enum_value.gid",
 ): Promise<AsanaTask[]> {
-  const tasks: AsanaTask[] = [];
-  let offset: string | null = null;
-  for (let page = 0; page < 20; page++) {
-    const qs = new URLSearchParams({
-      limit: "100",
-      opt_fields: optFields,
-    });
-    if (offset) qs.set("offset", offset);
-    const json = (await asanaFetch(`/sections/${ASANA_SECTION_GID}/tasks?${qs}`)) as {
-      data?: AsanaTask[];
-      next_page?: { offset?: string } | null;
-    };
-    tasks.push(...(json.data ?? []));
-    offset = json.next_page?.offset ?? null;
-    if (!offset) break;
+  const byGid = new Map<string, AsanaTask>();
+  for (const section of await listMySectionGids()) {
+    let offset: string | null = null;
+    for (let page = 0; page < 20; page++) {
+      const qs = new URLSearchParams({
+        limit: "100",
+        opt_fields: optFields,
+      });
+      if (offset) qs.set("offset", offset);
+      const json = (await asanaFetch(`/sections/${section}/tasks?${qs}`)) as {
+        data?: AsanaTask[];
+        next_page?: { offset?: string } | null;
+      };
+      for (const t of json.data ?? []) byGid.set(t.gid, t);
+      offset = json.next_page?.offset ?? null;
+      if (!offset) break;
+    }
   }
-  return tasks;
+  return [...byGid.values()];
 }
 
 // Acha a tarefa do cliente: nome igual (normalizado) primeiro; senão, um único nome que contenha
