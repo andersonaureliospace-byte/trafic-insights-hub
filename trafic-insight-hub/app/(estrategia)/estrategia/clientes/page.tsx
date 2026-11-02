@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { loadClientes, matchesResp, type Cliente } from "@/components/estrategia/use-carteira";
@@ -57,44 +58,6 @@ function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; 
       </label>
       {children}
     </div>
-  );
-}
-
-function Gestores() {
-  const { gestores, saveGestores } = useEstr();
-  const [novo, setNovo] = useState("");
-  return (
-    <Card className="p-4">
-      <div className="mb-2 text-sm font-semibold">Responsáveis</div>
-      <p className="mb-3 text-xs text-zinc-500">Os nomes que aparecem no filtro e na ficha do cliente.</p>
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        {gestores.length === 0 ? <span className="text-xs text-zinc-500">Nenhum ainda.</span> : null}
-        {gestores.map((g) => (
-          <span key={g} className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 text-xs dark:bg-white/10">
-            {g}
-            <button
-              aria-label={`Remover ${g}`}
-              onClick={() => void saveGestores(gestores.filter((x) => x !== g))}
-              className="text-zinc-400 hover:text-red-500"
-            >
-              ×
-            </button>
-          </span>
-        ))}
-      </div>
-      <form
-        className="flex gap-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!novo.trim()) return;
-          void saveGestores([...gestores, novo]);
-          setNovo("");
-        }}
-      >
-        <input id="novo-gestor" aria-label="Nome do responsável" value={novo} onChange={(e) => setNovo(e.target.value)} placeholder="Nome do gestor" className={inputCls} />
-        <Btn type="submit">Adicionar</Btn>
-      </form>
-    </Card>
   );
 }
 
@@ -270,10 +233,13 @@ export default function ClientesPage() {
               </table>
             </div>
           </Card>
-          <Gestores />
+          <p className="text-xs text-zinc-500">
+            Pra cadastrar gestores e atribuir várias contas de uma vez, use{" "}
+            <Link href="/estrategia/gestores" className="font-medium text-blue-600 hover:underline dark:text-blue-400">Configurações → Gestores</Link>.
+          </p>
         </div>
 
-        <Card className="h-fit p-5 xl:sticky xl:top-4">
+        <Card className="h-fit p-5 xl:sticky xl:top-18">
           {!cur || !form ? (
             <p className="text-sm text-zinc-500">Escolha um cliente na lista.</p>
           ) : (

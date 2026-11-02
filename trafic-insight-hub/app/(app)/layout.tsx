@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             </span>
             <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
               {/* Etapa 238: volta pro Hub estratégico (a tela inicial agora). */}
-              <NavLink href="/estrategia/trafego">Hub estratégico</NavLink>
+              <NavLink href="/estrategia">Hub estratégico</NavLink>
               <NavLink href="/painel">Painel</NavLink>
               <NavLink href="/foco">Foco</NavLink>
               <NavLink href="/mensagens">Mensagens</NavLink>

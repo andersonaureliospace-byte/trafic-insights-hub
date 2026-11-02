@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { NavLink } from "@/components/nav-link";
 import { SignOutButton } from "@/components/sign-out-button";
 
 // Etapa 238: casca do Hub estratégico — menu lateral (Tráfego / Clientes, itens "em breve", Automações, link pro hub
@@ -15,15 +16,34 @@ export interface EstrUi {
   sort: string;
 }
 
+// Etapa 239: gestor = nome + WhatsApp. A lista antiga (só nomes) é lida e convertida sozinha.
+export interface Gestor {
+  name: string;
+  whatsapp: string;
+}
+
 interface Ctx {
   ui: EstrUi;
   setUi: (patch: Partial<EstrUi>) => void;
-  gestores: string[];
-  saveGestores: (list: string[]) => Promise<void>;
+  gestores: string[]; // só os nomes (filtro e ficha do cliente)
+  gestoresFull: Gestor[];
+  saveGestores: (list: Gestor[]) => Promise<void>;
+}
+
+export function parseGestores(v: unknown): Gestor[] {
+  if (!Array.isArray(v)) return [];
+  const out: Gestor[] = [];
+  for (const x of v) {
+    if (typeof x === "string" && x.trim()) out.push({ name: x.trim(), whatsapp: "" });
+    else if (x && typeof x === "object" && typeof (x as Gestor).name === "string" && (x as Gestor).name.trim()) {
+      out.push({ name: (x as Gestor).name.trim(), whatsapp: String((x as Gestor).whatsapp ?? "").trim() });
+    }
+  }
+  return out;
 }
 
 const DEFAULT_UI: EstrUi = { resp: "", period: "u3", sort: "cpa" };
-const EstrCtx = createContext<Ctx>({ ui: DEFAULT_UI, setUi: () => {}, gestores: [], saveGestores: async () => {} });
+const EstrCtx = createContext<Ctx>({ ui: DEFAULT_UI, setUi: () => {}, gestores: [], gestoresFull: [], saveGestores: async () => {} });
 export const useEstr = () => useContext(EstrCtx);
 
 const THEME_KEY = "estrategia_theme";
@@ -63,7 +83,7 @@ function Soon({ children, icon }: { children: ReactNode; icon: ReactNode }) {
 export function EstrategiaShell({ email, children }: { email: string | null; children: ReactNode }) {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [ui, setUiState] = useState<EstrUi>(DEFAULT_UI);
-  const [gestores, setGestores] = useState<string[]>([]);
+  const [gestoresFull, setGestores] = useState<Gestor[]>([]);
 
   useEffect(() => {
     try {
@@ -79,7 +99,7 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
           fetch("/api/estrategia/prefs?key=gestores", { cache: "no-store" }).then((r) => r.json()),
         ]);
         if (u.value && typeof u.value === "object") setUiState((cur) => ({ ...cur, ...(u.value as Partial<EstrUi>) }));
-        if (Array.isArray(g.value)) setGestores((g.value as unknown[]).filter((x): x is string => typeof x === "string"));
+        setGestores(parseGestores(g.value));
       } catch {
         /* segue com o padrão */
       }
@@ -94,11 +114,21 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
     });
   }, []);
 
-  const saveGestores = useCallback(async (list: string[]) => {
-    const clean = [...new Set(list.map((x) => x.trim()).filter(Boolean))];
+  const saveGestores = useCallback(async (list: Gestor[]) => {
+    const seen = new Set<string>();
+    const clean = list
+      .map((g) => ({ name: g.name.trim(), whatsapp: g.whatsapp.trim() }))
+      .filter((g) => g.name && !seen.has(g.name.toLowerCase()) && seen.add(g.name.toLowerCase()));
     setGestores(clean);
-    await putPref("gestores", clean);
+    const res = await fetch("/api/estrategia/prefs", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "gestores", value: clean }),
+    }).then((r) => r.json());
+    if (res.error) throw new Error(res.error);
   }, []);
+
+  const gestores = useMemo(() => gestoresFull.map((g) => g.name), [gestoresFull]);
 
   function toggleTheme() {
     const next = theme === "dark" ? "light" : "dark";
@@ -110,12 +140,27 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
     }
   }
 
-  const value = useMemo(() => ({ ui, setUi, gestores, saveGestores }), [ui, setUi, gestores, saveGestores]);
+  const value = useMemo(() => ({ ui, setUi, gestores, gestoresFull, saveGestores }), [ui, setUi, gestores, gestoresFull, saveGestores]);
 
   return (
     <EstrCtx.Provider value={value}>
-      <div className={`${theme} flex min-h-screen flex-1 flex-col bg-zinc-50 text-zinc-900 lg:flex-row dark:bg-[#0b0e14] dark:text-zinc-100`}>
-        <aside className="flex shrink-0 flex-col gap-1 border-b border-zinc-200 bg-white px-3 py-3 lg:sticky lg:top-0 lg:h-screen lg:w-60 lg:border-r lg:border-b-0 lg:py-5 dark:border-white/10 dark:bg-[#10141c]">
+      <div className={`${theme} flex min-h-screen flex-1 flex-col bg-zinc-50 text-zinc-900 dark:bg-[#0b0e14] dark:text-zinc-100`}>
+        {/* Etapa 239: por enquanto, a mesma barra de cima do hub operacional fica fixa aqui também. */}
+        <header className="sticky top-0 z-30 h-14 border-b border-zinc-200 bg-white/80 backdrop-blur-xl dark:border-zinc-800 dark:bg-zinc-950/80">
+          <div className="flex h-full items-center gap-3 px-3 md:px-4 xl:gap-6 xl:px-8">
+            <span className="text-sm font-semibold tracking-tight whitespace-nowrap text-zinc-900 dark:text-zinc-50">Trafic Insight Hub</span>
+            <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
+              <NavLink href="/estrategia">Hub estratégico</NavLink>
+              <NavLink href="/painel">Painel</NavLink>
+              <NavLink href="/foco">Foco</NavLink>
+              <NavLink href="/mensagens">Mensagens</NavLink>
+              <NavLink href="/auditoria">Auditoria</NavLink>
+              <NavLink href="/configuracoes">Configurações</NavLink>
+            </nav>
+          </div>
+        </header>
+        <div className="flex flex-1 flex-col lg:flex-row">
+        <aside className="flex shrink-0 flex-col gap-1 border-b border-zinc-200 bg-white px-3 py-3 lg:sticky lg:top-14 lg:h-[calc(100vh-3.5rem)] lg:w-60 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:py-5 dark:border-white/10 dark:bg-[#10141c]">
           <div className="px-3 pb-2">
             <div className="text-base font-bold tracking-tight text-blue-700 dark:text-blue-400">Trafic Insight Hub</div>
             <div className="text-xs text-zinc-500">Hub estratégico</div>
@@ -133,6 +178,8 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
             <Soon icon="🗂">Relatórios</Soon>
           </div>
           <div className="flex flex-wrap items-center gap-1 lg:mt-auto lg:flex-col lg:items-stretch">
+            <div className="hidden px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wider text-zinc-500 uppercase lg:block">Configurações</div>
+            <Item href="/estrategia/gestores" icon="🧑‍💼">Gestores</Item>
             <Item href="/estrategia/automacoes" icon="⚙">Automações</Item>
             <Link
               href="/painel"
@@ -156,6 +203,7 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
           </div>
         </aside>
         <main className="min-w-0 flex-1">{children}</main>
+        </div>
       </div>
     </EstrCtx.Provider>
   );
