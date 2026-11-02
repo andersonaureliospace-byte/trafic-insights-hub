@@ -169,10 +169,10 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
             <div className="hidden px-3 pt-3 pb-1 text-[11px] font-semibold tracking-wider text-zinc-500 uppercase lg:block">Estratégia</div>
             <Item href="/estrategia/trafego" icon="📈">Tráfego</Item>
             <Item href="/estrategia/clientes" icon="👥">Clientes</Item>
+            <Item href="/estrategia/pop" icon="📄">POP</Item>
           </div>
           <div className="hidden flex-col gap-0.5 border-t border-zinc-200 pt-3 lg:mt-3 lg:flex dark:border-white/10">
             <div className="px-3 pb-1 text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">Em breve</div>
-            <Soon icon="📄">POP</Soon>
             <Soon icon="💬">Grupos</Soon>
             <Soon icon="📅">Agenda</Soon>
             <Soon icon="🗂">Relatórios</Soon>

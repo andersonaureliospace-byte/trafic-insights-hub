@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useState } from "react";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { RITMO_BAND, cpaOf, cpaSortKey, ritmoOf, calendarSP } from "@/lib/estrategia/calc";
 import type { ActivityItem } from "@/lib/estrategia/activities";
@@ -19,8 +21,16 @@ export interface AlertasServer {
   at: string;
 }
 
+export interface NamingIssue {
+  ad_account_id: string;
+  entity: "campaign" | "adset" | "ad";
+  current_name: string;
+  problems: string[];
+  suggestion: string | null;
+  needsInput: boolean;
+}
 export interface NamingData {
-  items: Array<{ ad_account_id: string; current_name: string; problems: string[] }>;
+  items: NamingIssue[];
   loading: boolean;
   error: string | null;
 }
@@ -30,6 +40,7 @@ interface Item {
   name: string;
   detail: string;
   sev: Sev;
+  naming?: boolean; // abre a lista do que está errado nos nomes dessa conta
 }
 interface Group {
   key: string;
@@ -38,6 +49,101 @@ interface Group {
   items: Item[];
   foot: string;
   emptyText?: string;
+}
+
+// "LOCALIZAÇÃO fora do padrão" → "LOCALIZAÇÃO"; "Estrutura fora do padrão (5 partes, esperado 6)" → "Estrutura (partes faltando/sobrando)".
+function shortProblem(p: string): string {
+  if (/^Estrutura fora do padrão/.test(p)) return "Estrutura (partes faltando ou sobrando)";
+  return p.replace(/ fora do padrão$/, "");
+}
+
+const ENTITY_LABEL: Record<NamingIssue["entity"], string> = { campaign: "Campanha", adset: "Conjunto", ad: "Anúncio" };
+
+// Explicação curta de cada erro, na língua do POP.
+function explain(p: string): string | null {
+  if (/cópia/i.test(p)) return 'Ao duplicar, a Meta põe "Cópia" no nome. Apague.';
+  if (/^TIPO precisa/.test(p)) return "A campanha começa com GERAL, EXAME ou OFERTA.";
+  if (/^TIPO "/.test(p)) return "Escreva o tipo exatamente como no padrão.";
+  if (/^TIPO deve ser GERAL/.test(p)) return "CREDIARIO/BOLETO vai depois do tipo: GERAL | CREDIARIO | …";
+  if (/^TIPO fora/.test(p)) return "Conjunto começa com GERAL, EXAME ou PROMO.";
+  if (/^OFERTA fora/.test(p)) return "GERAL não leva oferta; EXAME e PROMO levam (logo depois do tipo).";
+  if (/precisa da oferta/.test(p)) return "Escreva a oferta logo depois do tipo.";
+  if (/^LOCALIZAÇÃO/.test(p) || /localização/.test(p)) return "Com raio: só o km (8KM). Uma cidade: o nome. Várias: a primeira + \"+\" colado (AMPARO+).";
+  if (/^IDADE/.test(p)) return "Idade igual à do público: 25-54. Até 65 ou mais: 18-65+.";
+  if (/^GÊNERO/.test(p)) return "Só escreva MULHER ou HOMEM quando o público for de um gênero só.";
+  if (/^PLATAFORMA/.test(p)) return "Só escreva INSTA ou FACE quando rodar em uma plataforma só.";
+  if (/^DIRECIONAMENTO/.test(p)) return "INTERESSES só quando o conjunto tiver interesses.";
+  if (/^AND/.test(p)) return "AND vem antes da data.";
+  if (/^DATA/.test(p)) return "Data de criação do conjunto, dia/mês: 01/11.";
+  if (/^PAGAMENTO/.test(p)) return "CREDIARIO ou BOLETO logo depois da oferta.";
+  if (/^VDO PROPRIO/.test(p)) return "VDO PROPRIO depois da oferta/pagamento.";
+  if (/^Estrutura/.test(p)) return "Faltam ou sobram partes. Compare com o nome sugerido.";
+  if (/Falta a UNIDADE|Faltam partes|Mais partes/.test(p)) return "Campanha: TIPO | OBJETIVO | UNIDADE.";
+  if (/UNIDADE com data/.test(p)) return "A campanha não leva data.";
+  if (/deduzido como PROMO/.test(p)) return "O nome não dizia o tipo. Confira se é PROMO mesmo.";
+  return null;
+}
+
+export function NamingDetails({ name, items, onClose }: { name: string; items: NamingIssue[]; onClose: () => void }) {
+  const order: NamingIssue["entity"][] = ["campaign", "adset", "ad"];
+  const sorted = [...items].sort((a, b) => order.indexOf(a.entity) - order.indexOf(b.entity));
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/40" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-label={`Nomes fora do padrão em ${name}`}
+        className="flex h-full w-full max-w-2xl flex-col border-l border-zinc-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#10141c]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-zinc-200 p-5 dark:border-white/10">
+          <div>
+            <div className="text-base font-semibold">{name}</div>
+            <div className="text-xs text-zinc-500">
+              {items.length} {items.length === 1 ? "nome fora do padrão" : "nomes fora do padrão"} ·{" "}
+              <Link href="/estrategia/pop/nomenclatura" className="font-medium text-blue-600 hover:underline dark:text-blue-400">
+                ver o POP de nomenclatura
+              </Link>
+            </div>
+          </div>
+          <button onClick={onClose} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm dark:border-white/10">Fechar</button>
+        </div>
+        <ul className="flex-1 divide-y divide-zinc-100 overflow-y-auto dark:divide-white/5">
+          {sorted.map((it, i) => (
+            <li key={i} className="flex flex-col gap-2 px-5 py-4">
+              <span className="w-fit rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-bold tracking-wide text-zinc-600 uppercase dark:bg-white/10 dark:text-zinc-300">
+                {ENTITY_LABEL[it.entity]}
+              </span>
+              <div>
+                <div className="text-[11px] font-semibold tracking-wide text-red-600 uppercase dark:text-red-400">Está assim</div>
+                <code className="block rounded-md bg-red-500/8 px-2 py-1.5 font-mono text-xs break-all text-red-800 dark:text-red-200">{it.current_name}</code>
+              </div>
+              {it.suggestion ? (
+                <div>
+                  <div className="text-[11px] font-semibold tracking-wide text-emerald-600 uppercase dark:text-emerald-400">
+                    Deveria ficar{it.needsInput ? " (troque o que está em letras de exemplo)" : ""}
+                  </div>
+                  <code className="block rounded-md bg-emerald-500/8 px-2 py-1.5 font-mono text-xs break-all text-emerald-800 dark:text-emerald-200">
+                    {it.suggestion}
+                  </code>
+                </div>
+              ) : null}
+              <ul className="flex flex-col gap-1">
+                {it.problems.map((p, j) => {
+                  const why = explain(p);
+                  return (
+                    <li key={j} className="text-xs">
+                      <span className="font-semibold">✗ {p}</span>
+                      {why ? <span className="text-zinc-500"> — {why}</span> : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
 }
 
 // Dias sem nenhuma alteração na conta pra virar alerta em "Otimizações recentes".
@@ -148,23 +254,30 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
   });
 
   // 5) Nomenclatura
-  const nm = new Map<string, string[]>();
+  const nm = new Map<string, NamingIssue[]>();
   for (const it of naming.items) {
     const id = it.ad_account_id.replace(/^act_/, "");
     if (!byId.has(id)) continue;
-    nm.set(id, [...(nm.get(id) ?? []), it.current_name]);
+    nm.set(id, [...(nm.get(id) ?? []), it]);
   }
   groups.push({
     key: "nomes",
     title: "Nomenclatura fora do padrão",
     icon: "🏷",
-    items: [...nm.entries()].map(([id, names]) => ({
-      id,
-      name: nameOf(id),
-      detail: `${names.length} ${names.length === 1 ? "nome" : "nomes"} · "${names[0]}"`,
-      sev: "baixa" as Sev,
-    })),
-    foot: naming.loading ? "Verificando os nomes na Meta…" : naming.error ? `Não deu pra verificar: ${naming.error}` : "Padrão de nomes das contas IVS",
+    items: [...nm.entries()].map(([id, list]) => {
+      // Os erros que mais aparecem nessa conta (ex.: "TIPO fora do padrão ×3").
+      const tally = new Map<string, number>();
+      for (const it of list) for (const p of it.problems) tally.set(shortProblem(p), (tally.get(shortProblem(p)) ?? 0) + 1);
+      const top = [...tally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
+      return {
+        id,
+        name: nameOf(id),
+        detail: `${list.length} ${list.length === 1 ? "nome" : "nomes"} · ${top.map(([p, n]) => (n > 1 ? `${p} ×${n}` : p)).join(" · ")}`,
+        sev: "baixa" as Sev,
+        naming: true,
+      };
+    }),
+    foot: naming.loading ? "Verificando os nomes na Meta…" : naming.error ? `Não deu pra verificar: ${naming.error}` : "Campanhas, conjuntos e anúncios ligados · regra do POP de nomenclatura",
     emptyText: naming.loading ? "Verificando…" : undefined,
   });
 
@@ -213,6 +326,7 @@ export function countAlerts(groups: Group[]): number {
 
 export function Alertas({ linhas, srv, naming, loading }: { linhas: Linha[]; srv: AlertasServer | null; naming: NamingData; loading: boolean }) {
   const groups = buildGroups(linhas, srv, naming);
+  const [namingOpen, setNamingOpen] = useState<string | null>(null);
 
   // Contas que precisam de atenção: soma dos alertas por conta (crítico vale mais).
   const score = new Map<string, { n: number; pts: number; top: Sev; titles: string[] }>();
@@ -275,6 +389,14 @@ export function Alertas({ linhas, srv, naming, loading }: { linhas: Linha[]; srv
                           {it.name}
                         </a>
                         <div className="text-xs break-words text-zinc-500">{it.detail}</div>
+                        {it.naming ? (
+                          <button
+                            onClick={() => setNamingOpen(it.id)}
+                            className="mt-1 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                          >
+                            Ver o que está errado →
+                          </button>
+                        ) : null}
                       </div>
                       <SevBadge sev={it.sev} />
                     </li>
@@ -328,6 +450,13 @@ export function Alertas({ linhas, srv, naming, loading }: { linhas: Linha[]; srv
           <p className="mt-3 text-sm text-blue-100">Nenhuma conta com alerta crítico ou acumulado.</p>
         )}
       </div>
+      {namingOpen ? (
+        <NamingDetails
+          name={byId.get(namingOpen)?.name ?? namingOpen}
+          items={naming.items.filter((x) => x.ad_account_id.replace(/^act_/, "") === namingOpen)}
+          onClose={() => setNamingOpen(null)}
+        />
+      ) : null}
     </div>
   );
 }
