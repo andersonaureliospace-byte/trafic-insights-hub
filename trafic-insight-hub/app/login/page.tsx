@@ -26,7 +26,7 @@ export default function LoginPage() {
     const standalone =
       typeof window !== "undefined" &&
       (window.matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true);
-    router.push(standalone ? "/m" : "/painel");
+    router.push(standalone ? "/m" : "/estrategia/trafego"); // Etapa 238
     router.refresh();
   }
 

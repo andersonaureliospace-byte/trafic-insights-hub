@@ -2,11 +2,65 @@
 // (regra em lib/offers/rule.ts). "Existiu" = conjunto com gasto no mês OU ligado agora (ativo/programado).
 
 import type { createClient } from "@/lib/supabase/server";
-import { metaGetAll } from "@/lib/meta/client";
+import { metaGetAll, spDate } from "@/lib/meta/client";
+import { isNonLeadResultType, leadResultOf } from "@/lib/meta/shared";
 import { ACTIVE_ISH_STATUSES } from "@/lib/meta/insights";
 import { namingAccounts } from "@/lib/naming/scan";
 import { readOffersSnapshot, saveOffersSnapshot } from "@/lib/offers/snapshot";
-import { summarizeOffers, type OfferAdset, type OffersSummary } from "@/lib/offers/rule";
+import {
+  offerKindOf,
+  summarizeOffers,
+  type OfferAdset,
+  type OfferKind,
+  type OfferMetric,
+  type OffersMetrics,
+  type OffersSummary,
+} from "@/lib/offers/rule";
+
+// YYYY-MM-DD ± n dias, só no calendário (UTC puro).
+function addDaysYmd(ymd: string, n: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+}
+
+type InsightRow = {
+  adset_id?: string;
+  adset_name?: string;
+  campaign_name?: string;
+  spend?: string;
+  results?: Array<{ indicator?: string; values?: Array<{ value?: string }> }>;
+  actions?: Array<{ action_type?: string; value?: string }>;
+};
+
+// Etapa 238: CPA por tipo de oferta nos 2 últimos dias fechados + gasto de PROMO no mês.
+async function offersMetricsForAccount(token: string, act: string, monthRows: InsightRow[]): Promise<OffersMetrics> {
+  const today = spDate(new Date());
+  const until = addDaysYmd(today, -1);
+  const since = addDaysYmd(today, -2);
+  const empty = (): OfferMetric => ({ spend: 0, results: 0 });
+  const last2d: Record<OfferKind, OfferMetric> = { geral: empty(), exame: empty(), boleto: empty(), promo: empty() };
+  const rows = await metaGetAll<InsightRow>(token, `/${act}/insights`, {
+    fields: "adset_id,adset_name,campaign_name,spend,results,actions",
+    level: "adset",
+    time_range: JSON.stringify({ since, until }),
+    use_unified_attribution_setting: "true",
+    limit: "500",
+  });
+  for (const r of rows) {
+    if (VAGA_RE.test(r.campaign_name ?? "")) continue;
+    const kind = offerKindOf(r.adset_name ?? "");
+    if (!kind) continue;
+    last2d[kind].spend += Number(r.spend) || 0;
+    const lr = leadResultOf(r.results, r.actions);
+    if (!isNonLeadResultType(lr.type) && lr.value != null) last2d[kind].results += lr.value;
+  }
+  let promoSpendMonth = 0;
+  for (const r of monthRows) {
+    if (VAGA_RE.test(r.campaign_name ?? "")) continue;
+    if (offerKindOf(r.adset_name ?? "") === "promo") promoSpendMonth += Number(r.spend) || 0;
+  }
+  return { last2d, promoSpendMonth, since, until };
+}
 
 type Db = Awaited<ReturnType<typeof createClient>>;
 
@@ -42,7 +96,14 @@ export async function offersForAccount(token: string, adAccountId: string): Prom
     if (cur) cur.active = true;
     else byId.set(a.id, { name: a.name ?? "", active: true, spend: 0 });
   }
-  return summarizeOffers([...byId.values()]);
+  const summary = summarizeOffers([...byId.values()]);
+  try {
+    summary.metrics = await offersMetricsForAccount(token, act, spent);
+  } catch (e) {
+    // Sem os números, o status das ofertas continua valendo (a tela mostra "—" no CPA).
+    console.error("offers metrics err", act, (e as Error).message);
+  }
+  return summary;
 }
 
 export interface OffersResult {

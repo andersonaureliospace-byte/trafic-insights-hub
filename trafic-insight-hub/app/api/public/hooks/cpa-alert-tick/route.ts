@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { checkCpaAlerts, cpaWindowByHour, type CpaWindow } from "@/lib/alerts/cpa";
 import { withRunLog } from "@/lib/automation-runs";
+import { automationPaused } from "@/lib/automation-switches";
 
 // Etapa 202: o n8n chama 3x ao dia (06h = CPA de ontem > R$4; 12h = hoje > R$20; 18h30 = hoje > R$10). A rodada vem do
 // corpo { "window": "yesterday" | "midday" | "evening" } ou, sem corpo, do horário de Brasília (lib/alerts/cpa.ts).
@@ -29,6 +30,10 @@ export const POST = withRunLog("cpa-alert", async (request: Request) => {
     if (body?.window === "yesterday" || body?.window === "midday" || body?.window === "evening") window = body.window;
   } catch {
     // sem corpo: usa o horário
+  }
+  // Etapa 238: cada rodada (06h / 12h / 18h30) tem o próprio liga/pausa no Hub estratégico.
+  if (await automationPaused(`cpa-alert:${window}`)) {
+    return NextResponse.json({ paused: true, mode: window });
   }
 
   const supabase = createServiceClient();

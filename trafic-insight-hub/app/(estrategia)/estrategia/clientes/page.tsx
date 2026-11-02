@@ -1,0 +1,376 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { PageHeader, useEstr } from "@/components/estrategia/shell";
+import { loadClientes, matchesResp, type Cliente } from "@/components/estrategia/use-carteira";
+import { Btn, Card, Pill, fmtBRL } from "@/components/estrategia/ui";
+import { usePriorityOptions } from "@/lib/priority-context";
+import { calendarSP } from "@/lib/estrategia/calc";
+
+// Etapa 238: Hub estratégico → Clientes. Lista + ficha do cliente (responsável, status, verba, CPA ideal, pagamento,
+// cliente desde). Arquivar tira o cliente de todas as telas e das automações, sem apagar nada (dá pra trazer de volta).
+
+type Status = "ativo" | "inauguracao" | "pausado";
+const STATUS_LABEL: Record<Status, string> = { ativo: "Ativo", inauguracao: "Inauguração", pausado: "Pausado" };
+const PAY_LABEL: Record<string, string> = { pix: "Pix (pré-paga)", hybrid: "Híbrida", boleto: "Boleto", card: "Cartão" };
+
+function statusOf(c: Cliente): Status {
+  if (!c.active) return "pausado";
+  if (c.priority === "inauguracao") return "inauguracao";
+  return "ativo";
+}
+
+interface Form {
+  responsible: string;
+  status: Status;
+  monthly: string;
+  cpaTarget: string;
+  payment: string;
+  since: string; // YYYY-MM
+}
+
+function formOf(c: Cliente, pay: string | null): Form {
+  return {
+    responsible: c.responsible ?? "",
+    status: statusOf(c),
+    monthly: c.monthly != null ? String(c.monthly) : "",
+    cpaTarget: c.cpaTarget != null ? String(c.cpaTarget) : "",
+    payment: pay ?? "",
+    since: c.clientSince ? c.clientSince.slice(0, 7) : "",
+  };
+}
+
+const num = (s: string): number | null => {
+  const t = s.trim().replace(/\./g, "").replace(",", ".");
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : null;
+};
+
+const inputCls = "h-9 w-full rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]";
+
+function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={htmlFor} className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+        {label}
+      </label>
+      {children}
+    </div>
+  );
+}
+
+function Gestores() {
+  const { gestores, saveGestores } = useEstr();
+  const [novo, setNovo] = useState("");
+  return (
+    <Card className="p-4">
+      <div className="mb-2 text-sm font-semibold">Responsáveis</div>
+      <p className="mb-3 text-xs text-zinc-500">Os nomes que aparecem no filtro e na ficha do cliente.</p>
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {gestores.length === 0 ? <span className="text-xs text-zinc-500">Nenhum ainda.</span> : null}
+        {gestores.map((g) => (
+          <span key={g} className="inline-flex items-center gap-1 rounded-full bg-zinc-100 px-2.5 py-1 text-xs dark:bg-white/10">
+            {g}
+            <button
+              aria-label={`Remover ${g}`}
+              onClick={() => void saveGestores(gestores.filter((x) => x !== g))}
+              className="text-zinc-400 hover:text-red-500"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!novo.trim()) return;
+          void saveGestores([...gestores, novo]);
+          setNovo("");
+        }}
+      >
+        <input id="novo-gestor" aria-label="Nome do responsável" value={novo} onChange={(e) => setNovo(e.target.value)} placeholder="Nome do gestor" className={inputCls} />
+        <Btn type="submit">Adicionar</Btn>
+      </form>
+    </Card>
+  );
+}
+
+export default function ClientesPage() {
+  const { ui, gestores } = useEstr();
+  const { options } = usePriorityOptions();
+  const [clientes, setClientes] = useState<Cliente[] | null>(null);
+  const [pay, setPay] = useState<Record<string, string | null>>({});
+  const [sel, setSel] = useState<string | null>(null);
+  const [form, setForm] = useState<Form | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [confirmArchive, setConfirmArchive] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [list, p] = await Promise.all([loadClientes(), fetch("/api/pix-accounts", { cache: "no-store" }).then((r) => r.json())]);
+      setClientes(list.filter((c) => c.selected || c.archived));
+      const map: Record<string, string | null> = {};
+      for (const r of (p.pixAccounts ?? []) as Array<{ ad_account_id: string; payment_type: string | null }>) {
+        map[r.ad_account_id.replace(/^act_/, "")] = r.payment_type;
+      }
+      setPay(map);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carrega a lista ao abrir
+    void load();
+  }, [load]);
+
+  const list = useMemo(
+    () => (clientes ?? []).filter((c) => (showArchived ? c.archived : !c.archived) && matchesResp(ui.resp, c.responsible)),
+    [clientes, showArchived, ui.resp],
+  );
+  const cur = useMemo(() => list.find((c) => c.id === sel) ?? list[0] ?? null, [list, sel]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ficha acompanha o cliente escolhido
+    setForm(cur ? formOf(cur, pay[cur.id] ?? null) : null);
+    setConfirmArchive(false);
+    setMsg(null);
+  }, [cur, pay]);
+
+  async function patchBinding(c: Cliente, body: Record<string, unknown>) {
+    const d = await fetch("/api/account-bindings", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ad_account_id: c.rawId, ...body }),
+    }).then((r) => r.json());
+    if (d.error) throw new Error(d.error);
+  }
+
+  async function save() {
+    if (!cur || !form) return;
+    setSaving(true);
+    setMsg(null);
+    try {
+      const body: Record<string, unknown> = {
+        responsible: form.responsible || null,
+        monthly_investment: num(form.monthly),
+        cpa_target: num(form.cpaTarget),
+        client_since: form.since ? `${form.since}-01` : null,
+      };
+      const before = statusOf(cur);
+      if (form.status !== before) {
+        body.active = form.status !== "pausado";
+        if (form.status === "inauguracao") body.priority = "inauguracao";
+        else if (cur.priority === "inauguracao") body.priority = null;
+      }
+      await patchBinding(cur, body);
+      if ((pay[cur.id] ?? "") !== form.payment) {
+        const d = await fetch("/api/pix-accounts", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ad_account_id: cur.rawId, payment_type: form.payment || null }),
+        }).then((r) => r.json());
+        if (d.error) throw new Error(d.error);
+      }
+      setMsg({ ok: true, text: "Alterações salvas." });
+      await load();
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function archive(value: boolean) {
+    if (!cur) return;
+    setSaving(true);
+    try {
+      await patchBinding(cur, { archived: value });
+      setConfirmArchive(false);
+      setSel(null);
+      await load();
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const prioLabel = (id: string | null) => (id ? (options.find((o) => o.id === id)?.label ?? id) : "—");
+
+  return (
+    <div className="flex flex-col">
+      <PageHeader title="Clientes" sub="Ficha de cada cliente da carteira">
+        <Btn onClick={() => setShowArchived((v) => !v)}>{showArchived ? "Ver ativos" : "Ver arquivados"}</Btn>
+      </PageHeader>
+      <div className="grid gap-4 p-4 lg:p-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
+        <div className="flex min-w-0 flex-col gap-4">
+          {error ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div> : null}
+          <Card className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[640px] text-sm">
+                <thead>
+                  <tr className="border-b border-zinc-200 text-left text-[11px] tracking-wide text-zinc-500 uppercase dark:border-white/10">
+                    <th className="px-4 py-2.5 font-semibold">Cliente</th>
+                    <th className="px-3 py-2.5 font-semibold">Responsável</th>
+                    <th className="px-3 py-2.5 font-semibold">Status</th>
+                    <th className="px-3 py-2.5 text-right font-semibold">Verba mensal</th>
+                    <th className="px-3 py-2.5 text-right font-semibold">CPA ideal</th>
+                    <th className="px-3 py-2.5 font-semibold">Pagamento</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientes == null ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">Carregando…</td>
+                    </tr>
+                  ) : list.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
+                        {showArchived ? "Nenhum cliente arquivado." : "Nenhum cliente pra esse responsável."}
+                      </td>
+                    </tr>
+                  ) : (
+                    list.map((c) => {
+                      const st = statusOf(c);
+                      const on = cur?.id === c.id;
+                      return (
+                        <tr
+                          key={c.id}
+                          tabIndex={0}
+                          onClick={() => setSel(c.id)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") setSel(c.id);
+                          }}
+                          className={`cursor-pointer border-b border-zinc-100 last:border-0 dark:border-white/5 ${
+                            on ? "bg-blue-600/8 dark:bg-blue-500/10" : "hover:bg-zinc-50 dark:hover:bg-white/[0.02]"
+                          }`}
+                        >
+                          <td className="px-4 py-3 font-semibold">{c.name}</td>
+                          <td className="px-3 py-3 text-zinc-600 dark:text-zinc-400">{c.responsible ?? "—"}</td>
+                          <td className="px-3 py-3">
+                            <Pill tone={c.archived ? "off" : st === "ativo" ? "ok" : st === "inauguracao" ? "info" : "warn"}>
+                              {c.archived ? "Arquivado" : STATUS_LABEL[st]}
+                            </Pill>
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums">{fmtBRL(c.monthly)}</td>
+                          <td className="px-3 py-3 text-right tabular-nums">{fmtBRL(c.cpaTarget)}</td>
+                          <td className="px-3 py-3 text-zinc-600 dark:text-zinc-400">{pay[c.id] ? PAY_LABEL[pay[c.id] as string] : "—"}</td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+          <Gestores />
+        </div>
+
+        <Card className="h-fit p-5 xl:sticky xl:top-4">
+          {!cur || !form ? (
+            <p className="text-sm text-zinc-500">Escolha um cliente na lista.</p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div>
+                <h2 className="text-lg font-semibold">{cur.name}</h2>
+                <div className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Ficha do cliente</div>
+              </div>
+              {cur.archived ? (
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm text-zinc-500">Cliente arquivado: não aparece nas telas nem entra nas automações. Os dados continuam guardados.</p>
+                  <Btn primary onClick={() => void archive(false)} disabled={saving}>Trazer de volta</Btn>
+                </div>
+              ) : (
+                <>
+                  <Field label="Responsável" htmlFor="f-resp">
+                    <select id="f-resp" value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} className={inputCls}>
+                      <option value="">Sem responsável</option>
+                      {[...new Set([...gestores, ...(form.responsible ? [form.responsible] : [])])].map((g) => (
+                        <option key={g} value={g}>{g}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Status" htmlFor="f-status">
+                    <select id="f-status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Status })} className={inputCls}>
+                      {(Object.keys(STATUS_LABEL) as Status[]).map((s) => (
+                        <option key={s} value={s}>{STATUS_LABEL[s]}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Verba mensal (R$)" htmlFor="f-verba">
+                      <input id="f-verba" inputMode="decimal" value={form.monthly} onChange={(e) => setForm({ ...form, monthly: e.target.value })} className={inputCls} />
+                    </Field>
+                    <Field label="CPA ideal (R$)" htmlFor="f-cpa">
+                      <input id="f-cpa" inputMode="decimal" value={form.cpaTarget} onChange={(e) => setForm({ ...form, cpaTarget: e.target.value })} className={inputCls} />
+                    </Field>
+                  </div>
+                  {num(form.monthly) ? (
+                    <div className="-mt-2 text-xs text-zinc-500">≈ {fmtBRL((num(form.monthly) as number) / calendarSP().daysInMonth)} por dia neste mês</div>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Pagamento" htmlFor="f-pay">
+                      <select id="f-pay" value={form.payment} onChange={(e) => setForm({ ...form, payment: e.target.value })} className={inputCls}>
+                        <option value="">Não definido</option>
+                        {Object.entries(PAY_LABEL).map(([k, v]) => (
+                          <option key={k} value={k}>{v}</option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Cliente desde" htmlFor="f-since">
+                      <input id="f-since" type="month" value={form.since} onChange={(e) => setForm({ ...form, since: e.target.value })} className={inputCls} />
+                    </Field>
+                  </div>
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
+                    <dt className="text-zinc-500">Conta de anúncio</dt>
+                    <dd className="font-mono text-xs break-all text-blue-700 dark:text-blue-300">act_{cur.id}</dd>
+                    <dt className="text-zinc-500">Prioridade Asana</dt>
+                    <dd className="font-medium">{prioLabel(cur.priority)}</dd>
+                    <dt className="text-zinc-500">WhatsApp</dt>
+                    <dd>{cur.whatsapp ?? "—"}</dd>
+                    <dt className="text-zinc-500">Grupo WhatsApp</dt>
+                    <dd className="text-zinc-500 italic">em breve</dd>
+                  </dl>
+                  {msg ? <div className={`text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{msg.text}</div> : null}
+                  <div className="flex items-center gap-2 border-t border-zinc-200 pt-4 dark:border-white/10">
+                    <div className="flex-1">
+                      <Btn primary onClick={() => void save()} disabled={saving}>{saving ? "Salvando…" : "Salvar alterações"}</Btn>
+                    </div>
+                    {confirmArchive ? (
+                      <>
+                        <Btn onClick={() => setConfirmArchive(false)}>Cancelar</Btn>
+                        <button
+                          onClick={() => void archive(true)}
+                          disabled={saving}
+                          className="h-9 rounded-lg bg-red-600 px-3 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                        >
+                          Arquivar
+                        </button>
+                      </>
+                    ) : (
+                      <Btn onClick={() => setConfirmArchive(true)} title="Arquivar cliente (some das telas, dá pra trazer de volta)">
+                        🗑 Arquivar
+                      </Btn>
+                    )}
+                  </div>
+                  {confirmArchive ? (
+                    <p className="text-xs text-zinc-500">
+                      O cliente some das telas e sai das automações. Nada é apagado: dá pra trazer de volta em &quot;Ver arquivados&quot;.
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </div>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}

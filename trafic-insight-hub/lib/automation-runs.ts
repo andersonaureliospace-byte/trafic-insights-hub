@@ -10,6 +10,7 @@
 import { createServiceClient } from "@/lib/supabase/server";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { AUTOMATION_LABELS as LABELS } from "@/lib/automation-labels";
+import { automationPaused } from "@/lib/automation-switches";
 export { AUTOMATION_LABELS } from "@/lib/automation-labels";
 
 export const RUN_TTL_DAYS = 30;
@@ -177,6 +178,10 @@ async function logRuns(automation: string, startedAt: Date, res: Response): Prom
 // Embrulha o POST de um hook: roda normalmente e, no fim, grava a rodada no registro.
 export function withRunLog(automation: string, handler: (request: Request) => Promise<Response>) {
   return async function POST(request: Request): Promise<Response> {
+    // Etapa 238: automação pausada no Hub estratégico (Automações) — o n8n continua chamando, mas não roda nada.
+    if (await automationPaused(automation)) {
+      return Response.json({ paused: true, automation });
+    }
     const startedAt = new Date();
     const res = await handler(request);
     if (res.status === 401) return res; // chamada sem o segredo: não é rodada de verdade

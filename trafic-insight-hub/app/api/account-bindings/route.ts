@@ -53,12 +53,22 @@ export async function PATCH(request: Request) {
       "whatsapp_contact",
       "address",
       "sort_order",
+      // Etapa 238: ficha do cliente no Hub estratégico.
+      "responsible",
+      "client_since",
     ]) {
       if (key in body) patch[key] = body[key];
     }
 
     // Etapa 131: cliente ativo/desativado (padrão = ativo). Só booleano.
     if ("active" in body) patch.active = body.active !== false;
+
+    // Etapa 238: arquivar cliente (Hub estratégico). Arquivado também fica desativado (sai das automações);
+    // trazer de volta reativa.
+    if ("archived" in body) {
+      patch.archived = !!body.archived;
+      patch.active = !body.archived;
+    }
 
     // "Otimizado" tem regra própria (não entra no loop genérico acima): é só
     // um liga/desliga, sem motivo — a data de referência é sempre calculada
@@ -89,6 +99,9 @@ export async function PATCH(request: Request) {
 
     const { error } = await supabase.from("account_bindings").upsert(patch, { onConflict: "user_id,ad_account_id" });
     if (error) {
+      if (/responsible|client_since|archived/.test(error.message)) {
+        throw new Error("Rode o SQL supabase/migrations/0041_hub_estrategico.sql no Supabase pra ativar a ficha do Hub estratégico.");
+      }
       if (/to_optimize/.test(error.message)) {
         throw new Error("Rode o SQL supabase/migrations/0040_to_optimize.sql no Supabase pra ativar o \"Otimizar\".");
       }

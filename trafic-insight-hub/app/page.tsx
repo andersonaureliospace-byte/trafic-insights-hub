@@ -7,5 +7,5 @@ export default async function RootPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  redirect(user ? "/painel" : "/login");
+  redirect(user ? "/estrategia/trafego" : "/login"); // Etapa 238: o Hub estratégico virou a tela inicial
 }

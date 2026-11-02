@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* Etapa 238: o Hub estratégico tem botão de Modo escuro/claro. O "dark:" continua seguindo o sistema (como sempre),
+   mas um bloco com a classe "dark" força o escuro e um com a classe "light" força o claro. O resto do app não usa
+   essas classes, então nada muda nele. */
+@custom-variant dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:not(:where(.light, .light *)) {
+      @slot;
+    }
+  }
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -71,4 +85,12 @@ html,
 body {
   max-width: 100%;
   overflow-x: clip;
+}
+
+/* Etapa 238: tema escolhido no Hub estratégico (controles nativos acompanham). */
+.dark {
+  color-scheme: dark;
+}
+.light {
+  color-scheme: light;
 }

@@ -22,6 +22,28 @@ export interface OffersSummary {
   exame: { status: OfferStatus; offer: string | null };
   promo: Array<{ offer: string; active: boolean }>;
   boleto: OfferStatus;
+  // Etapa 238 (Hub estratégico): números por tipo de oferta. Opcional — retratos antigos (de antes da Etapa 238) não têm.
+  metrics?: OffersMetrics;
+}
+
+export type OfferKind = "geral" | "exame" | "boleto" | "promo";
+export interface OfferMetric {
+  spend: number;
+  results: number;
+}
+export interface OffersMetrics {
+  last2d: Record<OfferKind, OfferMetric>; // os 2 últimos dias FECHADOS (anteontem + ontem)
+  promoSpendMonth: number; // gasto em PROMO no mês corrente (até a hora do retrato)
+  since: string; // período do last2d (YYYY-MM-DD)
+  until: string;
+}
+
+// Tipo da oferta pelo nome do conjunto (mesma regra do summarizeOffers: marca BOLETO/CREDIARIO manda primeiro).
+export function offerKindOf(name: string): OfferKind | null {
+  const p = parseAdsetName(name);
+  if (!p) return null;
+  if (p.payment) return "boleto";
+  return p.type === "GERAL" ? "geral" : p.type === "EXAME" ? "exame" : "promo";
 }
 
 const AGE_RE = /^\d{2}\s*-\s*\d{2}\+?$/;

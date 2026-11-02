@@ -46,7 +46,7 @@ export async function proxy(request: NextRequest) {
 
   if (user && pathname === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/painel";
+    url.pathname = "/estrategia/trafego"; // Etapa 238: Hub estratégico é a tela inicial
     return NextResponse.redirect(url);
   }
 
