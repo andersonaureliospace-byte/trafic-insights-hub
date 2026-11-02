@@ -57,30 +57,33 @@ function shortProblem(p: string): string {
   return p.replace(/ fora do padrão$/, "");
 }
 
-const ENTITY_LABEL: Record<NamingIssue["entity"], string> = { campaign: "Campanha", adset: "Conjunto", ad: "Anúncio" };
+const ENTITY_LABEL: Record<NamingIssue["entity"], string> = { campaign: "Campanha", adset: "Conjunto", ad: "Criativo" };
 
 // Explicação curta de cada erro, na língua do POP.
 function explain(p: string): string | null {
   if (/cópia/i.test(p)) return 'Ao duplicar, a Meta põe "Cópia" no nome. Apague.';
-  if (/^TIPO precisa/.test(p)) return "A campanha começa com GERAL, EXAME ou OFERTA.";
+  if (/\[VAGA\]/.test(p)) return "Campanha de vaga começa com [VAGA].";
+  if (/^TIPO precisa/.test(p)) return "Começa com GERAL, EXAME ou PROMO.";
   if (/^TIPO "/.test(p)) return "Escreva o tipo exatamente como no padrão.";
-  if (/^TIPO deve ser GERAL/.test(p)) return "CREDIARIO/BOLETO vai depois do tipo: GERAL | CREDIARIO | …";
-  if (/^TIPO fora/.test(p)) return "Conjunto começa com GERAL, EXAME ou PROMO.";
-  if (/^OFERTA fora/.test(p)) return "GERAL não leva oferta; EXAME e PROMO levam (logo depois do tipo).";
-  if (/precisa da oferta/.test(p)) return "Escreva a oferta logo depois do tipo.";
-  if (/^LOCALIZAÇÃO/.test(p) || /localização/.test(p)) return "Com raio: só o km (8KM). Uma cidade: o nome. Várias: a primeira + \"+\" colado (AMPARO+).";
+  if (/^TIPO deve ser GERAL/.test(p)) return "Boleto é oferta do GERAL: GERAL | BOLETO | …";
+  if (/^TIPO fora/.test(p)) return "Conjunto começa com GERAL, EXAME (com o valor junto: EXAME R$ 15,00) ou PROMO.";
+  if (/^OBJETIVO/.test(p)) return "É o objetivo escolhido na campanha (ENGAJAMENTO, LEADS, VENDAS…), não o canal.";
+  if (/^OFERTA fora/.test(p)) return "GERAL só leva BOLETO; PROMO leva a oferta com valor em R$ 15,00.";
+  if (/precisa da oferta|precisa do valor/.test(p)) return "Escreva a oferta / o valor.";
+  if (/^LOCALIZAÇÃO/.test(p) || /localização/.test(p)) return 'Com raio: só o km (8KM). Uma cidade: o nome. Várias: a primeira + "+" colado (AMPARO+).';
   if (/^IDADE/.test(p)) return "Idade igual à do público: 25-54. Até 65 ou mais: 18-65+.";
   if (/^GÊNERO/.test(p)) return "Só escreva MULHER ou HOMEM quando o público for de um gênero só.";
   if (/^PLATAFORMA/.test(p)) return "Só escreva INSTA ou FACE quando rodar em uma plataforma só.";
   if (/^DIRECIONAMENTO/.test(p)) return "INTERESSES só quando o conjunto tiver interesses.";
-  if (/^AND/.test(p)) return "AND vem antes da data.";
+  if (/^RESPONSÁVEL/.test(p)) return "Identificação do gestor responsável pela conta, antes da data.";
   if (/^DATA/.test(p)) return "Data de criação do conjunto, dia/mês: 01/11.";
-  if (/^PAGAMENTO/.test(p)) return "CREDIARIO ou BOLETO logo depois da oferta.";
-  if (/^VDO PROPRIO/.test(p)) return "VDO PROPRIO depois da oferta/pagamento.";
+  if (/^VDO PROPRIO/.test(p)) return "VDO PROPRIO só quando o vídeo é do cliente, depois da oferta.";
   if (/^Estrutura/.test(p)) return "Faltam ou sobram partes. Compare com o nome sugerido.";
   if (/Falta a UNIDADE|Faltam partes|Mais partes/.test(p)) return "Campanha: TIPO | OBJETIVO | UNIDADE.";
   if (/UNIDADE com data/.test(p)) return "A campanha não leva data.";
   if (/deduzido como PROMO/.test(p)) return "O nome não dizia o tipo. Confira se é PROMO mesmo.";
+  if (/Criativo de EXAME/.test(p)) return "Valor do exame | data do primeiro uso | variação.";
+  if (/Criativo leva/.test(p)) return "Use o nome do arquivo do vídeo/imagem.";
   return null;
 }
 
@@ -120,7 +123,7 @@ export function NamingDetails({ name, items, onClose }: { name: string; items: N
               {it.suggestion ? (
                 <div>
                   <div className="text-[11px] font-semibold tracking-wide text-emerald-600 uppercase dark:text-emerald-400">
-                    Deveria ficar{it.needsInput ? " (troque o que está em letras de exemplo)" : ""}
+                    Deveria ficar{it.needsInput ? " (confira antes de usar)" : ""}
                   </div>
                   <code className="block rounded-md bg-emerald-500/8 px-2 py-1.5 font-mono text-xs break-all text-emerald-800 dark:text-emerald-200">
                     {it.suggestion}
@@ -207,7 +210,7 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
     invest.push({
       id: l.id,
       name: l.name,
-      detail: `Faltam ${fmtBRL(r.gap)} pra ficar em dia · ritmo ${fmtBRL(r.avg)} de ${fmtBRL(r.dailyTarget)}/dia`,
+      detail: `Faltam ${fmtBRL(r.gap)} pra ficar em dia · investindo ${l.dailyBudget != null ? `${fmtBRL(l.dailyBudget)}/dia` : "—"} (meta ${fmtBRL(r.dailyTarget)}/dia)`,
       sev: l.monthly && r.gap >= l.monthly * 0.1 ? "alta" : "media",
     });
   }
@@ -286,8 +289,9 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
   const stale: Item[] = [];
   const now = Date.now();
   for (const l of linhas) {
-    const acts = srv?.activities[l.id];
-    if (!acts) continue;
+    const all = srv?.activities[l.id];
+    if (!all) continue;
+    const acts = all.filter((a) => a.relevant); // Etapa 242: só otimização relevante
     const last = acts[0];
     if (last && now - Date.parse(last.time) < 24 * 3600_000) {
       const n24 = acts.filter((a) => now - Date.parse(a.time) < 24 * 3600_000).length;
@@ -303,7 +307,7 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
       stale.push({
         id: l.id,
         name: l.name,
-        detail: last ? `Sem nenhuma alteração ${ago(last.time)}` : "Sem nenhuma alteração nos últimos 7 dias",
+        detail: last ? `Última otimização relevante ${ago(last.time)}` : "Nenhuma otimização relevante nos últimos 7 dias",
         sev: "media",
       });
     }
@@ -314,7 +318,7 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
     title: "Otimizações recentes",
     icon: "↻",
     items: [...stale, ...recent],
-    foot: `Histórico de atividades da Meta · alerta quando a conta fica ${STALE_DAYS}+ dias sem alteração`,
+    foot: `Orçamento, liga/desliga, conjunto/anúncio novo, público, criativo ou lance · alerta com ${STALE_DAYS}+ dias sem otimização`,
   });
 
   return groups;

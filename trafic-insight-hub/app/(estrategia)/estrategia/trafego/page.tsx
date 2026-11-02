@@ -118,7 +118,13 @@ export default function TrafegoPage() {
             Carregando as contas e os números do mês…
           </div>
         ) : tab === "acomp" ? (
-          <Acompanhamento linhas={visible} onPatch={patchLinha} toast={toast} />
+          <Acompanhamento
+            linhas={visible}
+            onPatch={patchLinha}
+            toast={toast}
+            activities={srv?.activities ?? null}
+            activitiesFailed={srv?.activitiesFailed ?? []}
+          />
         ) : (
           <>
             {srvError ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">Alertas: {srvError}</div> : null}

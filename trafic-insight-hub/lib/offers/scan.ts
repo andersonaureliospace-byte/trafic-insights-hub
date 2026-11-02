@@ -36,10 +36,12 @@ type InsightRow = {
 async function offersMetricsForAccount(token: string, act: string, monthRows: InsightRow[]): Promise<OffersMetrics> {
   const today = spDate(new Date());
   const until = addDaysYmd(today, -1);
-  const since = addDaysYmd(today, -2);
+  const monthStart = `${today.slice(0, 7)}-01`;
+  // Etapa 242: só o mês atual (no dia 02, só o dia 01; no dia 01, nada).
+  const since = addDaysYmd(today, -2) < monthStart ? monthStart : addDaysYmd(today, -2);
   const empty = (): OfferMetric => ({ spend: 0, results: 0 });
   const last2d: Record<OfferKind, OfferMetric> = { geral: empty(), exame: empty(), boleto: empty(), promo: empty() };
-  const rows = await metaGetAll<InsightRow>(token, `/${act}/insights`, {
+  const rows = since > until ? [] : await metaGetAll<InsightRow>(token, `/${act}/insights`, {
     fields: "adset_id,adset_name,campaign_name,spend,results,actions",
     level: "adset",
     time_range: JSON.stringify({ since, until }),

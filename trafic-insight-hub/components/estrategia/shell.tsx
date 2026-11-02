@@ -20,6 +20,7 @@ export interface EstrUi {
 export interface Gestor {
   name: string;
   whatsapp: string;
+  tag: string; // Etapa 241: identificação do responsável na nomenclatura (ex.: AND)
 }
 
 interface Ctx {
@@ -34,9 +35,13 @@ export function parseGestores(v: unknown): Gestor[] {
   if (!Array.isArray(v)) return [];
   const out: Gestor[] = [];
   for (const x of v) {
-    if (typeof x === "string" && x.trim()) out.push({ name: x.trim(), whatsapp: "" });
+    if (typeof x === "string" && x.trim()) out.push({ name: x.trim(), whatsapp: "", tag: "" });
     else if (x && typeof x === "object" && typeof (x as Gestor).name === "string" && (x as Gestor).name.trim()) {
-      out.push({ name: (x as Gestor).name.trim(), whatsapp: String((x as Gestor).whatsapp ?? "").trim() });
+      out.push({
+        name: (x as Gestor).name.trim(),
+        whatsapp: String((x as Gestor).whatsapp ?? "").trim(),
+        tag: String((x as Gestor).tag ?? "").trim().toUpperCase(),
+      });
     }
   }
   return out;
@@ -117,7 +122,7 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
   const saveGestores = useCallback(async (list: Gestor[]) => {
     const seen = new Set<string>();
     const clean = list
-      .map((g) => ({ name: g.name.trim(), whatsapp: g.whatsapp.trim() }))
+      .map((g) => ({ name: g.name.trim(), whatsapp: g.whatsapp.trim(), tag: (g.tag ?? "").trim().toUpperCase() }))
       .filter((g) => g.name && !seen.has(g.name.toLowerCase()) && seen.add(g.name.toLowerCase()));
     setGestores(clean);
     const res = await fetch("/api/estrategia/prefs", {

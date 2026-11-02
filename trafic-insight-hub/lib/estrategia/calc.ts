@@ -45,6 +45,12 @@ export function calendarSP(now: Date = new Date()): { today: string; day: number
 const add = (a: Sum, b: Sum | undefined): Sum => (b ? { spend: a.spend + b.spend, results: a.results + b.results } : a);
 const sum = (list: Array<Sum | undefined>): Sum => list.reduce<Sum>((acc, x) => add(acc, x), { spend: 0, results: 0 });
 
+// Quantos dias fechados do mês atual entram em cada período (pra avisar quando o período foi cortado no começo do mês).
+export function closedDaysIn(period: CpaPeriod, cal = calendarSP()): { wanted: number; got: number } {
+  const wanted = { h: 0, o: 1, oh: 1, u2: 2, u3: 3, u2h: 2, u3h: 3 }[period];
+  return { wanted, got: Math.min(wanted, cal.day - 1) };
+}
+
 export interface AccountNumbers {
   todaySpend: number;
   monthSpend: number; // dia 01 até agora (com hoje)
@@ -55,13 +61,13 @@ export interface AccountNumbers {
 
 export function numbersFrom(points: DailyCpaPoint[], cal = calendarSP()): AccountNumbers {
   const today = points.find((p) => p.date === cal.today);
-  const closed = points.filter((p) => p.date < cal.today).sort((a, b) => a.date.localeCompare(b.date));
+  // Etapa 242: só o mês atual. No dia 02, "últimos 3 dias" = só o dia 01 (os dias do mês anterior ficam de fora).
+  const closed = points.filter((p) => p.date < cal.today && p.date >= cal.monthStart).sort((a, b) => a.date.localeCompare(b.date));
   const n = closed.length;
   const o = closed[n - 1];
   const o2 = closed[n - 2];
   const o3 = closed[n - 3];
-  const monthClosed = closed.filter((p) => p.date >= cal.monthStart);
-  const untilYesterday = sum(monthClosed);
+  const untilYesterday = sum(closed);
   const month = add(untilYesterday, today);
   return {
     todaySpend: today?.spend ?? 0,

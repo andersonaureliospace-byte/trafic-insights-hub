@@ -29,6 +29,26 @@ export interface NamingItem {
 export interface NamingAccount {
   ad_account_id: string;
   client_name: string;
+  // Etapa 241: identificação do responsável da conta na nomenclatura (cadastro de Gestores). null = não cadastrada.
+  manager?: string | null;
+}
+
+// Etapa 241: gestores do Hub estratégico (user_ui_prefs "gestores") → nome → identificação na nomenclatura.
+async function managerTags(db: Db, userId: string): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  try {
+    const { data } = await db.from("user_ui_prefs").select("pref_value").eq("user_id", userId).eq("pref_key", "gestores").maybeSingle();
+    for (const g of Array.isArray(data?.pref_value) ? (data.pref_value as unknown[]) : []) {
+      if (g && typeof g === "object") {
+        const name = String((g as { name?: unknown }).name ?? "").trim();
+        const tag = String((g as { tag?: unknown }).tag ?? "").trim();
+        if (name && tag) out.set(name, tag.toUpperCase());
+      }
+    }
+  } catch {
+    /* sem cadastro: aceita a identificação que estiver no nome */
+  }
+  return out;
 }
 
 const VAGA_RE = /\bvaga\b/i;
@@ -41,16 +61,31 @@ export async function namingAccounts(db: Db, userId: string): Promise<NamingAcco
   const off = await inactiveAccountIds(db, userId);
   const ids = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
   if (ids.length === 0) return [];
-  const { data: bindings, error: bErr } = await db.from("account_bindings").select("ad_account_id, client_name").eq("user_id", userId).in("ad_account_id", ids);
+  type Row = { ad_account_id: string; client_name: string | null; responsible?: string | null };
+  const first = await db.from("account_bindings").select("ad_account_id, client_name, responsible").eq("user_id", userId).in("ad_account_id", ids);
+  let bindings = first.data as Row[] | null;
+  let bErr = first.error;
+  if (bErr && /responsible/.test(bErr.message)) {
+    // SQL 0041 ainda não rodado: segue sem responsável
+    const second = await db.from("account_bindings").select("ad_account_id, client_name").eq("user_id", userId).in("ad_account_id", ids);
+    bindings = second.data as Row[] | null;
+    bErr = second.error;
+  }
   if (bErr) throw bErr;
+  const tags = await managerTags(db, userId);
   return (bindings ?? [])
-    .map((b) => ({ ad_account_id: b.ad_account_id as string, client_name: ((b.client_name as string | null) ?? "").trim() }))
+    .map((b) => ({
+      ad_account_id: b.ad_account_id,
+      client_name: (b.client_name ?? "").trim(),
+      manager: b.responsible ? (tags.get(b.responsible.trim()) ?? null) : null,
+    }))
     .filter((b) => b.client_name && /\bIVS\b/i.test(b.client_name));
 }
 
 interface CampaignRow {
   id: string;
   name?: string;
+  objective?: string;
 }
 interface AdsetRow {
   id: string;
@@ -63,7 +98,9 @@ interface AdsetRow {
 interface AdRow {
   id: string;
   name?: string;
+  created_time?: string;
   campaign?: { name?: string };
+  adset?: { name?: string };
 }
 
 // "Ativo" aqui = ligado: ativo + programado/em análise/processando (mesma lista que o Invest. diário usa). Pausado, arquivado e reprovado ficam de fora.
@@ -72,13 +109,13 @@ const ACTIVE_FILTER = (field: string) => JSON.stringify([{ field, operator: "IN"
 export async function scanAccountNames(token: string, acc: NamingAccount): Promise<NamingItem[]> {
   const act = acc.ad_account_id.startsWith("act_") ? acc.ad_account_id : `act_${acc.ad_account_id}`;
   const [campaigns, adsets, ads] = await Promise.all([
-    metaGetAll<CampaignRow>(token, `/${act}/campaigns`, { fields: "id,name", limit: "500", filtering: ACTIVE_FILTER("campaign.effective_status") }),
+    metaGetAll<CampaignRow>(token, `/${act}/campaigns`, { fields: "id,name,objective", limit: "500", filtering: ACTIVE_FILTER("campaign.effective_status") }),
     metaGetAll<AdsetRow>(token, `/${act}/adsets`, {
       fields: "id,name,created_time,targeting,campaign_id,campaign{name}",
       limit: "200",
       filtering: ACTIVE_FILTER("adset.effective_status"),
     }),
-    metaGetAll<AdRow>(token, `/${act}/ads`, { fields: "id,name,campaign{name}", limit: "500", filtering: ACTIVE_FILTER("ad.effective_status") }),
+    metaGetAll<AdRow>(token, `/${act}/ads`, { fields: "id,name,created_time,campaign{name},adset{name}", limit: "500", filtering: ACTIVE_FILTER("ad.effective_status") }),
   ]);
 
   const items: NamingItem[] = [];
@@ -98,20 +135,20 @@ export async function scanAccountNames(token: string, acc: NamingAccount): Promi
     });
   };
 
+  // Etapa 241: campanha de vaga entra na conferência (precisa começar com [VAGA]); conjuntos e criativos dela não.
   for (const c of campaigns) {
     const name = c.name ?? "";
-    if (VAGA_RE.test(name)) continue;
-    push("campaign", c.id, name, checkCampaignName(name, acc.client_name));
+    push("campaign", c.id, name, checkCampaignName(name, acc.client_name, c.objective ?? null));
   }
   for (const a of adsets) {
     const name = a.name ?? "";
     if (VAGA_RE.test(a.campaign?.name ?? "")) continue;
-    push("adset", a.id, name, checkAdsetName({ name, createdTime: a.created_time ?? null, targeting: a.targeting }));
+    push("adset", a.id, name, checkAdsetName({ name, createdTime: a.created_time ?? null, targeting: a.targeting, manager: acc.manager ?? null }));
   }
   for (const ad of ads) {
     const name = ad.name ?? "";
     if (VAGA_RE.test(ad.campaign?.name ?? "")) continue;
-    push("ad", ad.id, name, checkAdName(name));
+    push("ad", ad.id, name, checkAdName(name, { adsetName: ad.adset?.name ?? null, createdTime: ad.created_time ?? null }));
   }
   return items;
 }
@@ -157,8 +194,16 @@ export async function releaseNaming(db: Db, userId: string, id: string): Promise
 
 // Depois de aceitar um nome EDITADO por você: se ele continua fora da regra, é personalização de propósito → guarda como personalizado.
 export async function stillDivergent(token: string, entity: NamingEntity, id: string, name: string, clientName: string | null): Promise<boolean> {
-  if (entity === "campaign") return !checkCampaignName(name, clientName).ok;
-  if (entity === "ad") return !checkAdName(name).ok;
+  if (entity === "campaign") {
+    const c = await metaGet<{ objective?: string }>(token, `/${id}`, { fields: "objective" }).catch(() => ({ objective: undefined }));
+    return !checkCampaignName(name, clientName, c.objective ?? null).ok;
+  }
+  if (entity === "ad") {
+    const a = await metaGet<{ created_time?: string; adset?: { name?: string } }>(token, `/${id}`, { fields: "created_time,adset{name}" }).catch(
+      () => ({}) as { created_time?: string; adset?: { name?: string } },
+    );
+    return !checkAdName(name, { adsetName: a.adset?.name ?? null, createdTime: a.created_time ?? null }).ok;
+  }
   const r = await metaGet<{ created_time?: string; targeting?: TargetingLike }>(token, `/${id}`, { fields: "created_time,targeting" });
   return !checkAdsetName({ name, createdTime: r.created_time ?? null, targeting: r.targeting }).ok;
 }

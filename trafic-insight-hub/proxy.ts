@@ -6,6 +6,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const PUBLIC_PATHS = ["/login", "/esqueci-senha", "/redefinir-senha", "/sw.js", "/manifest.webmanifest"];
 const isPublicApi = (pathname: string) =>
   pathname.startsWith("/c/") ||
+  pathname.startsWith("/pop/") || // Etapa 241: POP público pra equipe
   pathname.startsWith("/api/public") ||
   pathname.startsWith("/auth/callback");
 

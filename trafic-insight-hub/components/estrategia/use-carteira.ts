@@ -68,10 +68,63 @@ export async function loadClientes(): Promise<Cliente[]> {
     .sort((x, y) => x.name.localeCompare(y.name, "pt-BR"));
 }
 
+export interface OfferFlags {
+  exame: boolean;
+  boleto: boolean;
+}
+
 export interface Linha extends Cliente {
   nums: AccountNumbers | null; // null = a Meta não respondeu pra essa conta
   offers: OffersSummary | null;
   offersAt: string | null;
+  // Etapa 242: investimento diário atual (orçamento do dia de tudo que está ligado). undefined = carregando; null = falhou.
+  dailyBudget?: number | null;
+  // Etapa 242: se a conta anuncia EXAME / BOLETO (GERAL todas anunciam). null = ainda não definido.
+  flags: OfferFlags | null;
+}
+
+export async function loadOfferFlags(): Promise<Record<string, OfferFlags>> {
+  const d = await fetch("/api/estrategia/prefs?key=offer_flags", { cache: "no-store" }).then((r) => r.json());
+  return d.value && typeof d.value === "object" ? (d.value as Record<string, OfferFlags>) : {};
+}
+
+export async function saveOfferFlags(all: Record<string, OfferFlags>): Promise<void> {
+  const d = await fetch("/api/estrategia/prefs", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: "offer_flags", value: all }),
+  }).then((r) => r.json());
+  if (d.error) throw new Error(d.error);
+}
+
+// Investimento diário atual: mesma conta do hub antigo (orçamento diário de campanhas/conjuntos ligados), em lotes.
+async function budgetsFor(ids: string[]): Promise<Record<string, number | null>> {
+  const out: Record<string, number | null> = {};
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
+  let next = 0;
+  const worker = async () => {
+    while (next < chunks.length) {
+      const c = chunks[next++];
+      try {
+        const d = await fetch("/api/meta/insights", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: AbortSignal.timeout(120_000),
+          body: JSON.stringify({ accountIds: c, datePreset: "today" }),
+        }).then((r) => r.json());
+        const ins = (d.insights ?? {}) as Record<string, { daily_budget?: number; budget_failed?: boolean }>;
+        for (const id of c) {
+          const x = ins[id];
+          out[normId(id)] = x && !x.budget_failed && typeof x.daily_budget === "number" ? x.daily_budget : null;
+        }
+      } catch {
+        for (const id of c) out[normId(id)] = null;
+      }
+    }
+  };
+  await Promise.all([worker(), worker()]);
+  return out;
 }
 
 // Contas por chamada ao daily-cpa (pra não estourar o tempo da função com 50 contas de uma vez).
@@ -119,7 +172,7 @@ export function useCarteira() {
       const clientes = (await loadClientes()).filter((c) => c.selected && c.active && !c.archived);
       const cal = calendarSP();
       const days = Math.max(4, cal.day);
-      const [daily, offers] = await Promise.all([
+      const [daily, offers, flagsSaved] = await Promise.all([
         dailyFor(
           clientes.map((c) => c.rawId),
           days,
@@ -127,21 +180,39 @@ export function useCarteira() {
         fetch("/api/analysis/offers", { cache: "no-store" })
           .then((r) => r.json())
           .catch(() => ({})),
+        loadOfferFlags().catch(() => ({}) as Record<string, OfferFlags>),
       ]);
       if (my !== run.current) return;
       const snap = ((offers as { accounts?: Record<string, { at: string; summary: OffersSummary }> }).accounts ?? {}) as Record<
         string,
         { at: string; summary: OffersSummary }
       >;
+      // Etapa 242: quem anuncia EXAME/BOLETO — na primeira vez, preenche sozinho pelo que rodou no mês (retrato das ofertas)
+      // e grava. Depois disso só muda pela ficha do cliente.
+      const flags: Record<string, OfferFlags> = { ...flagsSaved };
+      let changed = false;
+      for (const c of clientes) {
+        if (flags[c.id] || !snap[c.id]) continue;
+        const s = snap[c.id].summary;
+        flags[c.id] = { exame: s.exame.status !== "INEXISTENTE", boleto: s.boleto !== "INEXISTENTE" };
+        changed = true;
+      }
+      if (changed) void saveOfferFlags(flags).catch(() => {});
       setLinhas(
         clientes.map((c) => ({
           ...c,
           nums: daily[c.id] ? numbersFrom(daily[c.id], cal) : null,
           offers: snap[c.id]?.summary ?? null,
           offersAt: snap[c.id]?.at ?? null,
+          flags: flags[c.id] ?? null,
         })),
       );
       setAt(Date.now());
+      // Investimento diário atual: chega depois (mais lento), sem segurar a tabela.
+      void budgetsFor(clientes.map((c) => c.rawId)).then((b) => {
+        if (my !== run.current) return;
+        setLinhas((cur) => (cur ?? []).map((l) => ({ ...l, dailyBudget: l.id in b ? b[l.id] : null })));
+      });
     } catch (e) {
       if (my === run.current) setError((e as Error).message);
     } finally {

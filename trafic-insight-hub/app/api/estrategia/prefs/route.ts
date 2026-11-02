@@ -6,7 +6,8 @@ import { SWITCHES_PREF_KEY } from "@/lib/automation-switches";
 //   estrategia_ui       = filtros da tela (responsável, período do CPA, ordenação)
 //   gestores            = lista de responsáveis (nomes) usada na ficha do cliente e no filtro
 //   automation_switches = liga/pausa das automações (lib/automation-switches.ts)
-const KEYS = new Set(["estrategia_ui", "gestores", SWITCHES_PREF_KEY]);
+//   offer_flags         = por conta: { exame: bool, boleto: bool } — se a conta anuncia EXAME / BOLETO (Etapa 242)
+const KEYS = new Set(["estrategia_ui", "gestores", "offer_flags", SWITCHES_PREF_KEY]);
 
 export async function GET(request: Request) {
   try {

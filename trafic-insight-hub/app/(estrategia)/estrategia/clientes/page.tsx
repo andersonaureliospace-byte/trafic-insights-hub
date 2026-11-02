@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
-import { loadClientes, matchesResp, type Cliente } from "@/components/estrategia/use-carteira";
+import { loadClientes, loadOfferFlags, matchesResp, saveOfferFlags, type Cliente, type OfferFlags } from "@/components/estrategia/use-carteira";
 import { Btn, Card, Pill, fmtBRL } from "@/components/estrategia/ui";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { calendarSP } from "@/lib/estrategia/calc";
@@ -28,9 +28,11 @@ interface Form {
   cpaTarget: string;
   payment: string;
   since: string; // YYYY-MM
+  exame: boolean; // Etapa 242: anuncia EXAME
+  boleto: boolean; // Etapa 242: anuncia BOLETO
 }
 
-function formOf(c: Cliente, pay: string | null): Form {
+function formOf(c: Cliente, pay: string | null, f: OfferFlags | undefined): Form {
   return {
     responsible: c.responsible ?? "",
     status: statusOf(c),
@@ -38,6 +40,8 @@ function formOf(c: Cliente, pay: string | null): Form {
     cpaTarget: c.cpaTarget != null ? String(c.cpaTarget) : "",
     payment: pay ?? "",
     since: c.clientSince ? c.clientSince.slice(0, 7) : "",
+    exame: !!f?.exame,
+    boleto: !!f?.boleto,
   };
 }
 
@@ -66,6 +70,7 @@ export default function ClientesPage() {
   const { options } = usePriorityOptions();
   const [clientes, setClientes] = useState<Cliente[] | null>(null);
   const [pay, setPay] = useState<Record<string, string | null>>({});
+  const [flags, setFlags] = useState<Record<string, OfferFlags>>({});
   const [sel, setSel] = useState<string | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -76,7 +81,12 @@ export default function ClientesPage() {
 
   const load = useCallback(async () => {
     try {
-      const [list, p] = await Promise.all([loadClientes(), fetch("/api/pix-accounts", { cache: "no-store" }).then((r) => r.json())]);
+      const [list, p, f] = await Promise.all([
+        loadClientes(),
+        fetch("/api/pix-accounts", { cache: "no-store" }).then((r) => r.json()),
+        loadOfferFlags().catch(() => ({}) as Record<string, OfferFlags>),
+      ]);
+      setFlags(f);
       setClientes(list.filter((c) => c.selected || c.archived));
       const map: Record<string, string | null> = {};
       for (const r of (p.pixAccounts ?? []) as Array<{ ad_account_id: string; payment_type: string | null }>) {
@@ -101,10 +111,10 @@ export default function ClientesPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ficha acompanha o cliente escolhido
-    setForm(cur ? formOf(cur, pay[cur.id] ?? null) : null);
+    setForm(cur ? formOf(cur, pay[cur.id] ?? null, flags[cur.id]) : null);
     setConfirmArchive(false);
     setMsg(null);
-  }, [cur, pay]);
+  }, [cur, pay, flags]);
 
   async function patchBinding(c: Cliente, body: Record<string, unknown>) {
     const d = await fetch("/api/account-bindings", {
@@ -133,6 +143,11 @@ export default function ClientesPage() {
         else if (cur.priority === "inauguracao") body.priority = null;
       }
       await patchBinding(cur, body);
+      const f0 = flags[cur.id];
+      if (!f0 || f0.exame !== form.exame || f0.boleto !== form.boleto) {
+        const latest = await loadOfferFlags().catch(() => flags);
+        await saveOfferFlags({ ...latest, [cur.id]: { exame: form.exame, boleto: form.boleto } });
+      }
       if ((pay[cur.id] ?? "") !== form.payment) {
         const d = await fetch("/api/pix-accounts", {
           method: "PATCH",
@@ -294,6 +309,22 @@ export default function ClientesPage() {
                       <input id="f-since" type="month" value={form.since} onChange={(e) => setForm({ ...form, since: e.target.value })} className={inputCls} />
                     </Field>
                   </div>
+                  <Field label="Ofertas que a conta anuncia">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
+                      <span className="flex items-center gap-2 text-zinc-500">
+                        <input type="checkbox" checked disabled className="h-4 w-4" /> GERAL (todas)
+                      </span>
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" checked={form.exame} onChange={(e) => setForm({ ...form, exame: e.target.checked })} className="h-4 w-4 accent-blue-600" />
+                        EXAME
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" checked={form.boleto} onChange={(e) => setForm({ ...form, boleto: e.target.checked })} className="h-4 w-4 accent-blue-600" />
+                        BOLETO
+                      </label>
+                    </div>
+                    {!flags[cur.id] ? <p className="text-xs text-amber-600 dark:text-amber-400">Ainda não definido. Marque e salve.</p> : null}
+                  </Field>
                   <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
                     <dt className="text-zinc-500">Conta de anúncio</dt>
                     <dd className="font-mono text-xs break-all text-blue-700 dark:text-blue-300">act_{cur.id}</dd>

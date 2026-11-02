@@ -1,25 +1,22 @@
-// Padrão de nomes (Etapa 140) — regras PURAS (sem Meta/banco), testáveis.
+// Padrão de nomes (Etapa 140; regras novas na Etapa 241 = POP 01 de Nomenclatura) — regras PURAS (sem Meta/banco), testáveis.
 //
-// Campanha:  TIPO | OBJETIVO | UNIDADE            (TIPO: só GERAL, EXAME ou OFERTA)
-// Conjunto:  TIPO | OFERTA | LOCALIZAÇÃO OU KM | IDADE | GENERO | PLATAFORMA | DIRECIONAMENTO | AND | DATA
-//   - TIPO do conjunto: GERAL, EXAME ou PROMO (na campanha o terceiro tipo é OFERTA; no conjunto é PROMO)
-//   - CREDIARIO / BOLETO: forma de pagamento, vai logo depois do tipo/oferta (GERAL | CREDIARIO; PROMO | OFERTA | BOLETO)
-//   - VDO PROPRIO (vídeo gravado pelo cliente): vai DEPOIS da oferta/pagamento (PROMO | ARMAÇÃO 1 REAL | VDO PROPRIO; GERAL | VDO PROPRIO)
-//   - OFERTA: só em PROMO e EXAME. Em GERAL NÃO leva oferta (some "ARMAÇÃO R$ 49,99", "R$ 49,99", "COBRIMOS OFERTAS"…)
-//   - LOCALIZAÇÃO: se tem raio, só o km (ex.: 8KM — km + cidade vira só o km); só uma cidade → só o nome da cidade;
-//     mais de uma cidade → primeiro nome com "+" (ex.: AMPARO & CIDADES VIZINHAS → AMPARO+). O "+" só quando há mais cidades.
-//   - IDADE: min-max ("18-65+" quando o máximo é 65 ou mais)
-//   - GENERO / PLATAFORMA: só aparecem quando é UM só (MULHER/HOMEM; INSTA/FACE). Ambos → omite.
-//   - DIRECIONAMENTO: só "INTERESSES", e só quando o conjunto tem interesses
-//   - AND: fixo (abreviação do nome do gestor)
-//   - DATA: dia/mês da criação do conjunto (ex.: 17/10), horário de Brasília
-// "Cópia" não pode aparecer em nenhum nome (campanha, conjunto, anúncio). Nome repetido pode.
+// Campanha:  TIPO | OBJETIVO | UNIDADE        TIPO: GERAL, EXAME ou PROMO · OBJETIVO = objetivo da campanha na Meta (ENGAJAMENTO, LEADS…)
+//            Vaga: começa com [VAGA] (o resto é livre).
+// Conjunto:  TIPO | OFERTA | VDO PROPRIO | LOCALIZAÇÃO OU KM | IDADE | GÊNERO | PLATAFORMA | INTERESSES | RESPONSÁVEL | DATA
+//   - GERAL não leva oferta, com uma exceção: BOLETO (GERAL | BOLETO). CREDIARIO vira BOLETO.
+//   - EXAME: tipo e oferta juntos na 1ª parte (EXAME R$ 15,00). PROMO: oferta numa parte própria (PROMO | ARMAÇÃO R$ 1,00).
+//   - Valor sempre "R$ 15,00" (nada de "REAL"/"REAIS").
+//   - VDO PROPRIO: só quando o vídeo é do cliente (o da franquia não leva nada). Vai depois da oferta.
+//   - LOCALIZAÇÃO: com raio, só o km (8KM); uma cidade, o nome; várias, a primeira com "+" colado (AMPARO+).
+//   - IDADE: min-max ("18-65+" quando o máximo é 65 ou mais). GÊNERO/PLATAFORMA: só quando é um só. INTERESSES: só se tiver.
+//   - RESPONSÁVEL: identificação do gestor da conta (cadastro de Gestores). DATA: dia/mês de criação (Brasília).
+// Criativo: só o nome do arquivo. Exceção EXAME: EXAME R$ 15,00 | DD/MM (primeiro uso) | V01.
+// "Cópia" não pode aparecer em nenhum nome.
 
-export const CAMPAIGN_TYPES = ["GERAL", "EXAME", "OFERTA"] as const;
+export const CAMPAIGN_TYPES = ["GERAL", "EXAME", "PROMO"] as const;
 export type CampaignType = (typeof CAMPAIGN_TYPES)[number];
 export const ADSET_TYPES = ["GERAL", "EXAME", "PROMO"] as const;
 export type AdsetType = (typeof ADSET_TYPES)[number];
-export const MANAGER_TAG = "AND";
 
 // ---------- utilidades ----------
 
@@ -59,7 +56,7 @@ export function mapType(raw: string): CampaignType | null {
   const n = normName(raw).replace(/[^A-Z]/g, "");
   if (n === "GERAL") return "GERAL";
   if (n === "EXAME" || n === "EXAMES") return "EXAME";
-  if (["OFERTA", "OFERTAS", "PROMO", "PROMOCAO", "PROMOCOES"].includes(n)) return "OFERTA";
+  if (["OFERTA", "OFERTAS", "PROMO", "PROMOCAO", "PROMOCOES"].includes(n)) return "PROMO";
   return null;
 }
 
@@ -134,7 +131,57 @@ export interface NameCheck {
 
 const OK: NameCheck = { ok: true, problems: [], suggestion: null, needsInput: false, autoFix: false };
 
-export function checkCampaignName(name: string, unitName: string | null): NameCheck {
+
+// Etapa 241: OBJETIVO = o objetivo da campanha na Meta (não o canal). Nome que vai no padrão, por objetivo da Meta.
+export const OBJECTIVE_LABELS: Record<string, string> = {
+  OUTCOME_AWARENESS: "RECONHECIMENTO",
+  OUTCOME_TRAFFIC: "TRÁFEGO",
+  OUTCOME_ENGAGEMENT: "ENGAJAMENTO",
+  OUTCOME_LEADS: "LEADS",
+  OUTCOME_APP_PROMOTION: "PROMOÇÃO DO APP",
+  OUTCOME_SALES: "VENDAS",
+  // objetivos antigos (campanhas criadas antes da Meta trocar os nomes)
+  BRAND_AWARENESS: "RECONHECIMENTO",
+  REACH: "RECONHECIMENTO",
+  LINK_CLICKS: "TRÁFEGO",
+  POST_ENGAGEMENT: "ENGAJAMENTO",
+  PAGE_LIKES: "ENGAJAMENTO",
+  VIDEO_VIEWS: "ENGAJAMENTO",
+  MESSAGES: "ENGAJAMENTO",
+  EVENT_RESPONSES: "ENGAJAMENTO",
+  LEAD_GENERATION: "LEADS",
+  CONVERSIONS: "VENDAS",
+  PRODUCT_CATALOG_SALES: "VENDAS",
+  STORE_VISITS: "TRÁFEGO",
+  APP_INSTALLS: "PROMOÇÃO DO APP",
+};
+export const OBJECTIVES = ["RECONHECIMENTO", "TRÁFEGO", "ENGAJAMENTO", "LEADS", "PROMOÇÃO DO APP", "VENDAS"] as const;
+
+// Etapa 241: campanha de vaga começa com [VAGA]. O resto do nome é livre.
+const VAGA_WORD_RE = /\bvagas?\b/i;
+export const VAGA_PREFIX = "[VAGA]";
+export function isVagaName(name: string): boolean {
+  return VAGA_WORD_RE.test(name);
+}
+export function checkVagaCampaignName(name: string): NameCheck {
+  const problems: string[] = [];
+  const base = hasCopy(name) ? stripCopy(name) : name;
+  if (hasCopy(name)) problems.push('Tem "cópia" no nome');
+  const startsOk = normName(base).startsWith(VAGA_PREFIX);
+  if (!startsOk) problems.push("Campanha de vaga precisa começar com [VAGA]");
+  if (problems.length === 0) return OK;
+  const rest = startsOk
+    ? base
+    : `${VAGA_PREFIX} ${base
+        .replace(/^\s*[\[(]?\s*vagas?\s*[\])]?\s*[|\-–—:]?\s*/i, "")
+        .trim()}`;
+  const suggestion = rest.trim();
+  const autoName = hasCopy(name) && startsOk ? suggestion : null;
+  return { ok: false, problems, suggestion, needsInput: false, autoFix: !!autoName, autoName };
+}
+
+export function checkCampaignName(name: string, unitName: string | null, objective?: string | null): NameCheck {
+  if (isVagaName(name)) return checkVagaCampaignName(name);
   const problems: string[] = [];
   let parts = splitParts(name);
   let needsInput = false;
@@ -144,24 +191,24 @@ export function checkCampaignName(name: string, unitName: string | null): NameCh
     parts = splitParts(stripCopy(name));
   }
 
-  // "CREDIARIO | ..." / "BOLETO | ..." no começo: o tipo é GERAL e CREDIARIO/BOLETO vai logo depois (GERAL | CREDIARIO | ...).
+  // "BOLETO | ..." / "CREDIARIO | ..." no começo: campanha de boleto é GERAL.
   if (parts[0] && /^(CREDIARIOS?|BOLETOS?)$/.test(normName(parts[0]).replace(/[^A-Z]/g, ""))) {
-    problems.push("TIPO deve ser GERAL — CREDIARIO/BOLETO vai depois do tipo");
-    parts = ["GERAL", ...parts];
+    problems.push("TIPO deve ser GERAL — boleto é oferta do GERAL");
+    parts = ["GERAL", ...parts.slice(1)];
   }
   const type = parts[0] ? mapType(parts[0]) : null;
   if (!type) {
-    problems.push("TIPO precisa ser GERAL, EXAME ou OFERTA");
+    problems.push("TIPO precisa ser GERAL, EXAME ou PROMO");
     needsInput = true;
   } else if (normName(parts[0]) !== type) {
     problems.push(`TIPO "${parts[0]}" deve ser ${type}`);
   }
 
-  let objective = parts[1] ?? "";
+  let objectiveText = parts[1] ?? "";
   let unit = parts[2] ?? "";
   if (parts.length > 3) {
     problems.push("Mais partes do que o padrão (TIPO | OBJETIVO | UNIDADE)");
-    objective = parts.slice(1, -1).join(" ");
+    objectiveText = parts[1] ?? "";
     unit = parts[parts.length - 1];
   }
   if (parts.length === 2 && unitName) {
@@ -171,6 +218,11 @@ export function checkCampaignName(name: string, unitName: string | null): NameCh
     problems.push("Faltam partes (TIPO | OBJETIVO | UNIDADE)");
     needsInput = true;
   }
+  const expectedObjective = objective ? (OBJECTIVE_LABELS[objective] ?? null) : null;
+  if (expectedObjective && objectiveText && normName(objectiveText) !== normName(expectedObjective)) {
+    problems.push(`OBJETIVO deve ser ${expectedObjective} (objetivo da campanha)`);
+  }
+  if (expectedObjective) objectiveText = expectedObjective;
   // Data colada na unidade ("IVS CIDADE - 08/07"): não faz parte do padrão da campanha.
   const withoutDate = unit.replace(/\s*[-–—]\s*\d{1,2}\/\d{1,2}(\/\d{2,4})?\s*$/, "").trim();
   if (withoutDate !== unit) {
@@ -179,9 +231,8 @@ export function checkCampaignName(name: string, unitName: string | null): NameCh
   }
 
   if (problems.length === 0) return OK;
-  const suggestion = [type ?? parts[0] ?? "?", objective || "?", unit || "?"].join(" | ");
+  const suggestion = [type ?? parts[0] ?? "?", objectiveText || "?", unit || "?"].join(" | ");
   if (suggestion.includes("?")) needsInput = true;
-  // Etapa 192: "Cópia" sai sozinho. Se era o único problema, aplica a sugestão; senão só tira o "Cópia".
   const copyOnly = hasCopy(name) && problems.length === 1;
   const cleaned = hasCopy(name) ? stripCopy(name) : "";
   const autoName = copyOnly && !needsInput ? suggestion : cleaned || null;
@@ -255,7 +306,7 @@ export function deriveHasInterests(t: TargetingLike | undefined | null): boolean
 }
 
 interface Part {
-  key: "tipo" | "oferta" | "pagto" | "vdo" | "loc" | "idade" | "genero" | "plataforma" | "direc" | "and" | "data";
+  key: "tipo" | "oferta" | "vdo" | "loc" | "idade" | "genero" | "plataforma" | "direc" | "resp" | "data";
   text: string;
 }
 
@@ -264,16 +315,32 @@ const DATE_RE = /^\d{1,2}\/\d{1,2}(\/\d{2,4})?$/;
 const GENDER_WORDS = new Set(["HOMEM", "MULHER", "HOMENS", "MULHERES", "MASCULINO", "FEMININO"]);
 const PLATFORM_WORDS = new Set(["INSTA", "INSTAGRAM", "FACE", "FACEBOOK", "IG", "FB"]);
 
+// Etapa 241: valor sempre como "R$ 15,00" ("15 REAIS", "1 REAL", "R$15", "R$ 15" → R$ 15,00).
+export function normalizeMoney(text: string): string {
+  let t = text.replace(/(\d+(?:[.,]\d{1,2})?)\s*(reais|real)\b/gi, "R$ $1");
+  t = t.replace(/R\$\s*((?:\d{1,3}(?:\.\d{3})+)|\d+)(?:,(\d{1,2})|\.(\d{1,2}))?(?![\d.,])/gi, (_m, int: string, d1?: string, d2?: string) => {
+    const dec = (d1 ?? d2 ?? "00").padEnd(2, "0");
+    const n = int.replace(/\./g, "").replace(/^0+(?=\d)/, "");
+    return `R$ ${n.replace(/\B(?=(\d{3})+(?!\d))/g, ".")},${dec}`;
+  });
+  return t.replace(/\s+/g, " ").trim();
+}
+
+function stripOwnVideo(text: string): string {
+  return text.replace(OWN_VIDEO_RE, " ").replace(/\s+/g, " ").trim();
+}
+
 // Fica como pista de OFERTA só o que o sistema não consegue derivar sozinho (idade, data, gênero, localização… saem).
-function isOfferPart(raw: string, locNorm: string | null, places: Set<string>): boolean {
+function isOfferPart(raw: string, locNorm: string | null, places: Set<string>, respNorm: string | null): boolean {
   const n = normName(raw);
   if (!n) return false;
   if (AGE_RE.test(n) || DATE_RE.test(n) || GENDER_WORDS.has(n) || PLATFORM_WORDS.has(n)) return false;
-  if (n === "INTERESSES" || n === "INTERESSE" || n === "AND" || n === "ANDERSON") return false;
-  if (locNorm && n.replace(/\+$/, "") === locNorm.replace(/\+$/, "")) return false;
+  if (n === "INTERESSES" || n === "INTERESSE") return false;
+  if (respNorm && n === respNorm) return false; // identificação do responsável
+  if (locNorm && n.replace(/\s*\+$/, "") === locNorm.replace(/\+$/, "")) return false;
   if (/\b\d+\s*KM\b/.test(n)) return false; // "8KM", "EFAPI 8 km"
   if (/VIZINH/.test(n) || n.includes("&")) return false; // "AMPARO & CIDADES VIZINHAS"
-  if (places.has(n.replace(/\+$/, ""))) return false; // cidade/região que o conjunto segmenta
+  if (places.has(n.replace(/\s*\+$/, ""))) return false; // cidade/região que o conjunto segmenta
   if (isGenericOffer(raw)) return false; // "ARMAÇÃO R$ 49,99", "R$ 49,99", "COBRIMOS OFERTAS"
   return true;
 }
@@ -282,6 +349,8 @@ export interface AdsetFacts {
   name: string;
   createdTime: string | null;
   targeting: TargetingLike | null | undefined;
+  // Etapa 241: identificação do responsável da conta (cadastro de Gestores). null = não cadastrada (aceita a que estiver no nome).
+  manager?: string | null;
 }
 
 export function expectedAdsetParts(facts: AdsetFacts): { parts: Part[]; needsInput: boolean; notes: string[] } {
@@ -298,26 +367,30 @@ export function expectedAdsetParts(facts: AdsetFacts): { parts: Part[]; needsInp
     if (x.name) places.add(normName(x.name));
   }
 
-  // 0) CREDIARIO/BOLETO e VDO PROPRIO saem do texto (viram marcas em posição fixa)
-  let payment: PaymentTag | null = null;
-  let ownVideo = false;
-  const cleaned = cur.map((raw) => {
-    const t = extractTags(raw);
-    payment = payment ?? t.payment;
-    ownVideo = ownVideo || t.ownVideo;
-    return t.rest;
-  });
+  // Identificação do responsável que está no nome: a parte logo antes da data.
+  const dateIdx = cur.findIndex((p) => DATE_RE.test(normName(p)));
+  const curResp = dateIdx > 0 ? cur[dateIdx - 1] : null;
+  const curRespOk = curResp && !AGE_RE.test(normName(curResp)) && normName(curResp).length <= 20 ? curResp.trim() : null;
+  const manager = facts.manager?.trim() || null;
+  const respNorm = normName(manager ?? curRespOk ?? "") || null;
+
+  // BOLETO/CREDIARIO no nome (boleto é oferta do GERAL) e VDO PROPRIO (identificação: vídeo gravado pelo cliente)
+  const tags = extractTags(cur.join(" | "));
+  const payment = tags.payment;
+  const ownVideo = tags.ownVideo;
+  const cleaned = cur.map(stripOwnVideo);
 
   // 1) TIPO (GERAL, EXAME ou PROMO) + pistas de oferta que já estão no nome
   const mapped = cleaned[0] ? mapAdsetType(cleaned[0]) : null;
   const offerBits: string[] = [];
-  if (mapped?.rest && isOfferPart(mapped.rest, locNorm, places)) offerBits.push(mapped.rest);
-  if (!mapped && cleaned[0] && isOfferPart(cleaned[0], locNorm, places)) offerBits.push(cleaned[0]);
-  for (let i = 1; i < cleaned.length; i++) if (cleaned[i] && isOfferPart(cleaned[i], locNorm, places)) offerBits.push(cleaned[i]);
-  const offer = offerBits.join(" ").trim();
+  if (mapped?.rest && isOfferPart(mapped.rest, locNorm, places, respNorm)) offerBits.push(mapped.rest);
+  if (!mapped && cleaned[0] && isOfferPart(cleaned[0], locNorm, places, respNorm)) offerBits.push(cleaned[0]);
+  for (let i = 1; i < cleaned.length; i++) if (cleaned[i] && isOfferPart(cleaned[i], locNorm, places, respNorm)) offerBits.push(cleaned[i]);
+  let offer = normalizeMoney(offerBits.join(" ").replace(/\bcredi[aá]rios?\b/gi, "BOLETO"));
 
   let tipo: AdsetType;
   if (mapped) tipo = mapped.type;
+  else if (payment) tipo = "GERAL";
   else if (!offer) tipo = "GERAL";
   else {
     tipo = "PROMO";
@@ -325,23 +398,34 @@ export function expectedAdsetParts(facts: AdsetFacts): { parts: Part[]; needsInp
   }
 
   const date = brtDayMonth(facts.createdTime);
-  const parts: Part[] = [{ key: "tipo", text: tipo }];
+  const parts: Part[] = [];
 
-  // 2) OFERTA: GERAL não leva; PROMO e EXAME precisam
-  if (tipo !== "GERAL") {
+  // 2) OFERTA. GERAL: só BOLETO (única oferta do GERAL). EXAME: tipo e oferta juntos ("EXAME R$ 15,00"). PROMO: parte própria.
+  if (tipo === "GERAL") {
+    parts.push({ key: "tipo", text: "GERAL" });
+    if (payment) parts.push({ key: "oferta", text: "BOLETO" });
+  } else if (tipo === "EXAME") {
+    offer = offer.replace(/^EXAMES?\s+/i, "").trim();
+    if (offer) parts.push({ key: "tipo", text: `EXAME ${offer}` });
+    else {
+      needsInput = true;
+      parts.push({ key: "tipo", text: "EXAME R$ VALOR" });
+      notes.push("EXAME precisa do valor ou da oferta junto (EXAME R$ 15,00)");
+    }
+  } else {
+    parts.push({ key: "tipo", text: "PROMO" });
     if (offer) parts.push({ key: "oferta", text: offer });
     else {
       needsInput = true;
-      parts.push({ key: "oferta", text: tipo === "EXAME" ? "OFERTA DO EXAME" : "OFERTA" });
-      notes.push(`${tipo} precisa da oferta no nome`);
+      parts.push({ key: "oferta", text: "OFERTA" });
+      notes.push("PROMO precisa da oferta no nome");
     }
   }
 
-  // 2b) forma de pagamento e vídeo próprio: logo depois da oferta (nessa ordem)
-  if (payment) parts.push({ key: "pagto", text: payment });
+  // 2b) vídeo próprio: logo depois da oferta (só quando o vídeo é do cliente; o da franquia não leva nada)
   if (ownVideo) parts.push({ key: "vdo", text: OWN_VIDEO_TEXT });
 
-  // 3) localização, idade, gênero, plataforma, direcionamento, AND, data
+  // 3) localização, idade, gênero, plataforma, direcionamento, responsável, data
   if (loc) parts.push({ key: "loc", text: loc });
   else {
     needsInput = true;
@@ -354,7 +438,12 @@ export function expectedAdsetParts(facts: AdsetFacts): { parts: Part[]; needsInp
   const platform = derivePlatform(facts.targeting);
   if (platform) parts.push({ key: "plataforma", text: platform });
   if (deriveHasInterests(facts.targeting)) parts.push({ key: "direc", text: "INTERESSES" });
-  parts.push({ key: "and", text: MANAGER_TAG });
+  const resp = manager ?? curRespOk;
+  if (resp) parts.push({ key: "resp", text: resp.toUpperCase() });
+  else {
+    needsInput = true;
+    parts.push({ key: "resp", text: "RESPONSÁVEL" });
+  }
   if (date) parts.push({ key: "data", text: date });
   else {
     needsInput = true;
@@ -363,12 +452,24 @@ export function expectedAdsetParts(facts: AdsetFacts): { parts: Part[]; needsInp
   return { parts, needsInput, notes };
 }
 
+const PART_LABELS: Record<Part["key"], string> = {
+  tipo: "TIPO",
+  oferta: "OFERTA",
+  vdo: "VDO PROPRIO",
+  loc: "LOCALIZAÇÃO",
+  idade: "IDADE",
+  genero: "GÊNERO",
+  plataforma: "PLATAFORMA",
+  direc: "DIRECIONAMENTO",
+  resp: "RESPONSÁVEL",
+  data: "DATA",
+};
+
 export function checkAdsetName(facts: AdsetFacts): NameCheck {
   const { parts: expected, needsInput, notes } = expectedAdsetParts(facts);
   const suggestion = expected.map((p) => p.text).join(" | ");
   const copy = hasCopy(facts.name);
   const cleanedName = copy ? stripCopy(facts.name) : facts.name;
-  // Etapa 192: compara sem o "Cópia" (senão a última parte "21/10 — Cópia" contava como DATA errada).
   const cur = splitParts(cleanedName);
   const problems: string[] = [];
 
@@ -381,28 +482,12 @@ export function checkAdsetName(facts: AdsetFacts): NameCheck {
       if (normName(cur[i]) !== normName(p.text)) diffKeys.push(p.key);
     });
     if (diffKeys.length === 0 && problems.length === 0) return OK;
-    const labels: Record<Part["key"], string> = {
-      tipo: "TIPO",
-      oferta: "OFERTA",
-      pagto: "PAGAMENTO",
-      vdo: "VDO PROPRIO",
-      loc: "LOCALIZAÇÃO",
-      idade: "IDADE",
-      genero: "GÊNERO",
-      plataforma: "PLATAFORMA",
-      direc: "DIRECIONAMENTO",
-      and: "AND",
-      data: "DATA",
-    };
-    for (const k of diffKeys) problems.push(`${labels[k]} fora do padrão`);
+    for (const k of diffKeys) problems.push(`${PART_LABELS[k]} fora do padrão`);
     autoFix = problems.length > 0 && diffKeys.every((k) => k === "idade" || k === "data") && !needsInput;
   } else {
     problems.push(`Estrutura fora do padrão (${cur.length} partes, esperado ${expected.length})`);
   }
   for (const n of notes) problems.push(n);
-  // Etapa 192: só idade/data (com ou sem "Cópia") → aplica a sugestão completa. Quando o resto precisa de aprovação,
-  // o automático ainda assim tira o "Cópia" e acerta a DATA (a parte DD/MM do nome vira a data de criação do
-  // conjunto); o resto continua na aba "Padrão de nomes".
   let autoName: string | null = autoFix ? suggestion : null;
   if (!autoName) {
     const date = expected.find((p) => p.key === "data")?.text;
@@ -412,11 +497,60 @@ export function checkAdsetName(facts: AdsetFacts): NameCheck {
   return { ok: false, problems, suggestion, needsInput, autoFix: !!autoName, autoName };
 }
 
-// ---------- anúncio (só "sem cópia") ----------
+// ---------- criativo (anúncio) ----------
+// Etapa 241: criativo leva só o nome do arquivo (sem GERAL, PROMO, EXAME…).
+// Exceção: criativo de conjunto de EXAME = EXAME R$ 15,00 | DD/MM (primeiro uso) | V01 (variação).
 
-export function checkAdName(name: string): NameCheck {
-  if (!hasCopy(name)) return OK;
-  const cleaned = stripCopy(name);
-  // Etapa 192: anúncio só tem a regra do "Cópia" — sai sozinho.
-  return { ok: false, problems: ['Tem "cópia" no nome'], suggestion: cleaned || null, needsInput: !cleaned, autoFix: !!cleaned, autoName: cleaned || null };
+const AD_TYPE_WORDS = new Set(["GERAL", "PROMO", "PROMOCAO", "PROMOCOES", "EXAME", "EXAMES", "OFERTA", "OFERTAS", "BOLETO", "BOLETOS", "CREDIARIO"]);
+const VAR_RE = /^V\s*0*(\d{1,3})$/;
+
+export interface AdContext {
+  adsetName?: string | null;
+  createdTime?: string | null;
+}
+
+export function checkAdName(name: string, ctx: AdContext = {}): NameCheck {
+  const copy = hasCopy(name);
+  const base = copy ? stripCopy(name) : name;
+  const parts = splitParts(base);
+  const problems: string[] = [];
+  if (copy) problems.push('Tem "cópia" no nome');
+
+  const adsetType = ctx.adsetName ? mapAdsetType(splitParts(ctx.adsetName)[0] ?? "")?.type ?? null : null;
+
+  if (adsetType === "EXAME") {
+    // valor: o do próprio nome, senão o do conjunto
+    const fromName = parts[0] ? mapAdsetType(parts[0]) : null;
+    const adsetFirst = mapAdsetType(splitParts(ctx.adsetName ?? "")[0] ?? "");
+    const value = normalizeMoney((fromName?.type === "EXAME" ? fromName.rest : "") || adsetFirst?.rest || "");
+    const date = parts.find((p) => DATE_RE.test(normName(p))) ?? brtDayMonth(ctx.createdTime ?? null);
+    const v = parts.map((p) => normName(p).match(VAR_RE)).find(Boolean);
+    let needsInput = false;
+    const first = value ? `EXAME ${value}` : ((needsInput = true), "EXAME R$ VALOR");
+    const variation = v ? `V${v[1].padStart(2, "0")}` : ((needsInput = true), "V01");
+    const expected = [first, date ?? ((needsInput = true), "DD/MM"), variation].join(" | ");
+    if (normName(base) !== normName(expected)) problems.push("Criativo de EXAME fora do padrão (EXAME R$ VALOR | DD/MM | V01)");
+    if (problems.length === 0) return OK;
+    const autoName = copy && problems.length === 1 ? base : null;
+    return { ok: false, problems, suggestion: expected, needsInput, autoFix: !!autoName, autoName };
+  }
+
+  // Criativo comum: só o nome do arquivo.
+  const firstWord = normName(parts[0] ?? "").split(" ")[0]?.replace(/[^A-Z]/g, "") ?? "";
+  const typeParts = parts.filter((p) => AD_TYPE_WORDS.has(normName(p).replace(/[^A-Z]/g, "")));
+  const startsWithType = AD_TYPE_WORDS.has(firstWord);
+  if (typeParts.length > 0 || startsWithType) problems.push("Criativo leva só o nome do arquivo (sem GERAL, PROMO, EXAME…)");
+  if (problems.length === 0) return OK;
+  let rest = parts.filter((p) => !AD_TYPE_WORDS.has(normName(p).replace(/[^A-Z]/g, "")));
+  if (rest.length > 0 && startsWithType && typeParts.length === 0) rest = [rest[0].trim().split(/\s+/).slice(1).join(" "), ...rest.slice(1)].filter(Boolean);
+  const cleanedName = rest.join(" | ").trim();
+  const autoName = copy && problems.length === 1 ? base : null;
+  return {
+    ok: false,
+    problems,
+    suggestion: cleanedName || "NOME DO ARQUIVO",
+    needsInput: !cleanedName || problems.length > (copy ? 1 : 0),
+    autoFix: !!autoName,
+    autoName,
+  };
 }

@@ -8,6 +8,7 @@ import {
   CPA_PERIODS,
   RITMO_BAND,
   calendarSP,
+  closedDaysIn,
   cpaOf,
   cpaSortKey,
   cpaTone,
@@ -16,9 +17,10 @@ import {
   type CpaPeriod,
 } from "@/lib/estrategia/calc";
 import type { OfferKind, OffersSummary, OfferStatus } from "@/lib/offers/rule";
+import type { ActivityItem } from "@/lib/estrategia/activities";
 import { useEstr } from "./shell";
-import { Btn, Card, Pill, fmtBRL, fmtCpa, fmtInt } from "./ui";
-import type { Linha } from "./use-carteira";
+import { Btn, Card, Pill, ago, fmtBRL, fmtCpa, fmtInt } from "./ui";
+import type { Linha, OfferFlags } from "./use-carteira";
 
 // Etapa 238: Tráfego → Acompanhamento. Uma linha por conta: investimento de hoje e do mês, Ritmo (média por dia + quanto
 // falta pra ficar em dia com a meta), CPA no período escolhido e no mês, ofertas (com CPA dos 2 últimos dias), quanto foi
@@ -26,53 +28,55 @@ import type { Linha } from "./use-carteira";
 
 const ASANA_SYNCED = new Set(["baixa", "media", "alta", "critica"]);
 
-function Kpi({ label, value, sub, tone }: { label: string; value: string; sub?: string; tone?: "bad" | "warn" }) {
-  return (
-    <Card className="px-4 py-3">
-      <div className="text-xs text-zinc-500">{label}</div>
-      <div
-        className={`mt-1 text-xl font-semibold tabular-nums ${
-          tone === "bad" ? "text-red-600 dark:text-red-400" : tone === "warn" ? "text-amber-600 dark:text-amber-400" : ""
-        }`}
-      >
-        {value}
-      </div>
-      {sub ? <div className="mt-0.5 text-xs text-zinc-500 tabular-nums">{sub}</div> : null}
-    </Card>
-  );
-}
-
 const DOT: Record<OfferStatus, string> = { ATIVO: "bg-emerald-500", INATIVO: "bg-amber-500", INEXISTENTE: "bg-zinc-400" };
 
-function Ofertas({ s }: { s: OffersSummary | null }) {
-  if (!s) return <span className="text-xs text-zinc-400" title="Sem retrato de ofertas pra essa conta (o padrão de nomes é o das contas IVS)">—</span>;
-  const promoStatus: OfferStatus = s.promo.length === 0 ? "INEXISTENTE" : s.promo.some((p) => p.active) ? "ATIVO" : "INATIVO";
-  const promoName = s.promo.filter((p) => (promoStatus === "ATIVO" ? p.active : true)).map((p) => p.offer).join(", ");
-  const rows: Array<{ kind: OfferKind; label: string; status: OfferStatus; extra: string | null }> = [
-    { kind: "geral", label: "GERAL", status: s.geral, extra: null },
-    { kind: "exame", label: "EXAME", status: s.exame.status, extra: s.exame.offer },
-    { kind: "boleto", label: "BOLETO", status: s.boleto, extra: null },
-    { kind: "promo", label: "PROMOÇÃO", status: promoStatus, extra: promoName || null },
+// Etapa 242: GERAL sempre; EXAME e BOLETO só nas contas que anunciam (ficha do cliente). PROMO saiu.
+function Ofertas({ s, flags }: { s: OffersSummary | null; flags: OfferFlags | null }) {
+  const rows: Array<{ kind: OfferKind; label: string; status: OfferStatus | null; extra: string | null }> = [
+    { kind: "geral", label: "GERAL", status: s ? s.geral : null, extra: null },
   ];
-  const shown = rows.filter((r) => r.status !== "INEXISTENTE");
-  if (shown.length === 0) return <span className="text-xs text-zinc-400">nenhuma oferta no mês</span>;
+  if (flags?.exame) rows.push({ kind: "exame", label: "EXAME", status: s ? s.exame.status : null, extra: s?.exame.offer ?? null });
+  if (flags?.boleto) rows.push({ kind: "boleto", label: "BOLETO", status: s ? s.boleto : null, extra: null });
   return (
-    <div className="grid min-w-[17rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 text-xs">
-      {shown.map((r) => {
-        const m = s.metrics?.last2d[r.kind];
+    <div className="grid min-w-[15rem] grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 text-xs">
+      {rows.map((r) => {
+        const m = s?.metrics?.last2d[r.kind];
         const cpa = cpaOf(m);
+        const missing = r.status === "INEXISTENTE";
         return (
           <div key={r.kind} className="contents">
             <span className="font-semibold text-zinc-500">{r.label}</span>
             <span className="flex min-w-0 items-center gap-1.5" title={r.extra ?? undefined}>
-              <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[r.status]}`} />
-              <span className="font-medium">{r.status === "ATIVO" ? "Ativo" : "Inativo"}</span>
-              {r.extra ? <span className="truncate text-zinc-500">· {r.extra}</span> : null}
+              {r.status ? <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[r.status]}`} /> : null}
+              <span
+                className={`font-medium ${missing ? "text-red-600 dark:text-red-400" : r.status == null ? "text-zinc-400" : ""}`}
+                title={r.status == null ? "Sem retrato de ofertas pra essa conta (o retrato é das contas IVS, 05h20 e 12h)" : undefined}
+              >
+                {r.status == null ? "—" : r.status === "ATIVO" ? "Ativo" : r.status === "INATIVO" ? "Inativo" : "Não rodou no mês"}
+              </span>
+              {r.extra && !missing ? <span className="truncate text-zinc-500">· {r.extra}</span> : null}
             </span>
-            <span className="text-right tabular-nums">{s.metrics ? fmtCpa(cpa) : "—"}</span>
+            <span className="text-right tabular-nums">{s?.metrics && !missing ? fmtCpa(cpa) : "—"}</span>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// Etapa 242: última otimização relevante do gestor (histórico da Meta, 7 dias).
+const OPT_STALE_DAYS = 3;
+function UltimaOtimizacao({ acts, failed, now }: { acts: ActivityItem[] | undefined; failed: boolean; now: number }) {
+  if (failed) return <span className="text-xs text-zinc-400">não carregou</span>;
+  if (!acts) return <span className="text-xs text-zinc-400">carregando…</span>;
+  const last = acts.find((a) => a.relevant);
+  if (!last) return <Pill tone="bad">nenhuma em 7 dias</Pill>;
+  const days = (now - Date.parse(last.time)) / 86_400_000;
+  return (
+    <div className="max-w-[13rem] text-xs" title={`${last.what}${last.object ? ` — ${last.object}` : ""}${last.actor ? ` (${last.actor})` : ""}`}>
+      <Pill tone={days >= OPT_STALE_DAYS ? "bad" : days >= 1 ? "warn" : "ok"}>{ago(last.time)}</Pill>
+      <div className="mt-0.5 truncate text-zinc-500">{last.what}</div>
+      {last.actor ? <div className="truncate text-zinc-400">{last.actor}</div> : null}
     </div>
   );
 }
@@ -81,7 +85,11 @@ export function Acompanhamento({
   linhas,
   onPatch,
   toast,
+  activities,
+  activitiesFailed,
 }: {
+  activities: Record<string, ActivityItem[]> | null;
+  activitiesFailed: string[];
   linhas: Linha[];
   onPatch: (id: string, patch: Partial<Linha>) => void;
   toast: (msg: string) => void;
@@ -89,6 +97,7 @@ export function Acompanhamento({
   const { ui, setUi } = useEstr();
   const { options } = usePriorityOptions();
   const [desc, setDesc] = useState<Linha | null>(null);
+  const [now] = useState(() => Date.now());
   const period = (CPA_PERIODS.some((p) => p.id === ui.period) ? ui.period : "u3") as CpaPeriod;
   const periodInfo = CPA_PERIODS.find((p) => p.id === period)!;
   const cal = useMemo(() => calendarSP(), []);
@@ -104,6 +113,13 @@ export function Acompanhamento({
     list.sort((a, b) => {
       if (by === "nome") return a.l.name.localeCompare(b.l.name, "pt-BR");
       if (by === "ritmo") return Math.abs(b.r.gap ?? 0) - Math.abs(a.r.gap ?? 0);
+      if (by === "otim") {
+        const t = (id: string) => {
+          const x = activities?.[id]?.find((e) => e.relevant);
+          return x ? Date.parse(x.time) : 0;
+        };
+        return t(a.l.id) - t(b.l.id);
+      }
       if (by === "prioridade") {
         const rank: Record<string, number> = { inauguracao: 0, critica: 1, alta: 2, media: 3, baixa: 4 };
         return (rank[a.l.priority ?? ""] ?? 5) - (rank[b.l.priority ?? ""] ?? 5);
@@ -111,21 +127,7 @@ export function Acompanhamento({
       return cpaSortKey(b.cpa, b.l.cpaTarget) - cpaSortKey(a.cpa, a.l.cpaTarget);
     });
     return list;
-  }, [linhas, period, ui.sort, cal]);
-
-  const kpi = useMemo(() => {
-    let hoje = 0, mes = 0, meta = 0, ate = 0, fora = 0, abaixo = 0;
-    for (const { l, r, cpa } of rows) {
-      hoje += l.nums?.todaySpend ?? 0;
-      mes += l.nums?.monthSpend ?? 0;
-      ate += l.nums?.untilYesterday ?? 0;
-      meta += l.monthly ?? 0;
-      if (cpa != null && l.cpaTarget != null && cpa > l.cpaTarget + 2) fora++;
-      if (r.gap != null && r.gap >= RITMO_BAND) abaixo++;
-    }
-    const passed = cal.day - 1;
-    return { hoje, mes, meta, ritmo: passed > 0 ? ate / passed : null, metaDia: meta / cal.daysInMonth, fora, abaixo };
-  }, [rows, cal]);
+  }, [linhas, period, ui.sort, cal, activities]);
 
   async function changePriority(l: Linha, priority: string) {
     const prev = l.priority;
@@ -161,18 +163,6 @@ export function Acompanhamento({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-        <Kpi label="Investido hoje" value={fmtBRL(kpi.hoje)} />
-        <Kpi
-          label="Investido no mês"
-          value={fmtBRL(kpi.mes)}
-          sub={kpi.meta > 0 ? `de ${fmtBRL(kpi.meta)} (${Math.round((kpi.mes / kpi.meta) * 100)}%)` : undefined}
-        />
-        <Kpi label="Ritmo da carteira" value={kpi.ritmo != null ? fmtBRL(kpi.ritmo) : "—"} sub={`meta diária ${fmtBRL(kpi.metaDia)}`} />
-        <Kpi label={`CPA fora (${periodInfo.short})`} value={`${kpi.fora} de ${rows.length}`} tone={kpi.fora > 0 ? "warn" : undefined} />
-        <Kpi label="Investimento abaixo da meta" value={`${kpi.abaixo} de ${rows.length}`} tone={kpi.abaixo > 0 ? "bad" : undefined} />
-      </div>
-
       <Card className="overflow-hidden">
         <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-4 py-3 dark:border-white/10">
           <label htmlFor="estr-period" className="text-xs text-zinc-500">Período do CPA</label>
@@ -186,6 +176,15 @@ export function Acompanhamento({
               <option key={p.id} value={p.id}>{p.label}</option>
             ))}
           </select>
+          {(() => {
+            const c = closedDaysIn(period, cal);
+            return c.got < c.wanted ? (
+              <span className="text-xs text-amber-600 dark:text-amber-400">
+                Só o mês atual: {c.got === 0 ? "ainda não tem dia fechado" : `entra${c.got > 1 ? "m" : ""} ${c.got} dia${c.got > 1 ? "s" : ""} fechado${c.got > 1 ? "s" : ""}`}
+                {period.endsWith("h") || period === "h" ? " + hoje" : ""}
+              </span>
+            ) : null;
+          })()}
           <label htmlFor="estr-sort" className="text-xs text-zinc-500">Ordenar</label>
           <select
             id="estr-sort"
@@ -195,6 +194,7 @@ export function Acompanhamento({
           >
             <option value="cpa">Pior CPA</option>
             <option value="ritmo">Ritmo mais longe da meta</option>
+            <option value="otim">Otimização mais antiga</option>
             <option value="prioridade">Prioridade</option>
             <option value="nome">Nome</option>
           </select>
@@ -207,11 +207,11 @@ export function Acompanhamento({
                 <th className="px-4 py-2.5 font-semibold">Conta</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Invest. hoje</th>
                 <th className="px-3 py-2.5 text-right font-semibold">Invest. mês / meta</th>
-                <th className="px-3 py-2.5 font-semibold">Ritmo</th>
+                <th className="px-3 py-2.5 font-semibold" title="Investimento diário atual · quanto falta investir pra ficar em dia com a meta">Invest. diário · ritmo</th>
                 <th className="px-3 py-2.5 text-right font-semibold">CPA {periodInfo.short}</th>
                 <th className="px-3 py-2.5 text-right font-semibold">CPA mensal</th>
                 <th className="px-3 py-2.5 font-semibold">Ofertas · CPA últ. 2 dias</th>
-                <th className="px-3 py-2.5 text-right font-semibold">Promoção no mês</th>
+                <th className="px-3 py-2.5 font-semibold" title="Última otimização relevante na conta (orçamento, liga/desliga, conjunto/anúncio novo, público, criativo, lance)">Última otimização</th>
                 <th className="px-3 py-2.5 font-semibold">Asana</th>
               </tr>
             </thead>
@@ -241,7 +241,9 @@ export function Acompanhamento({
                   <td className="px-3 py-3 whitespace-nowrap tabular-nums">
                     {l.nums ? (
                       <>
-                        <span className="font-semibold">{r.avg != null ? fmtBRL(r.avg) : "—"}</span>{" "}
+                        <span className="font-semibold" title="Investimento diário atual (orçamento do dia de tudo que está ligado)">
+                          {l.dailyBudget === undefined ? "…" : l.dailyBudget == null ? "—" : `${fmtBRL(l.dailyBudget)}/dia`}
+                        </span>{" "}
                         {r.gap != null ? (
                           <Pill
                             tone={ritmoTone(r.gap)}
@@ -269,10 +271,10 @@ export function Acompanhamento({
                     {l.nums ? <Pill tone={cpaMes === Infinity ? "bad" : cpaTone(cpaMes, l.cpaTarget)}>{fmtCpa(cpaMes)}</Pill> : "—"}
                   </td>
                   <td className="px-3 py-3">
-                    <Ofertas s={l.offers} />
+                    <Ofertas s={l.offers} flags={l.flags} />
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums">
-                    {l.offers?.metrics ? (l.offers.metrics.promoSpendMonth > 0 ? fmtBRL(l.offers.metrics.promoSpendMonth) : "—") : "—"}
+                  <td className="px-3 py-3">
+                    <UltimaOtimizacao acts={activities ? (activities[l.id] ?? (activitiesFailed.includes(l.id) ? undefined : [])) : undefined} failed={activitiesFailed.includes(l.id)} now={now} />
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-1.5">
@@ -305,11 +307,11 @@ export function Acompanhamento({
       </Card>
 
       <p className="text-xs leading-relaxed text-zinc-500">
-        <b className="text-zinc-700 dark:text-zinc-300">Ritmo</b>: média investida por dia no mês (dia 01 até ontem). O número ao lado é quanto falta
-        investir pra conta ficar em dia com a meta até ontem (meta ÷ dias do mês × dias que já passaram − investido). Positivo = abaixo da meta;
-        negativo = passou da meta; diferença menor que R$ {RITMO_BAND} fica verde. <b className="text-zinc-700 dark:text-zinc-300">CPA</b>: verde no ideal
-        ou abaixo, laranja até R$ 2 acima, vermelho mais de R$ 2 acima. <b className="text-zinc-700 dark:text-zinc-300">Ofertas</b>: retrato das 05h20 e
-        12h (CPA dos 2 últimos dias fechados).
+        <b className="text-zinc-700 dark:text-zinc-300">Invest. diário · ritmo</b>: quanto a conta está programada pra investir por dia agora (orçamento de tudo
+        que está ligado). O número ao lado é quanto falta investir pra ficar em dia com a meta até ontem: positivo = abaixo da meta, negativo = passou;
+        diferença menor que R$ {RITMO_BAND} fica verde. <b className="text-zinc-700 dark:text-zinc-300">CPA</b>: só o mês atual; verde no ideal ou abaixo,
+        laranja até R$ 2 acima, vermelho mais de R$ 2 acima. <b className="text-zinc-700 dark:text-zinc-300">Última otimização</b>: mudança de orçamento,
+        liga/desliga, conjunto ou anúncio novo, público, criativo ou lance (troca de nome e cobrança não contam); vermelho a partir de {OPT_STALE_DAYS} dias.
       </p>
 
       {desc ? (

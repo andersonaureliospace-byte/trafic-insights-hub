@@ -47,14 +47,16 @@ function GestorRow({
   const [edit, setEdit] = useState(false);
   const [name, setName] = useState(g.name);
   const [wa, setWa] = useState(g.whatsapp);
+  const [tag, setTag] = useState(g.tag);
   const [confirm, setConfirm] = useState(false);
 
   if (edit) {
     return (
       <li className="flex flex-col gap-2 px-4 py-3">
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2 sm:grid-cols-3">
           <input aria-label="Nome" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
           <input aria-label="WhatsApp" inputMode="tel" value={wa} onChange={(e) => setWa(e.target.value)} placeholder="(63) 99999-9999" className={inputCls} />
+          <input aria-label="Identificação na nomenclatura" value={tag} onChange={(e) => setTag(e.target.value.toUpperCase())} placeholder="AND" className={inputCls} />
         </div>
         <div className="flex gap-2">
           <Btn
@@ -62,7 +64,7 @@ function GestorRow({
             small
             disabled={busy || !name.trim()}
             onClick={() =>
-              void onSave({ name: name.trim(), whatsapp: wa.trim() })
+              void onSave({ name: name.trim(), whatsapp: wa.trim(), tag: tag.trim() })
                 .then(() => setEdit(false))
                 .catch(() => {
                   /* mensagem já mostrada; continua editando */
@@ -77,6 +79,7 @@ function GestorRow({
               setEdit(false);
               setName(g.name);
               setWa(g.whatsapp);
+              setTag(g.tag);
             }}
           >
             Cancelar
@@ -90,7 +93,16 @@ function GestorRow({
     <li className="flex flex-wrap items-center gap-3 px-4 py-3">
       <div className="min-w-0 flex-1">
         <div className="font-semibold">{g.name}</div>
-        <div className="text-xs text-zinc-500 tabular-nums">{g.whatsapp ? fmtPhone(g.whatsapp) : "sem WhatsApp"}</div>
+        <div className="text-xs text-zinc-500 tabular-nums">
+          {g.whatsapp ? fmtPhone(g.whatsapp) : "sem WhatsApp"} ·{" "}
+          {g.tag ? (
+            <span title="Identificação na nomenclatura">
+              nomenclatura <b className="font-mono text-zinc-700 dark:text-zinc-300">{g.tag}</b>
+            </span>
+          ) : (
+            <span className="text-amber-600 dark:text-amber-400">sem identificação</span>
+          )}
+        </div>
       </div>
       <Pill tone={count > 0 ? "info" : "off"}>
         {count} {count === 1 ? "conta" : "contas"}
@@ -127,6 +139,7 @@ export default function GestoresPage() {
   const [busy, setBusy] = useState(false);
   const [novoNome, setNovoNome] = useState("");
   const [novoWa, setNovoWa] = useState("");
+  const [novoTag, setNovoTag] = useState("");
   const [filter, setFilter] = useState<string>("");
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState<Set<string>>(new Set());
@@ -178,9 +191,10 @@ export default function GestoresPage() {
     }
     setBusy(true);
     try {
-      await saveGestores([...gestoresFull, { name, whatsapp: novoWa.trim() }]);
+      await saveGestores([...gestoresFull, { name, whatsapp: novoWa.trim(), tag: novoTag.trim() }]);
       setNovoNome("");
       setNovoWa("");
+      setNovoTag("");
       flash(true, `${name} cadastrado.`);
     } catch (e) {
       flash(false, (e as Error).message);
@@ -283,6 +297,9 @@ export default function GestoresPage() {
               <input id="g-nome" value={novoNome} onChange={(e) => setNovoNome(e.target.value)} placeholder="Ex.: Denner" className={inputCls} />
               <label htmlFor="g-wa" className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">WhatsApp</label>
               <input id="g-wa" inputMode="tel" value={novoWa} onChange={(e) => setNovoWa(e.target.value)} placeholder="(63) 99999-9999" className={inputCls} />
+              <label htmlFor="g-tag" className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Identificação na nomenclatura</label>
+              <input id="g-tag" value={novoTag} onChange={(e) => setNovoTag(e.target.value.toUpperCase())} placeholder="AND" className={inputCls} />
+              <p className="text-xs text-zinc-500">Vai no nome dos conjuntos das contas desse gestor, antes da data.</p>
               <div className="pt-1">
                 <Btn primary type="submit" disabled={busy || !novoNome.trim()}>Cadastrar gestor</Btn>
               </div>
