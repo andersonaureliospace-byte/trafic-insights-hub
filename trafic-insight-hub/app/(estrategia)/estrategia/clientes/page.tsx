@@ -254,7 +254,7 @@ export default function ClientesPage() {
           </p>
         </div>
 
-        <Card className="h-fit p-5 xl:sticky xl:top-18">
+        <Card className="h-fit p-5 xl:sticky xl:top-16">
           {!cur || !form ? (
             <p className="text-sm text-zinc-500">Escolha um cliente na lista.</p>
           ) : (

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { NavLink } from "@/components/nav-link";
 import { SignOutButton } from "@/components/sign-out-button";
 
 // Etapa 238: casca do Hub estratégico — menu lateral (Tráfego / Clientes, itens "em breve", Automações, link pro hub
@@ -57,31 +56,22 @@ async function putPref(key: string, value: unknown) {
   await fetch("/api/estrategia/prefs", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, value }) });
 }
 
-function Item({ href, children, icon }: { href: string; children: ReactNode; icon: ReactNode }) {
+function Item({ href, children, small }: { href: string; children: ReactNode; small?: boolean }) {
   const pathname = usePathname();
   const on = pathname === href || pathname.startsWith(`${href}/`);
   return (
     <Link
       href={href}
-      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-blue-500 ${
+      className={`rounded-md whitespace-nowrap transition-colors focus-visible:outline-2 focus-visible:outline-blue-500 ${
+        small ? "px-2 py-1 text-xs" : "px-2.5 py-1.5 text-sm font-medium"
+      } ${
         on
-          ? "bg-blue-600/10 text-blue-700 ring-1 ring-blue-600/30 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-400/30"
-          : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-white/5"
+          ? "bg-blue-600/10 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300"
+          : "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-100"
       }`}
     >
-      <span aria-hidden className="w-4 text-center">{icon}</span>
       {children}
     </Link>
-  );
-}
-
-function Soon({ children, icon }: { children: ReactNode; icon: ReactNode }) {
-  return (
-    <span className="flex cursor-default items-center gap-2.5 px-3 py-2 text-sm text-zinc-400 dark:text-zinc-600">
-      <span aria-hidden className="w-4 text-center">{icon}</span>
-      <span className="flex-1">{children}</span>
-      <span className="rounded border border-zinc-200 px-1.5 text-[10px] dark:border-zinc-800">em breve</span>
-    </span>
   );
 }
 
@@ -150,65 +140,44 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
   return (
     <EstrCtx.Provider value={value}>
       <div className={`${theme} flex min-h-screen flex-1 flex-col bg-zinc-50 text-zinc-900 dark:bg-[#0b0e14] dark:text-zinc-100`}>
-        {/* Etapa 239: por enquanto, a mesma barra de cima do hub operacional fica fixa aqui também. */}
-        <header className="sticky top-0 z-30 h-14 border-b border-zinc-200 bg-white/80 backdrop-blur-xl dark:border-zinc-800 dark:bg-zinc-950/80">
-          <div className="flex h-full items-center gap-3 px-3 md:px-4 xl:gap-6 xl:px-8">
-            <span className="text-sm font-semibold tracking-tight whitespace-nowrap text-zinc-900 dark:text-zinc-50">Trafic Insight Hub</span>
-            <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
-              <NavLink href="/estrategia">Hub estratégico</NavLink>
-              <NavLink href="/painel">Painel</NavLink>
-              <NavLink href="/foco">Foco</NavLink>
-              <NavLink href="/mensagens">Mensagens</NavLink>
-              <NavLink href="/auditoria">Auditoria</NavLink>
-              <NavLink href="/configuracoes">Configurações</NavLink>
+        {/* Etapa 243: um menu só, fino, no topo (o menu antigo do hub operacional e a barra lateral saíram). */}
+        <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b0e14]/85">
+          <div className="flex h-12 items-center gap-2 overflow-x-auto px-3 lg:px-6">
+            <span className="mr-2 text-sm font-bold tracking-tight whitespace-nowrap text-blue-700 dark:text-blue-400">Trafic Insight Hub</span>
+            <nav className="flex items-center gap-0.5">
+              <Item href="/estrategia/trafego">Tráfego</Item>
+              <Item href="/estrategia/clientes">Clientes</Item>
+              <Item href="/estrategia/pop">POP</Item>
             </nav>
-          </div>
-        </header>
-        <div className="flex flex-1 flex-col lg:flex-row">
-        <aside className="flex shrink-0 flex-col gap-1 border-b border-zinc-200 bg-white px-3 py-3 lg:sticky lg:top-14 lg:h-[calc(100vh-3.5rem)] lg:w-60 lg:overflow-y-auto lg:border-r lg:border-b-0 lg:py-5 dark:border-white/10 dark:bg-[#10141c]">
-          <div className="px-3 pb-2">
-            <div className="text-base font-bold tracking-tight text-blue-700 dark:text-blue-400">Trafic Insight Hub</div>
-            <div className="text-xs text-zinc-500">Hub estratégico</div>
-          </div>
-          <div className="flex flex-wrap gap-1 lg:flex-col">
-            <div className="hidden px-3 pt-3 pb-1 text-[11px] font-semibold tracking-wider text-zinc-500 uppercase lg:block">Estratégia</div>
-            <Item href="/estrategia/trafego" icon="📈">Tráfego</Item>
-            <Item href="/estrategia/clientes" icon="👥">Clientes</Item>
-            <Item href="/estrategia/pop" icon="📄">POP</Item>
-          </div>
-          <div className="hidden flex-col gap-0.5 border-t border-zinc-200 pt-3 lg:mt-3 lg:flex dark:border-white/10">
-            <div className="px-3 pb-1 text-[11px] font-semibold tracking-wider text-zinc-500 uppercase">Em breve</div>
-            <Soon icon="💬">Grupos</Soon>
-            <Soon icon="📅">Agenda</Soon>
-            <Soon icon="🗂">Relatórios</Soon>
-          </div>
-          <div className="flex flex-wrap items-center gap-1 lg:mt-auto lg:flex-col lg:items-stretch">
-            <div className="hidden px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wider text-zinc-500 uppercase lg:block">Configurações</div>
-            <Item href="/estrategia/gestores" icon="🧑‍💼">Gestores</Item>
-            <Item href="/estrategia/automacoes" icon="⚙">Automações</Item>
-            <Link
-              href="/painel"
-              className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5"
-              title="O hub antigo continua no ar, só saiu do menu"
-            >
-              <span aria-hidden className="w-4 text-center">↩</span>
-              <span className="flex-1">Hub operacional</span>
-              <span className="rounded border border-zinc-200 px-1.5 text-[10px] dark:border-zinc-800">pausado</span>
-            </Link>
-            <button
-              onClick={toggleTheme}
-              className="mt-1 rounded-lg border border-zinc-200 px-3 py-2 text-sm font-medium hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
-            >
-              {theme === "dark" ? "☀ Modo claro" : "☾ Modo escuro"}
-            </button>
-            <div className="hidden items-center justify-between gap-2 px-1 pt-2 text-xs text-zinc-500 lg:flex">
-              <span className="truncate" title={email ?? ""}>{email}</span>
+            <span className="mx-1 h-4 w-px shrink-0 bg-zinc-200 dark:bg-white/10" />
+            <nav className="flex items-center gap-0.5">
+              <Item href="/estrategia/gestores" small>Gestores</Item>
+              <Item href="/estrategia/automacoes" small>Automações</Item>
+            </nav>
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              <Link
+                href="/painel"
+                title="O hub operacional (antigo) continua no ar"
+                className="rounded-md px-2 py-1 text-xs whitespace-nowrap text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-white/5 dark:hover:text-zinc-200"
+              >
+                Hub operacional ↗
+              </Link>
+              <button
+                onClick={toggleTheme}
+                title={theme === "dark" ? "Modo claro" : "Modo escuro"}
+                aria-label={theme === "dark" ? "Mudar pro modo claro" : "Mudar pro modo escuro"}
+                className="h-8 w-8 rounded-md text-sm text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5"
+              >
+                {theme === "dark" ? "☀" : "☾"}
+              </button>
+              <span className="hidden max-w-[12rem] truncate text-xs text-zinc-500 xl:inline" title={email ?? ""}>
+                {email}
+              </span>
               <SignOutButton />
             </div>
           </div>
-        </aside>
+        </header>
         <main className="min-w-0 flex-1">{children}</main>
-        </div>
       </div>
     </EstrCtx.Provider>
   );

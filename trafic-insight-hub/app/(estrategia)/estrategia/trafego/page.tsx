@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { Acompanhamento } from "@/components/estrategia/acompanhamento";
 import { Alertas, buildGroups, countAlerts, type AlertasServer, type NamingData } from "@/components/estrategia/alertas";
@@ -10,21 +10,12 @@ import { Btn, hhmm } from "@/components/estrategia/ui";
 // Etapa 238: Hub estratégico → Tráfego (Acompanhamento + Alertas).
 export default function TrafegoPage() {
   const { ui } = useEstr();
-  const { linhas, loading, error, at, reload, patchLinha } = useCarteira();
+  const { linhas, loading, error, at, reload } = useCarteira();
   const [tab, setTab] = useState<"acomp" | "alertas">("acomp");
   const [srv, setSrv] = useState<AlertasServer | null>(null);
   const [srvLoading, setSrvLoading] = useState(false);
   const [srvError, setSrvError] = useState<string | null>(null);
   const [naming, setNaming] = useState<NamingData>({ items: [], loading: false, error: null });
-  const [msg, setMsg] = useState<string | null>(null);
-  const msgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const toast = useCallback((m: string) => {
-    setMsg(m);
-    if (msgTimer.current) clearTimeout(msgTimer.current);
-    msgTimer.current = setTimeout(() => setMsg(null), 4000);
-  }, []);
-
   const visible = useMemo(() => (linhas ?? []).filter((l) => matchesResp(ui.resp, l.responsible)), [linhas, ui.resp]);
 
   // Alertas do servidor: depois que a carteira carregou (precisa da lista de contas).
@@ -120,8 +111,6 @@ export default function TrafegoPage() {
         ) : tab === "acomp" ? (
           <Acompanhamento
             linhas={visible}
-            onPatch={patchLinha}
-            toast={toast}
             activities={srv?.activities ?? null}
             activitiesFailed={srv?.activitiesFailed ?? []}
           />
@@ -139,14 +128,6 @@ export default function TrafegoPage() {
         )}
       </div>
 
-      {msg ? (
-        <div
-          role="status"
-          className="fixed bottom-4 left-1/2 z-50 max-w-[90vw] -translate-x-1/2 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900"
-        >
-          {msg}
-        </div>
-      ) : null}
     </div>
   );
 }
