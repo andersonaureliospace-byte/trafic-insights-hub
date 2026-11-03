@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr, type Gestor } from "@/components/estrategia/shell";
 import { loadClientes, type Cliente } from "@/components/estrategia/use-carteira";
 import { Btn, Card, Pill, fmtBRL } from "@/components/estrategia/ui";
+import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 
 // Etapa 239: Configurações → Gestores. Cadastro (nome + WhatsApp) e atribuição de contas em massa.
 // Renomear um gestor troca o nome em todas as contas dele; excluir deixa as contas dele sem responsável.
@@ -435,7 +436,20 @@ export default function GestoresPage() {
                           />
                         </td>
                         <td className="px-2 py-2.5 font-semibold">
-                          {c.name}
+                          {/* Etapa 248: atalho pro Gerenciador de Anúncios (não marca a linha ao clicar) */}
+                          <a
+                            href={adsManagerUrl(c.id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            title="Abrir no Gerenciador de Anúncios"
+                            className="group inline-flex items-center gap-1.5 hover:text-blue-600 hover:underline dark:hover:text-blue-400"
+                          >
+                            {c.name}
+                            <span aria-hidden className="text-xs font-normal text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">
+                              ↗
+                            </span>
+                          </a>
                           {!c.active ? <span className="ml-2 text-xs font-normal text-zinc-500">(pausado)</span> : null}
                         </td>
                         <td className="px-3 py-2.5">

@@ -7,6 +7,7 @@ import { loadClientes, loadOfferFlags, matchesResp, saveOfferFlags, type Cliente
 import { Btn, Card, Pill, fmtBRL } from "@/components/estrategia/ui";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { calendarSP } from "@/lib/estrategia/calc";
+import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 
 // Etapa 238: Hub estratégico → Clientes. Lista + ficha do cliente (responsável, status, verba, CPA ideal, pagamento,
 // cliente desde). Arquivar tira o cliente de todas as telas e das automações, sem apagar nada (dá pra trazer de volta).
@@ -230,7 +231,20 @@ export default function ClientesPage() {
                             on ? "bg-blue-600/8 dark:bg-blue-500/10" : "hover:bg-zinc-50 dark:hover:bg-white/[0.02]"
                           }`}
                         >
-                          <td className="px-4 py-3 font-semibold">{c.name}</td>
+                          <td className="px-4 py-3 font-semibold">
+                            {/* Etapa 248: atalho pro Gerenciador (não troca a ficha ao clicar) */}
+                            <a
+                              href={adsManagerUrl(c.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              title="Abrir no Gerenciador de Anúncios"
+                              className="group inline-flex items-center gap-1.5 hover:text-blue-600 hover:underline dark:hover:text-blue-400"
+                            >
+                              {c.name}
+                              <span aria-hidden className="text-xs font-normal text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">↗</span>
+                            </a>
+                          </td>
                           <td className="px-3 py-3 text-zinc-600 dark:text-zinc-400">{c.responsible ?? "—"}</td>
                           <td className="px-3 py-3">
                             <Pill tone={c.archived ? "off" : st === "ativo" ? "ok" : st === "inauguracao" ? "info" : "warn"}>
@@ -327,7 +341,17 @@ export default function ClientesPage() {
                   </Field>
                   <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
                     <dt className="text-zinc-500">Conta de anúncio</dt>
-                    <dd className="font-mono text-xs break-all text-blue-700 dark:text-blue-300">act_{cur.id}</dd>
+                    <dd className="font-mono text-xs break-all">
+                      <a
+                        href={adsManagerUrl(cur.id)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Abrir no Gerenciador de Anúncios"
+                        className="text-blue-700 hover:underline dark:text-blue-300"
+                      >
+                        act_{cur.id} ↗
+                      </a>
+                    </dd>
                     <dt className="text-zinc-500">Prioridade Asana</dt>
                     <dd className="font-medium">{prioLabel(cur.priority)}</dd>
                     <dt className="text-zinc-500">WhatsApp</dt>
