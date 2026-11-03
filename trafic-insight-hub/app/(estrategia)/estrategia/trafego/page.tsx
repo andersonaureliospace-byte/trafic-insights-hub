@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { Acompanhamento } from "@/components/estrategia/acompanhamento";
 import { Alertas, buildGroups, countAlerts, type AlertasServer, type NamingData } from "@/components/estrategia/alertas";
-import { matchesResp, useCarteira } from "@/components/estrategia/use-carteira";
+import { matchesResp, readCache, useCarteira, writeCache } from "@/components/estrategia/use-carteira";
 import { Btn, hhmm } from "@/components/estrategia/ui";
 
 // Etapa 238: Hub estratégico → Tráfego (Acompanhamento + Alertas).
@@ -31,6 +31,7 @@ export default function TrafegoPage() {
       }).then((r) => r.json());
       if (d.error) throw new Error(d.error);
       setSrv(d as AlertasServer);
+      writeCache("estr_alertas_v1", d);
     } catch (e) {
       setSrvError((e as Error).message);
     } finally {
@@ -43,19 +44,31 @@ export default function TrafegoPage() {
       const d = await fetch("/api/naming/check", { cache: "no-store" }).then((r) => r.json());
       if (d.error) throw new Error(d.error);
       setNaming({ items: d.items ?? [], loading: false, error: null });
+      writeCache("estr_naming_v1", d.items ?? []);
     } catch (e) {
       setNaming({ items: [], loading: false, error: (e as Error).message });
     }
   }, []);
 
+  // Etapa 247: alertas e nomes também ficam travados — ao abrir usa o que foi guardado; só o "Atualizar" busca de novo.
   useEffect(() => {
     if (!ids) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- busca os alertas quando a carteira chega
+    const c = readCache<AlertasServer>("estr_alertas_v1");
+    if (c) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- alertas guardados neste navegador
+      setSrv(c.data);
+      return;
+    }
     void loadAlertas(ids.split(","));
   }, [ids, loadAlertas]);
   useEffect(() => {
     if (!ids) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- nomes: varredura mais lenta, em paralelo
+    const c = readCache<NamingData["items"]>("estr_naming_v1");
+    if (c) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- nomes guardados neste navegador
+      setNaming({ items: c.data, loading: false, error: null });
+      return;
+    }
     void loadNaming();
   }, [ids, loadNaming]);
 
@@ -63,13 +76,21 @@ export default function TrafegoPage() {
 
   function refresh() {
     void reload();
+    if (ids) void loadAlertas(ids.split(","));
+    void loadNaming();
   }
+  // "atualizado às 10:32" — se for de outro dia, mostra a data também (números travados podem ser de ontem).
+  const atLabel = at
+    ? new Date(at).toDateString() === new Date().toDateString()
+      ? `atualizado às ${hhmm(at)}`
+      : `atualizado em ${new Date(at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} às ${hhmm(at)} — clique em Atualizar`
+    : "";
 
   return (
     <div className="flex flex-col">
       <PageHeader
         title="Tráfego"
-        sub={tab === "acomp" ? `Visão das contas da carteira${at ? ` · atualizado às ${hhmm(at)}` : ""}` : "Central de monitoramento e alertas"}
+        sub={tab === "acomp" ? `Visão das contas da carteira${atLabel ? ` · ${atLabel}` : ""}` : `Central de monitoramento e alertas${atLabel ? ` · ${atLabel}` : ""}`}
       >
         <Btn primary onClick={refresh} disabled={loading}>
           {loading ? "Atualizando…" : "Atualizar"}

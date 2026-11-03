@@ -157,12 +157,34 @@ async function dailyFor(ids: string[], days: number): Promise<Record<string, Dai
   return out;
 }
 
+// Etapa 247: números travados — a carteira carregada fica guardada neste navegador e é o que aparece ao abrir, trocar de
+// aba ou dar refresh. Só o botão "Atualizar" busca de novo na Meta.
+const CACHE_KEY = "estr_carteira_v1";
+export function readCache<T>(key: string): { at: number; data: T } | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as { at?: number; data?: T };
+    return typeof p.at === "number" && p.data != null ? { at: p.at, data: p.data } : null;
+  } catch {
+    return null;
+  }
+}
+export function writeCache(key: string, data: unknown, at = Date.now()) {
+  try {
+    localStorage.setItem(key, JSON.stringify({ at, data }));
+  } catch {
+    /* sem espaço/sem armazenamento: segue só na memória */
+  }
+}
+
 export function useCarteira() {
   const [linhas, setLinhas] = useState<Linha[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [at, setAt] = useState<number | null>(null);
   const run = useRef(0);
+  const atRef = useRef<number | null>(null);
 
   const load = useCallback(async () => {
     const my = ++run.current;
@@ -207,11 +229,17 @@ export function useCarteira() {
           flags: flags[c.id] ?? null,
         })),
       );
-      setAt(Date.now());
+      const now = Date.now();
+      setAt(now);
+      atRef.current = now;
       // Investimento diário atual: chega depois (mais lento), sem segurar a tabela.
       void budgetsFor(clientes.map((c) => c.rawId)).then((b) => {
         if (my !== run.current) return;
-        setLinhas((cur) => (cur ?? []).map((l) => ({ ...l, dailyBudget: l.id in b ? b[l.id] : null })));
+        setLinhas((cur) => {
+          const next = (cur ?? []).map((l) => ({ ...l, dailyBudget: l.id in b ? b[l.id] : null }));
+          writeCache(CACHE_KEY, next, now);
+          return next;
+        });
       });
     } catch (e) {
       if (my === run.current) setError((e as Error).message);
@@ -220,8 +248,22 @@ export function useCarteira() {
     }
   }, []);
 
+  // Guarda também a tabela assim que chega (antes do investimento diário).
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- primeira busca ao abrir a tela
+    if (linhas && atRef.current) writeCache(CACHE_KEY, linhas, atRef.current);
+  }, [linhas]);
+
+  useEffect(() => {
+    const c = readCache<Linha[]>(CACHE_KEY);
+    if (c) {
+      // Números travados: mostra o que foi carregado da última vez (só o "Atualizar" busca de novo).
+      atRef.current = c.at;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- lê os números guardados neste navegador
+      setLinhas(c.data);
+      setAt(c.at);
+      return;
+    }
+    // Primeira vez neste navegador: busca.
     void load();
   }, [load]);
 

@@ -62,6 +62,22 @@ export function messagingFromActions(actions: Array<{ action_type?: string; valu
 // Resultado "de lead" de uma linha de campanha. Caso especial (Guaratinguetá): campanha de Engajamento cujo CONJUNTO otimiza pra conversas
 // iniciadas, mas o campo `results` no nível da campanha vem como post_engagement (2.444 em vez das 23 conversas reais no Gerenciador).
 // Se o tipo vier como não-lead, usa as conversas iniciadas de `actions` (se houver); sem conversas, continua não-lead e o chamador exclui.
+// Etapa 246: lead de formulário (Ijuí, campanha de Leads). Em algumas respostas da Meta o `results` da campanha vem sem
+// número pra lead de formulário, mas o lead está em `actions`. Ordem de preferência: um tipo só (não soma, pra não contar
+// o mesmo lead duas vezes — "lead_grouped" já inclui o "leadgen").
+const LEAD_ACTION_TYPES = ["onsite_conversion.lead_grouped", "leadgen_grouped", "leadgen.other", "lead", "onsite_web_lead"];
+
+export function leadsFromActions(actions: Array<{ action_type?: string; value?: string }> | undefined): number {
+  for (const t of LEAD_ACTION_TYPES) {
+    const a = (actions ?? []).find((x) => x.action_type === t);
+    const n = Number(a?.value);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+const isLeadType = (t: string | null) => !!t && /lead/i.test(t);
+
 export function leadResultOf(
   results: Array<{ indicator?: string; values?: Array<{ value?: string }> }> | undefined,
   actions: Array<{ action_type?: string; value?: string }> | undefined,
@@ -71,6 +87,11 @@ export function leadResultOf(
   if (isNonLeadResultType(type)) {
     const m = messagingFromActions(actions);
     if (m > 0) return { value: m, type: MESSAGING_ACTION };
+  }
+  // Campanha de lead (ou sem tipo de resultado) sem número em `results`: usa os leads de `actions`.
+  if ((value == null || value === 0) && (type == null || isLeadType(type))) {
+    const l = leadsFromActions(actions);
+    if (l > 0) return { value: l, type: type ?? "lead" };
   }
   return { value, type };
 }
