@@ -188,6 +188,12 @@ export function Acompanhamento({
     const rank: Record<string, number> = { inauguracao: 0, critica: 1, alta: 2, media: 3, baixa: 4 };
     list.sort((a, b) => {
       if (by === "nome") return a.l.name.localeCompare(b.l.name, "pt-BR");
+      if (by === "responsavel") {
+        // Sem responsável vai pro fim; dentro do mesmo responsável, por nome da conta.
+        const ra = a.l.responsible ?? "\uffff";
+        const rb = b.l.responsible ?? "\uffff";
+        return ra.localeCompare(rb, "pt-BR") || a.l.name.localeCompare(b.l.name, "pt-BR");
+      }
       if (by === "ritmo") return Math.abs(b.r.gap ?? 0) - Math.abs(a.r.gap ?? 0);
       if (by === "otim") {
         const t = (id: string) => {
@@ -235,6 +241,7 @@ export function Acompanhamento({
             <option value="otim">Otimização mais antiga</option>
             <option value="prioridade">Prioridade</option>
             <option value="nome">Nome</option>
+            <option value="responsavel">Responsável</option>
           </select>
           <div className="relative">
             <input
@@ -263,18 +270,20 @@ export function Acompanhamento({
         </div>
         <table className="w-full table-fixed text-sm">
           <colgroup>
-            <col className="w-[19%]" />
+            <col className="w-[16%]" />
             <col className="w-[9%]" />
+            <col className="w-[8%]" />
             <col className="w-[11%]" />
             <col className="w-[12%]" />
-            <col className="w-[10%]" />
-            <col className="w-[25%]" />
+            <col className="w-[9%]" />
+            <col className="w-[22%]" />
             <col className="w-[7%]" />
-            <col className="w-[7%]" />
+            <col className="w-[6%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-zinc-200 text-left text-[11px] tracking-wide text-zinc-500 uppercase dark:border-white/10">
               <th className="py-2.5 pr-2 pl-4 font-semibold">Conta</th>
+              <th className={th}>Responsável</th>
               <th className={th}>Prioridade</th>
               <th className={`${th} text-right`}>Investimento</th>
               <th className={th} title="Investimento diário atual · quanto falta pra ficar em dia com a meta">Ritmo</th>
@@ -318,9 +327,15 @@ export function Acompanhamento({
                     >
                       {l.name}
                     </a>
-                    <div className="truncate text-xs text-zinc-500">{l.responsible ?? "sem responsável"}</div>
                     </div>
                     </div>
+                  </td>
+                  <td className="px-2 py-3">
+                    {l.responsible ? (
+                      <span className="block truncate text-sm font-medium" title={l.responsible}>{l.responsible}</span>
+                    ) : (
+                      <span className="text-xs text-zinc-400">sem responsável</span>
+                    )}
                   </td>
                   <td className={`px-2 py-3 ${blur}`}>
                     {prio ? (
@@ -395,7 +410,7 @@ export function Acompanhamento({
             })}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-sm text-zinc-500">
+                <td colSpan={9} className="px-4 py-10 text-center text-sm text-zinc-500">
                   {q.trim() ? `Nenhuma conta com "${q.trim()}".` : "Nenhuma conta pra esse responsável."}
                 </td>
               </tr>
