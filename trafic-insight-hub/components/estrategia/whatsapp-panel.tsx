@@ -84,9 +84,9 @@ export function WhatsappPanel({ onClose, onUnread }: { onClose: () => void; onUn
   const [q, setQ] = useState("");
   const [config, setConfig] = useState(false);
 
-  const loadChats = useCallback(async () => {
+  const loadChats = useCallback(async (sync = false) => {
     try {
-      const d = (await fetch("/api/wa/chats", { cache: "no-store" }).then((r) => r.json())) as { chats?: Chat[]; error?: string };
+      const d = (await fetch(`/api/wa/chats${sync ? "?sync=1" : ""}`, { cache: "no-store" }).then((r) => r.json())) as { chats?: Chat[]; error?: string };
       if (d.error) throw new Error(d.error);
       setChats(d.chats ?? []);
       setChatsErr(null);
@@ -97,16 +97,17 @@ export function WhatsappPanel({ onClose, onUnread }: { onClose: () => void; onUn
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- carrega a lista ao abrir
-    void loadChats();
+    void loadChats().then(() => loadChats(true));
     fetch("/api/account-bindings", { cache: "no-store" })
       .then((r) => r.json())
       .then((d: { bindings?: Binding[] }) =>
         setNames(Object.fromEntries((d.bindings ?? []).map((b) => [b.ad_account_id, (b.client_name ?? "").trim() || b.ad_account_id]))),
       )
       .catch(() => {});
+    // Com o Hub aberto: busca as mensagens novas de todos os grupos de minuto em minuto.
     const t = setInterval(() => {
-      if (document.visibilityState === "visible") void loadChats();
-    }, 30_000);
+      if (document.visibilityState === "visible") void loadChats(true);
+    }, 60_000);
     return () => clearInterval(t);
   }, [loadChats]);
 
