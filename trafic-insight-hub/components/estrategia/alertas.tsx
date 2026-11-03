@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
-import { RITMO_BAND, cpaOf, cpaSortKey, ritmoOf, calendarSP } from "@/lib/estrategia/calc";
+import { cpaOf, cpaSortKey, calendarSP } from "@/lib/estrategia/calc";
 import type { ActivityItem } from "@/lib/estrategia/activities";
 import { Card, SEV_RANK, SevBadge, ago, fmtBRL, fmtCpa, type Sev } from "./ui";
 import type { Linha } from "./use-carteira";
@@ -22,6 +22,8 @@ export interface AlertasServer {
 }
 
 export interface NamingIssue {
+  id?: string; // id do objeto na Meta (pra renomear)
+  client_name?: string | null;
   ad_account_id: string;
   entity: "campaign" | "adset" | "ad";
   current_name: string;
@@ -50,6 +52,15 @@ interface Group {
   foot: string;
   emptyText?: string;
 }
+
+// Etapa 249: erro que é só de espaço entre os caracteres (ex.: "35 - 64" × "35-64", "CHAPECÓ +" × "CHAPECÓ+") não conta.
+const squash = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, "").toUpperCase();
+export function isSpacingOnly(it: NamingIssue): boolean {
+  return !!it.suggestion && squash(it.suggestion) === squash(it.current_name);
+}
+export const relevantNaming = (items: NamingIssue[]) => items.filter((it) => !isSpacingOnly(it));
+// Dá pra corrigir com um clique: tem sugestão completa (sem "?") e não precisa conferir nada.
+export const canAutoFix = (it: NamingIssue) => !!it.id && !!it.suggestion && !it.suggestion.includes("?") && !it.needsInput;
 
 // "LOCALIZAÇÃO fora do padrão" → "LOCALIZAÇÃO"; "Estrutura fora do padrão (5 partes, esperado 6)" → "Estrutura (partes faltando/sobrando)".
 function shortProblem(p: string): string {
@@ -87,9 +98,53 @@ function explain(p: string): string | null {
   return null;
 }
 
-export function NamingDetails({ name, items, onClose }: { name: string; items: NamingIssue[]; onClose: () => void }) {
+// Etapa 249: renomeia na Meta pelo nome sugerido (mesma rota da aba Padrão de nomes). 3 por vez.
+export async function renameIssues(items: NamingIssue[], onEach?: (it: NamingIssue, ok: boolean, error?: string) => void): Promise<string[]> {
+  const done: string[] = [];
+  const queue = items.filter(canAutoFix);
+  const worker = async () => {
+    for (let it = queue.shift(); it; it = queue.shift()) {
+      try {
+        const d = (await fetch("/api/naming/rename", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: it.id, name: it.suggestion, entity: it.entity, ad_account_id: it.ad_account_id, client_name: it.client_name ?? null }),
+        }).then((r) => r.json())) as { ok?: boolean; error?: string };
+        if (!d.ok) throw new Error(d.error ?? "Erro desconhecido");
+        done.push(it.id as string);
+        onEach?.(it, true);
+      } catch (e) {
+        onEach?.(it, false, (e as Error).message);
+      }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  return done;
+}
+
+export function NamingDetails({
+  name,
+  items,
+  onClose,
+  onFixed,
+}: {
+  name: string;
+  items: NamingIssue[];
+  onClose: () => void;
+  onFixed?: (ids: string[]) => void;
+}) {
   const order: NamingIssue["entity"][] = ["campaign", "adset", "ad"];
   const sorted = [...items].sort((a, b) => order.indexOf(a.entity) - order.indexOf(b.entity));
+  const [status, setStatus] = useState<Record<string, { busy?: boolean; error?: string }>>({});
+  const [busyAll, setBusyAll] = useState(false);
+  const fixable = sorted.filter(canAutoFix);
+  async function fix(list: NamingIssue[]) {
+    setStatus((s) => ({ ...s, ...Object.fromEntries(list.filter(canAutoFix).map((it) => [it.id as string, { busy: true }])) }));
+    const ids = await renameIssues(list, (it, ok, error) =>
+      setStatus((s) => ({ ...s, [it.id as string]: ok ? {} : { error } })),
+    );
+    if (ids.length) onFixed?.(ids);
+  }
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/40" onClick={onClose}>
       <div
@@ -108,7 +163,23 @@ export function NamingDetails({ name, items, onClose }: { name: string; items: N
               </Link>
             </div>
           </div>
-          <button onClick={onClose} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm dark:border-white/10">Fechar</button>
+          <div className="flex shrink-0 gap-2">
+            {fixable.length ? (
+              <button
+                onClick={async () => {
+                  setBusyAll(true);
+                  await fix(fixable);
+                  setBusyAll(false);
+                }}
+                disabled={busyAll}
+                className="h-9 rounded-lg bg-blue-600 px-3 text-sm font-semibold text-white disabled:opacity-50"
+                title="Renomeia na Meta todos os que têm nome sugerido completo"
+              >
+                {busyAll ? "Corrigindo…" : `Corrigir todos (${fixable.length})`}
+              </button>
+            ) : null}
+            <button onClick={onClose} className="h-9 rounded-lg border border-zinc-300 px-3 text-sm dark:border-white/10">Fechar</button>
+          </div>
         </div>
         <ul className="flex-1 divide-y divide-zinc-100 overflow-y-auto dark:divide-white/5">
           {sorted.map((it, i) => (
@@ -122,12 +193,24 @@ export function NamingDetails({ name, items, onClose }: { name: string; items: N
               </div>
               {it.suggestion ? (
                 <div>
-                  <div className="text-[11px] font-semibold tracking-wide text-emerald-600 uppercase dark:text-emerald-400">
-                    Deveria ficar{it.needsInput ? " (confira antes de usar)" : ""}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-semibold tracking-wide text-emerald-600 uppercase dark:text-emerald-400">
+                      Deveria ficar{it.needsInput || it.suggestion.includes("?") ? " (confira antes de usar)" : ""}
+                    </div>
+                    {canAutoFix(it) ? (
+                      <button
+                        onClick={() => void fix([it])}
+                        disabled={!!status[it.id as string]?.busy}
+                        className="h-7 rounded-md border border-emerald-500 px-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                      >
+                        {status[it.id as string]?.busy ? "Corrigindo…" : "Corrigir"}
+                      </button>
+                    ) : null}
                   </div>
                   <code className="block rounded-md bg-emerald-500/8 px-2 py-1.5 font-mono text-xs break-all text-emerald-800 dark:text-emerald-200">
                     {it.suggestion}
                   </code>
+                  {status[it.id as string]?.error ? <p className="mt-1 text-xs text-red-600">Não corrigiu: {status[it.id as string]?.error}</p> : null}
                 </div>
               ) : null}
               <ul className="flex flex-col gap-1">
@@ -148,6 +231,9 @@ export function NamingDetails({ name, items, onClose }: { name: string; items: N
     </div>
   );
 }
+
+// Texto de "erro" que não é erro (status de revisão / conjunto sem anúncio): não aparece em Erros de veiculação.
+const NOT_AN_ERROR = /em an[aá]lise|pending_review|in_process|pr[eé]-?aprovad|preapproved|sem an[uú]ncio ativo|campaign_paused|adset_paused/i;
 
 // Dias sem nenhuma alteração na conta pra virar alerta em "Otimizações recentes".
 const STALE_DAYS = 3;
@@ -201,20 +287,33 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
     foot: "Mesma regra do aviso do meio-dia · contas em inauguração ficam de fora",
   });
 
-  // 3) Investimento baixo
-  const invest: Item[] = [];
+  // 3) Investimento baixo — Etapa 249: pelo investimento diário ATUAL (orçamento do dia de tudo que está ligado) abaixo
+  // da meta diária (meta mensal ÷ dias do mês), do menor pro maior. Não olha o ritmo.
+  const investRows: Array<{ item: Item; budget: number }> = [];
   for (const l of linhas) {
-    if (!l.nums || l.priority === "inauguracao") continue;
-    const r = ritmoOf(l.monthly, l.nums.untilYesterday, cal);
-    if (r.gap == null || r.gap < RITMO_BAND) continue;
-    invest.push({
-      id: l.id,
-      name: l.name,
-      detail: `Faltam ${fmtBRL(r.gap)} pra ficar em dia · investindo ${l.dailyBudget != null ? `${fmtBRL(l.dailyBudget)}/dia` : "—"} (meta ${fmtBRL(r.dailyTarget)}/dia)`,
-      sev: l.monthly && r.gap >= l.monthly * 0.1 ? "alta" : "media",
+    if (l.priority === "inauguracao" || l.dailyBudget == null) continue;
+    const target = l.monthly != null && l.monthly > 0 ? l.monthly / cal.daysInMonth : null;
+    if (target == null || l.dailyBudget >= target) continue;
+    const pct = l.dailyBudget / target;
+    investRows.push({
+      budget: l.dailyBudget,
+      item: {
+        id: l.id,
+        name: l.name,
+        detail: `Investindo ${fmtBRL(l.dailyBudget)}/dia · meta ${fmtBRL(target)}/dia (faltam ${fmtBRL(target - l.dailyBudget)}/dia · ${Math.round(pct * 100)}%)`,
+        sev: pct < 0.5 ? "alta" : "media",
+      },
     });
   }
-  groups.push({ key: "invest", title: "Investimento baixo", icon: "↓", items: invest, foot: `Abaixo da meta até ontem em R$ ${RITMO_BAND} ou mais` });
+  investRows.sort((a, b) => a.budget - b.budget);
+  groups.push({
+    key: "invest",
+    title: "Investimento baixo",
+    icon: "↓",
+    items: investRows.map((x) => x.item),
+    foot: "Investimento diário atual abaixo da meta diária (meta mensal ÷ dias do mês) · do menor pro maior",
+    emptyText: linhas.some((l) => l.dailyBudget === undefined) ? "Buscando o investimento diário…" : undefined,
+  });
 
   // 4) Erros de veiculação, WhatsApp e região
   const errs = new Map<string, { sev: Sev; parts: string[] }>();
@@ -228,17 +327,20 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
   let checkedAt: string | null = null;
   for (const e of srv?.errors ?? []) {
     if (!checkedAt || e.checked_at > checkedAt) checkedAt = e.checked_at;
-    const text = e.reasons.join(" · ");
+    // Etapa 249: só erro de verdade — em análise, pré-aprovado e conjunto sem anúncio ativo ficam de fora.
+    const real = e.reasons.filter((r) => !NOT_AN_ERROR.test(r));
+    if (!real.length || e.entity_type === "adset" && /sem an[uú]ncio ativo/i.test(e.reasons.join(" "))) continue;
+    const text = real.join(" · ");
     if (/whats/i.test(text)) bump(e.ad_account_id, "critico", `WhatsApp: ${e.name ?? ""}`.trim());
-    else if (/reprovad|restri|problema/i.test(text)) bump(e.ad_account_id, "alta", `${e.reasons[0]}${e.name ? ` (${e.name})` : ""}`);
-    else if (e.entity_type === "adset") bump(e.ad_account_id, "media", `Conjunto sem anúncio ativo${e.name ? ` (${e.name})` : ""}`);
-    else bump(e.ad_account_id, "baixa", `${e.reasons[0]}${e.name ? ` (${e.name})` : ""}`);
+    else if (/reprovad|rejeitad|restri|problema|cobran|pagamento|disapprov|with_issues/i.test(text)) bump(e.ad_account_id, "alta", `${real[0]}${e.name ? ` (${e.name})` : ""}`);
+    else bump(e.ad_account_id, "media", `${real[0]}${e.name ? ` (${e.name})` : ""}`);
   }
   for (const loc of srv?.location ?? []) {
     if (!checkedAt || loc.checked_at > checkedAt) checkedAt = loc.checked_at;
     const text = loc.reasons.join(" · ");
     if (/expans/i.test(text) && !/brasil/i.test(text)) {
-      bump(loc.ad_account_id, "baixa", `Expansão de público${loc.expansionFixed ? " (já desligada)" : ""}${loc.name ? ` · ${loc.name}` : ""}`);
+      if (loc.expansionFixed) continue; // já foi desligada sozinha: não é erro pendente
+      bump(loc.ad_account_id, "baixa", `Expansão de público${loc.name ? ` · ${loc.name}` : ""}`);
     } else {
       bump(loc.ad_account_id, "alta", `Região: ${loc.reasons[0] ?? "segmentação ampla"}${loc.paused ? " (pausado)" : ""}`);
     }
@@ -258,7 +360,7 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
 
   // 5) Nomenclatura
   const nm = new Map<string, NamingIssue[]>();
-  for (const it of naming.items) {
+  for (const it of relevantNaming(naming.items)) {
     const id = it.ad_account_id.replace(/^act_/, "");
     if (!byId.has(id)) continue;
     nm.set(id, [...(nm.get(id) ?? []), it]);
@@ -328,9 +430,24 @@ export function countAlerts(groups: Group[]): number {
   return groups.reduce((n, g) => n + g.items.filter((i) => i.sev !== "info").length, 0);
 }
 
-export function Alertas({ linhas, srv, naming, loading }: { linhas: Linha[]; srv: AlertasServer | null; naming: NamingData; loading: boolean }) {
+export function Alertas({
+  linhas,
+  srv,
+  naming,
+  loading,
+  onNamingFixed,
+}: {
+  linhas: Linha[];
+  srv: AlertasServer | null;
+  naming: NamingData;
+  loading: boolean;
+  onNamingFixed?: (ids: string[]) => void;
+}) {
   const groups = buildGroups(linhas, srv, naming);
   const [namingOpen, setNamingOpen] = useState<string | null>(null);
+  const [fixingAll, setFixingAll] = useState<string | null>(null);
+  const visibleIds = new Set(linhas.map((l) => l.id));
+  const allFixable = relevantNaming(naming.items).filter((it) => canAutoFix(it) && visibleIds.has(it.ad_account_id.replace(/^act_/, "")));
 
   // Contas que precisam de atenção: soma dos alertas por conta (crítico vale mais).
   const score = new Map<string, { n: number; pts: number; top: Sev; titles: string[] }>();
@@ -369,6 +486,22 @@ export function Alertas({ linhas, srv, naming, loading }: { linhas: Linha[]; srv
                   <span aria-hidden>{g.icon}</span>
                   {g.title}
                 </h3>
+                {g.key === "nomes" && allFixable.length ? (
+                  <button
+                    onClick={async () => {
+                      setFixingAll("…");
+                      let n = 0;
+                      const ids = await renameIssues(allFixable, () => setFixingAll(`${++n}/${allFixable.length}`));
+                      setFixingAll(null);
+                      if (ids.length) onNamingFixed?.(ids);
+                    }}
+                    disabled={!!fixingAll}
+                    title="Renomeia na Meta todos os nomes com sugestão completa (de todas as contas da lista)"
+                    className="ml-auto rounded-md border border-blue-500 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-300 dark:hover:bg-blue-950/40"
+                  >
+                    {fixingAll ? `Corrigindo ${fixingAll}` : `Corrigir todos (${allFixable.length})`}
+                  </button>
+                ) : null}
                 <span
                   className={`min-w-6 rounded-md px-1.5 py-0.5 text-center text-xs font-bold tabular-nums ${
                     n > 0 ? "bg-red-500/15 text-red-700 dark:text-red-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
@@ -457,8 +590,9 @@ export function Alertas({ linhas, srv, naming, loading }: { linhas: Linha[]; srv
       {namingOpen ? (
         <NamingDetails
           name={byId.get(namingOpen)?.name ?? namingOpen}
-          items={naming.items.filter((x) => x.ad_account_id.replace(/^act_/, "") === namingOpen)}
+          items={relevantNaming(naming.items).filter((x) => x.ad_account_id.replace(/^act_/, "") === namingOpen)}
           onClose={() => setNamingOpen(null)}
+          onFixed={onNamingFixed}
         />
       ) : null}
     </div>

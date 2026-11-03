@@ -145,7 +145,20 @@ export default function TrafegoPage() {
                 {srvLoading ? "Buscando…" : "Atualizar alertas"}
               </Btn>
             </div>
-            <Alertas linhas={visible} srv={srv} naming={naming} loading={srvLoading} />
+            <Alertas
+              linhas={visible}
+              srv={srv}
+              naming={naming}
+              loading={srvLoading}
+              onNamingFixed={(fixed) =>
+                setNaming((n) => {
+                  const done = new Set(fixed);
+                  const items = n.items.filter((it) => !(it.id && done.has(it.id)));
+                  writeCache("estr_naming_v1", items);
+                  return { ...n, items };
+                })
+              }
+            />
           </>
         )}
       </div>
