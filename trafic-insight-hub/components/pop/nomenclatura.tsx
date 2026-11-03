@@ -386,7 +386,7 @@ function Builder({ units, responsaveis }: { units: string[]; responsaveis: Respo
               </div>
             </div>
             <div className="flex flex-col gap-1">
-              {label("Data de criação", "b-data")}
+              {label("Início da veiculação", "b-data")}
               <input id="b-data" value={data} onChange={(e) => setData(e.target.value)} placeholder="DD/MM" className={inputCls} />
             </div>
             <div className="flex flex-col gap-1">
@@ -478,7 +478,7 @@ export function PopNomenclatura() {
             </li>
             <li>
               <b>Objetivo:</b> o objetivo escolhido na criação da campanha na Meta: <code>{OBJECTIVES.join(", ")}</code>. Não é o canal (nada de
-              WHATSAPP).
+              WHATSAPP). Campanha de formulário tem objetivo de cadastros: escreva <code>LEADS</code> (não FORMULARIO).
             </li>
             <li>
               <b>Unidade:</b> o nome da unidade, igual à lista do “Monte o nome”. Campanha não leva data.
@@ -557,7 +557,7 @@ export function PopNomenclatura() {
                     ["Plataforma", <><code>INSTA</code> ou <code>FACE</code> só se rodar em uma só. As duas: não escreve.</>],
                     ["Interesses", <><code>INTERESSES</code> só se o conjunto tiver interesses.</>],
                     ["Responsável", <>A identificação do gestor responsável pela conta.</>],
-                    ["Data", <>Dia/mês em que o conjunto foi criado: <code>01/11</code>.</>],
+                    ["Data", <>Dia/mês em que o conjunto <b>começou a veicular</b>: <code>01/11</code>. Conjunto programado: a data de início programada.</>],
                   ] as Array<[string, ReactNode]>
                 ).map(([k, v]) => (
                   <tr key={k}>
@@ -607,6 +607,7 @@ export function PopNomenclatura() {
         <div className="grid gap-3">
           {[
             ["OFERTAS| WHATSAPP | IVS TIJUCA", "PROMO | ENGAJAMENTO | IVS TIJUCAS", "Campanha: o tipo é PROMO, e o objetivo é o da campanha, não o canal."],
+            ["GERAL | FORMULARIO | IVS IJUÍ", "GERAL | LEADS | IVS IJUÍ", "Campanha de formulário: o objetivo é LEADS."],
             ["VAGA RECEPCIONISTA IVS ITU", "[VAGA] RECEPCIONISTA | IVS ITU", "Campanha de vaga começa com [VAGA]."],
             ["EXAME | R$ 15,00 | ITU | 25-65+ | AND | 01/11", "EXAME R$ 15,00 | ITU | 25-65+ | AND | 01/11", "No exame, tipo e valor ficam juntos."],
             ["PROMO | ARMAÇÃO 1 REAL | ITU | 25-54 | AND | 01/11", "PROMO | ARMAÇÃO R$ 1,00 | ITU | 25-54 | AND | 01/11", "Valor sempre em R$."],

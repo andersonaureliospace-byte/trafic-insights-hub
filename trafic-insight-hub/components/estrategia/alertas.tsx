@@ -67,7 +67,7 @@ function explain(p: string): string | null {
   if (/^TIPO "/.test(p)) return "Escreva o tipo exatamente como no padrão.";
   if (/^TIPO deve ser GERAL/.test(p)) return "Boleto é oferta do GERAL: GERAL | BOLETO | …";
   if (/^TIPO fora/.test(p)) return "Conjunto começa com GERAL, EXAME (com o valor junto: EXAME R$ 15,00) ou PROMO.";
-  if (/^OBJETIVO/.test(p)) return "É o objetivo escolhido na campanha (ENGAJAMENTO, LEADS, VENDAS…), não o canal.";
+  if (/^OBJETIVO/.test(p)) return "É o objetivo escolhido na campanha (ENGAJAMENTO, LEADS, VENDAS…), não o canal. Formulário = LEADS.";
   if (/^OFERTA fora/.test(p)) return "GERAL só leva BOLETO; PROMO leva a oferta com valor em R$ 15,00.";
   if (/precisa da oferta|precisa do valor/.test(p)) return "Escreva a oferta / o valor.";
   if (/^LOCALIZAÇÃO/.test(p) || /localização/.test(p)) return 'Com raio: só o km (8KM). Uma cidade: o nome. Várias: a primeira + "+" colado (AMPARO+).';
@@ -76,7 +76,7 @@ function explain(p: string): string | null {
   if (/^PLATAFORMA/.test(p)) return "Só escreva INSTA ou FACE quando rodar em uma plataforma só.";
   if (/^DIRECIONAMENTO/.test(p)) return "INTERESSES só quando o conjunto tiver interesses.";
   if (/^RESPONSÁVEL/.test(p)) return "Identificação do gestor responsável pela conta, antes da data.";
-  if (/^DATA/.test(p)) return "Data de criação do conjunto, dia/mês: 01/11.";
+  if (/^DATA/.test(p)) return "Dia/mês em que o conjunto começou a veicular: 01/11.";
   if (/^VDO PROPRIO/.test(p)) return "VDO PROPRIO só quando o vídeo é do cliente, depois da oferta.";
   if (/^Estrutura/.test(p)) return "Faltam ou sobram partes. Compare com o nome sugerido.";
   if (/Falta a UNIDADE|Faltam partes|Mais partes/.test(p)) return "Campanha: TIPO | OBJETIVO | UNIDADE.";

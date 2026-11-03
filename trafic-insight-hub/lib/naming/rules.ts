@@ -9,7 +9,7 @@
 //   - VDO PROPRIO: só quando o vídeo é do cliente (o da franquia não leva nada). Vai depois da oferta.
 //   - LOCALIZAÇÃO: com raio, só o km (8KM); uma cidade, o nome; várias, a primeira com "+" colado (AMPARO+).
 //   - IDADE: min-max ("18-65+" quando o máximo é 65 ou mais). GÊNERO/PLATAFORMA: só quando é um só. INTERESSES: só se tiver.
-//   - RESPONSÁVEL: identificação do gestor da conta (cadastro de Gestores). DATA: dia/mês de criação (Brasília).
+//   - RESPONSÁVEL: identificação do gestor da conta (cadastro de Gestores). DATA: dia/mês do início da veiculação do conjunto (Brasília).
 // Criativo: só o nome do arquivo. Exceção EXAME: EXAME R$ 15,00 | DD/MM (primeiro uso) | V01.
 // "Cópia" não pode aparecer em nenhum nome.
 
@@ -347,7 +347,7 @@ function isOfferPart(raw: string, locNorm: string | null, places: Set<string>, r
 
 export interface AdsetFacts {
   name: string;
-  createdTime: string | null;
+  createdTime: string | null; // Etapa 245: início da veiculação do conjunto (start_time); sem ele, a criação
   targeting: TargetingLike | null | undefined;
   // Etapa 241: identificação do responsável da conta (cadastro de Gestores). null = não cadastrada (aceita a que estiver no nome).
   manager?: string | null;
