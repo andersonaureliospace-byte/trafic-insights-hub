@@ -35,9 +35,17 @@ export async function POST(request: Request) {
       activitiesForAccounts(token, ids),
     ]);
 
+    // Etapa 249: saldo de TODAS as contas com limite configurado (pré-paga/híbrida); quem está abaixo vem com low = true.
     const balance = bal.statuses
-      .filter((s) => s.low && wanted.has(norm(s.ad_account_id)))
-      .map((s) => ({ ad_account_id: norm(s.ad_account_id), balance: s.balance, threshold: s.threshold, currency: s.currency }));
+      .filter((s) => wanted.has(norm(s.ad_account_id)))
+      .map((s) => ({
+        ad_account_id: norm(s.ad_account_id),
+        balance: s.balance,
+        threshold: s.threshold,
+        currency: s.currency,
+        low: s.low,
+        handled: s.handled,
+      }));
     const payment = pay.statuses
       .filter((s) => s.hasError && wanted.has(norm(s.ad_account_id)))
       .map((s) => ({ ad_account_id: norm(s.ad_account_id), reason: s.reason }));

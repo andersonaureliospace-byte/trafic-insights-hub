@@ -21,15 +21,18 @@ export function Pill({ tone, children, title }: { tone: Tone; children: ReactNod
   );
 }
 
-export type Sev = "critico" | "alta" | "media" | "baixa" | "info";
-export const SEV_LABEL: Record<Sev, string> = { critico: "Crítico", alta: "Alta", media: "Média", baixa: "Baixa", info: "Info" };
-export const SEV_RANK: Record<Sev, number> = { critico: 4, alta: 3, media: 2, baixa: 1, info: 0 };
+export type Sev = "critico" | "alta" | "media" | "baixa" | "info" | "ok";
+export const SEV_LABEL: Record<Sev, string> = { critico: "Crítico", alta: "Alta", media: "Média", baixa: "Baixa", info: "Info", ok: "OK" };
+export const SEV_RANK: Record<Sev, number> = { critico: 4, alta: 3, media: 2, baixa: 1, info: 0, ok: -1 };
+// "info" e "ok" aparecem na lista, mas não contam como alerta.
+export const isAlertSev = (s: Sev) => s !== "info" && s !== "ok";
 const SEV_CLASS: Record<Sev, string> = {
   critico: "bg-red-600 text-white",
   alta: "bg-orange-500 text-white",
   media: "bg-amber-400 text-zinc-900",
   baixa: "bg-zinc-400 text-zinc-900 dark:bg-zinc-600 dark:text-zinc-100",
   info: "bg-blue-600/15 text-blue-700 dark:text-blue-300",
+  ok: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
 };
 export function SevBadge({ sev }: { sev: Sev }) {
   return <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wide uppercase ${SEV_CLASS[sev]}`}>{SEV_LABEL[sev]}</span>;

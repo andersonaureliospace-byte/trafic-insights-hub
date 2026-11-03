@@ -2,7 +2,7 @@
 // quem mudou o quê e quando (orçamento, liga/desliga, criativo novo, público...). Os eventos de cobrança/saldo ficam de fora.
 // Guardado 5 min na memória do servidor (a tela pede junto pra todas as contas).
 
-import { metaGet, spDate } from "@/lib/meta/client";
+import { metaGetAll } from "@/lib/meta/client";
 import { memoMeta, tokenTag } from "@/lib/meta/memo";
 
 export interface ActivityItem {
@@ -37,34 +37,46 @@ const SKIP = /billing|funding|payment|spend_limit|account_spending_limit|charge|
 const CONCURRENCY = 4;
 export const ACTIVITY_DAYS = 7;
 
-function addDaysYmd(ymd: string, n: number): string {
-  const [y, m, d] = ymd.split("-").map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+
+// Etapa 249: a Meta devolve o histórico do MAIS ANTIGO pro mais novo, em páginas — ler só a 1ª página de 7 dias
+// parava no começo do período (cheio de cobrança) e nunca chegava em hoje. Agora: primeiro as últimas 24h (todas as
+// páginas); se não tiver otimização relevante nelas, amplia pra 7 dias (todas as páginas, até um teto).
+async function fetchWindow(token: string, act: string, hours: number): Promise<ActivityItem[]> {
+  const until = Math.floor(Date.now() / 1000);
+  const since = until - hours * 3600;
+  const rows = await metaGetAll<ActivityRow>(
+    token,
+    `/${act}/activities`,
+    {
+      fields: "event_type,translated_event_type,event_time,actor_name,object_name",
+      since: String(since),
+      until: String(until),
+      limit: "500",
+    },
+    hours <= 24 ? 4 : 12,
+  );
+  return rows
+    .filter((r) => r.event_type && r.event_time && !SKIP.test(r.event_type))
+    .map((r) => ({
+      time: new Date(r.event_time as string).toISOString(),
+      actor: r.actor_name ?? null,
+      what: r.translated_event_type || (r.event_type as string),
+      object: r.object_name ?? null,
+      type: r.event_type as string,
+      relevant: isRelevantActivity(r.event_type as string),
+    }))
+    .sort((a, b) => b.time.localeCompare(a.time));
 }
 
 async function accountActivities(token: string, accountId: string): Promise<ActivityItem[]> {
   const act = accountId.startsWith("act_") ? accountId : `act_${accountId}`;
   return memoMeta(
-    `estr-activities2:${act}:${tokenTag(token)}`,
-    5 * 60_000,
+    `estr-activities3:${act}:${tokenTag(token)}`,
+    2 * 60_000,
     async () => {
-      const since = addDaysYmd(spDate(new Date()), -ACTIVITY_DAYS);
-      const page = await metaGet<{ data?: ActivityRow[] }>(token, `/${act}/activities`, {
-        fields: "event_type,translated_event_type,event_time,actor_name,object_name",
-        since,
-        limit: "300",
-      });
-      return (page.data ?? [])
-        .filter((r) => r.event_type && r.event_time && !SKIP.test(r.event_type))
-        .map((r) => ({
-          time: new Date(r.event_time as string).toISOString(),
-          actor: r.actor_name ?? null,
-          what: r.translated_event_type || (r.event_type as string),
-          object: r.object_name ?? null,
-          type: r.event_type as string,
-          relevant: isRelevantActivity(r.event_type as string),
-        }))
-        .sort((a, b) => b.time.localeCompare(a.time));
+      const day = await fetchWindow(token, act, 24);
+      if (day.some((a) => a.relevant)) return day;
+      return fetchWindow(token, act, ACTIVITY_DAYS * 24);
     },
     { staleOnError: true },
   );

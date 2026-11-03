@@ -5,13 +5,13 @@ import { useState } from "react";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { cpaOf, cpaSortKey, calendarSP } from "@/lib/estrategia/calc";
 import type { ActivityItem } from "@/lib/estrategia/activities";
-import { Card, SEV_RANK, SevBadge, ago, fmtBRL, fmtCpa, type Sev } from "./ui";
+import { Card, SEV_RANK, SevBadge, ago, fmtBRL, fmtCpa, isAlertSev, type Sev } from "./ui";
 import type { Linha } from "./use-carteira";
 
 // Etapa 238: Tráfego → Alertas. Cada quadro lista as contas com aquele problema; o último quadro junta tudo por conta.
 
 export interface AlertasServer {
-  balance: Array<{ ad_account_id: string; balance: number; threshold: number }>;
+  balance: Array<{ ad_account_id: string; balance: number; threshold: number; low?: boolean; handled?: boolean }>;
   payment: Array<{ ad_account_id: string; reason: string | null }>;
   errors: Array<{ ad_account_id: string; entity_type: string; name: string | null; reasons: string[]; checked_at: string }>;
   location: Array<{ ad_account_id: string; name: string | null; reasons: string[]; expansionFixed: boolean; paused: boolean; checked_at: string }>;
@@ -43,6 +43,7 @@ interface Item {
   detail: string;
   sev: Sev;
   naming?: boolean; // abre a lista do que está errado nos nomes dessa conta
+  highlight?: boolean; // Etapa 249: linha em destaque (ex.: saldo abaixo do limite)
 }
 interface Group {
   key: string;
@@ -246,22 +247,42 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
   const cal = calendarSP();
   const groups: Group[] = [];
 
-  // 1) Saldo e pagamento
+  // 1) Saldo de todas as contas (pré-paga/híbrida com limite). Erro de pagamento e saldo abaixo do limite ficam no topo,
+  //    em destaque; as outras aparecem embaixo, da mais perto do limite pra mais folgada.
   const saldo: Item[] = [];
+  const payIds = new Set<string>();
   for (const p of srv?.payment ?? []) {
     if (!byId.has(p.ad_account_id)) continue;
-    saldo.push({ id: p.ad_account_id, name: nameOf(p.ad_account_id), detail: p.reason ?? "Erro no pagamento", sev: "critico" });
+    payIds.add(p.ad_account_id);
+    saldo.push({ id: p.ad_account_id, name: nameOf(p.ad_account_id), detail: p.reason ?? "Erro no pagamento", sev: "critico", highlight: true });
   }
-  for (const b of srv?.balance ?? []) {
-    if (!byId.has(b.ad_account_id)) continue;
+  const bals = (srv?.balance ?? [])
+    .filter((b) => byId.has(b.ad_account_id))
+    .map((b) => ({ ...b, low: b.low ?? true, ratio: b.threshold > 0 ? b.balance / b.threshold : b.balance }));
+  for (const b of bals.filter((x) => x.low).sort((x, y) => x.ratio - y.ratio)) {
     saldo.push({
       id: b.ad_account_id,
       name: nameOf(b.ad_account_id),
-      detail: `Saldo ${fmtBRL(b.balance)} (avisa abaixo de ${fmtBRL(b.threshold)})`,
+      detail: `Saldo ${fmtBRL(b.balance)} · abaixo do limite de ${fmtBRL(b.threshold)}`,
       sev: b.balance <= 0 ? "critico" : "alta",
+      highlight: true,
     });
   }
-  groups.push({ key: "saldo", title: "Saldo baixo / erro de pagamento", icon: "💳", items: saldo, foot: "Mesma checagem do aviso automático de saldo" });
+  for (const b of bals.filter((x) => !x.low).sort((x, y) => x.ratio - y.ratio)) {
+    saldo.push({
+      id: b.ad_account_id,
+      name: nameOf(b.ad_account_id),
+      detail: b.handled ? `Saldo ${fmtBRL(b.balance)} · Pix/boleto enviado agora há pouco` : `Saldo ${fmtBRL(b.balance)} · limite ${fmtBRL(b.threshold)}`,
+      sev: b.handled ? "info" : "ok",
+    });
+  }
+  groups.push({
+    key: "saldo",
+    title: "Saldo das contas",
+    icon: "💳",
+    items: saldo,
+    foot: "Contas pré-pagas e híbridas com limite configurado (cartão e boleto não têm saldo) · em destaque: abaixo do limite ou erro de pagamento",
+  });
 
   // 2) CPA de hoje
   const cpaHoje: Item[] = [];
@@ -427,7 +448,7 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
 }
 
 export function countAlerts(groups: Group[]): number {
-  return groups.reduce((n, g) => n + g.items.filter((i) => i.sev !== "info").length, 0);
+  return groups.reduce((n, g) => n + g.items.filter((i) => isAlertSev(i.sev)).length, 0);
 }
 
 export function Alertas({
@@ -453,7 +474,7 @@ export function Alertas({
   const score = new Map<string, { n: number; pts: number; top: Sev; titles: string[] }>();
   for (const g of groups) {
     for (const it of g.items) {
-      if (it.sev === "info") continue;
+      if (!isAlertSev(it.sev)) continue;
       const cur = score.get(it.id) ?? { n: 0, pts: 0, top: "baixa" as Sev, titles: [] };
       cur.n++;
       cur.pts += SEV_RANK[it.sev] ** 2;
@@ -478,7 +499,7 @@ export function Alertas({
       ) : null}
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {groups.map((g) => {
-          const n = g.items.filter((i) => i.sev !== "info").length;
+          const n = g.items.filter((i) => isAlertSev(i.sev)).length;
           return (
             <Card key={g.key} className="flex min-w-0 flex-col overflow-hidden">
               <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-white/10">
@@ -515,7 +536,10 @@ export function Alertas({
                   <li className="px-4 py-3 text-xs text-zinc-500">{loading && !srv ? "Carregando…" : (g.emptyText ?? "Nada pra ver agora")}</li>
                 ) : (
                   g.items.map((it, i) => (
-                    <li key={`${it.id}-${i}`} className="flex items-start justify-between gap-3 px-4 py-2.5">
+                    <li
+                      key={`${it.id}-${i}`}
+                      className={`flex items-start justify-between gap-3 px-4 py-2.5 ${it.highlight ? "bg-red-500/10 shadow-[inset_3px_0_0_0] shadow-red-500" : ""}`}
+                    >
                       <div className="min-w-0">
                         <a
                           href={adsManagerUrl(it.id)}
