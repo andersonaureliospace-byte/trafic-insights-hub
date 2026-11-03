@@ -77,6 +77,7 @@ function Ofertas({ s, flags }: { s: OffersSummary | null; flags: OfferFlags | nu
 }
 
 const OPT_STALE_DAYS = 3;
+const PIN_KEY = "estr_pin";
 
 function Otimizacao({ acts, failed, now }: { acts: ActivityItem[] | undefined; failed: boolean; now: number }) {
   if (failed) return <span className="text-xs text-zinc-400">—</span>;
@@ -144,12 +145,41 @@ export function Acompanhamento({
   const { ui, setUi } = useEstr();
   const { options } = usePriorityOptions();
   const [desc, setDesc] = useState<{ l: Linha; anchor: DOMRect } | null>(null);
+  // Etapa 248: pesquisa (nome, responsável, grupo do WhatsApp, ID) e conta fixada (as outras ficam com os números embaçados).
+  const [q, setQ] = useState("");
+  const [pinned, setPinned] = useState<string | null>(null);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- conta fixada guardada neste navegador
+      setPinned(localStorage.getItem(PIN_KEY));
+    } catch {
+      /* sem armazenamento */
+    }
+  }, []);
+  function togglePin(id: string) {
+    const next = pinned === id ? null : id;
+    setPinned(next);
+    try {
+      if (next) localStorage.setItem(PIN_KEY, next);
+      else localStorage.removeItem(PIN_KEY);
+    } catch {
+      /* só nesta sessão */
+    }
+  }
   const [now] = useState(() => Date.now());
   const period = (CPA_PERIODS.some((p) => p.id === ui.period) ? ui.period : "u3") as CpaPeriod;
   const cal = useMemo(() => calendarSP(), []);
 
   const rows = useMemo(() => {
-    const list = linhas.map((l) => {
+    const flat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const terms = flat(q).split(/\s+/).filter(Boolean);
+    const found = terms.length
+      ? linhas.filter((l) => {
+          const hay = flat(`${l.name} ${l.responsible ?? ""} ${l.waGroup ?? ""} ${l.id}`);
+          return terms.every((t) => hay.includes(t));
+        })
+      : linhas;
+    const list = found.map((l) => {
       const r = ritmoOf(l.monthly, l.nums?.untilYesterday ?? 0, cal);
       const sum = l.nums?.periods[period] ?? null;
       return { l, r, spend: sum?.spend ?? null, cpa: sum ? cpaOf(sum) : null };
@@ -169,8 +199,14 @@ export function Acompanhamento({
       if (by === "prioridade") return (rank[a.l.priority ?? ""] ?? 5) - (rank[b.l.priority ?? ""] ?? 5);
       return cpaSortKey(b.cpa, b.l.cpaTarget) - cpaSortKey(a.cpa, a.l.cpaTarget);
     });
+    // Conta fixada sempre no topo.
+    if (pinned) {
+      const i = list.findIndex((x) => x.l.id === pinned);
+      if (i > 0) list.unshift(...list.splice(i, 1));
+    }
     return list;
-  }, [linhas, period, ui.sort, cal, activities]);
+  }, [linhas, period, ui.sort, cal, activities, q, pinned]);
+  const pinnedVisible = !!pinned && linhas.some((l) => l.id === pinned);
 
   const clip = closedDaysIn(period, cal);
   const selectCls = "h-8 rounded-lg border border-zinc-300 bg-white px-2 text-sm dark:border-white/10 dark:bg-[#141924]";
@@ -200,6 +236,29 @@ export function Acompanhamento({
             <option value="prioridade">Prioridade</option>
             <option value="nome">Nome</option>
           </select>
+          <div className="relative">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Pesquisar conta, responsável ou grupo…"
+              aria-label="Pesquisar conta, responsável ou grupo"
+              className={`${selectCls} w-64 pr-7`}
+            />
+            {q ? (
+              <button onClick={() => setQ("")} aria-label="Limpar pesquisa" className="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-zinc-400">
+                ✕
+              </button>
+            ) : null}
+          </div>
+          {pinnedVisible ? (
+            <button
+              onClick={() => togglePin(pinned as string)}
+              className="rounded-lg bg-blue-600/10 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300"
+              title="Tirar a conta fixada (volta a mostrar os números de todas)"
+            >
+              📌 {linhas.find((l) => l.id === pinned)?.name} ✕
+            </button>
+          ) : null}
           <span className="ml-auto text-xs text-zinc-500">{rows.length} contas</span>
         </div>
         <table className="w-full table-fixed text-sm">
@@ -230,9 +289,26 @@ export function Acompanhamento({
           <tbody>
             {rows.map(({ l, r, spend, cpa }) => {
               const prio = options.find((o) => o.id === l.priority);
+              // Com uma conta fixada, as outras ficam com os números embaçados (o nome continua legível).
+              const blur = pinnedVisible && l.id !== pinned ? "pointer-events-none select-none blur-[4px] opacity-50" : "";
               return (
-                <tr key={l.id} className="border-b border-zinc-100 align-top last:border-0 hover:bg-zinc-50 dark:border-white/5 dark:hover:bg-white/[0.02]">
+                <tr
+                  key={l.id}
+                  className={`border-b border-zinc-100 align-top last:border-0 hover:bg-zinc-50 dark:border-white/5 dark:hover:bg-white/[0.02] ${
+                    pinnedVisible && l.id === pinned ? "bg-blue-600/[0.06]" : ""
+                  }`}
+                >
                   <td className="py-3 pr-2 pl-4">
+                    <div className="flex items-start gap-1">
+                    <button
+                      onClick={() => togglePin(l.id)}
+                      title={pinned === l.id ? "Tirar o fixar" : "Fixar esta conta (as outras ficam embaçadas)"}
+                      aria-label={pinned === l.id ? `Tirar o fixar de ${l.name}` : `Fixar ${l.name}`}
+                      className={`mt-0.5 shrink-0 text-xs transition-opacity ${pinned === l.id ? "opacity-100" : "opacity-30 hover:opacity-100"}`}
+                    >
+                      📌
+                    </button>
+                    <div className="min-w-0 flex-1">
                     <a
                       href={adsManagerUrl(l.id)}
                       target="_blank"
@@ -243,8 +319,10 @@ export function Acompanhamento({
                       {l.name}
                     </a>
                     <div className="truncate text-xs text-zinc-500">{l.responsible ?? "sem responsável"}</div>
+                    </div>
+                    </div>
                   </td>
-                  <td className="px-2 py-3">
+                  <td className={`px-2 py-3 ${blur}`}>
                     {prio ? (
                       <span
                         className="inline-flex max-w-full items-center gap-1.5 truncate rounded-md px-1.5 py-0.5 text-xs font-semibold"
@@ -257,11 +335,11 @@ export function Acompanhamento({
                       <span className="text-xs text-zinc-400">—</span>
                     )}
                   </td>
-                  <td className="px-2 py-3 text-right tabular-nums">
+                  <td className={`px-2 py-3 text-right tabular-nums ${blur}`}>
                     {spend != null ? fmtBRL(spend) : "—"}
                     <div className="text-xs text-zinc-500" title="Meta mensal">{fmtMeta(l.monthly)}</div>
                   </td>
-                  <td className="px-2 py-3 tabular-nums">
+                  <td className={`px-2 py-3 tabular-nums ${blur}`}>
                     <div className="flex flex-wrap items-center gap-1">
                       <span className="font-semibold" title="Investimento diário atual (orçamento do dia de tudo que está ligado)">
                         {l.dailyBudget === undefined ? "…" : l.dailyBudget == null ? "—" : fmtBRL(l.dailyBudget)}
@@ -280,14 +358,14 @@ export function Acompanhamento({
                       <div className="text-xs text-zinc-500" title="Meta diária">{fmtBRL(r.dailyTarget)}</div>
                     ) : null}
                   </td>
-                  <td className="px-2 py-3 text-right">
+                  <td className={`px-2 py-3 text-right ${blur}`}>
                     {l.nums ? <Pill tone={cpa === Infinity ? "bad" : cpaTone(cpa, l.cpaTarget)}>{fmtCpa(cpa)}</Pill> : <span className="text-xs text-zinc-400">—</span>}
                     <div className="mt-0.5 text-xs text-zinc-500 tabular-nums" title="CPA ideal">{l.cpaTarget != null ? fmtBRL(l.cpaTarget) : ""}</div>
                   </td>
-                  <td className="px-2 py-3">
+                  <td className={`px-2 py-3 ${blur}`}>
                     <Ofertas s={l.offers} flags={l.flags} />
                   </td>
-                  <td className="px-2 py-3">
+                  <td className={`px-2 py-3 ${blur}`}>
                     <Otimizacao
                       acts={activities ? (activities[l.id] ?? (activitiesFailed.includes(l.id) ? undefined : [])) : undefined}
                       failed={activitiesFailed.includes(l.id)}
@@ -318,7 +396,7 @@ export function Acompanhamento({
             {rows.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-4 py-10 text-center text-sm text-zinc-500">
-                  Nenhuma conta pra esse responsável.
+                  {q.trim() ? `Nenhuma conta com "${q.trim()}".` : "Nenhuma conta pra esse responsável."}
                 </td>
               </tr>
             ) : null}

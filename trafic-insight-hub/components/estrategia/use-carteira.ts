@@ -21,6 +21,7 @@ export interface Cliente {
   selected: boolean; // está nas "Contas exibidas"
   clientSince: string | null;
   whatsapp: string | null;
+  waGroup: string | null; // Etapa 248: nome do grupo de WhatsApp do cliente (pesquisa)
 }
 
 export interface Binding {
@@ -34,6 +35,7 @@ export interface Binding {
   archived?: boolean;
   client_since?: string | null;
   whatsapp_contact?: string | null;
+  wa_group_name?: string | null;
 }
 
 export const normId = (id: string) => id.replace(/^act_/, "");
@@ -53,6 +55,7 @@ export function clienteFrom(b: Binding, selected: Set<string>): Cliente {
     selected: selected.has(id),
     clientSince: b.client_since ?? null,
     whatsapp: b.whatsapp_contact ?? null,
+    waGroup: b.wa_group_name?.trim() || null,
   };
 }
 
@@ -158,8 +161,12 @@ async function dailyFor(ids: string[], days: number): Promise<Record<string, Dai
 }
 
 // Etapa 247: números travados — a carteira carregada fica guardada neste navegador e é o que aparece ao abrir, trocar de
-// aba ou dar refresh. Só o botão "Atualizar" busca de novo na Meta.
+// aba ou dar refresh. Busca de novo na Meta só no botão "Atualizar" ou quando os números ficaram velhos (Etapa 248:
+// mais de 2 horas sem atualizar, ou de outro dia) — aí atualiza sozinho ao abrir ou ao voltar pra aba.
 const CACHE_KEY = "estr_carteira_v1";
+export const STALE_MS = 2 * 3600_000;
+export const isStale = (at: number | null) =>
+  at == null || Date.now() - at > STALE_MS || new Date(at).toDateString() !== new Date().toDateString();
 export function readCache<T>(key: string): { at: number; data: T } | null {
   try {
     const raw = localStorage.getItem(key);
@@ -256,15 +263,20 @@ export function useCarteira() {
   useEffect(() => {
     const c = readCache<Linha[]>(CACHE_KEY);
     if (c) {
-      // Números travados: mostra o que foi carregado da última vez (só o "Atualizar" busca de novo).
+      // Números travados: mostra o que foi carregado da última vez.
       atRef.current = c.at;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- lê os números guardados neste navegador
-      setLinhas(c.data);
+      setLinhas(c.data.map((l) => ({ ...l, waGroup: l.waGroup ?? null })));
       setAt(c.at);
-      return;
     }
-    // Primeira vez neste navegador: busca.
-    void load();
+    // Primeira vez neste navegador, ou números velhos (mais de 2h / de outro dia): busca (mostrando os guardados enquanto isso).
+    if (!c || isStale(c.at)) void load();
+    // Voltou pra aba depois de muito tempo: atualiza sozinho.
+    const onVisible = () => {
+      if (document.visibilityState === "visible" && isStale(atRef.current)) void load();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [load]);
 
   const patchLinha = useCallback((id: string, patch: Partial<Linha>) => {

@@ -54,23 +54,24 @@ export default function TrafegoPage() {
   useEffect(() => {
     if (!ids) return;
     const c = readCache<AlertasServer>("estr_alertas_v1");
-    if (c) {
+    // Usa os guardados só se não forem mais velhos que a carteira (quando a carteira atualizou sozinha, atualiza junto).
+    if (c && (at == null || c.at >= at - 120_000)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- alertas guardados neste navegador
       setSrv(c.data);
       return;
     }
     void loadAlertas(ids.split(","));
-  }, [ids, loadAlertas]);
+  }, [ids, loadAlertas, at]);
   useEffect(() => {
     if (!ids) return;
     const c = readCache<NamingData["items"]>("estr_naming_v1");
-    if (c) {
+    if (c && (at == null || c.at >= at - 120_000)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- nomes guardados neste navegador
       setNaming({ items: c.data, loading: false, error: null });
       return;
     }
     void loadNaming();
-  }, [ids, loadNaming]);
+  }, [ids, loadNaming, at]);
 
   const alertCount = useMemo(() => countAlerts(buildGroups(visible, srv, naming)), [visible, srv, naming]);
 
