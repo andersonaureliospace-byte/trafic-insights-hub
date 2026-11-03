@@ -11,7 +11,7 @@ import type { Linha } from "./use-carteira";
 // Etapa 238: Tráfego → Alertas. Cada quadro lista as contas com aquele problema; o último quadro junta tudo por conta.
 
 export interface AlertasServer {
-  balance: Array<{ ad_account_id: string; balance: number; threshold: number; low?: boolean; handled?: boolean }>;
+  balance: Array<{ ad_account_id: string; balance: number; threshold: number; low?: boolean; handled?: boolean; type?: "pre" | "boleto" }>;
   payment: Array<{ ad_account_id: string; reason: string | null }>;
   errors: Array<{ ad_account_id: string; entity_type: string; name: string | null; reasons: string[]; checked_at: string }>;
   location: Array<{ ad_account_id: string; name: string | null; reasons: string[]; expansionFixed: boolean; paused: boolean; checked_at: string }>;
@@ -52,6 +52,7 @@ interface Group {
   items: Item[];
   foot: string;
   emptyText?: string;
+  search?: boolean; // Etapa 250: campo de pesquisa no próprio quadro
 }
 
 // Etapa 249: erro que é só de espaço entre os caracteres (ex.: "35 - 64" × "35-64", "CHAPECÓ +" × "CHAPECÓ+") não conta.
@@ -263,7 +264,7 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
     saldo.push({
       id: b.ad_account_id,
       name: nameOf(b.ad_account_id),
-      detail: `Saldo ${fmtBRL(b.balance)} · abaixo do limite de ${fmtBRL(b.threshold)}`,
+      detail: `${b.type === "boleto" ? "Boleto · " : ""}Saldo ${fmtBRL(b.balance)} · abaixo do limite de ${fmtBRL(b.threshold)}`,
       sev: b.balance <= 0 ? "critico" : "alta",
       highlight: true,
     });
@@ -272,7 +273,11 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
     saldo.push({
       id: b.ad_account_id,
       name: nameOf(b.ad_account_id),
-      detail: b.handled ? `Saldo ${fmtBRL(b.balance)} · Pix/boleto enviado agora há pouco` : `Saldo ${fmtBRL(b.balance)} · limite ${fmtBRL(b.threshold)}`,
+      detail: `${b.type === "boleto" ? "Boleto · " : ""}${
+        b.handled
+          ? `Saldo ${fmtBRL(b.balance)} · Pix/boleto enviado agora há pouco`
+          : `Saldo ${fmtBRL(b.balance)}${b.threshold > 0 ? ` · limite ${fmtBRL(b.threshold)}` : " · sem limite configurado"}`
+      }`,
       sev: b.handled ? "info" : "ok",
     });
   }
@@ -281,7 +286,8 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
     title: "Saldo das contas",
     icon: "💳",
     items: saldo,
-    foot: "Contas pré-pagas e híbridas com limite configurado (cartão e boleto não têm saldo) · em destaque: abaixo do limite ou erro de pagamento",
+    foot: "Pré-pagas, híbridas e boleto (cartão não tem saldo) · em destaque: abaixo do limite ou erro de pagamento",
+    search: true,
   });
 
   // 2) CPA de hoje
@@ -466,6 +472,7 @@ export function Alertas({
 }) {
   const groups = buildGroups(linhas, srv, naming);
   const [namingOpen, setNamingOpen] = useState<string | null>(null);
+  const [search, setSearch] = useState<Record<string, string>>({});
   const [fixingAll, setFixingAll] = useState<string | null>(null);
   const visibleIds = new Set(linhas.map((l) => l.id));
   const allFixable = relevantNaming(naming.items).filter((it) => canAutoFix(it) && visibleIds.has(it.ad_account_id.replace(/^act_/, "")));
@@ -500,6 +507,10 @@ export function Alertas({
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {groups.map((g) => {
           const n = g.items.filter((i) => isAlertSev(i.sev)).length;
+          // Etapa 250: pesquisa só nos quadros marcados (Saldo das contas). Sem acento e sem maiúscula.
+          const norm = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+          const term = g.search ? norm((search[g.key] ?? "").trim()) : "";
+          const shown = term ? g.items.filter((it) => norm(it.name).includes(term)) : g.items;
           return (
             <Card key={g.key} className="flex min-w-0 flex-col overflow-hidden">
               <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-4 py-3 dark:border-white/10">
@@ -531,11 +542,25 @@ export function Alertas({
                   {g.key === "otim" && n === 0 ? g.items.length : n}
                 </span>
               </div>
+              {g.search ? (
+                <div className="border-b border-zinc-200 px-4 py-2 dark:border-white/10">
+                  <input
+                    type="search"
+                    aria-label={`Pesquisar em ${g.title}`}
+                    value={search[g.key] ?? ""}
+                    onChange={(e) => setSearch((cur) => ({ ...cur, [g.key]: e.target.value }))}
+                    placeholder="Pesquisar conta"
+                    className="h-8 w-full rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]"
+                  />
+                </div>
+              ) : null}
               <ul className="max-h-72 flex-1 divide-y divide-zinc-100 overflow-y-auto dark:divide-white/5">
-                {g.items.length === 0 ? (
-                  <li className="px-4 py-3 text-xs text-zinc-500">{loading && !srv ? "Carregando…" : (g.emptyText ?? "Nada pra ver agora")}</li>
+                {shown.length === 0 ? (
+                  <li className="px-4 py-3 text-xs text-zinc-500">
+                    {term ? "Nenhuma conta com esse nome" : loading && !srv ? "Carregando…" : (g.emptyText ?? "Nada pra ver agora")}
+                  </li>
                 ) : (
-                  g.items.map((it, i) => (
+                  shown.map((it, i) => (
                     <li
                       key={`${it.id}-${i}`}
                       className={`flex items-start justify-between gap-3 px-4 py-2.5 ${it.highlight ? "bg-red-500/10 shadow-[inset_3px_0_0_0] shadow-red-500" : ""}`}

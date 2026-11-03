@@ -7,7 +7,7 @@
 //   BOLETO → ATIVO / INATIVO / INEXISTENTE (qualquer conjunto com a marca BOLETO ou CREDIARIO no nome — são a mesma coisa)
 // Campanha [VAGA] fica fora.
 
-import { extractTags, mapAdsetType, normName, splitParts } from "@/lib/naming/rules";
+import { extractTags, mapAdsetType, normName, splitParts, normalizeMoney } from "@/lib/naming/rules";
 
 export type OfferStatus = "ATIVO" | "INATIVO" | "INEXISTENTE";
 
@@ -59,17 +59,21 @@ export function parseAdsetName(name: string): ParsedAdset | null {
   const t = mapAdsetType(parts[0]);
   if (!t) return null;
   const payment = extractTags(parts.join(" ")).payment;
-  // A localização é a parte logo antes da IDADE; o que fica entre o TIPO e ela (menos as marcas) é a OFERTA.
+  // A OFERTA fica entre o TIPO e a IDADE. Quando há mais de uma parte nesse trecho, a última é a localização.
+  // Etapa 251: com UMA parte só (nome sem localização, ex.: "PROMO | 200 DE DESCONTO | 25-64 | AND"), ela é a oferta —
+  // antes era descartada como se fosse a cidade e a promo aparecia "sem oferta no nome". Sem idade no nome: tudo até o fim.
   const ageIdx = parts.findIndex((p, i) => i > 0 && AGE_RE.test(normName(p)));
+  const between = parts.slice(1, ageIdx >= 0 ? ageIdx : parts.length);
+  const offerParts = between.length >= 2 ? between.slice(0, -1) : between;
   const candidates: string[] = [];
   if (t.rest.trim()) candidates.push(t.rest.trim()); // "PROMO SETEMBRO" → SETEMBRO
-  if (ageIdx >= 2) candidates.push(...parts.slice(1, ageIdx - 1));
+  candidates.push(...offerParts.filter((p) => !/\b\d+\s*KM\b/.test(normName(p))));
   let offer: string | null = null;
   for (const c of candidates) {
     const rest = extractTags(c).rest;
     const n = normName(rest);
     if (!n || NOISE_RE.test(n) || DATE_RE.test(n) || /COBRIMOS\s+OFERTAS?/.test(n)) continue;
-    offer = rest;
+    offer = normalizeMoney(rest); // Etapa 251: "R$15" → "R$ 15,00" (mesma oferta escrita de jeitos diferentes vira uma só)
     break;
   }
   return { type: t.type, payment, offer };

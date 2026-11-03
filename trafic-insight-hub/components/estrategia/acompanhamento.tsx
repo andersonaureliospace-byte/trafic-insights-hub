@@ -67,7 +67,7 @@ function Ofertas({ s, flags }: { s: OffersSummary | null; flags: OfferFlags | nu
               )}
             </span>
             <span className="text-right tabular-nums" title="CPA dos 2 últimos dias (só o mês atual)">
-              {cpa != null && !missing ? fmtCpa(cpa) : ""}
+              {s?.metrics && !missing && r.status !== null ? fmtCpa(cpa) : ""}
             </span>
           </div>
         );

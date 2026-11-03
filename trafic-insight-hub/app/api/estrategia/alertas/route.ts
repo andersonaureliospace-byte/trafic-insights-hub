@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
-import { checkLowBalances } from "@/lib/alerts/balance";
+import { checkLowBalances, effectiveBalance } from "@/lib/alerts/balance";
+import { getAdAccounts } from "@/lib/meta/insights";
 import { checkPaymentErrors } from "@/lib/alerts/payment";
 import { activitiesForAccounts } from "@/lib/estrategia/activities";
 
@@ -45,7 +46,41 @@ export async function POST(request: Request) {
         currency: s.currency,
         low: s.low,
         handled: s.handled,
+        type: "pre" as "pre" | "boleto",
       }));
+
+    // Etapa 250: contas no BOLETO também mostram o saldo atual (mesma conta do Controle de Saldo: teto de gasto − gasto,
+    // ou o "saldo por fundos" quando ligado). Limite: o configurado no Controle de Saldo, se houver.
+    try {
+      const { data: bolRows } = await supabase
+        .from("pix_accounts")
+        .select("ad_account_id, base_amount, alert_threshold, funds_balance_enabled, funds_balance_amount")
+        .eq("user_id", user.id)
+        .eq("payment_type", "boleto");
+      const rows = (bolRows ?? []).filter((r) => wanted.has(norm(r.ad_account_id as string)));
+      if (rows.length > 0) {
+        const accounts = await getAdAccounts(token);
+        const byId = new Map(accounts.map((a) => [norm(a.account_id), a]));
+        for (const r of rows) {
+          const acc = byId.get(norm(r.ad_account_id as string));
+          if (!acc) continue;
+          const value = effectiveBalance(acc, r);
+          const threshold =
+            r.alert_threshold != null ? Number(r.alert_threshold) : r.base_amount != null ? Number(r.base_amount) * 0.2 : 0;
+          balance.push({
+            ad_account_id: norm(r.ad_account_id as string),
+            balance: value,
+            threshold,
+            currency: acc.currency,
+            low: threshold > 0 && value < threshold,
+            handled: false,
+            type: "boleto",
+          });
+        }
+      }
+    } catch (e) {
+      console.error("estrategia boleto balance err", (e as Error).message);
+    }
     const payment = pay.statuses
       .filter((s) => s.hasError && wanted.has(norm(s.ad_account_id)))
       .map((s) => ({ ad_account_id: norm(s.ad_account_id), reason: s.reason }));
