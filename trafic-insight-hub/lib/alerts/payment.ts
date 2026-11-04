@@ -11,6 +11,9 @@ import { getRecentSends } from "@/lib/alerts/recent-sends";
 import { publishAlert } from "@/lib/alerts/notifications";
 
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
+import { metaGet } from "@/lib/meta/client";
+import { addDaysYmd, todayBrt } from "@/lib/meta/daily-range";
+import { hourBrt } from "@/lib/alerts/no-delivery-rule";
 type Db = Awaited<ReturnType<typeof createClient>>;
 
 const COOLDOWN_MS = 24 * 60 * 60 * 1000; // não reavisa a mesma conta antes de 24h
@@ -34,6 +37,35 @@ function paymentReason(acc: AdAccount): string | null {
   if (acc.disable_reason === PAYMENT_DISABLE_REASON) return "Desabilitada por risco de pagamento";
   if (PAYMENT_STATUS_CODES.has(acc.account_status)) return STATUS_LABELS[acc.account_status] ?? "Erro no pagamento";
   return null;
+}
+
+// Etapa 255: erro na cobrança que a Meta NÃO mostra no status (caso IVS Muriaé, nov/2026: conta e anúncios
+// todos ACTIVE pela API, mas a cobrança falhou e a entrega parou). Sinal usado: a conta tem anúncio ativo,
+// gastou ontem e está com zero gasto e zero impressão hoje. Só a partir das 10h (antes disso é cedo pra concluir).
+const STALL_FROM_HOUR = 10;
+const STALL_REASON = "Possível erro na cobrança — gastou ontem e está sem entrega hoje (confira o Faturamento)";
+const STALL_CONCURRENCY = 4;
+
+async function isStalled(token: string, accountId: string): Promise<boolean> {
+  const act = accountId.startsWith("act_") ? accountId : `act_${accountId}`;
+  const today = todayBrt();
+  const yesterday = addDaysYmd(today, -1);
+  const ins = await metaGet<{ data?: Array<{ date_start?: string; spend?: string; impressions?: string }> }>(token, `/${act}/insights`, {
+    fields: "spend,impressions",
+    time_range: JSON.stringify({ since: yesterday, until: today }),
+    time_increment: "1",
+  });
+  const day = (d: string) => ins.data?.find((r) => r.date_start === d);
+  const y = day(yesterday);
+  const t = day(today);
+  if (!(Number(y?.spend ?? 0) > 0)) return false; // não gastou ontem: não é o caso (conta parada de propósito)
+  if (Number(t?.spend ?? 0) > 0 || Number(t?.impressions ?? 0) > 0) return false; // está entregando
+  const ads = await metaGet<{ data?: Array<{ id: string }> }>(token, `/${act}/ads`, {
+    fields: "id",
+    limit: "1",
+    filtering: JSON.stringify([{ field: "ad.effective_status", operator: "IN", value: ["ACTIVE"] }]),
+  });
+  return (ads.data?.length ?? 0) > 0;
 }
 
 export interface PaymentStatus {
@@ -69,6 +101,29 @@ export async function checkPaymentErrors(
   const accounts = await getAdAccounts(token);
   const accountById = new Map(accounts.map((a) => [a.account_id, a]));
 
+  // Etapa 255: contas sem erro no status, mas que travaram (ver isStalled). Erro ao consultar uma conta = não avisa.
+  const stalled = new Set<string>();
+  if (hourBrt() >= STALL_FROM_HOUR) {
+    const todo = bindings
+      .map((b) => b.ad_account_id as string)
+      .filter((id) => {
+        const acc = accountById.get(id);
+        return acc && acc.account_status === 1 && !paymentReason(acc);
+      });
+    let next = 0;
+    const worker = async () => {
+      while (next < todo.length) {
+        const id = todo[next++];
+        try {
+          if (await isStalled(token, id)) stalled.add(id);
+        } catch (e) {
+          console.error("payment stall check err", id, (e as Error).message);
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(STALL_CONCURRENCY, todo.length) }, worker));
+  }
+
   const recent = await getRecentSends(db, userId);
   const statuses: PaymentStatus[] = [];
   const toAlert: PaymentStatus[] = [];
@@ -77,7 +132,7 @@ export async function checkPaymentErrors(
   for (const b of bindings) {
     const acc = accountById.get(b.ad_account_id);
     if (!acc) continue;
-    const reason = paymentReason(acc);
+    const reason = paymentReason(acc) ?? (stalled.has(b.ad_account_id) ? STALL_REASON : null);
     const handled = reason != null && recent.boleto.has(b.ad_account_id);
     const hasError = reason != null && !handled;
     const clientName = (b.client_name as string) || acc.name;

@@ -75,6 +75,7 @@ export default function ClientesPage() {
   const [sel, setSel] = useState<string | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [q, setQ] = useState(""); // pesquisa pelo nome do cliente
   const [saving, setSaving] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -105,8 +106,18 @@ export default function ClientesPage() {
   }, [load]);
 
   const list = useMemo(
-    () => (clientes ?? []).filter((c) => (showArchived ? c.archived : !c.archived) && matchesResp(ui.resp, c.responsible)),
-    [clientes, showArchived, ui.resp],
+    () => {
+      // Pesquisa sem diferenciar acento nem maiúscula; cada palavra digitada precisa aparecer no nome.
+      const flat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+      const terms = flat(q).split(/\s+/).filter(Boolean);
+      return (clientes ?? []).filter(
+        (c) =>
+          (showArchived ? c.archived : !c.archived) &&
+          matchesResp(ui.resp, c.responsible) &&
+          (terms.length === 0 || terms.every((t) => flat(c.name).includes(t))),
+      );
+    },
+    [clientes, showArchived, ui.resp, q],
   );
   const cur = useMemo(() => list.find((c) => c.id === sel) ?? list[0] ?? null, [list, sel]);
 
@@ -192,6 +203,23 @@ export default function ClientesPage() {
         <div className="flex min-w-0 flex-col gap-4">
           {error ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div> : null}
           <Card className="overflow-hidden">
+            <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-4 py-3 dark:border-white/10">
+              <div className="relative">
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Pesquisar cliente pelo nome…"
+                  aria-label="Pesquisar cliente pelo nome"
+                  className="h-8 w-72 rounded-lg border border-zinc-300 bg-white px-2 pr-7 text-sm dark:border-white/10 dark:bg-[#141924]"
+                />
+                {q ? (
+                  <button onClick={() => setQ("")} aria-label="Limpar pesquisa" className="absolute top-1/2 right-2 -translate-y-1/2 text-xs text-zinc-400">
+                    ✕
+                  </button>
+                ) : null}
+              </div>
+              <span className="ml-auto text-xs text-zinc-500">{clientes == null ? "" : `${list.length} ${list.length === 1 ? "cliente" : "clientes"}`}</span>
+            </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-sm">
                 <thead>
@@ -212,7 +240,11 @@ export default function ClientesPage() {
                   ) : list.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
-                        {showArchived ? "Nenhum cliente arquivado." : "Nenhum cliente pra esse responsável."}
+                        {q.trim()
+                          ? `Nenhum cliente com "${q.trim()}".`
+                          : showArchived
+                            ? "Nenhum cliente arquivado."
+                            : "Nenhum cliente pra esse responsável."}
                       </td>
                     </tr>
                   ) : (

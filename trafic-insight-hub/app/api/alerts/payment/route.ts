@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { checkPaymentErrors } from "@/lib/alerts/payment";
 
+// Etapa 255: a checagem de "possível erro na cobrança" consulta a Meta conta por conta — pede o tempo máximo.
+export const maxDuration = 60;
+
 // Só calcula o status (não envia nada) — usado pra popular a tela.
 export async function GET() {
   try {

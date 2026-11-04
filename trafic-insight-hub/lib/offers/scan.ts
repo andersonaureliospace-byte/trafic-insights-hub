@@ -71,19 +71,32 @@ const CONCURRENCY = 3;
 
 export async function offersForAccount(token: string, adAccountId: string): Promise<OffersSummary> {
   const act = adAccountId.startsWith("act_") ? adAccountId : `act_${adAccountId}`;
-  const [spent, live] = await Promise.all([
+  // Etapa 254: "ligado agora" = conjunto ligado, sem data de término vencida E com pelo menos 1 anúncio ligado.
+  // Antes bastava o conjunto estar ligado — conjunto com os anúncios todos pausados (ou já concluído) aparecia "Ativo".
+  const [spent, live, liveAds] = await Promise.all([
     metaGetAll<{ adset_id?: string; adset_name?: string; campaign_name?: string; spend?: string }>(token, `/${act}/insights`, {
       fields: "adset_id,adset_name,campaign_name,spend",
       level: "adset",
       date_preset: "this_month",
       limit: "500",
     }),
-    metaGetAll<{ id: string; name?: string; campaign?: { name?: string } }>(token, `/${act}/adsets`, {
-      fields: "id,name,campaign{name}",
+    metaGetAll<{ id: string; name?: string; end_time?: string; campaign?: { name?: string; stop_time?: string } }>(token, `/${act}/adsets`, {
+      fields: "id,name,end_time,campaign{name,stop_time}",
       limit: "200",
       filtering: JSON.stringify([{ field: "adset.effective_status", operator: "IN", value: ACTIVE_ISH_STATUSES }]),
     }),
+    metaGetAll<{ adset_id?: string }>(token, `/${act}/ads`, {
+      fields: "adset_id",
+      limit: "500",
+      filtering: JSON.stringify([{ field: "ad.effective_status", operator: "IN", value: ACTIVE_ISH_STATUSES }]),
+    }),
   ]);
+  const adsetsWithActiveAd = new Set(liveAds.map((a) => a.adset_id).filter(Boolean) as string[]);
+  const ended = (t?: string) => {
+    if (!t || t === "0") return false;
+    const ms = Date.parse(t);
+    return Number.isFinite(ms) && ms <= Date.now();
+  };
 
   const byId = new Map<string, OfferAdset>();
   for (const r of spent) {
@@ -94,6 +107,7 @@ export async function offersForAccount(token: string, adAccountId: string): Prom
   }
   for (const a of live) {
     if (VAGA_RE.test(a.campaign?.name ?? "")) continue;
+    if (!adsetsWithActiveAd.has(a.id) || ended(a.end_time) || ended(a.campaign?.stop_time)) continue; // não está rodando de verdade
     const cur = byId.get(a.id);
     if (cur) cur.active = true;
     else byId.set(a.id, { name: a.name ?? "", active: true, spend: 0 });
