@@ -6,6 +6,7 @@ import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { loadClientes, loadOfferFlags, matchesResp, saveOfferFlags, type Cliente, type OfferFlags } from "@/components/estrategia/use-carteira";
 import { Btn, Card, Pill, fmtBRL } from "@/components/estrategia/ui";
 import { ClientesTabs } from "@/components/estrategia/clientes-tabs";
+import { NovoClienteDialog } from "@/components/estrategia/novo-cliente-dialog";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { calendarSP } from "@/lib/estrategia/calc";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -76,6 +77,7 @@ export default function ClientesPage() {
   const [sel, setSel] = useState<string | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [novoOpen, setNovoOpen] = useState(false); // Etapa 253
   const [q, setQ] = useState(""); // pesquisa pelo nome do cliente
   const [saving, setSaving] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
@@ -199,7 +201,23 @@ export default function ClientesPage() {
     <div className="flex flex-col">
       <PageHeader title="Clientes" sub="Ficha de cada cliente da carteira">
         <Btn onClick={() => setShowArchived((v) => !v)}>{showArchived ? "Ver ativos" : "Ver arquivados"}</Btn>
+        <Btn primary onClick={() => setNovoOpen(true)}>+ Novo cliente</Btn>
       </PageHeader>
+      {novoOpen ? (
+        <NovoClienteDialog
+          clientes={clientes ?? []}
+          gestores={gestores}
+          payLabels={PAY_LABEL}
+          onClose={() => setNovoOpen(false)}
+          onCreated={(id) => {
+            setNovoOpen(false);
+            setShowArchived(false);
+            setQ("");
+            setSel(id);
+            void load();
+          }}
+        />
+      ) : null}
       <ClientesTabs />
       <div className="grid gap-4 p-4 lg:p-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-4">
