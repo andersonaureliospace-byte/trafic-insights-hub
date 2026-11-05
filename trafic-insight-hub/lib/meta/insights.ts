@@ -93,17 +93,20 @@ export interface AccountInsight {
 // repetir a mesma consulta dentro de 60s devolve a resposta anterior, e se a Meta falhar (limite de requisições)
 // devolve a última lista boa (até 6h) em vez de erro.
 export async function getAdAccounts(token: string): Promise<AdAccount[]> {
-  return memoMeta(
-    `adaccounts:${tokenTag(token)}`,
-    60_000,
-    async () => {
-      const data = await metaGet<{ data: AdAccount[] }>(token, "/me/adaccounts", {
-        fields: "id,account_id,name,account_status,disable_reason,balance,currency,amount_spent,spend_cap,business{id,name}",
-        limit: "200",
-      });
-      return data.data ?? [];
+  return memoMeta(`adaccounts:${tokenTag(token)}`, 60_000, () => fetchAdAccounts(token), { staleOnError: true });
+}
+
+// Etapa 254: a lista vinha só da 1ª página da Meta (200 contas) — quem passasse disso sumia sem aviso. Agora pega todas as
+// páginas (até 1.000 contas). Chamada direta (sem o cache de 60s) pelo "↻ Atualizar lista" do Novo cliente.
+export async function fetchAdAccounts(token: string): Promise<AdAccount[]> {
+  return metaGetAll<AdAccount>(
+    token,
+    "/me/adaccounts",
+    {
+      fields: "id,account_id,name,account_status,disable_reason,balance,currency,amount_spent,spend_cap,business{id,name}",
+      limit: "200",
     },
-    { staleOnError: true },
+    5,
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Btn } from "@/components/estrategia/ui";
 import { normId, type Cliente } from "@/components/estrategia/use-carteira";
 import type { AdAccount } from "@/lib/meta/insights";
@@ -61,12 +61,28 @@ export function NovoClienteDialog({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/meta/accounts", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => (d.error ? setLoadErr(d.error) : setAccounts((d.accounts ?? []) as AdAccount[])))
-      .catch((e: Error) => setLoadErr(e.message));
+  const [refreshing, setRefreshing] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [checkMsg, setCheckMsg] = useState<string | null>(null);
+
+  const loadAccounts = useCallback(async (fresh: boolean) => {
+    setRefreshing(fresh);
+    setLoadErr(null);
+    try {
+      const d = await fetch(`/api/meta/accounts${fresh ? "?fresh=1" : ""}`, { cache: "no-store" }).then((r) => r.json());
+      if (d.error) setLoadErr(d.error);
+      else setAccounts((d.accounts ?? []) as AdAccount[]);
+    } catch (e) {
+      setLoadErr((e as Error).message);
+    } finally {
+      setRefreshing(false);
+    }
   }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carrega as contas da Meta ao abrir
+    void loadAccounts(false);
+  }, [loadAccounts]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -101,6 +117,25 @@ export function NovoClienteDialog({
     setConta(a);
     setNome(a.name);
     setErr(null);
+  }
+
+  // Etapa 254: conta que não veio na lista → pergunta direto pra Meta pelo ID.
+  const idDigitado = q.replace(/\D/g, "");
+  async function verificarId() {
+    setChecking(true);
+    setCheckMsg(null);
+    try {
+      const d = await fetch(`/api/meta/account-lookup?id=${idDigitado}`, { cache: "no-store" }).then((r) => r.json());
+      if (d.error) throw new Error(d.error);
+      const a = d.account as AdAccount;
+      setAccounts((cur) => (cur && !cur.some((x) => x.account_id === a.account_id) ? [a, ...cur] : cur));
+      if (situacao[normId(a.account_id)]) setCheckMsg(`${a.name} já está na carteira.`);
+      else escolher(a);
+    } catch (e) {
+      setCheckMsg((e as Error).message);
+    } finally {
+      setChecking(false);
+    }
   }
 
   async function salvar() {
@@ -149,14 +184,41 @@ export function NovoClienteDialog({
             </div>
           ) : (
             <>
-              <input id="nc-busca" autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar pelo nome ou ID da conta…" className={inputCls} />
+              <div className="flex gap-2">
+                <input
+                  id="nc-busca"
+                  autoFocus
+                  value={q}
+                  onChange={(e) => {
+                    setQ(e.target.value);
+                    setCheckMsg(null);
+                  }}
+                  placeholder="Buscar pelo nome ou ID da conta…"
+                  className={inputCls}
+                />
+                <Btn onClick={() => void loadAccounts(true)} disabled={refreshing} title="Busca de novo na Meta, sem esperar o cache">
+                  {refreshing ? "…" : "↻ Atualizar lista"}
+                </Btn>
+              </div>
+              {checkMsg ? <p className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{checkMsg}</p> : null}
               <div className="max-h-56 overflow-y-auto rounded-lg border border-zinc-200 dark:border-white/10">
                 {loadErr ? (
                   <p className="px-3 py-2 text-sm text-red-600 dark:text-red-400">{loadErr}</p>
-                ) : accounts == null ? (
+                ) : accounts == null || refreshing ? (
                   <p className="px-3 py-2 text-sm text-zinc-500">Carregando contas da Meta…</p>
                 ) : lista.length === 0 ? (
-                  <p className="px-3 py-2 text-sm text-zinc-500">Nenhuma conta encontrada.</p>
+                  <div className="flex flex-col gap-2 px-3 py-2 text-sm text-zinc-500">
+                    <p>Nenhuma conta com &quot;{q.trim()}&quot; na lista da Meta.</p>
+                    {idDigitado.length >= 6 ? (
+                      <Btn small primary onClick={() => void verificarId()} disabled={checking}>
+                        {checking ? "Verificando…" : `🔎 Verificar a conta ${idDigitado} direto na Meta`}
+                      </Btn>
+                    ) : (
+                      <p className="text-xs">
+                        Se a conta é nova, clique em <b>↻ Atualizar lista</b>. Ou cole o <b>ID da conta</b> (só números) pra verificar direto na Meta.
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   lista.map((a) => {
                     const st = situacao[normId(a.account_id)];
