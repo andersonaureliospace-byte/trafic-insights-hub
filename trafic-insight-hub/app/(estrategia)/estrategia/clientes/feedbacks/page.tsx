@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { ClientesTabs } from "@/components/estrategia/clientes-tabs";
+import { GravarButton } from "@/components/estrategia/gravador";
 import { loadClientes, matchesResp } from "@/components/estrategia/use-carteira";
 import { Btn, Card, Pill, ago } from "@/components/estrategia/ui";
 import type { Tone } from "@/lib/estrategia/calc";
@@ -126,7 +127,9 @@ export default function FeedbacksPage() {
 
   return (
     <div className="flex flex-col">
-      <PageHeader title="Clientes" sub="Feedbacks em vídeo — grave pelo botão ● Gravar no topo" />
+      <PageHeader title="Clientes" sub="Feedbacks em vídeo pros clientes">
+        <GravarButton />
+      </PageHeader>
       <ClientesTabs />
       <div className="grid gap-4 p-4 lg:p-6 xl:grid-cols-[minmax(0,1fr)_26rem]">
         <div className="flex min-w-0 flex-col gap-4">
@@ -181,7 +184,7 @@ export default function FeedbacksPage() {
                     <tr>
                       <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
                         {items.length === 0
-                          ? "Nenhuma gravação ainda. Clique em ● Gravar no topo do Hub e ela aparece aqui."
+                          ? "Nenhuma gravação ainda. Clique em ● Gravar (no alto, à direita) e ela aparece aqui."
                           : filtro === "revisao"
                             ? "Nada pra revisar. 🎉"
                             : "Nenhum feedback com esse filtro."}

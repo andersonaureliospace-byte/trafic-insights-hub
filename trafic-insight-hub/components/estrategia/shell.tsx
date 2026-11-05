@@ -5,7 +5,9 @@ import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { SignOutButton } from "@/components/sign-out-button";
 import { WhatsappPanel, useWaOpen } from "@/components/estrategia/whatsapp-panel";
-import { GravadorProvider, GravarButton } from "@/components/estrategia/gravador";
+// Etapa 256: o botão "Gravar" fica só em Clientes → Feedbacks; o gravador continua aqui na casca pra a gravação
+// seguir (e a barrinha flutuante aparecer) mesmo navegando entre as telas do Hub.
+import { GravadorProvider } from "@/components/estrategia/gravador";
 
 // Etapa 238: casca do Hub estratégico — menu lateral (Tráfego / Clientes, itens "em breve", Automações, link pro hub
 // operacional pausado), botão de Modo escuro/claro e o filtro de Responsável compartilhado entre as telas.
@@ -161,8 +163,6 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
               <Item href="/estrategia/automacoes" small>Automações</Item>
             </nav>
             <div className="ml-auto flex shrink-0 items-center gap-1">
-              {/* Etapa 251: gravador de tela dentro do Hub (vai pra Clientes → Feedbacks) */}
-              <GravarButton />
               <Link
                 href="/painel"
                 title="O hub operacional (antigo) continua no ar"

@@ -563,7 +563,7 @@ export function GravadorProvider({ children }: { children: ReactNode }) {
   );
 }
 
-// Botão do topo do Hub.
+// Botão "Gravar" (Clientes → Feedbacks).
 export function GravarButton() {
   const { fase, abrir } = useGravador();
   const ocupado = fase === "gravando" || fase === "pausado" || fase === "enviando";
@@ -572,7 +572,7 @@ export function GravarButton() {
       onClick={abrir}
       disabled={ocupado}
       title={ocupado ? "Já tem uma gravação em andamento" : "Gravar a tela pra um cliente"}
-      className="flex h-8 items-center gap-1.5 rounded-md bg-red-600 px-2.5 text-xs font-semibold whitespace-nowrap text-white hover:bg-red-700 disabled:opacity-60"
+      className="flex h-9 items-center gap-1.5 rounded-lg bg-red-600 px-3 text-sm font-semibold whitespace-nowrap text-white hover:bg-red-700 disabled:opacity-60"
     >
       <span className={`h-2 w-2 rounded-full bg-white ${fase === "gravando" ? "animate-pulse" : ""}`} />
       {fase === "gravando" ? "Gravando…" : fase === "pausado" ? "Pausado" : fase === "enviando" ? "Enviando…" : "Gravar"}
