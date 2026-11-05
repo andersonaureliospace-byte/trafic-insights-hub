@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { loadClientes, loadOfferFlags, matchesResp, saveOfferFlags, type Cliente, type OfferFlags } from "@/components/estrategia/use-carteira";
 import { Btn, Card, Pill, fmtBRL } from "@/components/estrategia/ui";
+import { ClientesTabs } from "@/components/estrategia/clientes-tabs";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { calendarSP } from "@/lib/estrategia/calc";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -199,6 +200,7 @@ export default function ClientesPage() {
       <PageHeader title="Clientes" sub="Ficha de cada cliente da carteira">
         <Btn onClick={() => setShowArchived((v) => !v)}>{showArchived ? "Ver ativos" : "Ver arquivados"}</Btn>
       </PageHeader>
+      <ClientesTabs />
       <div className="grid gap-4 p-4 lg:p-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-4">
           {error ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div> : null}

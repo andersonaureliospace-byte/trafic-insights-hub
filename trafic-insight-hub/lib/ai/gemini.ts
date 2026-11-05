@@ -257,3 +257,121 @@ Responda SOMENTE com um JSON array de ${count} objeto(s), neste formato exato: [
     };
   });
 }
+
+// Etapa 249 — Clientes → Feedbacks. Transcreve o vídeo gravado pela extensão e escreve o PLANO DE AÇÃO (simples e direto)
+// que vai pro grupo do cliente numa mensagem de texto separada, logo depois do vídeo. O resumo fica SEMPRE em revisão antes de sair (você confere e
+// edita no Hub), mas mesmo assim o prompt trava a IA no que foi dito: nada de inventar número, prazo ou promessa.
+// Primeiro tenta com o áudio pequeno (mandado direto, rápido). Se o Gemini recusar o formato do áudio, cai pro próprio
+// vídeo pela File API do Google (aceita arquivo grande e o formato mp4 com certeza).
+const FEEDBACK_PROMPT = (titulo: string, cliente: string) => `Você vai receber a gravação de tela narrada por um gestor de tráfego pago explicando algo para o cliente "${cliente}"${titulo ? ` (título: "${titulo}")` : ""}.
+
+Faça duas coisas e responda SOMENTE em JSON:
+1. "transcricao": transcreva em português tudo o que foi falado, fiel ao áudio. Não resuma, não corrija o sentido, não invente.
+2. "resumo": escreva o PLANO DE AÇÃO que vai por mensagem de texto para o grupo do cliente, logo depois do vídeo.
+   Regras do plano de ação:
+   - Português do Brasil, simples e direto, como o próprio gestor escrevendo no WhatsApp.
+   - Primeira linha: "*Plano de ação* 📋".
+   - Depois, de 3 a 6 itens numerados ("1. ", "2. "…), um por linha, cada um com UMA ação curta e prática, começando por
+     um verbo (ex.: "Pausar o criativo X", "Enviar fotos novas da loja até sexta"). Se foi dito quem faz, diga
+     ("Cliente:" / "Nós:"). Sem explicação longa, sem introdução, sem despedida.
+   - Use SOMENTE o que foi dito na gravação. Nunca invente ações, números, resultados, prazos ou promessas.
+   - Pode usar *negrito* do WhatsApp com moderação. Sem títulos com #, sem tabela.
+   - Se a gravação não tiver fala ou nenhuma ação, devolva "resumo" vazio (e "transcricao" vazia se não houver fala).`;
+
+const FEEDBACK_SCHEMA = {
+  responseMimeType: "application/json",
+  responseSchema: {
+    type: "OBJECT",
+    properties: { transcricao: { type: "STRING" }, resumo: { type: "STRING" } },
+    required: ["transcricao", "resumo"],
+  },
+};
+
+export interface FeedbackSummary {
+  transcricao: string;
+  resumo: string;
+}
+
+function parseFeedback(json: GeminiResponse): FeedbackSummary {
+  const raw = json.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!raw || !raw.trim()) throw new Error("Gemini não retornou nada pra essa gravação.");
+  const p = JSON.parse(raw) as Partial<FeedbackSummary>;
+  return { transcricao: String(p.transcricao ?? "").trim(), resumo: String(p.resumo ?? "").trim() };
+}
+
+// File API do Gemini (upload resumable) — pra arquivos maiores que o envio direto aceita.
+async function uploadToGeminiFiles(apiKey: string, url: string, mime: string): Promise<{ uri: string; mimeType: string }> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Falha ao baixar o vídeo do Storage (HTTP ${res.status}).`);
+  const bytes = Buffer.from(await res.arrayBuffer());
+
+  const start = await fetch(`https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`, {
+    method: "POST",
+    headers: {
+      "X-Goog-Upload-Protocol": "resumable",
+      "X-Goog-Upload-Command": "start",
+      "X-Goog-Upload-Header-Content-Length": String(bytes.length),
+      "X-Goog-Upload-Header-Content-Type": mime,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ file: { display_name: "feedback" } }),
+  });
+  const uploadUrl = start.headers.get("x-goog-upload-url");
+  if (!start.ok || !uploadUrl) throw new Error(`Gemini (upload) ${start.status}: ${await start.text()}`);
+
+  const up = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "Content-Length": String(bytes.length), "X-Goog-Upload-Offset": "0", "X-Goog-Upload-Command": "upload, finalize" },
+    body: bytes,
+  });
+  if (!up.ok) throw new Error(`Gemini (upload) ${up.status}: ${await up.text()}`);
+  let file = ((await up.json()) as { file?: { name: string; uri: string; mimeType: string; state?: string } }).file;
+  if (!file) throw new Error("Gemini não devolveu o arquivo enviado.");
+
+  // Vídeo passa por processamento antes de poder ser usado (estado PROCESSING → ACTIVE).
+  for (let i = 0; i < 20 && file.state === "PROCESSING"; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const st = await fetch(`https://generativelanguage.googleapis.com/v1beta/${file.name}?key=${apiKey}`);
+    if (st.ok) file = (await st.json()) as typeof file;
+  }
+  if (file.state === "FAILED") throw new Error("O Gemini não conseguiu processar o vídeo.");
+  return { uri: file.uri, mimeType: file.mimeType || mime };
+}
+
+export async function summarizeFeedback(params: {
+  audio: { url: string; mime: string } | null;
+  video: { url: string; mime: string } | null;
+  titulo: string;
+  cliente: string;
+}): Promise<FeedbackSummary> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY não configurada no servidor.");
+  const prompt = FEEDBACK_PROMPT(params.titulo, params.cliente);
+
+  let audioError: Error | null = null;
+  if (params.audio) {
+    try {
+      const res = await fetch(params.audio.url);
+      if (!res.ok) throw new Error(`Falha ao baixar o áudio (HTTP ${res.status}).`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      if (buf.length < 15 * 1024 * 1024) {
+        const json = await callGemini(apiKey, {
+          contents: [{ role: "user", parts: [{ text: prompt }, { inlineData: { mimeType: params.audio.mime.split(";")[0], data: buf.toString("base64") } }] }],
+          generationConfig: FEEDBACK_SCHEMA,
+        });
+        return parseFeedback(json);
+      }
+    } catch (e) {
+      audioError = e as Error;
+      if (/sobrecarregado/.test(audioError.message)) throw audioError; // vídeo também ia falhar agora
+    }
+  }
+
+  if (!params.video) throw audioError ?? new Error("Essa gravação não tem áudio pra transcrever.");
+  const file = await uploadToGeminiFiles(apiKey, params.video.url, params.video.mime.split(";")[0]);
+  const json = await callGemini(apiKey, {
+    contents: [{ role: "user", parts: [{ text: prompt }, { fileData: { mimeType: file.mimeType, fileUri: file.uri } }] }],
+    generationConfig: FEEDBACK_SCHEMA,
+  });
+  return parseFeedback(json);
+}
