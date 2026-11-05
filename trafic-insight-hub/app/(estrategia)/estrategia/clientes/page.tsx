@@ -25,6 +25,7 @@ function statusOf(c: Cliente): Status {
 }
 
 interface Form {
+  name: string; // Etapa 255: nome do cliente editável na ficha
   responsible: string;
   status: Status;
   monthly: string;
@@ -37,6 +38,7 @@ interface Form {
 
 function formOf(c: Cliente, pay: string | null, f: OfferFlags | undefined): Form {
   return {
+    name: c.name,
     responsible: c.responsible ?? "",
     status: statusOf(c),
     monthly: c.monthly != null ? String(c.monthly) : "",
@@ -145,12 +147,14 @@ export default function ClientesPage() {
     setSaving(true);
     setMsg(null);
     try {
+      if (!form.name.trim()) throw new Error("O nome do cliente não pode ficar vazio.");
       const body: Record<string, unknown> = {
         responsible: form.responsible || null,
         monthly_investment: num(form.monthly),
         cpa_target: num(form.cpaTarget),
         client_since: form.since ? `${form.since}-01` : null,
       };
+      if (form.name.trim() !== cur.name) body.client_name = form.name.trim();
       const before = statusOf(cur);
       if (form.status !== before) {
         body.active = form.status !== "pausado";
@@ -336,6 +340,9 @@ export default function ClientesPage() {
                 </div>
               ) : (
                 <>
+                  <Field label="Nome do cliente" htmlFor="f-nome">
+                    <input id="f-nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
+                  </Field>
                   <Field label="Responsável" htmlFor="f-resp">
                     <select id="f-resp" value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} className={inputCls}>
                       <option value="">Sem responsável</option>
