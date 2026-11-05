@@ -105,6 +105,7 @@ export function GravadorProvider({ children }: { children: ReactNode }) {
   const [clientes, setClientes] = useState<Cliente[] | null>(null);
   const [titulo, setTitulo] = useState("");
   const [q, setQ] = useState("");
+  const [trocando, setTrocando] = useState(false); // lista de clientes aberta mesmo com um já escolhido
   const [setupMsg, setSetupMsg] = useState<string | null>(null);
   const [segundos, setSegundos] = useState(0);
   const [bytes, setBytes] = useState(0);
@@ -166,6 +167,8 @@ export function GravadorProvider({ children }: { children: ReactNode }) {
   const abrir = useCallback(() => {
     if (fase === "gravando" || fase === "pausado" || fase === "enviando") return;
     setSetupMsg(null);
+    setTrocando(false);
+    setQ("");
     setFase("setup");
     if (!clientes) {
       loadClientes()
@@ -370,32 +373,69 @@ export function GravadorProvider({ children }: { children: ReactNode }) {
 
             <div className="flex flex-col gap-1">
               <label htmlFor="grav-busca" className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Cliente</label>
-              <input
-                id="grav-busca"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Buscar cliente…"
-                className="h-9 rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]"
-              />
-              <div className="max-h-44 overflow-y-auto rounded-lg border border-zinc-200 dark:border-white/10">
-                {clientes == null ? (
-                  <p className="px-3 py-2 text-sm text-zinc-500">Carregando clientes…</p>
-                ) : lista.length === 0 ? (
-                  <p className="px-3 py-2 text-sm text-zinc-500">Nenhum cliente encontrado.</p>
-                ) : (
-                  lista.map((c) => (
-                    <button
-                      key={c.id}
-                      onClick={() => setPrefs({ cliente: c.id })}
-                      className={`block w-full truncate px-3 py-1.5 text-left text-sm ${
-                        prefs.cliente === c.id ? "bg-blue-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-white/5"
-                      }`}
-                    >
-                      {c.name}
+              {clienteSel && !trocando ? (
+                // Etapa 252: cliente escolhido → a lista fecha e fica só o escolhido, com "Trocar" pra reabrir.
+                <div className="flex h-10 items-center gap-2 rounded-lg border border-blue-600 bg-blue-600/10 px-3">
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold text-blue-700 dark:text-blue-300">{clienteSel.name}</span>
+                  <Btn
+                    small
+                    onClick={() => {
+                      setQ("");
+                      setTrocando(true);
+                    }}
+                  >
+                    Trocar
+                  </Btn>
+                </div>
+              ) : (
+                <>
+                  <input
+                    id="grav-busca"
+                    autoFocus={trocando}
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && lista[0]) {
+                        setPrefs({ cliente: lista[0].id });
+                        setTrocando(false);
+                      }
+                      if (e.key === "Escape" && clienteSel) {
+                        e.stopPropagation();
+                        setTrocando(false);
+                      }
+                    }}
+                    placeholder="Buscar cliente…"
+                    className="h-9 rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]"
+                  />
+                  <div className="max-h-44 overflow-y-auto rounded-lg border border-zinc-200 dark:border-white/10">
+                    {clientes == null ? (
+                      <p className="px-3 py-2 text-sm text-zinc-500">Carregando clientes…</p>
+                    ) : lista.length === 0 ? (
+                      <p className="px-3 py-2 text-sm text-zinc-500">Nenhum cliente encontrado.</p>
+                    ) : (
+                      lista.map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => {
+                            setPrefs({ cliente: c.id });
+                            setTrocando(false);
+                          }}
+                          className={`block w-full truncate px-3 py-1.5 text-left text-sm ${
+                            prefs.cliente === c.id ? "bg-blue-600 text-white" : "hover:bg-zinc-100 dark:hover:bg-white/5"
+                          }`}
+                        >
+                          {c.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  {clienteSel ? (
+                    <button onClick={() => setTrocando(false)} className="self-start text-xs text-zinc-500 hover:underline">
+                      Manter {clienteSel.name}
                     </button>
-                  ))
-                )}
-              </div>
+                  ) : null}
+                </>
+              )}
             </div>
 
             <div className="flex flex-col gap-1">
@@ -412,7 +452,7 @@ export function GravadorProvider({ children }: { children: ReactNode }) {
             <div className="flex flex-col gap-1">
               <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Qualidade</span>
               <div className="grid grid-cols-3 gap-2">
-                {(Object.keys(QUALIDADES) as Qualidade[]).map((k) => (
+                {(["zap", "720", "1080"] as Qualidade[]).map((k) => (
                   <button
                     key={k}
                     onClick={() => setPrefs({ qualidade: k })}
