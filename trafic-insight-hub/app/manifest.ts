@@ -1,12 +1,15 @@
 import type { MetadataRoute } from "next";
 
 // Etapa 221: app no celular (PWA) — "Adicionar à Tela de Início" no Safari do iPhone abre direto nas telas rápidas (/m).
+// Etapa 250: também instalável no computador (Chrome/Edge → "Instalar"). Abre em "/", que manda o celular pra /m e o
+// computador pro Hub estratégico (app/page.tsx).
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Trafic Insight Hub",
     short_name: "Traffic",
-    description: "Alertas, clientes e conjuntos — versão de celular do Trafic Insight Hub.",
-    start_url: "/m",
+    description: "Gestão de tráfego, clientes, feedbacks e alertas.",
+    id: "/",
+    start_url: "/",
     scope: "/",
     display: "standalone",
     background_color: "#09090b",
