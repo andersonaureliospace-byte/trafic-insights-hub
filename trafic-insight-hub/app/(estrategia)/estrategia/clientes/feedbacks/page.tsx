@@ -95,6 +95,13 @@ export default function FeedbacksPage() {
       .catch(() => {});
   }, [load]);
 
+  // Etapa 251: gravação nova feita pelo botão "● Gravar" do Hub → recarrega a lista na hora.
+  useEffect(() => {
+    const h = () => void load();
+    window.addEventListener("feedbacks:changed", h);
+    return () => window.removeEventListener("feedbacks:changed", h);
+  }, [load]);
+
   // Enquanto tiver gravação subindo ou sendo resumida, atualiza sozinho a cada 5s.
   const working = (items ?? []).some((f) => (f.status === "enviando" || f.status === "processando") && !isStale(f));
   useEffect(() => {
@@ -119,7 +126,7 @@ export default function FeedbacksPage() {
 
   return (
     <div className="flex flex-col">
-      <PageHeader title="Clientes" sub="Feedbacks em vídeo gravados pelo Gravador de Tela" />
+      <PageHeader title="Clientes" sub="Feedbacks em vídeo — grave pelo botão ● Gravar no topo" />
       <ClientesTabs />
       <div className="grid gap-4 p-4 lg:p-6 xl:grid-cols-[minmax(0,1fr)_26rem]">
         <div className="flex min-w-0 flex-col gap-4">
@@ -174,7 +181,7 @@ export default function FeedbacksPage() {
                     <tr>
                       <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
                         {items.length === 0
-                          ? "Nenhuma gravação ainda. Grave pela extensão Gravador de Tela e ela aparece aqui."
+                          ? "Nenhuma gravação ainda. Clique em ● Gravar no topo do Hub e ela aparece aqui."
                           : filtro === "revisao"
                             ? "Nada pra revisar. 🎉"
                             : "Nenhum feedback com esse filtro."}

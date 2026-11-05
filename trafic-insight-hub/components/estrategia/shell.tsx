@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { SignOutButton } from "@/components/sign-out-button";
 import { WhatsappPanel, useWaOpen } from "@/components/estrategia/whatsapp-panel";
+import { GravadorProvider, GravarButton } from "@/components/estrategia/gravador";
 
 // Etapa 238: casca do Hub estratégico — menu lateral (Tráfego / Clientes, itens "em breve", Automações, link pro hub
 // operacional pausado), botão de Modo escuro/claro e o filtro de Responsável compartilhado entre as telas.
@@ -143,6 +144,7 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
 
   return (
     <EstrCtx.Provider value={value}>
+      <GravadorProvider>
       <div className={`${theme} flex min-h-screen flex-1 flex-col bg-zinc-50 text-zinc-900 dark:bg-[#0b0e14] dark:text-zinc-100`}>
         {/* Etapa 243: um menu só, fino, no topo (o menu antigo do hub operacional e a barra lateral saíram). */}
         <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b0e14]/85">
@@ -159,6 +161,8 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
               <Item href="/estrategia/automacoes" small>Automações</Item>
             </nav>
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              {/* Etapa 251: gravador de tela dentro do Hub (vai pra Clientes → Feedbacks) */}
+              <GravarButton />
               <Link
                 href="/painel"
                 title="O hub operacional (antigo) continua no ar"
@@ -202,6 +206,7 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
           <main className="min-w-0 flex-1">{children}</main>
         </div>
       </div>
+      </GravadorProvider>
     </EstrCtx.Provider>
   );
 }
