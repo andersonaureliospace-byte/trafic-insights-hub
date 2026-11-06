@@ -1,4 +1,4 @@
--- Prioridades e gestores puxados do Asana (projeto ESTRATEGISTA SPEED DIGITAL, seções Luan, Ana e Kauê), lidos em 06/11/2026.
+-- Prioridades puxadas do Asana (projeto ESTRATEGISTA SPEED DIGITAL, seções Luan, Ana e Kauê), lidos em 06/11/2026.
 -- Rode uma vez no Supabase (SQL Editor → cole tudo → Run). No final aparece a lista do que mudou e do que não achou conta.
 --
 -- Como acha a conta: 1º pela tarefa do Asana já ligada na Descrição do cliente; 2º pelo nome igual (sem acento, maiúscula
@@ -83,24 +83,16 @@ create temp table antes as
 select c.user_id, c.ad_account_id, c.client_name, c.priority as prioridade_antes, c.responsible as gestor_antes, m.gid, m.ordem
 from contas_norm c join casamento m using (user_id, ad_account_id);
 
--- 1) prioridade = a do Asana
+-- prioridade = a do Asana (só isso; não mexe em mais nada)
 update account_bindings b
 set priority = a.prioridade, updated_at = now()
 from casamento m join asana_norm a on a.gid = m.gid
 where b.user_id = m.user_id and b.ad_account_id = m.ad_account_id
   and b.priority is distinct from a.prioridade;
 
--- 2) gestor (responsável) = a seção do Asana onde a tarefa está
-update account_bindings b
-set responsible = a.gestor, updated_at = now()
-from casamento m join asana_norm a on a.gid = m.gid
-where b.user_id = m.user_id and b.ad_account_id = m.ad_account_id
-  and b.responsible is distinct from a.gestor;
-
 -- relatório: o que achou (e o que mudou) + tarefas do Asana que não acharam conta no Hub
 select a.nome as cliente_asana, an.client_name as conta_no_hub,
        coalesce(an.prioridade_antes, '—') || ' → ' || a.prioridade as prioridade,
-       coalesce(an.gestor_antes, '—') || ' → ' || a.gestor as gestor,
        case an.ordem when 1 then 'pela Descrição' when 2 then 'nome igual' when 3 then 'nome parecido' else 'NÃO ACHOU — confira o nome no Hub' end as como_achou
 from asana_norm a
 left join antes an on an.gid = a.gid
