@@ -133,7 +133,22 @@ export function matchTask(
     return tn.includes(n) || n.includes(tn);
   });
   if (partial.length === 1) return { task: partial[0] };
-  return { task: null, reason: partial.length > 1 ? "ambiguous" : "notFound" };
+  if (partial.length > 1) return { task: null, reason: "ambiguous" };
+  // Etapa 268: mesmas palavras em outra ordem e número sem o zero da frente
+  // ("IVS Curitiba 01" = "IVS CURITIBA 1"; "IVS CUIABÁ CELESTINO 07" = "IVS CUIABÁ 07 CELESTINO").
+  const key = wordsKey(clientName);
+  const same = tasks.filter((t) => wordsKey(t.name) === key);
+  if (same.length === 1) return { task: same[0] };
+  return { task: null, reason: same.length > 1 ? "ambiguous" : "notFound" };
+}
+
+function wordsKey(s: string): string {
+  return normName(s)
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => (/^\d+$/.test(w) ? String(Number(w)) : w))
+    .sort()
+    .join(" ");
 }
 
 export async function syncAsanaPriorities(items: AsanaSyncItem[]): Promise<AsanaSyncSummary> {

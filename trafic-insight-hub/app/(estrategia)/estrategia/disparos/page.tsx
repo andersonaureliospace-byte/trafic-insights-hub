@@ -192,6 +192,95 @@ function Previa({ parts, grupo }: { parts: Part[]; grupo: Grupo | null }) {
   );
 }
 
+// Etapa 269: escolher o grupo pesquisando pelo nome (a lista do WhatsApp tem centenas de grupos).
+const flat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+function GrupoBusca({
+  label,
+  grupos,
+  value,
+  sugestao,
+  onChange,
+}: {
+  label: string;
+  grupos: Grupo[];
+  value: string;
+  sugestao: string | null;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const box = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const fora = (e: MouseEvent) => box.current && !box.current.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", fora);
+    return () => document.removeEventListener("mousedown", fora);
+  }, [open]);
+  const atual = grupos.find((g) => g.id === value) ?? null;
+  const lista = useMemo(() => {
+    const termos = flat(q).split(/\s+/).filter(Boolean);
+    const hit = grupos.filter((g) => termos.every((t) => flat(g.name).includes(t)));
+    // o sugerido primeiro
+    return [...hit.filter((g) => g.id === sugestao), ...hit.filter((g) => g.id !== sugestao)].slice(0, 100);
+  }, [grupos, q, sugestao]);
+  return (
+    <div ref={box} className="relative max-w-[260px] min-w-0 flex-1">
+      <button
+        type="button"
+        aria-label={label}
+        aria-expanded={open}
+        onClick={() => setOpen((v) => !v)}
+        className={`${inputCls} flex w-full items-center text-left ${atual ? "" : "text-zinc-500"}`}
+      >
+        <span className="truncate">{atual ? atual.name : "Escolha o grupo…"}</span>
+        <span className="ml-auto pl-1 text-xs text-zinc-400">▾</span>
+      </button>
+      {open ? (
+        <div className="absolute right-0 z-30 mt-1 w-80 max-w-[85vw] rounded-lg border border-zinc-200 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-[#121722]">
+          <input
+            autoFocus
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setOpen(false);
+              if (e.key === "Enter" && lista[0]) {
+                onChange(lista[0].id);
+                setOpen(false);
+              }
+            }}
+            placeholder="Pesquisar grupo…"
+            aria-label="Pesquisar grupo"
+            className={`${inputCls} mb-2 w-full`}
+          />
+          <div className="max-h-64 overflow-y-auto">
+            {lista.length === 0 ? (
+              <p className="px-2 py-2 text-xs text-zinc-500">Nenhum grupo com esse nome.</p>
+            ) : (
+              lista.map((g) => (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => {
+                    onChange(g.id);
+                    setOpen(false);
+                  }}
+                  className={`block w-full truncate rounded px-2 py-1.5 text-left text-sm hover:bg-zinc-100 dark:hover:bg-white/5 ${
+                    g.id === value ? "font-semibold text-blue-600 dark:text-blue-400" : ""
+                  }`}
+                >
+                  {g.name}
+                  {g.id === sugestao ? <span className="ml-1 text-xs text-emerald-600 dark:text-emerald-400">(sugerido)</span> : null}
+                  {g.clientes.length > 0 ? <span className="ml-1 text-xs text-zinc-400">· já é de {g.clientes.map((c) => c.name).join(", ")}</span> : null}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 // ---------- Página ----------
 
 export default function DisparosPage() {
@@ -625,20 +714,13 @@ export default function DisparosPage() {
                       <span className="block truncate text-sm font-medium">{c.name}</span>
                       <span className="block text-xs text-zinc-500">{c.responsible ?? "sem gestor"}</span>
                     </span>
-                    <select
-                      aria-label={`Grupo de ${c.name}`}
+                    <GrupoBusca
+                      label={`Grupo de ${c.name}`}
+                      grupos={grupos ?? []}
                       value={escolha[c.id] ?? c.sugestao?.id ?? ""}
-                      onChange={(e) => setEscolha((m) => ({ ...m, [c.id]: e.target.value }))}
-                      className={`${inputCls} max-w-[260px] min-w-0 flex-1`}
-                    >
-                      <option value="">Escolha o grupo…</option>
-                      {(grupos ?? []).map((g) => (
-                        <option key={g.id} value={g.id}>
-                          {g.name}
-                          {g.id === c.sugestao?.id ? " (sugerido)" : ""}
-                        </option>
-                      ))}
-                    </select>
+                      sugestao={c.sugestao?.id ?? null}
+                      onChange={(id) => setEscolha((m) => ({ ...m, [c.id]: id }))}
+                    />
                     <Btn small disabled={!!vinculando || rodando || !(escolha[c.id] ?? c.sugestao?.id)} onClick={() => void vincular([c])}>
                       {vinculando === c.id ? "Salvando…" : "Vincular"}
                     </Btn>
