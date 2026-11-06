@@ -20,7 +20,11 @@ export async function GET() {
       if (/client_feedbacks/.test(error.message)) throw new Error("Rode o SQL supabase/migrations/0043_client_feedbacks.sql no Supabase.");
       throw error;
     }
-    const feedbacks = ((data ?? []) as FeedbackRow[]).map((r) => ({ ...r, video_url: publicUrl(supabase, r.video_path) }));
+    const feedbacks = ((data ?? []) as FeedbackRow[]).map((r) => ({
+      ...r,
+      video_url: publicUrl(supabase, r.video_path),
+      print_urls: (r.prints ?? []).map((p) => publicUrl(supabase, p.path)).filter(Boolean),
+    }));
     return NextResponse.json({ feedbacks });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
@@ -51,9 +55,9 @@ export async function DELETE(request: Request) {
   try {
     const { supabase, user } = await requireUser();
     const { id } = (await request.json()) as { id?: string };
-    const { data } = await supabase.from("client_feedbacks").select("video_path, audio_path").eq("id", String(id)).eq("user_id", user.id).maybeSingle();
+    const { data } = await supabase.from("client_feedbacks").select("video_path, audio_path, prints").eq("id", String(id)).eq("user_id", user.id).maybeSingle();
     if (!data) throw new Error("Feedback não encontrado.");
-    const paths = [data.video_path, data.audio_path].filter(Boolean) as string[];
+    const paths = [data.video_path, data.audio_path, ...((data.prints as Array<{ path: string }> | null) ?? []).map((p) => p.path)].filter(Boolean) as string[];
     if (paths.length) await createServiceClient().storage.from(FEEDBACK_BUCKET).remove(paths);
     const { error } = await supabase.from("client_feedbacks").delete().eq("id", String(id)).eq("user_id", user.id);
     if (error) throw error;

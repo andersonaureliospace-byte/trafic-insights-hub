@@ -21,6 +21,7 @@ import type { ActivityItem } from "@/lib/estrategia/activities";
 import { useEstr } from "./shell";
 import { Card, Pill, ago, fmtBRL, fmtCpa, fmtInt } from "./ui";
 import type { Linha, OfferFlags } from "./use-carteira";
+import { AvisarGestores } from "./avisar-gestores";
 
 // Etapa 238/243: Tráfego → Acompanhamento. Uma linha por conta, sem rolagem lateral:
 // conta · prioridade (só leitura) · investimento no período (meta embaixo) · ritmo · CPA no período · ofertas · otimização · descrição.
@@ -136,6 +137,16 @@ export function Acompanhamento({
   // Etapa 248: pesquisa (nome, responsável, grupo do WhatsApp, ID) e conta fixada (as outras ficam com os números embaçados).
   const [q, setQ] = useState("");
   const [pinned, setPinned] = useState<string | null>(null);
+  // Etapa 272: contas marcadas pro "Avisar gestores"
+  const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
+  const [avisar, setAvisar] = useState(false);
+  const marcar = (id: string) =>
+    setMarcadas((s) => {
+      const n = new Set(s);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   useEffect(() => {
     try {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- conta fixada guardada neste navegador
@@ -254,6 +265,13 @@ export function Acompanhamento({
               📌 {linhas.find((l) => l.id === pinned)?.name} ✕
             </button>
           ) : null}
+          {marcadas.size > 0 ? (
+            <span className="flex items-center gap-2 rounded-lg bg-blue-600/10 px-2 py-1 text-xs">
+              <b className="text-blue-700 dark:text-blue-300">{marcadas.size} marcada{marcadas.size === 1 ? "" : "s"}</b>
+              <button onClick={() => setAvisar(true)} className="rounded-md bg-blue-600 px-2 py-0.5 font-medium text-white hover:bg-blue-700">📣 Avisar gestores</button>
+              <button onClick={() => setMarcadas(new Set())} className="text-zinc-500 hover:underline">limpar</button>
+            </span>
+          ) : null}
           <span className="ml-auto text-xs text-zinc-500">{rows.length} contas</span>
         </div>
         <table className="w-full table-fixed text-sm">
@@ -270,7 +288,18 @@ export function Acompanhamento({
           </colgroup>
           <thead>
             <tr className="border-b border-zinc-200 text-left text-[11px] tracking-wide text-zinc-500 uppercase dark:border-white/10">
-              <th className="py-2.5 pr-2 pl-4 font-semibold">Conta</th>
+              <th className="py-2.5 pr-2 pl-4 font-semibold">
+                <span className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    aria-label="Marcar todas as contas da lista"
+                    title="Marcar todas da lista (pra Avisar gestores)"
+                    checked={rows.length > 0 && rows.every((x) => marcadas.has(x.l.id))}
+                    onChange={(e) => setMarcadas(e.target.checked ? new Set(rows.map((x) => x.l.id)) : new Set())}
+                  />
+                  Conta
+                </span>
+              </th>
               <th className={th}>Responsável</th>
               <th className={th}>Prioridade</th>
               <th className={`${th} text-right`}>Investimento</th>
@@ -297,6 +326,13 @@ export function Acompanhamento({
                 >
                   <td className="py-3 pr-2 pl-4">
                     <div className="flex items-start gap-1">
+                    <input
+                      type="checkbox"
+                      checked={marcadas.has(l.id)}
+                      onChange={() => marcar(l.id)}
+                      aria-label={`Marcar ${l.name}`}
+                      className="mt-1 mr-1 shrink-0"
+                    />
                     <button
                       onClick={() => togglePin(l.id)}
                       title={pinned === l.id ? "Tirar o fixar" : "Fixar esta conta (as outras ficam embaçadas)"}
@@ -340,6 +376,11 @@ export function Acompanhamento({
                   </td>
                   <td className={`px-2 py-3 text-right tabular-nums ${blur}`}>
                     {spend != null ? fmtBRL(spend) : "—"}
+                    {r.dailyTarget != null ? (
+                      <div className="text-xs whitespace-nowrap text-zinc-500" title="Investimento ideal até ontem | até hoje">
+                        {fmtMeta(r.dailyTarget * (cal.day - 1))} | {fmtMeta(r.dailyTarget * cal.day)}
+                      </div>
+                    ) : null}
                     <div className="text-xs text-zinc-500" title="Meta mensal">{fmtMeta(l.monthly)}</div>
                   </td>
                   <td className={`px-2 py-3 tabular-nums ${blur}`}>
@@ -409,13 +450,20 @@ export function Acompanhamento({
 
       <p className="text-xs leading-relaxed text-zinc-500">
         <b className="text-zinc-700 dark:text-zinc-300">Investimento</b> e <b className="text-zinc-700 dark:text-zinc-300">CPA</b> seguem o período escolhido (só o mês
-        atual); embaixo, a meta mensal e o CPA ideal. <b className="text-zinc-700 dark:text-zinc-300">Ritmo</b>: investimento diário atual e quanto falta pra
+        atual); embaixo, o investimento ideal até ontem | até hoje, a meta mensal e o CPA ideal. Marque contas (☐) pra <b className="text-zinc-700 dark:text-zinc-300">Avisar gestores</b>. <b className="text-zinc-700 dark:text-zinc-300">Ritmo</b>: investimento diário atual e quanto falta pra
         ficar em dia com a meta (positivo = abaixo, negativo = passou; menos de R$ {RITMO_BAND} fica verde); embaixo, a meta diária.{" "}
         <b className="text-zinc-700 dark:text-zinc-300">Ofertas</b>: CPA dos 2 últimos dias. <b className="text-zinc-700 dark:text-zinc-300">Otimização</b>: há
         quanto tempo foi a última mudança relevante (orçamento, liga/desliga, conjunto ou anúncio novo, público, criativo ou lance); passe o mouse pra ver o
         que foi.
       </p>
 
+      {avisar ? (
+        <AvisarGestores
+          linhas={rows.filter((x) => marcadas.has(x.l.id)).map((x) => ({ l: x.l, cpa: x.cpa, spend: x.spend }))}
+          periodLabel={(CPA_PERIODS.find((p) => p.id === period)?.label ?? period).toLowerCase()}
+          onClose={() => setAvisar(false)}
+        />
+      ) : null}
       {desc ? <DescricaoBalao l={desc.l} anchor={desc.anchor} onClose={() => setDesc(null)} /> : null}
     </div>
   );

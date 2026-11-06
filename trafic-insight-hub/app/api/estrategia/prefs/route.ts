@@ -10,7 +10,8 @@ import { AUDIT_PREF_KEY } from "@/lib/estrategia/auditorias/config";
 //   offer_flags         = por conta: { exame: bool, promo: bool } — se a conta anuncia EXAME / PROMO (Etapa 242/260)
 //   estr_auditorias     = configuração das Auditorias (Etapa 257)
 //   contas_sensiveis    = por conta: true — conta sensível, otimizar até as 09h (Etapa 261)
-const KEYS = new Set(["estrategia_ui", "gestores", "offer_flags", SWITCHES_PREF_KEY, AUDIT_PREF_KEY, "contas_sensiveis"]);
+//   feedback_modelos    = texto: feedbacks reais do usuário, modelo de tom pra IA do Feedback por print (Etapa 271)
+const KEYS = new Set(["estrategia_ui", "gestores", "offer_flags", SWITCHES_PREF_KEY, AUDIT_PREF_KEY, "contas_sensiveis", "feedback_modelos"]);
 
 export async function GET(request: Request) {
   try {

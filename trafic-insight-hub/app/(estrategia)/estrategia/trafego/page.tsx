@@ -150,6 +150,7 @@ export default function TrafegoPage() {
               srv={srv}
               naming={naming}
               loading={srvLoading}
+              onSaldoChanged={() => void loadAlertas(ids.split(","))}
               onNamingFixed={(fixed) =>
                 setNaming((n) => {
                   const done = new Set(fixed);

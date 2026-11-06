@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { ClientesTabs } from "@/components/estrategia/clientes-tabs";
 import { GravarButton } from "@/components/estrategia/gravador";
+import { NovoFeedbackPrint } from "@/components/estrategia/novo-feedback-print";
 import { loadClientes, matchesResp } from "@/components/estrategia/use-carteira";
 import { Btn, Card, Pill, ago } from "@/components/estrategia/ui";
 import type { Tone } from "@/lib/estrategia/calc";
@@ -34,6 +35,9 @@ interface Feedback {
   send_error: string | null;
   created_at: string;
   updated_at: string;
+  tipo?: "video" | "print";
+  print_urls?: string[];
+  pontos?: string | null;
 }
 
 interface Group {
@@ -76,6 +80,7 @@ export default function FeedbacksPage() {
   const [filtro, setFiltro] = useState<Filtro>("revisao");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState<string | null>(null);
+  const [novoPrint, setNovoPrint] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -127,9 +132,21 @@ export default function FeedbacksPage() {
 
   return (
     <div className="flex flex-col">
-      <PageHeader title="Clientes" sub="Feedbacks em vídeo pros clientes">
+      <PageHeader title="Clientes" sub="Feedbacks pros clientes — por print do resultado ou em vídeo">
+        <Btn primary onClick={() => setNovoPrint(true)}>📸 Feedback por print</Btn>
         <GravarButton />
       </PageHeader>
+      {novoPrint ? (
+        <NovoFeedbackPrint
+          onClose={() => setNovoPrint(false)}
+          onCreated={(id) => {
+            setNovoPrint(false);
+            setFiltro("revisao");
+            setSel(id);
+            void load();
+          }}
+        />
+      ) : null}
       <ClientesTabs />
       <div className="grid gap-4 p-4 lg:p-6 xl:grid-cols-[minmax(0,1fr)_26rem]">
         <div className="flex min-w-0 flex-col gap-4">
@@ -171,7 +188,7 @@ export default function FeedbacksPage() {
                     <th className="px-4 py-2.5 font-semibold">Gravado</th>
                     <th className="px-3 py-2.5 font-semibold">Cliente</th>
                     <th className="px-3 py-2.5 font-semibold">Título</th>
-                    <th className="px-3 py-2.5 text-right font-semibold">Duração</th>
+                    <th className="px-3 py-2.5 text-right font-semibold">Tipo</th>
                     <th className="px-3 py-2.5 font-semibold">Status</th>
                   </tr>
                 </thead>
@@ -184,7 +201,7 @@ export default function FeedbacksPage() {
                     <tr>
                       <td colSpan={5} className="px-4 py-8 text-center text-zinc-500">
                         {items.length === 0
-                          ? "Nenhuma gravação ainda. Clique em ● Gravar (no alto, à direita) e ela aparece aqui."
+                          ? "Nenhum feedback ainda. Clique em 📸 Feedback por print (no alto, à direita) pra começar."
                           : filtro === "revisao"
                             ? "Nada pra revisar. 🎉"
                             : "Nenhum feedback com esse filtro."}
@@ -209,7 +226,9 @@ export default function FeedbacksPage() {
                           <td className="px-4 py-3 whitespace-nowrap text-zinc-600 tabular-nums dark:text-zinc-400">{fmtDate(f.created_at)}</td>
                           <td className="px-3 py-3 font-semibold">{f.client_name}</td>
                           <td className="max-w-[16rem] truncate px-3 py-3 text-zinc-600 dark:text-zinc-400">{f.titulo || "—"}</td>
-                          <td className="px-3 py-3 text-right tabular-nums">{fmtDur(f.duracao_seg)}</td>
+                          <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">
+                            {f.tipo === "print" ? `📸 ${f.print_urls?.length ?? 0} print${(f.print_urls?.length ?? 0) === 1 ? "" : "s"}` : `🎥 ${fmtDur(f.duracao_seg)}`}
+                          </td>
                           <td className="px-3 py-3">
                             <Pill tone={st.tone}>{st.label}</Pill>
                           </td>
@@ -255,6 +274,10 @@ function Detail({ f, onChanged }: { f: Feedback; onChanged: () => Promise<void> 
   const dirty = titulo !== f.titulo || resumo !== (f.resumo ?? "");
   const ready = f.status === "revisao" || f.status === "enviado" || isStale(f);
   const asDocument = !(f.video_mime ?? "").includes("mp4") || (f.video_bytes ?? 0) > 16 * 1048576;
+  const isPrint = f.tipo === "print";
+  const prints = f.print_urls ?? [];
+  const [pontos, setPontos] = useState(f.pontos ?? "");
+  const temMidia = isPrint ? prints.length > 0 : !!f.video_url;
 
   async function call(url: string, method: string, body: unknown) {
     const d = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json());
@@ -312,19 +335,43 @@ function Detail({ f, onChanged }: { f: Feedback; onChanged: () => Promise<void> 
         <div className="min-w-0">
           <h2 className="truncate text-lg font-semibold">{f.client_name}</h2>
           <div className="text-xs text-zinc-500">
-            {fmtDate(f.created_at)} · {fmtDur(f.duracao_seg)} · {fmtMB(f.video_bytes)}
+            {isPrint ? `${fmtDate(f.created_at)} · 📸 ${prints.length} print${prints.length === 1 ? "" : "s"}` : `${fmtDate(f.created_at)} · ${fmtDur(f.duracao_seg)} · ${fmtMB(f.video_bytes)}`}
           </div>
         </div>
         <Pill tone={st.tone}>{st.label}</Pill>
       </div>
 
-      {f.video_url && f.status !== "enviando" ? (
+      {isPrint ? (
+        <div className={`grid gap-2 ${prints.length > 1 ? "grid-cols-2" : ""}`}>
+          {prints.map((u) => (
+            <a key={u} href={u} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-zinc-200 dark:border-white/10">
+              {/* eslint-disable-next-line @next/next/no-img-element -- print do Storage */}
+              <img src={u} alt="Print do resultado" className="w-full object-contain" />
+            </a>
+          ))}
+        </div>
+      ) : f.video_url && f.status !== "enviando" ? (
         <video src={f.video_url} controls preload="metadata" className="w-full rounded-lg bg-black" />
       ) : (
         <div className="flex aspect-video items-center justify-center rounded-lg bg-zinc-100 text-sm text-zinc-500 dark:bg-white/5">
           {isStale(f) ? "O vídeo não terminou de subir. Grave de novo pela extensão." : "Subindo o vídeo…"}
         </div>
       )}
+
+      {isPrint ? (
+        <div className="flex flex-col gap-1">
+          <label htmlFor="fb-pontos" className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Pontos de atenção</label>
+          <textarea
+            id="fb-pontos"
+            value={pontos}
+            onChange={(e) => setPontos(e.target.value)}
+            rows={3}
+            disabled={f.status === "enviado"}
+            placeholder="O que você quer que a IA fale (ex.: custo alto, subimos vídeos novos…)"
+            className={`${inputCls} py-2`}
+          />
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-1">
         <label htmlFor="fb-titulo" className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Título</label>
@@ -378,11 +425,11 @@ function Detail({ f, onChanged }: { f: Feedback; onChanged: () => Promise<void> 
       <div className="flex flex-col gap-1">
         <div className="flex items-center justify-between">
           <label htmlFor="fb-resumo" className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
-            Plano de ação (mensagem de texto, depois do vídeo)
+            {isPrint ? "Feedback (vai de legenda no print)" : "Plano de ação (mensagem de texto, depois do vídeo)"}
           </label>
         </div>
         {f.status === "processando" && !isStale(f) ? (
-          <div className="rounded-lg bg-blue-500/10 px-3 py-2 text-sm text-blue-700 dark:text-blue-300">A IA está transcrevendo e montando o plano de ação… (atualiza sozinho)</div>
+          <div className="rounded-lg bg-blue-500/10 px-3 py-2 text-sm text-blue-700 dark:text-blue-300">{isPrint ? "A IA está escrevendo o feedback… (atualiza sozinho)" : "A IA está transcrevendo e montando o plano de ação… (atualiza sozinho)"}</div>
         ) : null}
         {f.ai_error ? (
           <div className="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
@@ -397,7 +444,7 @@ function Detail({ f, onChanged }: { f: Feedback; onChanged: () => Promise<void> 
             setTouched(true);
           }}
           rows={9}
-          placeholder="Sem plano de ação — só o vídeo será enviado."
+          placeholder={isPrint ? "Sem texto — só o print será enviado." : "Sem plano de ação — só o vídeo será enviado."}
           disabled={f.status === "enviado"}
           className={`${inputCls} py-2 leading-relaxed`}
         />
@@ -405,22 +452,23 @@ function Detail({ f, onChanged }: { f: Feedback; onChanged: () => Promise<void> 
           <button
             onClick={() =>
               void run("resumir", async () => {
+                if (isPrint && pontos !== (f.pontos ?? "")) await call("/api/feedbacks/print", "POST", { action: "pontos", id: f.id, pontos });
                 await call("/api/feedbacks/resumir", "POST", { id: f.id });
                 setTouched(false);
-                return "Plano de ação gerado de novo.";
+                return isPrint ? "Feedback escrito de novo." : "Plano de ação gerado de novo.";
               })
             }
             disabled={busy != null || f.status === "enviando"}
             className="self-start text-xs font-medium text-blue-600 hover:underline disabled:opacity-50 dark:text-blue-400"
           >
-            {busy === "resumir" ? "Gerando…" : "↻ Gerar plano de novo"}
+            {busy === "resumir" ? "Gerando…" : isPrint ? "↻ Escrever de novo com a IA (usa os pontos acima)" : "↻ Gerar plano de novo"}
           </button>
         ) : null}
       </div>
 
       {f.transcricao ? (
         <details className="rounded-lg border border-zinc-200 px-3 py-2 text-sm dark:border-white/10">
-          <summary className="cursor-pointer text-xs font-semibold text-zinc-500">Transcrição completa</summary>
+          <summary className="cursor-pointer text-xs font-semibold text-zinc-500">{isPrint ? "O que você falou no áudio" : "Transcrição completa"}</summary>
           <p className="mt-2 text-sm whitespace-pre-wrap text-zinc-600 dark:text-zinc-400">{f.transcricao}</p>
         </details>
       ) : null}
@@ -435,7 +483,7 @@ function Detail({ f, onChanged }: { f: Feedback; onChanged: () => Promise<void> 
         {f.status !== "enviado" ? (
           confirmSend ? null : (
             <>
-              <Btn primary disabled={busy != null || !ready || !f.wa_group_id || !f.video_url} onClick={() => setConfirmSend(true)}>
+              <Btn primary disabled={busy != null || !ready || !f.wa_group_id || !temMidia} onClick={() => setConfirmSend(true)}>
                 👁 Ver prévia e enviar
               </Btn>
               {dirty ? (
@@ -466,10 +514,11 @@ function Detail({ f, onChanged }: { f: Feedback; onChanged: () => Promise<void> 
           )}
         </div>
       </div>
-      {confirmSend && f.video_url ? (
+      {confirmSend && temMidia ? (
         <SendPreview
           groupName={f.wa_group_name ?? f.wa_group_id ?? ""}
           videoUrl={f.video_url}
+          prints={isPrint ? prints : null}
           caption={`🎥 *${titulo.trim() || "Feedback"}*`}
           asDocument={asDocument}
           plano={resumo}
@@ -506,6 +555,7 @@ function WaText({ text }: { text: string }) {
 function SendPreview({
   groupName,
   videoUrl,
+  prints,
   caption,
   asDocument,
   plano,
@@ -514,7 +564,8 @@ function SendPreview({
   onConfirm,
 }: {
   groupName: string;
-  videoUrl: string;
+  videoUrl: string | null;
+  prints: string[] | null;
   caption: string;
   asDocument: boolean;
   plano: string;
@@ -541,13 +592,37 @@ function SendPreview({
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-3 overflow-y-auto bg-[#efeae2] p-4 dark:bg-[#0b141a]">
+          {prints ? (
+            prints.map((u, i) => {
+              const last = i === prints.length - 1;
+              const legenda = last && plano.trim().length > 0 && plano.trim().length <= 1000;
+              return (
+                <div key={u} className="ml-auto w-[85%] rounded-lg rounded-tr-none bg-[#d9fdd3] p-1.5 shadow-sm dark:bg-[#005c4b]">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- prévia */}
+                  <img src={u} alt="" className="w-full rounded-md" />
+                  {legenda ? (
+                    <div className="px-1.5 pt-1.5 pb-0.5 text-sm leading-relaxed whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">
+                      <WaText text={plano.trim()} />
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })
+          ) : null}
+          {prints && plano.trim().length > 1000 ? (
+            <div className="ml-auto w-[85%] rounded-lg rounded-tr-none bg-[#d9fdd3] px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap text-zinc-900 shadow-sm dark:bg-[#005c4b] dark:text-zinc-100">
+              <WaText text={plano.trim()} />
+            </div>
+          ) : null}
+          {prints ? null : (
+          <>
           <div className="ml-auto w-[85%] rounded-lg rounded-tr-none bg-[#d9fdd3] p-1.5 shadow-sm dark:bg-[#005c4b]">
             {asDocument ? (
               <div className="mb-1 rounded bg-black/5 px-2 py-1 text-[11px] text-zinc-600 dark:bg-white/10 dark:text-zinc-300">
                 📎 Vai como arquivo (passou de 16 MB) — o cliente toca depois de baixar
               </div>
             ) : null}
-            <video src={videoUrl} controls preload="metadata" className="w-full rounded-md bg-black" />
+            {videoUrl ? <video src={videoUrl} controls preload="metadata" className="w-full rounded-md bg-black" /> : null}
             <div className="px-1.5 pt-1.5 pb-0.5 text-sm whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">
               <WaText text={caption} />
             </div>
@@ -558,6 +633,8 @@ function SendPreview({
             </div>
           ) : (
             <p className="text-center text-xs text-zinc-500">Sem plano de ação — só o vídeo vai ser enviado.</p>
+          )}
+          </>
           )}
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-white/10">

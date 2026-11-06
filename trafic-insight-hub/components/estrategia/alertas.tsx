@@ -1,5 +1,6 @@
 "use client";
 
+import { ConfigSaldo } from "./config-saldo";
 import Link from "next/link";
 import { useState } from "react";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -463,13 +464,17 @@ export function Alertas({
   naming,
   loading,
   onNamingFixed,
+  onSaldoChanged,
 }: {
   linhas: Linha[];
   srv: AlertasServer | null;
   naming: NamingData;
   loading: boolean;
   onNamingFixed?: (ids: string[]) => void;
+  onSaldoChanged?: () => void;
 }) {
+  // Etapa 273: ⚙ Configurar no quadro Saldo das contas
+  const [configSaldo, setConfigSaldo] = useState(false);
   const groups = buildGroups(linhas, srv, naming);
   const [namingOpen, setNamingOpen] = useState<string | null>(null);
   const [search, setSearch] = useState<Record<string, string>>({});
@@ -501,6 +506,15 @@ export function Alertas({
 
   return (
     <div className="flex flex-col gap-4">
+      {configSaldo ? (
+        <ConfigSaldo
+          linhas={linhas}
+          onClose={(changed) => {
+            setConfigSaldo(false);
+            if (changed) onSaldoChanged?.();
+          }}
+        />
+      ) : null}
       {srv?.warnings?.length ? (
         <div className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{srv.warnings.join(" · ")}</div>
       ) : null}
@@ -518,6 +532,15 @@ export function Alertas({
                   <span aria-hidden>{g.icon}</span>
                   {g.title}
                 </h3>
+                {g.key === "saldo" ? (
+                  <button
+                    onClick={() => setConfigSaldo(true)}
+                    title="Tipo de conta, saldo adicionado, limite e mais — de cada conta"
+                    className="ml-auto rounded-md border border-zinc-300 px-2 py-0.5 text-xs font-medium hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
+                  >
+                    ⚙ Configurar
+                  </button>
+                ) : null}
                 {g.key === "nomes" && allFixable.length ? (
                   <button
                     onClick={async () => {

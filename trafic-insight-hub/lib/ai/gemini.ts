@@ -375,3 +375,72 @@ export async function summarizeFeedback(params: {
   });
   return parseFeedback(json);
 }
+
+
+// ---------- Etapa 271: Feedback por print ----------
+// Prints do resultado (Meta/Gerenciador) + pontos de atenção do estrategista (escritos e/ou num áudio) → a mensagem de
+// feedback pro grupo do cliente no WhatsApp.
+
+// Exemplos reais do Anderson (06/11/2026) — o tom padrão. O campo "Meu jeito de escrever" (prefs feedback_modelos) soma mais.
+const PRINT_FEEDBACK_EXEMPLOS = `Exemplo 1:
+Bom dia turma.
+
+Nessa semana, tivemos 40 leads a um custo de R$ 7,80
+Exame é promoção desse mês, teve um bom desempenho.
+Os videos que enviamos ontem, também começou a perfomar.
+Agora vamos ir atrás de reduzir esse custo.
+
+Caso a promoção do 200 reais de desconto, não melhore, já iniciamos a de presentes. Estamos acompanhando aqui de perto.
+
+Exemplo 2:
+A promoção atual, não teve um bom desempenho, o custo por lead está bem alto.
+
+Estamos subindo os últimos testes, com esses videos. Caso não vingue, vamos já partir para os videos de presentes, que era para 2ª quinzena.
+
+Exemplo 3:
+Subimos novos testes, de multifocal e videos gerais, já deu uma respirada.
+Falei para a Ana reativar boleto, tinha caido o desempenho no final de semana.
+E estou enviando novos videos para a gente utilizar também.`;
+
+const PRINT_FEEDBACK_PROMPT = (cliente: string, pontos: string, temAudio: boolean, modelos: string) =>
+  `Você é o gestor de tráfego escrevendo o feedback de resultados pro grupo de WhatsApp do cliente "${cliente}". ` +
+  `O texto vai como legenda do print do resultado.\n\n` +
+  `Material:\n- Print(s) do resultado da campanha (anexos de imagem). Leia os números direto dos prints.\n` +
+  (pontos.trim() ? `- Pontos de atenção que o gestor quer passar (escritos):\n"""${pontos.trim()}"""\n` : "") +
+  (temAudio ? `- Um áudio do gestor falando os pontos de atenção (anexo). Transcreva e use.\n` : "") +
+  `\nESCREVA EXATAMENTE NO JEITO DO GESTOR, como nestes feedbacks reais dele (copie o estilo, não o conteúdo):\n` +
+  `"""\n${PRINT_FEEDBACK_EXEMPLOS}\n` +
+  (modelos.trim() ? `\nMais exemplos dele:\n${modelos.trim().slice(0, 6000)}\n` : "") +
+  `"""\n\nRegras:\n` +
+  `- Curto: de 2 a 6 linhas, no máximo uns 500 caracteres. Frases simples, de conversa, como ele fala.\n` +
+  `- Pode começar com uma saudação curta do jeito dele ("Bom dia turma.", "Boa tarde pessoal.") — conforme o caso.\n` +
+  `- Traga o número principal do print (ex.: quantos leads/conversas e o custo por lead, em R$ com vírgula).\n` +
+  `- Diga o que foi bem ou mal e o que vamos fazer agora, usando os pontos de atenção do gestor. Se tiver plano B, diga ` +
+  `("Caso não melhore, ...").\n` +
+  `- SEM títulos, SEM negrito, SEM listas/tópicos, SEM emojis, SEM despedida formal, SEM jargão (nada de CTR, CPM, ROAS).\n` +
+  `- NUNCA invente número nem ação: só o que dá pra ler nos prints e o que o gestor disse.\n\n` +
+  `Responda em JSON: {"transcricao": "<transcrição do áudio, ou vazio se não tiver áudio>", "resumo": "<a mensagem pronta>"}.`;
+
+async function fetchInline(url: string, mime: string): Promise<{ inlineData: { mimeType: string; data: string } }> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Falha ao baixar um anexo do Storage (HTTP ${res.status}).`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  return { inlineData: { mimeType: mime.split(";")[0], data: buf.toString("base64") } };
+}
+
+export async function writePrintFeedback(params: {
+  cliente: string;
+  pontos: string;
+  prints: Array<{ url: string; mime: string }>;
+  audio: { url: string; mime: string } | null;
+  modelos?: string;
+}): Promise<FeedbackSummary> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY não configurada no servidor.");
+  if (params.prints.length === 0) throw new Error("Anexe pelo menos um print do resultado.");
+  const parts: unknown[] = [{ text: PRINT_FEEDBACK_PROMPT(params.cliente, params.pontos, !!params.audio, params.modelos ?? "") }];
+  for (const p of params.prints.slice(0, 8)) parts.push(await fetchInline(p.url, p.mime || "image/png"));
+  if (params.audio) parts.push(await fetchInline(params.audio.url, params.audio.mime || "audio/webm"));
+  const json = await callGemini(apiKey, { contents: [{ role: "user", parts }], generationConfig: FEEDBACK_SCHEMA });
+  return parseFeedback(json);
+}

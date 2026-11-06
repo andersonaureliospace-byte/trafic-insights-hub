@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { summarizeFeedback } from "@/lib/ai/gemini";
+import { summarizeFeedback, writePrintFeedback } from "@/lib/ai/gemini";
 import { sendMedia, sendText, type WhatsappCreds } from "@/lib/whatsapp/client";
 
 // Etapa 249: Clientes → Feedbacks (vídeos da extensão "Gravador de Tela"). Regras compartilhadas entre as rotas públicas
@@ -34,10 +34,13 @@ export interface FeedbackRow {
   send_error: string | null;
   created_at: string;
   updated_at: string;
+  tipo?: "video" | "print";
+  prints?: Array<{ path: string; mime: string }>;
+  pontos?: string | null;
 }
 
 export const FEEDBACK_COLUMNS =
-  "id, user_id, ad_account_id, client_name, titulo, status, video_path, video_mime, video_bytes, audio_path, audio_mime, duracao_seg, transcricao, resumo, ai_error, wa_group_id, wa_group_name, sent_at, send_error, created_at, updated_at";
+  "id, user_id, ad_account_id, client_name, titulo, status, video_path, video_mime, video_bytes, audio_path, audio_mime, duracao_seg, transcricao, resumo, ai_error, wa_group_id, wa_group_name, sent_at, send_error, created_at, updated_at, tipo, prints, pontos";
 
 const normId = (id: string) => String(id ?? "").replace(/^act_/, "");
 
@@ -75,6 +78,22 @@ export async function processFeedback(supabase: SupabaseClient, id: string): Pro
   const row = data as FeedbackRow;
   await supabase.from("client_feedbacks").update({ status: "processando", ai_error: null, updated_at: new Date().toISOString() }).eq("id", id);
   try {
+    // Etapa 271: feedback por print → a IA lê os prints + os pontos de atenção (texto e/ou áudio) e escreve a mensagem.
+    if (row.tipo === "print") {
+      const { data: m } = await supabase.from("user_ui_prefs").select("pref_value").eq("user_id", row.user_id).eq("pref_key", "feedback_modelos").maybeSingle();
+      const result = await writePrintFeedback({
+        modelos: typeof m?.pref_value === "string" ? m.pref_value : "",
+        cliente: row.client_name,
+        pontos: row.pontos ?? "",
+        prints: (row.prints ?? []).map((p) => ({ url: publicUrl(supabase, p.path) as string, mime: p.mime })),
+        audio: row.audio_path ? { url: publicUrl(supabase, row.audio_path) as string, mime: row.audio_mime || "audio/webm" } : null,
+      });
+      await supabase
+        .from("client_feedbacks")
+        .update({ status: "revisao", transcricao: result.transcricao || null, resumo: result.resumo, ai_error: null, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      return;
+    }
     const result = await summarizeFeedback({
       audio: row.audio_path ? { url: publicUrl(supabase, row.audio_path) as string, mime: row.audio_mime || "audio/mp4" } : null,
       video: row.video_path ? { url: publicUrl(supabase, row.video_path) as string, mime: row.video_mime || "video/mp4" } : null,
@@ -98,6 +117,25 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 // Envia o vídeo no grupo e, logo depois, o resumo numa mensagem separada (pedido do usuário).
 export async function sendFeedback(supabase: SupabaseClient, creds: WhatsappCreds, row: FeedbackRow): Promise<void> {
   if (!row.wa_group_id) throw new Error("Escolha o grupo de WhatsApp antes de enviar.");
+  // Etapa 271: feedback por print → os prints (em ordem) e, logo depois, a mensagem.
+  if (row.tipo === "print") {
+    const prints = row.prints ?? [];
+    if (prints.length === 0) throw new Error("Esse feedback não tem print.");
+    // Como ele já manda: o texto vai de legenda no print (no último, se forem vários). Texto muito longo pra legenda
+    // (WhatsApp corta ~1.000 caracteres) vai numa mensagem separada logo depois.
+    const texto = (row.resumo ?? "").trim();
+    const naLegenda = texto.length > 0 && texto.length <= 1000;
+    for (let i = 0; i < prints.length; i++) {
+      if (i > 0) await sleep(1200);
+      const ultimo = i === prints.length - 1;
+      await sendMedia(creds, row.wa_group_id, { url: publicUrl(supabase, prints[i].path) as string, type: "image", caption: ultimo && naLegenda ? texto : "" });
+    }
+    if (texto && !naLegenda) {
+      await sleep(1500);
+      await sendText(creds, row.wa_group_id, texto);
+    }
+    return;
+  }
   if (!row.video_path) throw new Error("O vídeo não chegou no Hub — grave de novo.");
   const url = publicUrl(supabase, row.video_path) as string;
   const isMp4 = (row.video_mime || "").includes("mp4");
