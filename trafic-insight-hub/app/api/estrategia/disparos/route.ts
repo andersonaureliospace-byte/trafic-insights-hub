@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { createServiceClient } from "@/lib/supabase/server";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
-import { listGroups, sendMedia, sendText, type WhatsappMediaType } from "@/lib/whatsapp/client";
-import { FEEDBACK_BUCKET, WHATSAPP_VIDEO_MAX_BYTES } from "@/lib/feedbacks/core";
+import { listGroups } from "@/lib/whatsapp/client";
+import { FEEDBACK_BUCKET } from "@/lib/feedbacks/core";
+import { chainDisparos, cleanParts, createDisparo, hasStalledDisparo, runDisparos, type DisparoAlvo } from "@/lib/estrategia/disparos";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { normName } from "@/lib/asana/priority-sync";
 
@@ -29,8 +30,45 @@ interface ClienteRef {
 export async function GET(request: Request) {
   try {
     const { supabase, user } = await requireUser();
+    // Etapa 270: ?disparos=1 → últimos disparos (e os grupos de um deles com ?id=, ou do mais recente)
+    const qs = new URL(request.url).searchParams;
+    if (qs.get("disparos") === "1") {
+      const { data: list, error } = await supabase
+        .from("estr_disparos")
+        .select("id, status, resumo, total, ok, erro, interval_min, interval_max, next_at, last_error, created_at, finished_at")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (error) {
+        if (/estr_disparo/.test(error.message)) return NextResponse.json({ disparos: [], itens: [], semTabela: true });
+        throw error;
+      }
+      const alvo = qs.get("id") || list?.[0]?.id || null;
+      let itens: unknown[] = [];
+      if (alvo && qs.get("itens") !== "0") {
+        const { data } = await supabase
+          .from("estr_disparo_itens")
+          .select("group_id, group_name, status, parte, error, sent_at")
+          .eq("disparo_id", alvo)
+          .order("ordem", { ascending: true })
+          .limit(2000);
+        itens = data ?? [];
+      }
+      // contagem ao vivo do disparo rodando (a linha do disparo só é recontada no fim de cada rodada)
+      const disparos = await Promise.all(
+        (list ?? []).map(async (d) => {
+          if (d.status !== "rodando" && d.status !== "pausado") return d;
+          const [{ count: ok }, { count: erro }] = await Promise.all([
+            supabase.from("estr_disparo_itens").select("id", { count: "exact", head: true }).eq("disparo_id", d.id).eq("status", "ok"),
+            supabase.from("estr_disparo_itens").select("id", { count: "exact", head: true }).eq("disparo_id", d.id).eq("status", "erro"),
+          ]);
+          return { ...d, ok: ok ?? d.ok, erro: erro ?? d.erro };
+        }),
+      );
+      return NextResponse.json({ disparos, itens, itensDe: alvo });
+    }
     const inst = await requireWhatsappInstance(supabase, user.id);
-    const force = new URL(request.url).searchParams.get("force") === "1";
+    const force = qs.get("force") === "1";
     const [groups, { data: binds }, { data: chats }, { data: gRow }, { data: sel }, off] = await Promise.all([
       listGroups(inst, force),
       supabase.from("account_bindings").select("ad_account_id, client_name, responsible, wa_group_id, archived").eq("user_id", user.id),
@@ -82,25 +120,6 @@ export async function GET(request: Request) {
   }
 }
 
-interface Part {
-  kind: "text" | "media";
-  text?: string;
-  url?: string;
-  mime?: string;
-  fileName?: string;
-  bytes?: number;
-}
-
-function mediaKind(mime: string, bytes: number): WhatsappMediaType {
-  if (mime.startsWith("image/")) return "image";
-  // O WhatsApp só toca como vídeo até ~16 MB e em MP4; acima disso vai como arquivo (igual aos Feedbacks).
-  if (mime.startsWith("video/")) return mime.includes("mp4") && bytes <= WHATSAPP_VIDEO_MAX_BYTES ? "video" : "document";
-  if (mime.startsWith("audio/")) return "audio";
-  return "document";
-}
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 // Apaga os anexos de disparos com mais de 7 dias (a Uazapi só precisa do link na hora do envio).
 async function purgeOld(service: ReturnType<typeof createServiceClient>, userId: string) {
   const storage = service.storage.from(FEEDBACK_BUCKET);
@@ -148,26 +167,48 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true });
     }
 
-    if (body.action === "send") {
-      const groupId = String(body.groupId ?? "").trim();
-      const parts = (Array.isArray(body.parts) ? body.parts : []) as Part[];
-      if (!groupId.endsWith("@g.us")) throw new Error("Grupo inválido.");
-      if (parts.length === 0) throw new Error("Nada pra enviar.");
-      if (parts.length > 10) throw new Error("No máximo 10 mensagens por disparo.");
-      const inst = await requireWhatsappInstance(supabase, user.id);
-      for (let i = 0; i < parts.length; i++) {
-        const p = parts[i];
-        if (i > 0) await sleep(1500); // mantém a ordem no WhatsApp
-        if (p.kind === "media" && p.url) {
-          const mime = String(p.mime ?? "");
-          await sendMedia(inst, groupId, { url: p.url, type: mediaKind(mime, Number(p.bytes ?? 0)), caption: p.text ?? "", fileName: p.fileName });
-        } else {
-          const text = String(p.text ?? "").trim();
-          if (!text) continue;
-          if (text.length > 4096) throw new Error("Texto passou de 4.096 caracteres.");
-          await sendText(inst, groupId, text);
-        }
-      }
+    // Etapa 270: o disparo roda no servidor (segundo plano). Aqui só cria/controla; quem manda é runDisparos.
+    const origin = new URL(request.url).origin;
+    const rodar = () =>
+      after(async () => {
+        const service = createServiceClient();
+        const r = await runDisparos(service, user.id).catch(() => ({ sent: 0, pending: true }));
+        if (r.pending) await chainDisparos(origin);
+      });
+
+    if (body.action === "create") {
+      const parts = cleanParts(body.parts);
+      const alvos = (Array.isArray(body.alvos) ? body.alvos : []) as DisparoAlvo[];
+      const id = await createDisparo(supabase, user.id, {
+        parts,
+        alvos,
+        intervalMin: Number(body.intervalMin ?? 10),
+        intervalMax: Number(body.intervalMax ?? 20),
+      });
+      rodar();
+      return NextResponse.json({ ok: true, id });
+    }
+
+    if (body.action === "control") {
+      const id = String(body.id ?? "");
+      const op = String(body.op ?? "");
+      const now = new Date().toISOString();
+      if (op === "pausar") await supabase.from("estr_disparos").update({ status: "pausado", updated_at: now }).eq("id", id).eq("status", "rodando");
+      else if (op === "parar") await supabase.from("estr_disparos").update({ status: "parado", updated_at: now, finished_at: now }).eq("id", id).in("status", ["rodando", "pausado"]);
+      else if (op === "continuar") {
+        await supabase.from("estr_disparos").update({ status: "rodando", next_at: now, updated_at: now, finished_at: null }).eq("id", id).in("status", ["pausado", "parado"]);
+        rodar();
+      } else if (op === "reenviar") {
+        await supabase.from("estr_disparo_itens").update({ status: "pendente", error: null }).eq("disparo_id", id).eq("status", "erro");
+        await supabase.from("estr_disparos").update({ status: "rodando", next_at: now, updated_at: now, finished_at: null }).eq("id", id);
+        rodar();
+      } else throw new Error("Ação desconhecida.");
+      return NextResponse.json({ ok: true });
+    }
+
+    // O Hub aberto (em qualquer tela) chama de tempos em tempos: se a corrente parou, reacende.
+    if (body.action === "kick") {
+      if (await hasStalledDisparo(supabase, user.id)) rodar();
       return NextResponse.json({ ok: true });
     }
 

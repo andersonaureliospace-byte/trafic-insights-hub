@@ -35,6 +35,25 @@ type Part =
       error: string | null;
     };
 type Estado = "pendente" | "enviando" | "ok" | "erro";
+interface DisparoRow {
+  id: string;
+  status: "rodando" | "pausado" | "parado" | "concluido";
+  resumo: string;
+  total: number;
+  ok: number;
+  erro: number;
+  next_at: string;
+  last_error: string | null;
+  created_at: string;
+}
+interface ItemRow {
+  group_id: string;
+  group_name: string;
+  status: "pendente" | "ok" | "erro";
+  parte: number;
+  error: string | null;
+}
+const STATUS_LABEL: Record<DisparoRow["status"], string> = { rodando: "Enviando", pausado: "Pausado", parado: "Parado", concluido: "Concluído" };
 
 const SEM_GESTOR = "__sem_gestor__";
 const SO_CLIENTES = "__clientes__";
@@ -49,7 +68,6 @@ const INTERVALOS = [
 
 const inputCls = "h-9 rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]";
 const keyOf = () => Math.random().toString(36).slice(2, 10);
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const fmtMB = (b: number) => `${(b / 1048576).toFixed(1).replace(".", ",")} MB`;
 
 function gestoresDo(g: Grupo): string[] {
@@ -81,11 +99,18 @@ function putArquivo(url: string, file: File, apikey: string | null, onProgress: 
 }
 
 async function postJson<T>(body: Record<string, unknown>): Promise<T> {
-  const d = await fetch("/api/estrategia/disparos", {
+  const r = await fetch("/api/estrategia/disparos", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  }).then((r) => r.json());
+  });
+  const txt = await r.text();
+  let d: { error?: string } & Record<string, unknown>;
+  try {
+    d = JSON.parse(txt);
+  } catch {
+    throw new Error(r.status === 504 ? "O servidor demorou demais pra responder." : `O servidor respondeu um erro (${r.status}).`);
+  }
   if (d.error) throw new Error(d.error);
   return d as T;
 }
@@ -302,12 +327,14 @@ export default function DisparosPage() {
   const [intervalo, setIntervalo] = useState("normal");
 
   const [confirmando, setConfirmando] = useState(false);
-  const [rodando, setRodando] = useState(false);
-  const [pausado, setPausado] = useState(false);
-  const [estado, setEstado] = useState<Record<string, { s: Estado; err?: string }>>({});
-  const [espera, setEspera] = useState<number | null>(null);
-  const pauseRef = useRef(false);
-  const stopRef = useRef(false);
+  const [criando, setCriando] = useState(false);
+  const [criarErr, setCriarErr] = useState<string | null>(null);
+  // Etapa 270: o disparo roda no servidor — a tela só acompanha (dá pra sair e voltar).
+  const [disparos, setDisparos] = useState<DisparoRow[]>([]);
+  const [semTabela, setSemTabela] = useState(false);
+  const [acompanhar, setAcompanhar] = useState<string | null>(null);
+  const [itens, setItens] = useState<ItemRow[]>([]);
+  const rodando = criando;
 
   const carregar = useCallback(async (force: boolean) => {
     setLoading(true);
@@ -325,6 +352,7 @@ export default function DisparosPage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial dos grupos do WhatsApp
     void carregar(false);
   }, [carregar]);
 
@@ -335,13 +363,29 @@ export default function DisparosPage() {
   }, [parts]);
   useEffect(() => () => partsRef.current.forEach((p) => p.kind === "media" && URL.revokeObjectURL(p.preview)), []);
 
-  // Avisa antes de fechar a aba no meio do disparo.
+  const carregarDisparos = useCallback(async (id: string | null) => {
+    try {
+      const d = await fetch(`/api/estrategia/disparos?disparos=1${id ? `&id=${id}` : ""}`, { cache: "no-store" }).then((r) => r.json());
+      if (d.error) return;
+      setSemTabela(!!d.semTabela);
+      setDisparos(d.disparos ?? []);
+      setItens(d.itens ?? []);
+      setAcompanhar((cur) => cur ?? d.itensDe ?? null);
+    } catch {
+      /* tenta de novo na próxima */
+    }
+  }, []);
   useEffect(() => {
-    if (!rodando) return;
-    const h = (e: BeforeUnloadEvent) => e.preventDefault();
-    window.addEventListener("beforeunload", h);
-    return () => window.removeEventListener("beforeunload", h);
-  }, [rodando]);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carga inicial dos disparos
+    void carregarDisparos(null);
+  }, [carregarDisparos]);
+  const atual = disparos.find((d) => d.id === acompanhar) ?? null;
+  const vivo = disparos.some((d) => d.status === "rodando" || d.status === "pausado");
+  useEffect(() => {
+    if (!vivo) return;
+    const t = setInterval(() => void carregarDisparos(acompanhar), 4000);
+    return () => clearInterval(t);
+  }, [vivo, acompanhar, carregarDisparos]);
 
   // Gestores que aparecem nos grupos, mesmo os que não estão cadastrados em Gestores.
   const listaGestores = useMemo(() => {
@@ -487,58 +531,52 @@ export default function DisparosPage() {
 
   async function disparar(alvo: Grupo[]) {
     setConfirmando(false);
-    setRodando(true);
-    setPausado(false);
-    pauseRef.current = false;
-    stopRef.current = false;
-    setEstado((cur) => {
-      const n = { ...cur };
-      for (const g of alvo) n[g.id] = { s: "pendente" };
-      return n;
-    });
-    for (let i = 0; i < alvo.length; i++) {
-      while (pauseRef.current && !stopRef.current) await sleep(300);
-      if (stopRef.current) break;
-      const g = alvo[i];
-      setEstado((cur) => ({ ...cur, [g.id]: { s: "enviando" } }));
-      try {
-        await postJson({
-          action: "send",
-          groupId: g.id,
-          parts: enviaveis.map((p) =>
-            p.kind === "text"
-              ? { kind: "text", text: aplicar(p.text, g) }
-              : { kind: "media", text: aplicar(p.text, g), url: p.url, mime: p.file.type, fileName: p.file.name, bytes: p.file.size },
-          ),
-        });
-        setEstado((cur) => ({ ...cur, [g.id]: { s: "ok" } }));
-      } catch (e) {
-        setEstado((cur) => ({ ...cur, [g.id]: { s: "erro", err: (e as Error).message } }));
-      }
-      if (i < alvo.length - 1) {
-        const wait = Math.round((intv.min + Math.random() * (intv.max - intv.min)) * 1000);
-        for (let t = wait; t > 0 && !stopRef.current; t -= 1000) {
-          setEspera(Math.ceil(t / 1000));
-          await sleep(Math.min(1000, t));
-        }
-        setEspera(null);
-      }
+    setCriando(true);
+    setCriarErr(null);
+    try {
+      const r = await postJson<{ id: string }>({
+        action: "create",
+        intervalMin: intv.min,
+        intervalMax: intv.max,
+        alvos: alvo.map((g) => ({ id: g.id, name: g.name, cliente: nomeCliente(g) })),
+        parts: enviaveis.map((p) =>
+          p.kind === "text"
+            ? { kind: "text", text: p.text }
+            : { kind: "media", text: p.text, url: p.url, mime: p.file.type, fileName: p.file.name, bytes: p.file.size },
+        ),
+      });
+      setAcompanhar(r.id);
+      await carregarDisparos(r.id);
+    } catch (e) {
+      setCriarErr((e as Error).message);
     }
-    setEspera(null);
-    setRodando(false);
+    setCriando(false);
   }
 
-  const resumo = useMemo(() => {
-    const vals = Object.values(estado);
-    return { ok: vals.filter((v) => v.s === "ok").length, erro: vals.filter((v) => v.s === "erro").length, total: vals.length };
-  }, [estado]);
-  const falhas = (grupos ?? []).filter((g) => estado[g.id]?.s === "erro");
+  async function controlar(id: string, op: "pausar" | "continuar" | "parar" | "reenviar") {
+    try {
+      await postJson({ action: "control", id, op });
+    } catch (e) {
+      setCriarErr((e as Error).message);
+    }
+    await carregarDisparos(id);
+  }
+
+  // estado de cada grupo no disparo acompanhado
+  const estado = useMemo(() => {
+    const m: Record<string, { s: Estado; err?: string }> = {};
+    for (const it of itens) {
+      m[it.group_id] = { s: it.status === "pendente" && it.parte > 0 ? "enviando" : it.status, err: it.error ?? undefined };
+    }
+    return m;
+  }, [itens]);
+  const falhasItens = itens.filter((i) => i.status === "erro");
 
   function novoDisparo() {
     parts.forEach((p) => p.kind === "media" && URL.revokeObjectURL(p.preview));
     setParts([{ key: keyOf(), kind: "text", text: "" }]);
-    setEstado({});
     setSel(new Set());
+    setConfirmando(false);
   }
 
   return (
@@ -680,7 +718,7 @@ export default function DisparosPage() {
                       {st ? (
                         <span title={st.err}>
                           <Pill tone={st.s === "ok" ? "ok" : st.s === "erro" ? "bad" : st.s === "enviando" ? "info" : "off"}>
-                            {st.s === "ok" ? "Enviado" : st.s === "erro" ? "Erro" : st.s === "enviando" ? "Enviando…" : rodando ? "Na fila" : "Não enviado"}
+                            {st.s === "ok" ? "Enviado" : st.s === "erro" ? "Erro" : st.s === "enviando" ? "Enviando…" : atual?.status === "rodando" || atual?.status === "pausado" ? "Na fila" : "Não enviado"}
                           </Pill>
                         </span>
                       ) : null}
@@ -746,60 +784,82 @@ export default function DisparosPage() {
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              {rodando ? (
+              {confirmando ? (
                 <>
-                  <Btn
-                    onClick={() => {
-                      pauseRef.current = !pauseRef.current;
-                      setPausado(pauseRef.current);
-                    }}
-                  >
-                    {pausado ? "▶ Continuar" : "⏸ Pausar"}
-                  </Btn>
-                  <Btn onClick={() => (stopRef.current = true)}>■ Parar</Btn>
-                  <span className="text-xs text-zinc-500">
-                    {resumo.ok + resumo.erro} de {resumo.total}
-                    {espera != null && !pausado ? ` · próximo grupo em ${espera}s` : ""}
-                    {pausado ? " · pausado" : ""} — deixe esta aba aberta
-                  </span>
-                </>
-              ) : confirmando ? (
-                <>
-                  <Btn primary onClick={() => void disparar(selecionados)}>
+                  <Btn primary disabled={criando} onClick={() => void disparar(selecionados)}>
                     Confirmar: enviar pra {selecionados.length} grupo{selecionados.length === 1 ? "" : "s"}
                   </Btn>
                   <Btn onClick={() => setConfirmando(false)}>Voltar</Btn>
                 </>
               ) : (
                 <>
-                  <Btn primary disabled={!podeEnviar} onClick={() => setConfirmando(true)}>
-                    Enviar pra {selecionados.length} grupo{selecionados.length === 1 ? "" : "s"}
+                  <Btn primary disabled={!podeEnviar || semTabela} onClick={() => setConfirmando(true)}>
+                    {criando ? "Iniciando…" : `Enviar pra ${selecionados.length} grupo${selecionados.length === 1 ? "" : "s"}`}
                   </Btn>
-                  {falhas.length > 0 ? <Btn onClick={() => void disparar(falhas)}>Reenviar as {falhas.length} falhas</Btn> : null}
-                  {resumo.total > 0 ? <Btn onClick={novoDisparo}>Novo disparo</Btn> : null}
+                  <Btn onClick={novoDisparo}>Limpar mensagem</Btn>
                 </>
               )}
             </div>
-
-            {!rodando && subindo ? <p className="mt-2 text-xs text-zinc-500">Esperando os arquivos terminarem de subir…</p> : null}
-            {!rodando && comErro ? <p className="mt-2 text-xs text-red-600">Algum arquivo não subiu — remova e anexe de novo.</p> : null}
-            {!rodando && resumo.total > 0 ? (
-              <p className="mt-2 text-sm">
-                <b className="text-emerald-600">{resumo.ok} enviado{resumo.ok === 1 ? "" : "s"}</b>
-                {resumo.erro > 0 ? <b className="text-red-600"> · {resumo.erro} com erro</b> : null}
-                {resumo.ok + resumo.erro < resumo.total ? <span className="text-zinc-500"> · {resumo.total - resumo.ok - resumo.erro} não enviados (parado)</span> : null}
-              </p>
-            ) : null}
-            {falhas.length > 0 && !rodando ? (
-              <ul className="mt-2 flex flex-col gap-1 text-xs text-red-600">
-                {falhas.slice(0, 8).map((g) => (
-                  <li key={g.id} className="truncate">
-                    {g.name}: {estado[g.id]?.err}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
+            <p className="mt-2 text-xs text-zinc-500">
+              O disparo roda no servidor: pode trocar de tela, abrir outra aba ou fechar o Hub que ele continua sozinho.
+            </p>
+            {semTabela ? <p className="mt-2 text-xs text-red-600">Rode o SQL supabase/migrations/0045_disparos.sql no Supabase pra liberar os disparos.</p> : null}
+            {subindo ? <p className="mt-2 text-xs text-zinc-500">Esperando os arquivos terminarem de subir…</p> : null}
+            {comErro ? <p className="mt-2 text-xs text-red-600">Algum arquivo não subiu — remova e anexe de novo.</p> : null}
+            {criarErr ? <p className="mt-2 text-xs text-red-600">{criarErr}</p> : null}
           </Card>
+
+          {disparos.length > 0 ? (
+            <Card className="flex flex-col">
+              <h2 className="border-b border-zinc-200 px-4 py-3 text-sm font-semibold dark:border-white/10">Disparos</h2>
+              <ul className="divide-y divide-zinc-100 dark:divide-white/5">
+                {disparos.map((d) => {
+                  const feito = d.ok + d.erro;
+                  const pct = d.total ? Math.round((feito / d.total) * 100) : 0;
+                  const on = d.id === acompanhar;
+                  return (
+                    <li key={d.id} className={`px-4 py-3 ${on ? "bg-blue-50/60 dark:bg-blue-500/5" : ""}`}>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button onClick={() => { setAcompanhar(d.id); void carregarDisparos(d.id); }} className="min-w-0 flex-1 text-left">
+                          <span className="block truncate text-sm font-medium">{d.resumo || "(sem texto)"}</span>
+                          <span className="block text-xs text-zinc-500">
+                            {new Date(d.created_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} ·{" "}
+                            {d.ok} enviado{d.ok === 1 ? "" : "s"}
+                            {d.erro ? ` · ${d.erro} com erro` : ""} de {d.total}
+                            {on ? " · mostrando na lista de grupos" : " · clique pra ver nos grupos"}
+                          </span>
+                        </button>
+                        <Pill tone={d.status === "concluido" ? "ok" : d.status === "rodando" ? "info" : d.status === "pausado" ? "warn" : "off"}>
+                          {STATUS_LABEL[d.status]}
+                        </Pill>
+                      </div>
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-white/10">
+                        <div className={`h-full ${d.erro ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {d.status === "rodando" ? <Btn small onClick={() => void controlar(d.id, "pausar")}>⏸ Pausar</Btn> : null}
+                        {d.status === "pausado" || d.status === "parado" ? (
+                          feito < d.total ? <Btn small onClick={() => void controlar(d.id, "continuar")}>▶ Continuar</Btn> : null
+                        ) : null}
+                        {d.status === "rodando" || d.status === "pausado" ? <Btn small onClick={() => void controlar(d.id, "parar")}>■ Parar</Btn> : null}
+                        {d.erro > 0 && d.status !== "rodando" ? <Btn small onClick={() => void controlar(d.id, "reenviar")}>Reenviar as {d.erro} falhas</Btn> : null}
+                      </div>
+                      {d.last_error ? <p className="mt-1 text-xs text-red-600">{d.last_error}</p> : null}
+                      {on && falhasItens.length > 0 ? (
+                        <ul className="mt-2 flex flex-col gap-1 text-xs text-red-600">
+                          {falhasItens.slice(0, 8).map((i) => (
+                            <li key={i.group_id} className="truncate">
+                              {i.group_name}: {i.error}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            </Card>
+          ) : null}
         </div>
       </div>
     </div>

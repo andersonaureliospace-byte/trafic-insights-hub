@@ -8,6 +8,7 @@ import { WhatsappPanel, useWaOpen } from "@/components/estrategia/whatsapp-panel
 // Etapa 256: o botão "Gravar" fica só em Clientes → Feedbacks; o gravador continua aqui na casca pra a gravação
 // seguir (e a barrinha flutuante aparecer) mesmo navegando entre as telas do Hub.
 import { GravadorProvider } from "@/components/estrategia/gravador";
+import { DisparoMonitor } from "@/components/estrategia/disparo-monitor";
 
 // Etapa 238: casca do Hub estratégico — menu lateral (Tráfego / Clientes, itens "em breve", Automações, link pro hub
 // operacional pausado), botão de Modo escuro/claro e o filtro de Responsável compartilhado entre as telas.
@@ -147,6 +148,7 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
   return (
     <EstrCtx.Provider value={value}>
       <GravadorProvider>
+      <DisparoMonitor />
       <div className={`${theme} flex min-h-screen flex-1 flex-col bg-zinc-50 text-zinc-900 dark:bg-[#0b0e14] dark:text-zinc-100`}>
         {/* Etapa 243: um menu só, fino, no topo (o menu antigo do hub operacional e a barra lateral saíram). */}
         <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b0e14]/85">

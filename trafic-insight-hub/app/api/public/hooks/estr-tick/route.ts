@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { runTick } from "@/lib/estrategia/auditorias/run";
+import { chainDisparos, hasStalledDisparo } from "@/lib/estrategia/disparos";
 
 // Etapa 257: batida das Auditorias do Hub estratégico. O n8n chama a cada 15 min (fluxo "Auditorias — Hub estratégico");
 // o Hub decide o que rodar pelo horário de Brasília (agenda em lib/estrategia/auditorias/config.ts). Protegido pelo
@@ -22,6 +23,11 @@ export async function POST(request: Request) {
   if (!userId) return NextResponse.json({ error: "Nenhum usuário no Hub." }, { status: 500 });
 
   try {
+    // Etapa 270: se um Disparo em segundo plano parou no meio (corrente quebrou), reacende.
+    const origin = new URL(request.url).origin;
+    after(async () => {
+      if (await hasStalledDisparo(db, userId as string).catch(() => false)) await chainDisparos(origin);
+    });
     const report = await runTick(db, userId);
     return NextResponse.json({ ok: true, ...report });
   } catch (e) {
