@@ -7,7 +7,8 @@ import type { Linha } from "./use-carteira";
 
 // Etapa 272: Tráfego → Acompanhamento → "Avisar gestores". Você marca as contas, escolhe as métricas e o Hub monta o
 // relatório — cada métrica numa parte separada, com a conta e o responsável. Investimento é sempre do mês; CPA segue o
-// período escolhido no quadro. É UMA mensagem só (todas as contas), mandada pros gestores escolhidos e/ou um grupo.
+// período escolhido no quadro. Cada gestor recebe a SUA mensagem (só as contas dele); no grupo vai uma mensagem só,
+// separada por gestor.
 
 export interface LinhaAviso {
   l: Linha;
@@ -48,7 +49,7 @@ export function AvisarGestores({
   const [groups, setGroups] = useState<Group[] | null>(null);
   const [gq, setGq] = useState("");
   const [comNumero, setComNumero] = useState<Set<string> | null>(null);
-  const [texto, setTexto] = useState<string | null>(null); // null = o texto montado automaticamente
+  const [textos, setTextos] = useState<Record<string, string>>({}); // editados à mão (por gestor / grupo)
   const [enviando, setEnviando] = useState(false);
   const [resultado, setResultado] = useState<Array<{ para: string; ok: boolean; erro?: string }> | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -85,7 +86,7 @@ export function AvisarGestores({
       const porDia = Math.max(0, l.monthly - gasto) / restam;
       itens.push({
         l,
-        linha: `• ${l.name} (${l.responsible ?? SEM}) — precisa investir ${brl0(atraso)}, está atrasada. Investido ${brl0(gasto)} de ${brl0(ideal)} ideal até ontem (meta ${brl0(l.monthly)}; ${brl0(porDia)}/dia até o fim do mês).`,
+        linha: `• ${l.name} — precisa investir ${brl0(atraso)}, está atrasada. Investido ${brl0(gasto)} de ${brl0(ideal)} ideal até ontem (meta ${brl0(l.monthly)}; ${brl0(porDia)}/dia até o fim do mês).`,
       });
     }
     return { itens, fora };
@@ -96,26 +97,50 @@ export function AvisarGestores({
     const fora: string[] = [];
     for (const { l, cpa: c, spend } of linhas) {
       if (c === Infinity) {
-        itens.push({ l, linha: `• ${l.name} (${l.responsible ?? SEM}) — gastou ${brl(spend ?? 0)} sem nenhum resultado (${periodLabel}).` });
+        itens.push({ l, linha: `• ${l.name} — gastou ${brl(spend ?? 0)} sem nenhum resultado (${periodLabel}).` });
         continue;
       }
       if (c == null || l.cpaTarget == null || c <= l.cpaTarget) {
         fora.push(`${l.name} (${c == null ? "sem gasto" : l.cpaTarget == null ? "sem CPA ideal" : "CPA ok"})`);
         continue;
       }
-      itens.push({ l, linha: `• ${l.name} (${l.responsible ?? SEM}) — CPA alto (${periodLabel}): ${brl(c)}, o ideal é ${brl(l.cpaTarget)}.` });
+      itens.push({ l, linha: `• ${l.name} — CPA alto (${periodLabel}): ${brl(c)}, o ideal é ${brl(l.cpaTarget)}.` });
     }
     return { itens, fora };
   }, [linhas, periodLabel]);
 
-  // ---- monta a mensagem (uma só, com todas as contas; cada métrica numa parte) ----
-  const gerada = useMemo(() => {
-    const out: string[] = [];
-    if (metricas.has("invest") && invest.itens.length) out.push(`*Investimento abaixo da meta* (${mes})\n${invest.itens.map((x) => x.linha).join("\n")}`);
-    if (metricas.has("cpa") && cpa.itens.length) out.push(`*CPA alto* (${periodLabel})\n${cpa.itens.map((x) => x.linha).join("\n")}`);
-    return out.length ? `📊 *Contas pra olhar*\n\n${out.join("\n\n")}` : "";
-  }, [metricas, invest, cpa, mes, periodLabel]);
-  const final = texto ?? gerada;
+  // ---- monta as mensagens: uma por gestor (só as contas dele) e, se ligado, uma pro grupo separada por gestor ----
+  const GRUPO = "__grupo__";
+  const secoes = useMemo(
+    () => (g: string, titulo: (t: string) => string) => {
+      const out: string[] = [];
+      const de = (x: { l: Linha }) => (x.l.responsible ?? SEM) === g;
+      const inv = metricas.has("invest") ? invest.itens.filter(de) : [];
+      const cp = metricas.has("cpa") ? cpa.itens.filter(de) : [];
+      if (inv.length) out.push(`${titulo(`Investimento abaixo da meta (${mes})`)}\n${inv.map((x) => x.linha).join("\n")}`);
+      if (cp.length) out.push(`${titulo(`CPA alto (${periodLabel})`)}\n${cp.map((x) => x.linha).join("\n")}`);
+      return out;
+    },
+    [metricas, invest, cpa, mes, periodLabel],
+  );
+  const msgs = useMemo(() => {
+    const list: Array<{ key: string; para: string; text: string }> = [];
+    for (const g of [...paraGestores].sort((a, b) => a.localeCompare(b, "pt-BR"))) {
+      const s = secoes(g, (t) => `*${t}*`);
+      if (s.length) list.push({ key: g, para: `👤 ${g}`, text: `Oi, ${g.split(" ")[0]}! 📊 Suas contas pra olhar:\n\n${s.join("\n\n")}` });
+    }
+    if (usarGrupo) {
+      const gs = [...new Set(linhas.map((x) => x.l.responsible ?? SEM))].sort((a, b) => (a === SEM ? 1 : b === SEM ? -1 : a.localeCompare(b, "pt-BR")));
+      const blocos = gs.map((g) => ({ g, s: secoes(g, (t) => `_${t}_`) })).filter((b) => b.s.length);
+      if (blocos.length)
+        list.push({
+          key: GRUPO,
+          para: `👥 ${grupo?.name ?? "grupo (escolha abaixo)"}`,
+          text: `📊 *Contas pra olhar*\n\n${blocos.map((b) => `👤 *${b.g}*\n${b.s.join("\n")}`).join("\n\n")}`,
+        });
+    }
+    return list.map((m) => ({ ...m, text: textos[m.key] ?? m.text, editado: m.key in textos }));
+  }, [paraGestores, usarGrupo, grupo, linhas, secoes, textos]);
 
   async function carregarGrupos() {
     if (groups) return;
@@ -132,10 +157,9 @@ export function AvisarGestores({
     setEnviando(true);
     setErro(null);
     try {
-      const mensagens = [
-        ...[...paraGestores].map((g) => ({ gestor: g, text: final })),
-        ...(usarGrupo && grupo ? [{ groupId: grupo.id, text: final }] : []),
-      ];
+      const mensagens = msgs
+        .filter((m) => m.key !== GRUPO || grupo)
+        .map((m) => (m.key === GRUPO ? { groupId: grupo!.id, text: m.text } : { gestor: m.key, text: m.text }));
       const r = await fetch("/api/estrategia/avisar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -168,8 +192,8 @@ export function AvisarGestores({
     return [...s];
   }, [gestoresDasContas]);
   const semNumero = comNumero ? [...paraGestores].filter((g) => !comNumero.has(flat(g))) : [];
-  const destinos = paraGestores.size + (usarGrupo && grupo ? 1 : 0);
-  const pode = final.trim().length > 0 && destinos > 0 && !enviando && !resultado;
+  const destinos = msgs.filter((m) => m.key !== GRUPO || grupo).length;
+  const pode = destinos > 0 && !enviando && !resultado;
   const toggleG = (g: string) =>
     setParaGestores((s) => {
       const n = new Set(s);
@@ -204,7 +228,7 @@ export function AvisarGestores({
           </div>
 
           <div className="flex flex-col gap-2">
-            <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Enviar para (a mesma mensagem)</span>
+            <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Enviar para</span>
             <div className="flex flex-wrap gap-2">
               {todosGestores.map((g) => {
                 const res = resultado?.find((r) => r.para === g);
@@ -261,27 +285,46 @@ export function AvisarGestores({
           </div>
 
           <div className="flex flex-col gap-3">
-            <span className="flex items-center gap-2 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
-              Mensagem (dá pra editar)
-              {texto != null && !resultado ? (
-                <button onClick={() => setTexto(null)} className="font-medium tracking-normal text-blue-600 normal-case hover:underline dark:text-blue-400">
-                  voltar ao texto automático
-                </button>
-              ) : null}
+            <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+              {msgs.length === 1 ? "Mensagem" : `${msgs.length} mensagens`} (dá pra editar)
             </span>
-            {!gerada && texto == null ? (
+            {msgs.length === 0 ? (
               <p className="rounded-lg bg-zinc-100 px-3 py-3 text-sm text-zinc-600 dark:bg-white/5 dark:text-zinc-400">
-                Nenhuma das contas escolhidas está fora {metricas.size === 0 ? "— escolha uma métrica." : "nas métricas marcadas."}
+                {metricas.size === 0
+                  ? "Escolha uma métrica."
+                  : paraGestores.size === 0 && !usarGrupo
+                    ? "Escolha pra quem enviar."
+                    : "Nenhuma das contas escolhidas está fora nas métricas marcadas (pros destinos escolhidos)."}
               </p>
-            ) : (
-              <textarea
-                value={final}
-                onChange={(e) => setTexto(e.target.value)}
-                rows={Math.min(18, final.split("\n").length + 1)}
-                disabled={!!resultado}
-                className="w-full rounded-lg border border-zinc-300 bg-white px-2.5 py-2 text-sm leading-relaxed dark:border-white/10 dark:bg-[#141924]"
-              />
-            )}
+            ) : null}
+            {msgs.map((m) => (
+              <div key={m.key} className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 text-xs">
+                  <b>Para: {m.para}</b>
+                  {m.editado && !resultado ? (
+                    <button
+                      onClick={() =>
+                        setTextos((t) => {
+                          const n = { ...t };
+                          delete n[m.key];
+                          return n;
+                        })
+                      }
+                      className="text-blue-600 hover:underline dark:text-blue-400"
+                    >
+                      voltar ao texto automático
+                    </button>
+                  ) : null}
+                </div>
+                <textarea
+                  value={m.text}
+                  onChange={(e) => setTextos((t) => ({ ...t, [m.key]: e.target.value }))}
+                  rows={Math.min(14, m.text.split("\n").length + 1)}
+                  disabled={!!resultado}
+                  className="w-full rounded-lg border border-zinc-300 bg-white px-2.5 py-2 text-sm leading-relaxed dark:border-white/10 dark:bg-[#141924]"
+                />
+              </div>
+            ))}
             {resultado ? (
               <ul className="text-xs">
                 {resultado.map((r, i) => (
