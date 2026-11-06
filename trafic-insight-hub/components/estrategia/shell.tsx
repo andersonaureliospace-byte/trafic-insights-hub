@@ -156,6 +156,7 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
               <Item href="/estrategia/trafego">Tráfego</Item>
               <Item href="/estrategia/clientes">Clientes</Item>
               <Item href="/estrategia/pop">POP</Item>
+              <Item href="/estrategia/disparos">Disparos</Item>
             </nav>
             <span className="mx-1 h-4 w-px shrink-0 bg-zinc-200 dark:bg-white/10" />
             <nav className="flex items-center gap-0.5">
