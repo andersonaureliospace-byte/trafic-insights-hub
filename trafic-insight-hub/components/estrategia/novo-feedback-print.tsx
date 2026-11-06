@@ -20,6 +20,7 @@ interface Anexo {
 const inputCls = "w-full rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]";
 const flat = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const keyOf = () => Math.random().toString(36).slice(2, 10);
+const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
 function put(url: string, file: Blob, mime: string, apikey: string | null, onProgress: (p: number) => void) {
   return new Promise<void>((resolve, reject) => {
@@ -219,10 +220,22 @@ export function NovoFeedbackPrint({ onClose, onCreated }: { onClose: () => void;
           <div className="flex flex-col gap-1">
             <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">1. Cliente</span>
             {cliente && !abrirCli ? (
-              <div className="flex items-center gap-2">
-                <span className="flex-1 truncate text-sm font-semibold">{cliente.name}</span>
-                <span className="text-xs text-zinc-500">{cliente.responsible ?? ""}</span>
-                <Btn small onClick={() => setAbrirCli(true)}>Trocar</Btn>
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="flex-1 truncate text-sm font-semibold">{cliente.name}</span>
+                  <span className="text-xs text-zinc-500">{cliente.responsible ?? ""}</span>
+                  <Btn small onClick={() => setAbrirCli(true)}>Trocar</Btn>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-lg bg-zinc-100 px-3 py-2 dark:bg-white/5">
+                    <div className="text-[11px] text-zinc-500">Meta de CPA</div>
+                    <div className="text-base font-semibold tabular-nums">{cliente.cpaTarget != null ? brl(cliente.cpaTarget) : "—"}</div>
+                  </div>
+                  <div className="rounded-lg bg-zinc-100 px-3 py-2 dark:bg-white/5">
+                    <div className="text-[11px] text-zinc-500">Investimento mensal</div>
+                    <div className="text-base font-semibold tabular-nums">{cliente.monthly != null ? brl(cliente.monthly) : "—"}</div>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="rounded-lg border border-zinc-200 p-2 dark:border-white/10">

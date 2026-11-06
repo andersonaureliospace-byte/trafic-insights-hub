@@ -81,7 +81,17 @@ export async function processFeedback(supabase: SupabaseClient, id: string): Pro
     // Etapa 271: feedback por print → a IA lê os prints + os pontos de atenção (texto e/ou áudio) e escreve a mensagem.
     if (row.tipo === "print") {
       const { data: m } = await supabase.from("user_ui_prefs").select("pref_value").eq("user_id", row.user_id).eq("pref_key", "feedback_modelos").maybeSingle();
+      const accId = String(row.ad_account_id).replace(/^act_/, "");
+      const { data: bind } = await supabase
+        .from("account_bindings")
+        .select("cpa_target, monthly_investment")
+        .eq("user_id", row.user_id)
+        .in("ad_account_id", [accId, `act_${accId}`])
+        .limit(1)
+        .maybeSingle();
       const result = await writePrintFeedback({
+        cpaMeta: bind?.cpa_target != null ? Number(bind.cpa_target) : null,
+        investMeta: bind?.monthly_investment != null ? Number(bind.monthly_investment) : null,
         modelos: typeof m?.pref_value === "string" ? m.pref_value : "",
         cliente: row.client_name,
         pontos: row.pontos ?? "",

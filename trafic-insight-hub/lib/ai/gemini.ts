@@ -402,9 +402,10 @@ Subimos novos testes, de multifocal e videos gerais, já deu uma respirada.
 Falei para a Ana reativar boleto, tinha caido o desempenho no final de semana.
 E estou enviando novos videos para a gente utilizar também.`;
 
-const PRINT_FEEDBACK_PROMPT = (cliente: string, pontos: string, temAudio: boolean, modelos: string) =>
+const PRINT_FEEDBACK_PROMPT = (cliente: string, pontos: string, temAudio: boolean, modelos: string, metas: string) =>
   `Você é o gestor de tráfego escrevendo o feedback de resultados pro grupo de WhatsApp do cliente "${cliente}". ` +
   `O texto vai como legenda do print do resultado.\n\n` +
+  (metas ? `Metas do cliente (pra você comparar com o print; não precisa citar se não ajudar): ${metas}.\n\n` : "") +
   `Material:\n- Print(s) do resultado da campanha (anexos de imagem). Leia os números direto dos prints.\n` +
   (pontos.trim() ? `- Pontos de atenção que o gestor quer passar (escritos):\n"""${pontos.trim()}"""\n` : "") +
   (temAudio ? `- Um áudio do gestor falando os pontos de atenção (anexo). Transcreva e use.\n` : "") +
@@ -434,11 +435,24 @@ export async function writePrintFeedback(params: {
   prints: Array<{ url: string; mime: string }>;
   audio: { url: string; mime: string } | null;
   modelos?: string;
+  cpaMeta?: number | null;
+  investMeta?: number | null;
 }): Promise<FeedbackSummary> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY não configurada no servidor.");
   if (params.prints.length === 0) throw new Error("Anexe pelo menos um print do resultado.");
-  const parts: unknown[] = [{ text: PRINT_FEEDBACK_PROMPT(params.cliente, params.pontos, !!params.audio, params.modelos ?? "") }];
+  const parts: unknown[] = [{ text: PRINT_FEEDBACK_PROMPT(
+      params.cliente,
+      params.pontos,
+      !!params.audio,
+      params.modelos ?? "",
+      [
+        params.cpaMeta != null ? `CPA ideal (custo por lead/conversa) R$ ${params.cpaMeta.toFixed(2).replace(".", ",")}` : "",
+        params.investMeta != null ? `investimento mensal R$ ${params.investMeta.toFixed(2).replace(".", ",")}` : "",
+      ]
+        .filter(Boolean)
+        .join("; "),
+    ) }];
   for (const p of params.prints.slice(0, 8)) parts.push(await fetchInline(p.url, p.mime || "image/png"));
   if (params.audio) parts.push(await fetchInline(params.audio.url, params.audio.mime || "audio/webm"));
   const json = await callGemini(apiKey, { contents: [{ role: "user", parts }], generationConfig: FEEDBACK_SCHEMA });
