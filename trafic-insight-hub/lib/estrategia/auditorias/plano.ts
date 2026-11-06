@@ -143,7 +143,7 @@ export async function buildPlano(db: SupabaseClient, userId: string, accounts: A
 
     // Pausas automáticas de ontem (custo 3x o ideal).
     const np = pausasBy.get(a.id) ?? 0;
-    if (np > 0) acoes.push({ nivel: 1, txt: `${np} ${np === 1 ? "pausa automática" : "pausas automáticas"} ontem (custo 3x) → repor criativo` });
+    if (np > 0) acoes.push({ nivel: 1, txt: `${np} ${np === 1 ? "pausa automática" : "pausas automáticas"} nas últimas 24h (custo 3x) → repor criativo` });
 
     acoes.sort((x, y) => y.nivel - x.nivel);
     const score = acoes.reduce((t, x) => t + x.nivel, 0) + (contaNivel || 0);

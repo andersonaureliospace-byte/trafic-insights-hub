@@ -3,7 +3,7 @@
 
 import type { DailyCpaPoint } from "@/lib/meta/daily-cpa";
 
-export type CpaPeriod = "h" | "o" | "oh" | "u2" | "u3" | "u2h" | "u3h";
+export type CpaPeriod = "h" | "o" | "oh" | "u2" | "u3" | "u2h" | "u3h" | "m" | "mo";
 
 export const CPA_PERIODS: Array<{ id: CpaPeriod; label: string; short: string }> = [
   { id: "h", label: "Hoje", short: "hoje" },
@@ -13,6 +13,8 @@ export const CPA_PERIODS: Array<{ id: CpaPeriod; label: string; short: string }>
   { id: "u3", label: "Últimos 3 dias", short: "últ. 3 dias" },
   { id: "u2h", label: "Últimos 2 dias + hoje", short: "últ. 2 dias + hoje" },
   { id: "u3h", label: "Últimos 3 dias + hoje", short: "últ. 3 dias + hoje" },
+  { id: "m", label: "Este mês", short: "este mês" },
+  { id: "mo", label: "Este mês até ontem", short: "mês até ontem" },
 ];
 
 export interface Sum {
@@ -47,6 +49,8 @@ const sum = (list: Array<Sum | undefined>): Sum => list.reduce<Sum>((acc, x) => 
 
 // Quantos dias fechados do mês atual entram em cada período (pra avisar quando o período foi cortado no começo do mês).
 export function closedDaysIn(period: CpaPeriod, cal = calendarSP()): { wanted: number; got: number } {
+  // "Este mês" sempre é o mês inteiro até aqui: não tem o que avisar (no dia 01, "até ontem" fica vazio).
+  if (period === "m" || period === "mo") return { wanted: 0, got: 0 };
   const wanted = { h: 0, o: 1, oh: 1, u2: 2, u3: 3, u2h: 2, u3h: 3 }[period];
   return { wanted, got: Math.min(wanted, cal.day - 1) };
 }
@@ -82,6 +86,8 @@ export function numbersFrom(points: DailyCpaPoint[], cal = calendarSP()): Accoun
       u3: sum([o3, o2, o]),
       u2h: sum([o2, o, today]),
       u3h: sum([o3, o2, o, today]),
+      m: month,
+      mo: untilYesterday,
     },
   };
 }

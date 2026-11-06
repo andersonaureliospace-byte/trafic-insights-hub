@@ -103,7 +103,7 @@ export const CHECKS: CheckInfo[] = [
     id: "plano",
     name: "Plano de ação da manhã",
     what: "Vai no WhatsApp pessoal de cada gestor (número de Configurações → Gestores): o que fazer em cada conta dele, por oferta (GERAL / EXAME / PROMO), da mais urgente pra menos. Entra só conta com ponto vermelho ou dois laranjas. Saldo, erros e sem entrega ficam nos resumos; o investimento do mês vai aqui (e sai do resumo das 08h). Gestor sem número e contas sem responsável vão pro grupo desta linha.",
-    when: "06h45 (com o retrato das ofertas das 05h20 e o backup da madrugada)",
+    when: "07h45 (com o retrato das ofertas das 05h20, o backup da madrugada e as pausas das 07h)",
     calls: "0 (só o que já está guardado)",
   },
   {
@@ -164,7 +164,7 @@ const AGENDA: Array<[number, Job]> = [
   ...round("erros", 19, 0, 4),
   ...round("expansao", 20, 0, 4),
   [hm(4, 15), { check: "prioridade", lot: 0, lots: 1, days: [1, 4] }], // segunda e quinta
-  [hm(6, 45), { check: "plano", lot: 0, lots: 1 }],
+  [hm(7, 45), { check: "plano", lot: 0, lots: 1 }], // Etapa 263: um pouco antes das 08h
   // Etapa 261: prazo de otimização (seg a sex), conferido na hora do prazo.
   [hm(9), { check: "otimizacao", lot: 0, lots: 1, variant: "sensivel", days: [1, 2, 3, 4, 5] }],
   [hm(10), { check: "otimizacao", lot: 0, lots: 1, variant: "critica", days: [1, 2, 3, 4, 5] }],
