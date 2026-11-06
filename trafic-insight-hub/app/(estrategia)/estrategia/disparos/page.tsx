@@ -13,6 +13,10 @@ interface ClienteRef {
   name: string;
   responsible: string | null;
 }
+interface SemGrupo extends ClienteRef {
+  rawId: string;
+  sugestao: { id: string; name: string } | null;
+}
 interface Grupo {
   id: string;
   name: string;
@@ -193,6 +197,10 @@ function Previa({ parts, grupo }: { parts: Part[]; grupo: Grupo | null }) {
 export default function DisparosPage() {
   const [grupos, setGrupos] = useState<Grupo[] | null>(null);
   const [gestores, setGestores] = useState<string[]>([]);
+  const [semGrupo, setSemGrupo] = useState<SemGrupo[]>([]);
+  const [escolha, setEscolha] = useState<Record<string, string>>({});
+  const [vinculando, setVinculando] = useState<string | null>(null);
+  const [linkErr, setLinkErr] = useState<string | null>(null);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -220,6 +228,7 @@ export default function DisparosPage() {
       if (d.error) throw new Error(d.error);
       setGrupos(d.groups ?? []);
       setGestores(d.gestores ?? []);
+      setSemGrupo(d.semGrupo ?? []);
     } catch (e) {
       setLoadErr((e as Error).message);
     }
@@ -304,6 +313,33 @@ export default function DisparosPage() {
       return n;
     });
   };
+
+  // Etapa 267: contas sem grupo do filtro atual (gestor escolhido; "sem gestor"; ou todas).
+  const semGrupoVis = useMemo(() => {
+    if (filtro === SEM_VINCULO) return [];
+    if (filtro === SEM_GESTOR) return semGrupo.filter((c) => !c.responsible);
+    if (filtro === TODOS || filtro === SO_CLIENTES) return semGrupo;
+    return semGrupo.filter((c) => c.responsible === filtro);
+  }, [semGrupo, filtro]);
+  const sugeridos = semGrupoVis.filter((c) => (escolha[c.id] ?? c.sugestao?.id ?? "") !== "");
+
+  async function vincular(lista: SemGrupo[]) {
+    setLinkErr(null);
+    for (const c of lista) {
+      const gid = escolha[c.id] ?? c.sugestao?.id ?? "";
+      const g = (grupos ?? []).find((x) => x.id === gid);
+      if (!g) continue;
+      setVinculando(c.id);
+      try {
+        await postJson({ action: "link", ad_account_id: c.rawId, groupId: g.id, groupName: g.name });
+      } catch (e) {
+        setLinkErr(`${c.name}: ${(e as Error).message}`);
+        break;
+      }
+    }
+    setVinculando(null);
+    await carregar(false);
+  }
 
   const selecionados = useMemo(() => (grupos ?? []).filter((g) => sel.has(g.id)), [grupos, sel]);
 
@@ -492,6 +528,9 @@ export default function DisparosPage() {
                     >
                       {on ? "✓ " : ""}
                       {nome} · {ids.length}
+                      {semGrupo.some((c) => c.responsible === nome) ? (
+                        <span className={on ? "" : "text-amber-600 dark:text-amber-400"}> · {semGrupo.filter((c) => c.responsible === nome).length} sem grupo</span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -562,6 +601,53 @@ export default function DisparosPage() {
               })}
             </ul>
           </Card>
+
+          {semGrupoVis.length > 0 ? (
+            <Card className="flex flex-col">
+              <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-4 py-3 dark:border-white/10">
+                <h2 className="mr-auto text-sm font-semibold">
+                  Contas sem grupo vinculado <span className="text-amber-600 dark:text-amber-400">({semGrupoVis.length})</span>
+                </h2>
+                {sugeridos.length > 0 ? (
+                  <Btn small primary disabled={!!vinculando || rodando} onClick={() => void vincular(sugeridos)}>
+                    Vincular {sugeridos.length === semGrupoVis.length ? "todas" : `as ${sugeridos.length}`}
+                  </Btn>
+                ) : null}
+              </div>
+              <p className="px-4 pt-2 text-xs text-zinc-500">
+                Essas contas não entram no disparo porque não têm grupo. Confira o grupo sugerido pelo nome (ou escolha outro) e vincule — fica
+                salvo na ficha do cliente.
+              </p>
+              <ul className="divide-y divide-zinc-100 dark:divide-white/5">
+                {semGrupoVis.map((c) => (
+                  <li key={c.id} className="flex flex-wrap items-center gap-2 px-4 py-2">
+                    <span className="min-w-[140px] flex-1">
+                      <span className="block truncate text-sm font-medium">{c.name}</span>
+                      <span className="block text-xs text-zinc-500">{c.responsible ?? "sem gestor"}</span>
+                    </span>
+                    <select
+                      aria-label={`Grupo de ${c.name}`}
+                      value={escolha[c.id] ?? c.sugestao?.id ?? ""}
+                      onChange={(e) => setEscolha((m) => ({ ...m, [c.id]: e.target.value }))}
+                      className={`${inputCls} max-w-[260px] min-w-0 flex-1`}
+                    >
+                      <option value="">Escolha o grupo…</option>
+                      {(grupos ?? []).map((g) => (
+                        <option key={g.id} value={g.id}>
+                          {g.name}
+                          {g.id === c.sugestao?.id ? " (sugerido)" : ""}
+                        </option>
+                      ))}
+                    </select>
+                    <Btn small disabled={!!vinculando || rodando || !(escolha[c.id] ?? c.sugestao?.id)} onClick={() => void vincular([c])}>
+                      {vinculando === c.id ? "Salvando…" : "Vincular"}
+                    </Btn>
+                  </li>
+                ))}
+              </ul>
+              {linkErr ? <p className="px-4 pb-3 text-xs text-red-600">{linkErr}</p> : null}
+            </Card>
+          ) : null}
 
           {/* ---------- Envio ---------- */}
           <Card className="p-4">

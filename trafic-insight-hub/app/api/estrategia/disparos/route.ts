@@ -4,6 +4,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { listGroups, sendMedia, sendText, type WhatsappMediaType } from "@/lib/whatsapp/client";
 import { FEEDBACK_BUCKET, WHATSAPP_VIDEO_MAX_BYTES } from "@/lib/feedbacks/core";
+import { inactiveAccountIds } from "@/lib/accounts/inactive";
+import { normName } from "@/lib/asana/priority-sync";
 
 // Etapa 266: Disparos em massa (Hub estratégico).
 //   GET  (?force=1)                      → grupos do WhatsApp + de quais clientes/gestores cada um é
@@ -19,6 +21,7 @@ const KEEP_DAYS = 7;
 
 interface ClienteRef {
   id: string;
+  rawId: string;
   name: string;
   responsible: string | null;
 }
@@ -28,18 +31,20 @@ export async function GET(request: Request) {
     const { supabase, user } = await requireUser();
     const inst = await requireWhatsappInstance(supabase, user.id);
     const force = new URL(request.url).searchParams.get("force") === "1";
-    const [groups, { data: binds }, { data: chats }, { data: gRow }] = await Promise.all([
+    const [groups, { data: binds }, { data: chats }, { data: gRow }, { data: sel }, off] = await Promise.all([
       listGroups(inst, force),
       supabase.from("account_bindings").select("ad_account_id, client_name, responsible, wa_group_id, archived").eq("user_id", user.id),
       supabase.from("wa_mirror_chats").select("chat_jid, ad_account_ids").eq("user_id", user.id),
       supabase.from("user_ui_prefs").select("pref_value").eq("user_id", user.id).eq("pref_key", "gestores").maybeSingle(),
+      supabase.from("user_selected_accounts").select("ad_account_id").eq("user_id", user.id),
+      inactiveAccountIds(supabase as never, user.id),
     ]);
 
     const byAcc = new Map<string, ClienteRef>();
     for (const b of binds ?? []) {
       if (b.archived) continue;
       const id = normId(b.ad_account_id as string);
-      byAcc.set(id, { id, name: ((b.client_name as string | null) ?? "").trim() || id, responsible: ((b.responsible as string | null) ?? "").trim() || null });
+      byAcc.set(id, { id, rawId: b.ad_account_id as string, name: ((b.client_name as string | null) ?? "").trim() || id, responsible: ((b.responsible as string | null) ?? "").trim() || null });
     }
     // Mesmo vínculo do resto do Hub: grupo atribuído no WhatsApp do Hub estratégico; se não, o grupo antigo da ficha.
     const clientsOf = new Map<string, Map<string, ClienteRef>>();
@@ -55,10 +60,23 @@ export async function GET(request: Request) {
     const list = groups
       .map((g) => ({ id: g.id, name: g.name, clientes: [...(clientsOf.get(g.id)?.values() ?? [])] }))
       .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+    // Etapa 267: contas da carteira (Contas exibidas, ativas) que não têm grupo — com uma sugestão de grupo pelo nome
+    // ("SPEED + IVS FOZ DO IGUAÇU" contém "IVS FOZ DO IGUAÇU"). Só sugere quando um grupo só bate.
+    const offN = new Set([...off].map(normId));
+    const carteira = new Set((sel ?? []).map((x) => normId(x.ad_account_id as string)).filter((id) => !offN.has(id)));
+    const comGrupo = new Set(list.flatMap((g) => g.clientes.map((c) => c.id)));
+    const semGrupo = [...byAcc.values()]
+      .filter((c) => carteira.has(c.id) && !comGrupo.has(c.id))
+      .map((c) => {
+        const n = normName(c.name.replace(/\s-\s*p\s*$/i, ""));
+        const hits = n ? list.filter((g) => normName(g.name).includes(n)) : [];
+        return { ...c, sugestao: hits.length === 1 ? { id: hits[0].id, name: hits[0].name } : null };
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
     const gestores = Array.isArray(gRow?.pref_value)
       ? (gRow!.pref_value as Array<{ name?: string }>).map((g) => String(g?.name ?? "").trim()).filter(Boolean)
       : [];
-    return NextResponse.json({ groups: list, gestores });
+    return NextResponse.json({ groups: list, gestores, semGrupo });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }
@@ -114,6 +132,20 @@ export async function POST(request: Request) {
         url: storage.getPublicUrl(path).data.publicUrl,
         path,
       });
+    }
+
+    // Etapa 267: vincula o grupo à conta (mesmo campo da ficha do cliente).
+    if (body.action === "link") {
+      const id = normId(String(body.ad_account_id ?? ""));
+      const groupId = String(body.groupId ?? "").trim();
+      if (!id || !groupId.endsWith("@g.us")) throw new Error("Conta ou grupo inválido.");
+      const { error } = await supabase
+        .from("account_bindings")
+        .update({ wa_group_id: groupId, wa_group_name: String(body.groupName ?? "").slice(0, 200), updated_at: new Date().toISOString() })
+        .eq("user_id", user.id)
+        .in("ad_account_id", [id, `act_${id}`]);
+      if (error) throw error;
+      return NextResponse.json({ ok: true });
     }
 
     if (body.action === "send") {
