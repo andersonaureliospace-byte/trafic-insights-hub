@@ -102,14 +102,14 @@ export const CHECKS: CheckInfo[] = [
   {
     id: "plano",
     name: "Plano de ação da manhã",
-    what: "Uma mensagem com o que fazer em cada conta, por gestor e por oferta (GERAL / EXAME / PROMO), da mais urgente pra menos. Entra só conta com ponto vermelho ou dois laranjas. Saldo, erros e sem entrega ficam nos resumos; o investimento do mês vai aqui (e sai do resumo das 08h).",
+    what: "Vai no WhatsApp pessoal de cada gestor (número de Configurações → Gestores): o que fazer em cada conta dele, por oferta (GERAL / EXAME / PROMO), da mais urgente pra menos. Entra só conta com ponto vermelho ou dois laranjas. Saldo, erros e sem entrega ficam nos resumos; o investimento do mês vai aqui (e sai do resumo das 08h). Gestor sem número e contas sem responsável vão pro grupo desta linha.",
     when: "06h45 (com o retrato das ofertas das 05h20 e o backup da madrugada)",
     calls: "0 (só o que já está guardado)",
   },
   {
     id: "otimizacao",
     name: "Prazo de otimização",
-    what: "Conta que não teve nenhuma otimização do gestor hoje até o prazo (orçamento, liga/desliga, criativo, público, lance — o que as automações do Hub fizeram não conta). Vai direto pro seu WhatsApp, separado por gestor.",
+    what: "Conta que não teve nenhuma otimização do gestor hoje até o prazo (orçamento, liga/desliga, criativo, público, lance — o que as automações do Hub fizeram não conta). Vai pro grupo escolhido aqui (ou o padrão), separado por gestor.",
     when: "Seg a sex · Sensíveis 09h · Críticas 10h · Altas 12h · Médias e baixas 19h",
     calls: "1 por conta da faixa",
   },

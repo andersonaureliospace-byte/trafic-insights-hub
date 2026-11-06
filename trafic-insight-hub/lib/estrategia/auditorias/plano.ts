@@ -159,15 +159,18 @@ export async function buildPlano(db: SupabaseClient, userId: string, accounts: A
 
 const DIAS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 
-export function formatPlano(contas: ContaPlano[], accounts: Acc[]): string {
+// Etapa 262: uma mensagem por gestor (vai pro WhatsApp pessoal dele). `gestores` = quais seções entram nessa mensagem.
+export function formatPlano(contas: ContaPlano[], accounts: Acc[], gestores?: string[]): string {
   const cal = calendarSP();
   const wd = new Date(`${cal.today}T12:00:00-03:00`).getDay();
   const [, mm, dd] = cal.today.split("-");
   const out: string[] = [`📋 *Plano de ação — ${DIAS[wd]}, ${dd}/${mm}*`];
-  const gestores = [...new Set(accounts.map((a) => a.responsible || "Sem responsável"))].sort((a, b) =>
-    a === "Sem responsável" ? 1 : b === "Sem responsável" ? -1 : a.localeCompare(b, "pt-BR"),
-  );
-  for (const g of gestores) {
+  const lista0 =
+    gestores ??
+    [...new Set(accounts.map((a) => a.responsible || "Sem responsável"))].sort((a, b) =>
+      a === "Sem responsável" ? 1 : b === "Sem responsável" ? -1 : a.localeCompare(b, "pt-BR"),
+    );
+  for (const g of lista0) {
     const total = accounts.filter((a) => (a.responsible || "Sem responsável") === g).length;
     const lista = contas.filter((c) => (c.acc.responsible || "Sem responsável") === g);
     out.push("", `👤 *${g.toUpperCase()}* · ${lista.length ? `${lista.length} de ${total} contas ${lista.length === 1 ? "pede" : "pedem"} atenção` : `nada urgente nas ${total} contas ✅`}`);
@@ -180,15 +183,47 @@ export function formatPlano(contas: ContaPlano[], accounts: Acc[]): string {
   return out.join("\n");
 }
 
+const onlyDigits = (s: string) => s.replace(/\D/g, "");
+const toWhats = (s: string) => {
+  const d = onlyDigits(s);
+  return d && !d.startsWith("55") && d.length <= 11 ? `55${d}` : d;
+};
+
+// Etapa 262: o plano vai pro WhatsApp PESSOAL de cada gestor (o número do cadastro em Configurações → Gestores).
+// Gestor sem WhatsApp cadastrado e contas sem responsável vão pro grupo escolhido na linha do Plano de ação.
 export async function runPlano(db: SupabaseClient, userId: string, cfg: AuditConfig, accounts: Acc[]): Promise<{ contas: number; error: string | null }> {
   const contas = await buildPlano(db, userId, accounts);
-  const g = groupFor(cfg, "plano");
-  if (!g) return { contas: contas.length, error: "Sem grupo pro Plano de ação (Automações → Auditorias)." };
-  const text = formatPlano(contas, accounts);
+  const { data: gRow } = await db.from("user_ui_prefs").select("pref_value").eq("user_id", userId).eq("pref_key", "gestores").maybeSingle();
+  const cadastro = new Map<string, string>();
+  for (const x of (Array.isArray(gRow?.pref_value) ? gRow?.pref_value : []) as Array<string | { name?: string; whatsapp?: string }>) {
+    if (x && typeof x === "object" && x.name) cadastro.set(x.name.trim(), toWhats(String(x.whatsapp ?? "")));
+  }
   const inst = await requireWhatsappInstance(db as never, userId);
   const creds = { api_url: inst.api_url, token: inst.token };
-  // Uma mensagem por gestor se passar do tamanho de uma mensagem.
-  if (text.length <= 3800) await sendText(creds, g.id, text);
-  else for (const part of text.split("\n\n👤 ").map((p, i) => (i === 0 ? p : `👤 ${p}`))) await sendText(creds, g.id, part);
-  return { contas: contas.length, error: null };
+  const send = async (to: string, text: string) => {
+    if (text.length <= 3800) return sendText(creds, to, text);
+    for (const part of text.split("\n\n👤 ").map((p, i) => (i === 0 ? p : `👤 ${p}`))) await sendText(creds, to, part);
+  };
+
+  const gestores = [...new Set(accounts.map((a) => a.responsible || "Sem responsável"))];
+  const semNumero: string[] = [];
+  const erros: string[] = [];
+  for (const g of gestores) {
+    const num = g === "Sem responsável" ? "" : (cadastro.get(g) ?? "");
+    if (num.length < 12) {
+      semNumero.push(g);
+      continue;
+    }
+    try {
+      await send(num, formatPlano(contas, accounts, [g]));
+    } catch (e) {
+      erros.push(`${g}: ${(e as Error).message.slice(0, 120)}`);
+    }
+  }
+  if (semNumero.length > 0) {
+    const grp = groupFor(cfg, "plano");
+    if (grp) await send(grp.id, formatPlano(contas, accounts, semNumero.sort()));
+    else erros.push(`Sem WhatsApp cadastrado pra: ${semNumero.join(", ")} (Configurações → Gestores).`);
+  }
+  return { contas: contas.length, error: erros.length ? erros.join(" · ") : null };
 }

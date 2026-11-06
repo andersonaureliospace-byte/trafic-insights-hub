@@ -1,7 +1,7 @@
 // Etapa 261: Prazo de otimização. Na hora do prazo de cada faixa, confere no histórico de alterações da Meta
 // (/activities) se a conta teve pelo menos uma OTIMIZAÇÃO RELEVANTE hoje (orçamento, liga/desliga, criação,
 // público, criativo, lance — a mesma regra da coluna Otimização). O que foi feito pelo usuário dono do token
-// (as automações do Hub rodam com ele) não conta. A mensagem vai direto pro WhatsApp do estrategista.
+// (as automações do Hub rodam com ele) não conta. A mensagem vai pro grupo escolhido na linha (ou o grupo padrão).
 //   Sensíveis (marcação na ficha) até 09h · Críticas até 10h · Altas até 12h · Médias e baixas até 19h.
 // Conta sensível só é cobrada às 09h (não entra de novo na faixa da prioridade). Inauguração fica de fora.
 
@@ -98,8 +98,8 @@ export async function runOtimizacao(
       lines.push("", `👤 *${r.toUpperCase()}*`);
       for (const a of list.sort((x, y) => x.name.localeCompare(y.name, "pt-BR"))) lines.push(`• ${a.name}`);
     }
-    const to = cfg.myWhatsapp || groupFor(cfg, "otimizacao")?.id;
-    if (!to) errors.push("Sem destino: preencha seu WhatsApp em Automações → Auditorias.");
+    const to = groupFor(cfg, "otimizacao")?.id;
+    if (!to) errors.push("Sem grupo pro Prazo de otimização (Automações → Auditorias).");
     else {
       const inst = await requireWhatsappInstance(db as never, userId);
       await sendText({ api_url: inst.api_url, token: inst.token }, to, lines.join("\n"));
