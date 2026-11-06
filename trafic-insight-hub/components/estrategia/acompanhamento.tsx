@@ -16,7 +16,7 @@ import {
   ritmoTone,
   type CpaPeriod,
 } from "@/lib/estrategia/calc";
-import type { OfferKind, OffersSummary, OfferStatus } from "@/lib/offers/rule";
+import { offerStatuses, type OfferKind, type OffersSummary, type OfferStatus } from "@/lib/offers/rule";
 import type { ActivityItem } from "@/lib/estrategia/activities";
 import { useEstr } from "./shell";
 import { Card, Pill, ago, fmtBRL, fmtCpa, fmtInt } from "./ui";
@@ -30,22 +30,14 @@ const fmtMeta = (v: number | null) =>
 
 const DOT: Record<OfferStatus, string> = { ATIVO: "bg-emerald-500", INATIVO: "bg-amber-500", INEXISTENTE: "bg-zinc-400" };
 
-// GERAL sempre; EXAME e BOLETO só nas contas que anunciam (ficha do cliente); PROMO quando rodou no mês.
+// Etapa 260: só as 3 ofertas (GERAL sempre; EXAME e PROMO nas contas que anunciam ou quando rodou no mês), cada uma com
+// Ativo / Inativo / Inexistente e o CPA dos 2 últimos dias. Sem o detalhe do nome da oferta.
+const STATUS_TXT: Record<OfferStatus, string> = { ATIVO: "Ativo", INATIVO: "Inativo", INEXISTENTE: "Inexistente" };
 function Ofertas({ s, flags }: { s: OffersSummary | null; flags: OfferFlags | null }) {
-  const rows: Array<{ kind: OfferKind; label: string; status: OfferStatus | null; extra: string | null }> = [
-    { kind: "geral", label: "GERAL", status: s ? s.geral : null, extra: null },
-  ];
-  if (flags?.exame) rows.push({ kind: "exame", label: "EXAME", status: s ? s.exame.status : null, extra: s?.exame.offer ?? null });
-  if (flags?.boleto) rows.push({ kind: "boleto", label: "BOLETO", status: s ? s.boleto : null, extra: null });
-  if (s && s.promo.length > 0) {
-    const live = s.promo.filter((p) => p.active);
-    rows.push({
-      kind: "promo",
-      label: "PROMO",
-      status: live.length > 0 ? "ATIVO" : "INATIVO",
-      extra: (live.length > 0 ? live : s.promo).map((p) => p.offer).join(", "),
-    });
-  }
+  const st = s ? offerStatuses(s) : null;
+  const rows: Array<{ kind: OfferKind; label: string; status: OfferStatus | null }> = [{ kind: "geral", label: "GERAL", status: st?.geral ?? null }];
+  if (flags?.exame || (st && st.exame !== "INEXISTENTE")) rows.push({ kind: "exame", label: "EXAME", status: st?.exame ?? null });
+  if (flags?.promo || (st && st.promo !== "INEXISTENTE")) rows.push({ kind: "promo", label: "PROMO", status: st?.promo ?? null });
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 text-xs">
       {rows.map((r) => {
@@ -54,16 +46,12 @@ function Ofertas({ s, flags }: { s: OffersSummary | null; flags: OfferFlags | nu
         return (
           <div key={r.kind} className="contents">
             <span className="font-semibold text-zinc-500">{r.label}</span>
-            <span className="flex min-w-0 items-center gap-1.5" title={r.extra ?? undefined}>
+            <span className="flex min-w-0 items-center gap-1.5">
               {r.status ? <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[r.status]}`} /> : null}
               {r.status == null ? (
                 <span className="text-zinc-400" title="Sem retrato de ofertas pra essa conta">—</span>
-              ) : missing ? (
-                <span className="font-medium text-red-600 dark:text-red-400">Não rodou</span>
-              ) : r.extra ? (
-                <span className="truncate font-medium">{r.extra}</span>
               ) : (
-                <span className="font-medium">{r.status === "ATIVO" ? "Ativo" : "Inativo"}</span>
+                <span className={`font-medium ${missing ? "text-red-600 dark:text-red-400" : ""}`}>{STATUS_TXT[r.status]}</span>
               )}
             </span>
             <span className="text-right tabular-nums" title="CPA dos 2 últimos dias (só o mês atual)">

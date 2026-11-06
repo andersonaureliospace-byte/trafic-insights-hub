@@ -73,7 +73,8 @@ export async function loadClientes(): Promise<Cliente[]> {
 
 export interface OfferFlags {
   exame: boolean;
-  boleto: boolean;
+  promo?: boolean; // Etapa 260: as 3 ofertas são GERAL (todas), EXAME e PROMO
+  boleto?: boolean; // antigo (não é mais usado)
 }
 
 export interface Linha extends Cliente {
@@ -223,7 +224,7 @@ export function useCarteira() {
       for (const c of clientes) {
         if (flags[c.id] || !snap[c.id]) continue;
         const s = snap[c.id].summary;
-        flags[c.id] = { exame: s.exame.status !== "INEXISTENTE", boleto: s.boleto !== "INEXISTENTE" };
+        flags[c.id] = { exame: s.exame.status !== "INEXISTENTE", promo: s.promo.length > 0 };
         changed = true;
       }
       if (changed) void saveOfferFlags(flags).catch(() => {});

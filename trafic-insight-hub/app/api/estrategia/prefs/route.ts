@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { SWITCHES_PREF_KEY } from "@/lib/automation-switches";
+import { AUDIT_PREF_KEY } from "@/lib/estrategia/auditorias/config";
 
 // Etapa 238: preferências do Hub estratégico, guardadas no Supabase (user_ui_prefs) pra valer igual em qualquer navegador.
 //   estrategia_ui       = filtros da tela (responsável, período do CPA, ordenação)
 //   gestores            = lista de responsáveis (nomes) usada na ficha do cliente e no filtro
 //   automation_switches = liga/pausa das automações (lib/automation-switches.ts)
-//   offer_flags         = por conta: { exame: bool, boleto: bool } — se a conta anuncia EXAME / BOLETO (Etapa 242)
-const KEYS = new Set(["estrategia_ui", "gestores", "offer_flags", SWITCHES_PREF_KEY]);
+//   offer_flags         = por conta: { exame: bool, promo: bool } — se a conta anuncia EXAME / PROMO (Etapa 242/260)
+//   estr_auditorias     = configuração das Auditorias (Etapa 257)
+//   contas_sensiveis    = por conta: true — conta sensível, otimizar até as 09h (Etapa 261)
+const KEYS = new Set(["estrategia_ui", "gestores", "offer_flags", SWITCHES_PREF_KEY, AUDIT_PREF_KEY, "contas_sensiveis"]);
 
 export async function GET(request: Request) {
   try {

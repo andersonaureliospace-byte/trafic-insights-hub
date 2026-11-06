@@ -217,9 +217,24 @@ export function AuditoriasConfig() {
               Uma agenda só, em lotes de 15 em 15 min, pra caber no limite da Meta com {accounts || "as"} contas. Os achados vão juntos no resumo, separados por gestor.
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-zinc-500">Grupo padrão</span>
             <GroupPicker value={cfg.defaultGroup} groups={groups} onLoad={loadGroups} onChange={(g) => void save({ ...cfg, defaultGroup: g })} />
+            {/* Etapa 261: o Prazo de otimização vai direto pro seu WhatsApp */}
+            <label htmlFor="meuWhats" className="ml-2 text-xs text-zinc-500">Seu WhatsApp</label>
+            <input
+              id="meuWhats"
+              key={cfg.myWhatsapp ?? ""}
+              defaultValue={cfg.myWhatsapp ?? ""}
+              onBlur={(e) => {
+                const v = e.target.value.replace(/\D/g, "");
+                const n = v && !v.startsWith("55") && v.length <= 11 ? `55${v}` : v;
+                if ((n || null) !== (cfg.myWhatsapp ?? null)) void save({ ...cfg, myWhatsapp: n || null });
+              }}
+              placeholder="63 99999-9999"
+              inputMode="tel"
+              className="h-8 w-36 rounded-lg border border-zinc-300 bg-white px-2 text-xs dark:border-white/10 dark:bg-[#141924]"
+            />
           </div>
         </div>
         {statusErr ? <div className="mx-4 mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{statusErr}</div> : null}

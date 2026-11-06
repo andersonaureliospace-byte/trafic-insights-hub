@@ -21,6 +21,7 @@ export interface OffersSummary {
   geral: OfferStatus;
   exame: { status: OfferStatus; offer: string | null };
   promo: Array<{ offer: string; active: boolean }>;
+  promoStatus?: OfferStatus; // Etapa 260: ATIVO / INATIVO / INEXISTENTE da PROMO como um todo
   boleto: OfferStatus;
   // Etapa 238 (Hub estratégico): números por tipo de oferta. Opcional — retratos antigos (de antes da Etapa 238) não têm.
   metrics?: OffersMetrics;
@@ -38,11 +39,17 @@ export interface OffersMetrics {
   until: string;
 }
 
-// Tipo da oferta pelo nome do conjunto (mesma regra do summarizeOffers: marca BOLETO/CREDIARIO manda primeiro).
+// Tipo da oferta pelo nome do conjunto. Etapa 260: só 3 ofertas — GERAL, EXAME e PROMO, pela 1ª palavra do nome
+// (combinado com os gestores). BOLETO/CREDIARIO não separa mais: o conjunto conta na oferta da 1ª palavra.
+// Status de cada uma das 3 ofertas (retratos antigos não têm promoStatus: calcula pela lista).
+export function offerStatuses(s: OffersSummary): Record<"geral" | "exame" | "promo", OfferStatus> {
+  const promo = s.promoStatus ?? (s.promo.length === 0 ? "INEXISTENTE" : s.promo.some((p) => p.active) ? "ATIVO" : "INATIVO");
+  return { geral: s.geral, exame: s.exame.status, promo };
+}
+
 export function offerKindOf(name: string): OfferKind | null {
   const p = parseAdsetName(name);
   if (!p) return null;
-  if (p.payment) return "boleto";
   return p.type === "GERAL" ? "geral" : p.type === "EXAME" ? "exame" : "promo";
 }
 
@@ -96,10 +103,7 @@ export function summarizeOffers(adsets: OfferAdset[]): OffersSummary {
   for (const a of adsets) {
     const p = parseAdsetName(a.name);
     if (!p) continue;
-    if (p.payment) {
-      boleto.push(a);
-      continue;
-    }
+    if (p.payment) boleto.push(a); // Etapa 260: só registra; o conjunto conta também na oferta da 1ª palavra
     if (p.type === "GERAL") geral.push(a);
     else if (p.type === "EXAME") exame.push({ ...a, offer: p.offer });
     else {
@@ -131,6 +135,7 @@ export function summarizeOffers(adsets: OfferAdset[]): OffersSummary {
     geral: statusOf(geral),
     exame: examePick,
     promo: [...promo.values()].sort((a, b) => Number(b.active) - Number(a.active) || a.offer.localeCompare(b.offer, "pt-BR")),
+    promoStatus: promo.size === 0 ? "INEXISTENTE" : [...promo.values()].some((x) => x.active) ? "ATIVO" : "INATIVO",
     boleto: statusOf(boleto),
   };
 }

@@ -34,10 +34,11 @@ interface Form {
   payment: string;
   since: string; // YYYY-MM
   exame: boolean; // Etapa 242: anuncia EXAME
-  boleto: boolean; // Etapa 242: anuncia BOLETO
+  promo: boolean; // Etapa 260: anuncia PROMO (BOLETO saiu)
+  sensivel: boolean; // Etapa 261: conta sensível (otimizar até as 09h)
 }
 
-function formOf(c: Cliente, pay: string | null, f: OfferFlags | undefined): Form {
+function formOf(c: Cliente, pay: string | null, f: OfferFlags | undefined, sens = false): Form {
   return {
     name: c.name,
     responsible: c.responsible ?? "",
@@ -47,7 +48,8 @@ function formOf(c: Cliente, pay: string | null, f: OfferFlags | undefined): Form
     payment: pay ?? "",
     since: c.clientSince ? c.clientSince.slice(0, 7) : "",
     exame: !!f?.exame,
-    boleto: !!f?.boleto,
+    promo: !!f?.promo,
+    sensivel: sens,
   };
 }
 
@@ -77,6 +79,7 @@ export default function ClientesPage() {
   const [clientes, setClientes] = useState<Cliente[] | null>(null);
   const [pay, setPay] = useState<Record<string, string | null>>({});
   const [flags, setFlags] = useState<Record<string, OfferFlags>>({});
+  const [sens, setSens] = useState<Record<string, boolean>>({}); // Etapa 261
   const [sel, setSel] = useState<string | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [showArchived, setShowArchived] = useState(false);
@@ -95,6 +98,8 @@ export default function ClientesPage() {
         loadOfferFlags().catch(() => ({}) as Record<string, OfferFlags>),
       ]);
       setFlags(f);
+      const sv = await fetch("/api/estrategia/prefs?key=contas_sensiveis", { cache: "no-store" }).then((r) => r.json()).catch(() => ({}));
+      setSens(sv?.value && typeof sv.value === "object" ? (sv.value as Record<string, boolean>) : {});
       setClientes(list.filter((c) => c.selected || c.archived));
       const map: Record<string, string | null> = {};
       for (const r of (p.pixAccounts ?? []) as Array<{ ad_account_id: string; payment_type: string | null }>) {
@@ -129,10 +134,10 @@ export default function ClientesPage() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ficha acompanha o cliente escolhido
-    setForm(cur ? formOf(cur, pay[cur.id] ?? null, flags[cur.id]) : null);
+    setForm(cur ? formOf(cur, pay[cur.id] ?? null, flags[cur.id], !!sens[cur.id]) : null);
     setConfirmArchive(false);
     setMsg(null);
-  }, [cur, pay, flags]);
+  }, [cur, pay, flags, sens]);
 
   async function patchBinding(c: Cliente, body: Record<string, unknown>) {
     const d = await fetch("/api/account-bindings", {
@@ -164,9 +169,17 @@ export default function ClientesPage() {
       }
       await patchBinding(cur, body);
       const f0 = flags[cur.id];
-      if (!f0 || f0.exame !== form.exame || f0.boleto !== form.boleto) {
+      if (!f0 || f0.exame !== form.exame || !!f0.promo !== form.promo) {
         const latest = await loadOfferFlags().catch(() => flags);
-        await saveOfferFlags({ ...latest, [cur.id]: { exame: form.exame, boleto: form.boleto } });
+        await saveOfferFlags({ ...latest, [cur.id]: { exame: form.exame, promo: form.promo } });
+      }
+      if (!!sens[cur.id] !== form.sensivel) {
+        const latest = await fetch("/api/estrategia/prefs?key=contas_sensiveis", { cache: "no-store" }).then((r) => r.json());
+        const next = { ...((latest?.value as Record<string, boolean> | null) ?? {}) };
+        if (form.sensivel) next[cur.id] = true;
+        else delete next[cur.id];
+        const d = await fetch("/api/estrategia/prefs", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "contas_sensiveis", value: next }) }).then((r) => r.json());
+        if (d.error) throw new Error(d.error);
       }
       if ((pay[cur.id] ?? "") !== form.payment) {
         const d = await fetch("/api/pix-accounts", {
@@ -383,6 +396,10 @@ export default function ClientesPage() {
                       <input id="f-since" type="month" value={form.since} onChange={(e) => setForm({ ...form, since: e.target.value })} className={inputCls} />
                     </Field>
                   </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input type="checkbox" checked={form.sensivel} onChange={(e) => setForm({ ...form, sensivel: e.target.checked })} className="h-4 w-4 accent-blue-600" />
+                    Conta sensível <span className="text-xs text-zinc-500">(otimizar até as 09h)</span>
+                  </label>
                   <Field label="Ofertas que a conta anuncia">
                     <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
                       <span className="flex items-center gap-2 text-zinc-500">
@@ -393,8 +410,8 @@ export default function ClientesPage() {
                         EXAME
                       </label>
                       <label className="flex items-center gap-2">
-                        <input type="checkbox" checked={form.boleto} onChange={(e) => setForm({ ...form, boleto: e.target.checked })} className="h-4 w-4 accent-blue-600" />
-                        BOLETO
+                        <input type="checkbox" checked={form.promo} onChange={(e) => setForm({ ...form, promo: e.target.checked })} className="h-4 w-4 accent-blue-600" />
+                        PROMO
                       </label>
                     </div>
                     {!flags[cur.id] ? <p className="text-xs text-amber-600 dark:text-amber-400">Ainda não definido. Marque e salve.</p> : null}

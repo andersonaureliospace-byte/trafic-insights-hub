@@ -16,7 +16,9 @@ export type CheckId =
   | "verba_diaria"
   | "sem_entrega"
   | "erros"
-  | "prioridade";
+  | "prioridade"
+  | "plano"
+  | "otimizacao";
 
 export interface CheckInfo {
   id: CheckId;
@@ -97,17 +99,39 @@ export const CHECKS: CheckInfo[] = [
     when: "Segunda e quinta, 04h15 (depois do backup da madrugada)",
     calls: "0 (só o backup)",
   },
+  {
+    id: "plano",
+    name: "Plano de ação da manhã",
+    what: "Uma mensagem com o que fazer em cada conta, por gestor e por oferta (GERAL / EXAME / PROMO), da mais urgente pra menos. Entra só conta com ponto vermelho ou dois laranjas. Saldo, erros e sem entrega ficam nos resumos; o investimento do mês vai aqui (e sai do resumo das 08h).",
+    when: "06h45 (com o retrato das ofertas das 05h20 e o backup da madrugada)",
+    calls: "0 (só o que já está guardado)",
+  },
+  {
+    id: "otimizacao",
+    name: "Prazo de otimização",
+    what: "Conta que não teve nenhuma otimização do gestor hoje até o prazo (orçamento, liga/desliga, criativo, público, lance — o que as automações do Hub fizeram não conta). Vai direto pro seu WhatsApp, separado por gestor.",
+    when: "Seg a sex · Sensíveis 09h · Críticas 10h · Altas 12h · Médias e baixas 19h",
+    calls: "1 por conta da faixa",
+  },
 ];
 
 export const CHECK_BY_ID: Record<CheckId, CheckInfo> = Object.fromEntries(CHECKS.map((c) => [c.id, c])) as Record<CheckId, CheckInfo>;
 
 // ---------- Agenda (minutos desde 00h00 de Brasília, sempre múltiplo de 15) ----------
 
+export type OtimFaixa = "sensivel" | "critica" | "alta" | "mediabaixa";
+export const OTIM_PRAZO: Record<OtimFaixa, { label: string; hora: string }> = {
+  sensivel: { label: "Sensíveis", hora: "09h" },
+  critica: { label: "Críticas", hora: "10h" },
+  alta: { label: "Altas", hora: "12h" },
+  mediabaixa: { label: "Médias e baixas", hora: "19h" },
+};
+
 export interface Job {
   check: CheckId;
   lot: number; // 0-based
   lots: number; // em quantos lotes as contas daquela rodada foram divididas (1 = todas de uma vez)
-  variant?: "midday" | "evening"; // CPA do dia
+  variant?: "midday" | "evening" | OtimFaixa; // CPA do dia / faixa do prazo de otimização
   days?: number[]; // dias da semana (0 = domingo); sem = todo dia
 }
 
@@ -140,6 +164,13 @@ const AGENDA: Array<[number, Job]> = [
   ...round("erros", 19, 0, 4),
   ...round("expansao", 20, 0, 4),
   [hm(4, 15), { check: "prioridade", lot: 0, lots: 1, days: [1, 4] }], // segunda e quinta
+  [hm(6, 45), { check: "plano", lot: 0, lots: 1 }],
+  // Etapa 261: prazo de otimização (seg a sex), conferido na hora do prazo.
+  [hm(9), { check: "otimizacao", lot: 0, lots: 1, variant: "sensivel", days: [1, 2, 3, 4, 5] }],
+  [hm(10), { check: "otimizacao", lot: 0, lots: 1, variant: "critica", days: [1, 2, 3, 4, 5] }],
+  [hm(12), { check: "otimizacao", lot: 0, lots: 1, variant: "alta", days: [1, 2, 3, 4, 5] }],
+  [hm(19), { check: "otimizacao", lot: 0, lots: 2, variant: "mediabaixa", days: [1, 2, 3, 4, 5] }],
+  [hm(19, 15), { check: "otimizacao", lot: 1, lots: 2, variant: "mediabaixa", days: [1, 2, 3, 4, 5] }],
 ];
 
 export function jobsAt(minuteOfDay: number, weekday?: number): Job[] {
@@ -170,13 +201,16 @@ const CALLS_PER_ACCOUNT: Record<CheckId, number> = {
   sem_entrega: 2,
   erros: 1,
   prioridade: 0,
+  plano: 0,
+  otimizacao: 1,
 };
 export function estimatedCallsByHour(accounts: number, enabled: (c: CheckId) => boolean): number[] {
   const out = Array.from({ length: 24 }, () => 0);
   for (const [t, j] of AGENDA) {
     if (!enabled(j.check)) continue;
     const h = Math.floor(t / 60);
-    out[h] += j.check === "saldo" ? 2 : Math.ceil(accounts / j.lots) * CALLS_PER_ACCOUNT[j.check];
+    const share = j.check === "otimizacao" ? (j.variant === "mediabaixa" ? 0.5 : 0.2) : 1;
+    out[h] += j.check === "saldo" ? 2 : Math.ceil((accounts * share) / j.lots) * CALLS_PER_ACCOUNT[j.check];
   }
   return out;
 }
@@ -194,6 +228,7 @@ export interface AuditConfig {
   checks: Partial<Record<CheckId, { on?: boolean; group?: GroupRef | null }>>;
   defaultGroup: GroupRef | null; // grupo padrão de quem não tem grupo próprio
   digestTimes: string[]; // "HH:MM" (múltiplos de 15 min)
+  myWhatsapp?: string | null; // Etapa 261: seu WhatsApp (só números com DDD) — o Prazo de otimização vai direto pra cá
 }
 
 export const DEFAULT_DIGEST_TIMES = ["08:00", "13:00", "17:00"];
@@ -205,6 +240,7 @@ export function normalizeConfig(raw: unknown): AuditConfig {
     checks: r.checks && typeof r.checks === "object" ? r.checks : {},
     defaultGroup: r.defaultGroup && typeof r.defaultGroup === "object" && r.defaultGroup.id ? r.defaultGroup : null,
     digestTimes: [...new Set(times)].sort(),
+    myWhatsapp: typeof r.myWhatsapp === "string" ? r.myWhatsapp.replace(/\D/g, "") || null : null,
   };
 }
 

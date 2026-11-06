@@ -28,6 +28,7 @@ export interface Acc {
   cpaTarget: number | null;
   monthly: number | null;
   whatsapp: string | null;
+  priority?: string | null; // Etapa 261: prioridade da conta (prazo de otimização)
 }
 
 export interface Finding {
@@ -42,6 +43,8 @@ export interface CheckResult {
   calls: number; // pedidos à Meta (estimativa)
   skipped: number; // contas que ficaram pra trás por tempo ou erro
   errors: string[];
+  count?: number; // quando o achado não vira item da fila (mensagem própria): quantos achou
+  checked?: number; // quantas contas entraram de verdade
 }
 
 const brl = (v: number) => fmtCurrency(v);

@@ -29,6 +29,9 @@ import {
   type CheckResult,
 } from "./checks";
 import { queueFindings, sendDigest, type DigestResult } from "./digest";
+import { runPlano } from "./plano";
+import { runOtimizacao } from "./otimizacao";
+import type { OtimFaixa } from "./config";
 
 export async function loadConfig(db: SupabaseClient, userId: string): Promise<AuditConfig> {
   const { data } = await db.from("user_ui_prefs").select("pref_value").eq("user_id", userId).eq("pref_key", AUDIT_PREF_KEY).maybeSingle();
@@ -39,7 +42,7 @@ export async function loadConfig(db: SupabaseClient, userId: string): Promise<Au
 export async function loadCarteira(db: SupabaseClient, userId: string): Promise<Acc[]> {
   const [{ data: sel }, { data: binds }, off] = await Promise.all([
     db.from("user_selected_accounts").select("ad_account_id").eq("user_id", userId),
-    db.from("account_bindings").select("ad_account_id, client_name, responsible, cpa_target, monthly_investment, whatsapp_contact, archived").eq("user_id", userId),
+    db.from("account_bindings").select("ad_account_id, client_name, responsible, cpa_target, monthly_investment, whatsapp_contact, archived, priority").eq("user_id", userId),
     inactiveAccountIds(db as never, userId),
   ]);
   const norm = (s: string) => String(s).replace(/^act_/, "");
@@ -55,6 +58,7 @@ export async function loadCarteira(db: SupabaseClient, userId: string): Promise<
       cpaTarget: b?.cpa_target != null ? Number(b.cpa_target) : null,
       monthly: b?.monthly_investment != null ? Number(b.monthly_investment) : null,
       whatsapp: ((b?.whatsapp_contact as string | null) ?? "").trim() || null,
+      priority: (b?.priority as string | null) ?? null,
     };
   });
 }
@@ -113,14 +117,25 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
             res = await runCustoAlto(db, userId, t, lot, deadline);
             break;
           case "cpa_dia":
-            res = await runCpaDia(t, lot, deadline, j.variant ?? "midday");
+            res = await runCpaDia(t, lot, deadline, j.variant === "evening" ? "evening" : "midday");
             break;
           case "saldo":
             res = await runSaldo(db, userId, t, lot, slot);
             break;
           case "verba_mensal":
-            res = await runVerbaMensal(lot);
+            // Etapa 260: com o Plano de ação ligado, o investimento do mês vai nele (não repete no resumo das 08h).
+            res = isCheckOn(cfg, "plano") ? { findings: [], calls: 0, skipped: 0, errors: [] } : await runVerbaMensal(lot);
             break;
+          case "otimizacao":
+            // a faixa escolhe as contas; o lote divide só a faixa (não a carteira inteira)
+            res = await runOtimizacao(db, userId, t, cfg, carteira, (j.variant ?? "critica") as OtimFaixa, { index: j.lot, total: j.lots }, deadline);
+            break;
+          case "plano": {
+            const p = await runPlano(db, userId, cfg, lot);
+            res = { findings: [], calls: 0, skipped: 0, errors: p.error ? [p.error] : [] };
+            entry.found = p.contas;
+            break;
+          }
           case "verba_diaria":
             res = await runVerbaDiaria(t, lot, deadline);
             break;
@@ -137,7 +152,8 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
             res = { findings: [], calls: 0, skipped: 0, errors: [] };
         }
         entry.calls = res.calls;
-        entry.found = res.findings.length;
+        if (j.check !== "plano") entry.found = res.count ?? res.findings.length;
+        if (res.checked != null) entry.accounts = res.checked;
         entry.skipped = res.skipped;
         entry.queued = await queueFindings(db, userId, cfg, res.findings);
         if (res.errors.length) entry.error = res.errors.slice(0, 3).join(" · ");
