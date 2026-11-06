@@ -269,14 +269,9 @@ export function useCarteira() {
       setLinhas(c.data.map((l) => ({ ...l, waGroup: l.waGroup ?? null })));
       setAt(c.at);
     }
-    // Primeira vez neste navegador, ou números velhos (mais de 2h / de outro dia): busca (mostrando os guardados enquanto isso).
-    if (!c || isStale(c.at)) void load();
-    // Voltou pra aba depois de muito tempo: atualiza sozinho.
-    const onVisible = () => {
-      if (document.visibilityState === "visible" && isStale(atRef.current)) void load();
-    };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    // Etapa 257: só busca sozinho na primeira vez neste navegador. Depois disso, a Meta só é consultada no botão
+    // "Atualizar" (as auditorias automáticas é que gastam as requisições; a tela não fica atualizando sozinha).
+    if (!c) void load();
   }, [load]);
 
   const patchLinha = useCallback((id: string, patch: Partial<Linha>) => {

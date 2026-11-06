@@ -7,6 +7,7 @@ import { loadClientes, loadOfferFlags, matchesResp, saveOfferFlags, type Cliente
 import { Btn, Card, Pill, fmtBRL } from "@/components/estrategia/ui";
 import { ClientesTabs } from "@/components/estrategia/clientes-tabs";
 import { NovoClienteDialog } from "@/components/estrategia/novo-cliente-dialog";
+import { DescricaoAsana } from "@/components/estrategia/descricao-asana";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { calendarSP } from "@/lib/estrategia/calc";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -440,6 +441,8 @@ export default function ClientesPage() {
                       </Btn>
                     )}
                   </div>
+                  {/* Etapa 259: buscar/enviar a descrição do Asana pela ficha */}
+                  <DescricaoAsana accountId={cur.rawId} clientName={cur.name} />
                   {confirmArchive ? (
                     <p className="text-xs text-zinc-500">
                       O cliente some das telas e sai das automações. Nada é apagado: dá pra trazer de volta em &quot;Ver arquivados&quot;.

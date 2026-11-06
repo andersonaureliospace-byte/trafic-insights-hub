@@ -163,12 +163,13 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
               <Item href="/estrategia/automacoes" small>Automações</Item>
             </nav>
             <div className="ml-auto flex shrink-0 items-center gap-1">
+              {/* Etapa 257: Hub operacional em standby — fica só o acesso às Configurações (token da Meta, WhatsApp). */}
               <Link
-                href="/painel"
-                title="O hub operacional (antigo) continua no ar"
+                href="/configuracoes"
+                title="Token da Meta e conexão do WhatsApp (o Hub operacional está em standby)"
                 className="rounded-md px-2 py-1 text-xs whitespace-nowrap text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-white/5 dark:hover:text-zinc-200"
               >
-                Hub operacional ↗
+                Conexões ↗
               </Link>
               <button
                 onClick={toggleTheme}

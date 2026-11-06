@@ -1,5 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { OPERATIONAL_STANDBY } from "@/lib/estrategia/auditorias/config";
+
+// Etapa 257: telas do Hub operacional em standby — abrem o Hub estratégico. Configurações (Meta/WhatsApp) continua aberta.
+const STANDBY_PREFIXES = ["/painel", "/mensagens", "/auditoria", "/foco", "/crm", "/corrida"];
 
 // Rotas que não exigem login.
 // Etapa 221: /sw.js e /manifest.webmanifest são do app no celular e precisam abrir sem login.
@@ -42,6 +46,13 @@ export async function proxy(request: NextRequest) {
   if (!user && !isPublicPath) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
+    return NextResponse.redirect(url);
+  }
+
+  if (user && OPERATIONAL_STANDBY && STANDBY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/estrategia/trafego";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

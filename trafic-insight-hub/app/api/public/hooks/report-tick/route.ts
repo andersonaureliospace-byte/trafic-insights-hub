@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { OPERATIONAL_STANDBY } from "@/lib/estrategia/auditorias/config";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import { createServiceClient } from "@/lib/supabase/server";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
@@ -12,6 +13,8 @@ import type { DatePreset } from "@/lib/meta/client";
 // Mesmo padrão dos outros hooks: protegido pelo WHATSAPP_DISPATCH_SECRET,
 // usa a service role (sem sessão de usuário).
 export async function POST(request: Request) {
+  // Etapa 257: Hub operacional em standby (Mensagens → Envio/Relatórios agendados não disparam).
+  if (OPERATIONAL_STANDBY) return NextResponse.json({ paused: true, standby: true });
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });

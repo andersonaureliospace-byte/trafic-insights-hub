@@ -33,7 +33,7 @@ const STATUS_LABELS: Record<number, string> = {
   9: "Em período de carência",
 };
 
-function paymentReason(acc: AdAccount): string | null {
+export function paymentReason(acc: AdAccount): string | null {
   if (acc.disable_reason === PAYMENT_DISABLE_REASON) return "Desabilitada por risco de pagamento";
   if (PAYMENT_STATUS_CODES.has(acc.account_status)) return STATUS_LABELS[acc.account_status] ?? "Erro no pagamento";
   return null;

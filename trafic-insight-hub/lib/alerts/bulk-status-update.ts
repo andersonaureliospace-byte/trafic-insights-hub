@@ -78,7 +78,9 @@ export async function checkAndUpdateBulkStatus(
   db: Db,
   userId: string,
   token: string,
-  opts: { send: boolean } = { send: false },
+  // Etapa 259: notify=false (Auditorias do Hub estratégico) sincroniza o Asana mas não publica o alerta antigo —
+  // quem avisa é o resumo das Auditorias.
+  opts: { send: boolean; notify?: boolean } = { send: false },
 ): Promise<CheckBulkStatusResult> {
   const { data: selected, error: selectedErr } = await db
     .from("user_selected_accounts")
@@ -227,7 +229,7 @@ export async function checkAndUpdateBulkStatus(
   }
 
   let sendError: string | null = null;
-  if (opts.send && reportable.length > 0) {
+  if (opts.send && opts.notify !== false && reportable.length > 0) {
     try {
       const priorityOptions = await getPriorityOptions(db, userId);
       const labelFor = (id?: string | null) => priorityOptions.find((p) => p.id === id)?.label ?? "—";

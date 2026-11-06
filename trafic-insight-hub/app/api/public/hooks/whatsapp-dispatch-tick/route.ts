@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { OPERATIONAL_STANDBY } from "@/lib/estrategia/auditorias/config";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendText, sendMedia, mediaTypeFromMime } from "@/lib/whatsapp/client";
 import { nextOccurrence, interpolate, type DispatchTarget, type PixMessagePart, type Recurrence } from "@/lib/whatsapp/dispatch";
@@ -35,6 +36,8 @@ function sleep(ms: number) {
 }
 
 export async function POST(request: Request) {
+  // Etapa 257: Hub operacional em standby (Mensagens → Envio/Relatórios agendados não disparam).
+  if (OPERATIONAL_STANDBY) return NextResponse.json({ paused: true, standby: true });
   const secret = process.env.WHATSAPP_DISPATCH_SECRET;
   if (!secret) {
     return NextResponse.json({ error: "WHATSAPP_DISPATCH_SECRET não configurado no servidor." }, { status: 500 });

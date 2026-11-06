@@ -21,10 +21,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
             <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto">
               {/* Etapa 238: volta pro Hub estratégico (a tela inicial agora). */}
               <NavLink href="/estrategia">Hub estratégico</NavLink>
-              <NavLink href="/painel">Painel</NavLink>
+              {/* Etapa 257: Painel, Foco, Mensagens e Auditoria em standby (abrem o Hub estratégico). Pra voltar, troque
+                  OPERATIONAL_STANDBY em lib/estrategia/auditorias/config.ts e descomente. */}
+              {/* <NavLink href="/painel">Painel</NavLink>
               <NavLink href="/foco">Foco</NavLink>
               <NavLink href="/mensagens">Mensagens</NavLink>
-              <NavLink href="/auditoria">Auditoria</NavLink>
+              <NavLink href="/auditoria">Auditoria</NavLink> */}
               {/* Etapa 135: CRM escondido do menu (não é usado). As telas/rotas continuam no projeto — pra voltar, é só
                   descomentar a linha abaixo. */}
               {/* <NavLink href="/crm">CRM</NavLink> */}

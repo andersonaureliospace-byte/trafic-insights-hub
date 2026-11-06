@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/estrategia/shell";
 import { Card } from "@/components/estrategia/ui";
 import { AUTOMATION_CATALOG } from "@/lib/automation-catalog";
-import { DEFAULT_PAUSED, isEnabled, SWITCHES_PREF_KEY, type Switches } from "@/lib/automation-switches-shared";
+import { DEFAULT_PAUSED, isEnabled, STANDBY_KEEP, SWITCHES_PREF_KEY, type Switches } from "@/lib/automation-switches-shared";
+import { AuditoriasConfig } from "@/components/estrategia/auditorias-config";
+import { OPERATIONAL_STANDBY } from "@/lib/estrategia/auditorias/config";
 
 // Etapa 238: liga/pausa de cada automação. O n8n continua chamando no horário; pausada aqui, ela não faz nada.
 
@@ -95,8 +97,16 @@ export default function AutomacoesPage() {
 
   return (
     <div className="flex flex-col">
-      <PageHeader noFilter title="Automações" sub={saved ? `${onCount} de ${total} ligadas · o n8n continua chamando; pausada aqui, não faz nada` : "Carregando…"} />
+      <PageHeader noFilter title="Automações" sub="Auditorias do Hub estratégico · as automações antigas do Hub operacional ficam em standby" />
       <div className="flex flex-col gap-4 p-4 lg:p-6">
+        {/* Etapa 257 */}
+        <AuditoriasConfig />
+        <details className="rounded-xl border border-zinc-200 dark:border-white/10">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+            Automações antigas (Hub operacional) — {saved ? `${onCount} de ${total} ligadas` : "…"}
+            {OPERATIONAL_STANDBY ? <span className="ml-2 text-xs font-normal text-zinc-500">em standby: só ficam as que alimentam o Hub (backup das métricas, saldo por fundos, ofertas da madrugada e Asana)</span> : null}
+          </summary>
+          <div className="flex flex-col gap-4 p-4 pt-0">
         {error ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div> : null}
         {groups.map(([group, rows]) => (
           <Card key={group} className="overflow-hidden">
@@ -118,7 +128,7 @@ export default function AutomacoesPage() {
                       role="switch"
                       aria-checked={on}
                       aria-label={`${on ? "Pausar" : "Ligar"} ${r.name}`}
-                      disabled={!saved || busy === r.key}
+                      disabled={!saved || busy === r.key || (OPERATIONAL_STANDBY && !STANDBY_KEEP.has(r.key))}
                       onClick={() => void toggle(r.key)}
                       className={`relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:opacity-50 ${
                         on ? "bg-blue-600" : "bg-zinc-300 dark:bg-zinc-700"
@@ -133,6 +143,8 @@ export default function AutomacoesPage() {
             </ul>
           </Card>
         ))}
+          </div>
+        </details>
       </div>
     </div>
   );
