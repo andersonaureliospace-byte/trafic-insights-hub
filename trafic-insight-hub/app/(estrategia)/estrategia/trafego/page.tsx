@@ -11,12 +11,51 @@ import { Btn, hhmm } from "@/components/estrategia/ui";
 export default function TrafegoPage() {
   const { ui } = useEstr();
   const { linhas, loading, error, at, reload } = useCarteira();
-  const [tab, setTab] = useState<"acomp" | "alertas">("acomp");
+  const [tab, setTab] = useState<"acomp" | "foco" | "alertas">("acomp");
+  // Etapa 277: aba "Sensíveis e críticas" — só as contas que pedem atenção (marcadas como sensíveis na ficha e/ou com
+  // prioridade Crítica). O filtro escolhido fica guardado neste navegador.
+  const [foco, setFoco] = useState<"ambas" | "sensiveis" | "criticas">("ambas");
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem("estr_foco_filtro");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- filtro lembrado neste navegador
+      if (v === "sensiveis" || v === "criticas") setFoco(v);
+    } catch {
+      /* sem armazenamento */
+    }
+  }, []);
+  const [sens, setSens] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    fetch("/api/estrategia/prefs?key=contas_sensiveis", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setSens(d?.value && typeof d.value === "object" ? (d.value as Record<string, boolean>) : {}))
+      .catch(() => {});
+  }, []);
+  const escolherFoco = (v: "ambas" | "sensiveis" | "criticas") => {
+    setFoco(v);
+    try {
+      window.localStorage.setItem("estr_foco_filtro", v);
+    } catch {
+      /* sem armazenamento: só não lembra */
+    }
+  };
   const [srv, setSrv] = useState<AlertasServer | null>(null);
   const [srvLoading, setSrvLoading] = useState(false);
   const [srvError, setSrvError] = useState<string | null>(null);
   const [naming, setNaming] = useState<NamingData>({ items: [], loading: false, error: null });
   const visible = useMemo(() => (linhas ?? []).filter((l) => matchesResp(ui.resp, l.responsible)), [linhas, ui.resp]);
+  const isSens = useCallback((id: string) => !!sens[id] || !!sens[id.replace(/^act_/, "")], [sens]);
+  const focoLinhas = useMemo(
+    () =>
+      visible.filter((l) => {
+        const s = isSens(l.id);
+        const c = l.priority === "critica";
+        return foco === "sensiveis" ? s : foco === "criticas" ? c : s || c;
+      }),
+    [visible, foco, isSens],
+  );
+  const nSens = visible.filter((l) => isSens(l.id)).length;
+  const nCrit = visible.filter((l) => l.priority === "critica").length;
 
   // Alertas do servidor: depois que a carteira carregou (precisa da lista de contas).
   const ids = useMemo(() => (linhas ?? []).map((l) => l.id).join(","), [linhas]);
@@ -103,6 +142,7 @@ export default function TrafegoPage() {
           {(
             [
               ["acomp", "Acompanhamento"],
+              ["foco", "Sensíveis e críticas"],
               ["alertas", "Alertas"],
             ] as const
           ).map(([k, label]) => (
@@ -116,6 +156,11 @@ export default function TrafegoPage() {
               }`}
             >
               {label}
+              {k === "foco" && linhas != null ? (
+                <span className="rounded-full bg-orange-500/15 px-1.5 py-0.5 text-[10px] leading-none font-bold text-orange-700 tabular-nums dark:text-orange-300">
+                  {visible.filter((l) => isSens(l.id) || l.priority === "critica").length}
+                </span>
+              ) : null}
               {k === "alertas" && alertCount > 0 ? (
                 <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] leading-none font-bold text-white tabular-nums">{alertCount}</span>
               ) : null}
@@ -130,6 +175,37 @@ export default function TrafegoPage() {
           <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-white/10">
             Carregando as contas e os números do mês…
           </div>
+        ) : tab === "foco" ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              {(
+                [
+                  ["ambas", `Sensíveis e críticas · ${visible.filter((l) => isSens(l.id) || l.priority === "critica").length}`],
+                  ["sensiveis", `Só sensíveis · ${nSens}`],
+                  ["criticas", `Só críticas · ${nCrit}`],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  onClick={() => escolherFoco(k)}
+                  aria-pressed={foco === k}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                    foco === k ? "border-orange-500 bg-orange-500 text-white" : "border-zinc-300 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+              <span className="text-xs text-zinc-500">Sensível: marque na ficha do cliente (Clientes). Crítica: prioridade do Asana.</span>
+            </div>
+            {focoLinhas.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-white/10">
+                {foco === "sensiveis" && nSens === 0 ? "Nenhuma conta marcada como sensível. Marque em Clientes → ficha do cliente → Conta sensível." : "Nenhuma conta nesse filtro."}
+              </div>
+            ) : (
+              <Acompanhamento linhas={focoLinhas} activities={srv?.activities ?? null} activitiesFailed={srv?.activitiesFailed ?? []} />
+            )}
+          </>
         ) : tab === "acomp" ? (
           <Acompanhamento
             linhas={visible}
