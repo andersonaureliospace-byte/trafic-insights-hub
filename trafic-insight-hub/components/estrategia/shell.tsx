@@ -9,6 +9,7 @@ import { WhatsappPanel, useWaOpen } from "@/components/estrategia/whatsapp-panel
 // seguir (e a barrinha flutuante aparecer) mesmo navegando entre as telas do Hub.
 import { GravadorProvider } from "@/components/estrategia/gravador";
 import { DisparoMonitor } from "@/components/estrategia/disparo-monitor";
+import { RecarregarApp } from "@/components/estrategia/recarregar-app";
 
 // Etapa 238: casca do Hub estratégico — menu lateral (Tráfego / Clientes, itens "em breve", Automações, link pro hub
 // operacional pausado), botão de Modo escuro/claro e o filtro de Responsável compartilhado entre as telas.
@@ -174,6 +175,7 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
               >
                 Conexões ↗
               </Link>
+              <RecarregarApp />
               <button
                 onClick={toggleTheme}
                 title={theme === "dark" ? "Modo claro" : "Modo escuro"}
