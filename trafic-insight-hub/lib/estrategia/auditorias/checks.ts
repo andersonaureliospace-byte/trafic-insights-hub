@@ -165,6 +165,7 @@ export async function runExpansaoWhatsapp(
         if (opts.expansao) {
           const { blocking, expansion } = evaluateTargetingDetailed(r.targeting);
           if (blocking.length > 0) {
+            // Brasil inteiro é falha de configuração: pausa o conjunto (única exceção — por custo, conjunto nunca é pausado).
             const res = await setEntitiesStatusSequential(token, [{ id: r.id, type: "adset" }], "PAUSED", 0);
             calls++;
             findings.push({
@@ -218,6 +219,7 @@ interface AdIns {
   spend?: string;
   results?: Array<{ indicator?: string; values?: Array<{ value?: string }> }>;
   actions?: Array<{ action_type?: string; value?: string }>;
+  date_start?: string;
 }
 
 export const ALERT_X = 2; // acima de 2x o CPA ideal: avisa
@@ -228,6 +230,18 @@ function over(spend: number, conv: number, ideal: number, x: number): boolean {
   return conv <= 0 || spend / conv > ideal * x;
 }
 const cpaTxt = (spend: number, conv: number) => (conv > 0 ? `CPA ${brl(spend / conv)}` : `${brl(spend)} sem conversa`);
+
+// Etapa 280: CONJUNTO NUNCA É PAUSADO (pedido do Anderson) — conjunto só recebe aviso. Pausa só CRIATIVO ATIVO.
+// Etapa 279: revisão da pausa automática (pausou conjunto com CPA 2x). Agora:
+//  1) conta TODOS os criativos dos conjuntos ativos (antes só os ativos — se o gestor já tinha pausado os criativos que
+//     trouxeram os leads, o conjunto parecia bem pior do que era);
+//  2) só pausa se estiver acima de 3x TAMBÉM nos dias fechados (anteontem + ontem) — hoje até agora a Meta ainda não
+//     contou todos os leads (o gasto aparece na hora, o lead demora), então o CPA de hoje sai inflado;
+//  3) só pausa o que já rodava desde anteontem (conjunto/criativo novo, menos de 3 dias: só avisa);
+//  4) criativo só é pausado se estiver ativo agora (confere na Meta antes).
+// Avisar (2x) continua olhando os 2 dias + hoje.
+type Tot = { spend: number; conv: number };
+type Bucket = { all: Tot; closed: Tot; firstDay: string };
 
 export async function runCustoAlto(db: SupabaseClient, userId: string, token: string, accounts: Acc[], deadline: number): Promise<CheckResult> {
   const findings: Finding[] = [];
@@ -249,53 +263,94 @@ export async function runCustoAlto(db: SupabaseClient, userId: string, token: st
           level: "ad",
           fields: "ad_id,ad_name,adset_id,adset_name,campaign_name,objective,spend,results,actions",
           time_range: JSON.stringify({ since, until: today }),
-          filtering: JSON.stringify([{ field: "ad.effective_status", operator: "IN", value: ["ACTIVE"] }]),
+          time_increment: "1",
+          filtering: JSON.stringify([{ field: "adset.effective_status", operator: "IN", value: ["ACTIVE"] }]),
           use_unified_attribution_setting: "true",
           limit: "500",
         },
-        3,
+        5,
       );
       calls++;
 
-      type Agg = { name: string; spend: number; conv: number; ads: Array<{ id: string; name: string; spend: number; conv: number }> };
-      const adsets = new Map<string, Agg>();
+      const empty = (): Bucket => ({ all: { spend: 0, conv: 0 }, closed: { spend: 0, conv: 0 }, firstDay: "9999-99-99" });
+      const add = (b: Bucket, day: string, spend: number, conv: number) => {
+        b.all.spend += spend;
+        b.all.conv += conv;
+        if (day < today) {
+          b.closed.spend += spend;
+          b.closed.conv += conv;
+        }
+        if (spend > 0 && day < b.firstDay) b.firstDay = day;
+      };
+      type AdAgg = Bucket & { id: string; name: string };
+      type SetAgg = Bucket & { name: string; ads: Map<string, AdAgg> };
+      const adsets = new Map<string, SetAgg>();
       for (const r of rows) {
         if (!r.ad_id || !r.adset_id) continue;
         if (isVaga(r.campaign_name) || (r.objective && EXCLUDED_OBJECTIVES.has(r.objective))) continue;
         const spend = Number(r.spend ?? 0);
-        if (spend <= 0) continue;
         const conv = leadResultOf(r.results, r.actions).value ?? 0;
-        const g = adsets.get(r.adset_id) ?? { name: r.adset_name || r.adset_id, spend: 0, conv: 0, ads: [] };
-        g.spend += spend;
-        g.conv += conv;
-        g.ads.push({ id: r.ad_id, name: r.ad_name || r.ad_id, spend, conv });
+        if (spend <= 0 && conv <= 0) continue;
+        const day = String(r.date_start ?? today).slice(0, 10);
+        const g = adsets.get(r.adset_id) ?? { ...empty(), name: r.adset_name || r.adset_id, ads: new Map<string, AdAgg>() };
+        add(g, day, spend, conv);
+        const ad = g.ads.get(r.ad_id) ?? { ...empty(), id: r.ad_id, name: r.ad_name || r.ad_id };
+        add(ad, day, spend, conv);
+        g.ads.set(r.ad_id, ad);
         adsets.set(r.adset_id, g);
       }
 
-      const toPause: Array<{ id: string; type: "adset" | "ad"; line: string }> = [];
+      // pausa só com: >3x no período todo E >3x nos dias fechados E rodando desde anteontem
+      const shouldPause = (b: Bucket) => b.firstDay <= since && over(b.all.spend, b.all.conv, ideal, PAUSE_X) && over(b.closed.spend, b.closed.conv, ideal, PAUSE_X);
+      const detalhe = (b: Bucket) => `${cpaTxt(b.all.spend, b.all.conv)} em 2 dias + hoje; ${cpaTxt(b.closed.spend, b.closed.conv)} nos dias fechados`;
+
+      const toPause: Array<{ id: string; type: "ad"; line: string }> = [];
+      const adCandidates: Array<{ ad: AdAgg; g: SetAgg }> = [];
+      const adAlerts: Array<{ ad: AdAgg; g: SetAgg }> = [];
       for (const [adsetId, g] of adsets) {
-        if (over(g.spend, g.conv, ideal, PAUSE_X)) {
-          toPause.push({ id: adsetId, type: "adset", line: `Conjunto ${g.name}: ${cpaTxt(g.spend, g.conv)} (ideal ${brl(ideal)})` });
-          continue; // o conjunto inteiro sai — não precisa listar os criativos
-        }
-        for (const ad of g.ads) {
-          if (over(ad.spend, ad.conv, ideal, PAUSE_X)) {
-            toPause.push({ id: ad.id, type: "ad", line: `Criativo ${ad.name} (${g.name}): ${cpaTxt(ad.spend, ad.conv)} (ideal ${brl(ideal)})` });
-          } else if (over(ad.spend, ad.conv, ideal, ALERT_X)) {
-            findings.push({
-              check: "custo",
-              acc: a,
-              line: `Criativo ${ad.name} (${g.name}): ${cpaTxt(ad.spend, ad.conv)} (ideal ${brl(ideal)})`,
-              dedupe: `custo:${ad.id}:${today}`,
-            });
+        let avisouCriativo = false;
+        for (const ad of g.ads.values()) {
+          if (shouldPause(ad)) {
+            avisouCriativo = true;
+            adCandidates.push({ ad, g });
+          }
+          else if (over(ad.all.spend, ad.all.conv, ideal, ALERT_X)) {
+            avisouCriativo = true;
+            adAlerts.push({ ad, g });
           }
         }
-        if (!g.ads.some((ad) => over(ad.spend, ad.conv, ideal, ALERT_X)) && over(g.spend, g.conv, ideal, ALERT_X)) {
+        // conjunto: SÓ aviso (nunca pausa)
+        if (!avisouCriativo && over(g.all.spend, g.all.conv, ideal, ALERT_X)) {
           findings.push({
             check: "custo",
             acc: a,
-            line: `Conjunto ${g.name}: ${cpaTxt(g.spend, g.conv)} (ideal ${brl(ideal)})`,
+            line: `Conjunto ${g.name}: ${cpaTxt(g.all.spend, g.all.conv)} (ideal ${brl(ideal)})${g.firstDay > since ? " — novo, só aviso" : ""}`,
             dedupe: `custo:${adsetId}:${today}`,
+          });
+        }
+      }
+
+      // criativo: só pausa se ainda estiver ativo (os dados acima incluem os já pausados)
+      if (adCandidates.length > 0 || adAlerts.length > 0) {
+        const ativos = await metaGetAll<{ id: string }>(
+          token,
+          `/${act(a.id)}/ads`,
+          { fields: "id", effective_status: JSON.stringify(["ACTIVE"]), limit: "500" },
+          5,
+        );
+        calls++;
+        const ids = new Set(ativos.map((x) => x.id));
+        for (const { ad, g } of adCandidates) {
+          if (!ids.has(ad.id)) continue;
+          toPause.push({ id: ad.id, type: "ad", line: `Criativo ${ad.name} (${g.name}): ${detalhe(ad)} (ideal ${brl(ideal)})` });
+        }
+        for (const { ad, g } of adAlerts) {
+          if (!ids.has(ad.id)) continue; // já pausado: não avisa
+          findings.push({
+            check: "custo",
+            acc: a,
+            line: `Criativo ${ad.name} (${g.name}): ${cpaTxt(ad.all.spend, ad.all.conv)} (ideal ${brl(ideal)})${ad.firstDay > since ? " — novo, só aviso" : ""}`,
+            dedupe: `custo:${ad.id}:${today}`,
           });
         }
       }

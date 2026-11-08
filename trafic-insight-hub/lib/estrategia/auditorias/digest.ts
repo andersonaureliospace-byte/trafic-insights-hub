@@ -9,7 +9,7 @@ import type { Finding } from "./checks";
 
 // Ordem e título de cada seção dentro do gestor.
 const SECTIONS: Array<{ id: CheckId | "custo_pausa"; title: string }> = [
-  { id: "custo_pausa", title: "🚨 Pausados agora (custo 3x o ideal)" },
+  { id: "custo_pausa", title: "🚨 Criativos pausados agora (custo 3x o ideal)" },
   { id: "saldo", title: "💰 Saldo / pagamento" },
   { id: "sem_entrega", title: "⛔ Sem entrega" },
   { id: "erros", title: "❌ Erros de veiculação" },

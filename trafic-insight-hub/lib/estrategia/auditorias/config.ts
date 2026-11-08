@@ -32,7 +32,7 @@ export const CHECKS: CheckInfo[] = [
   {
     id: "expansao",
     name: "Expansão de localização (conjuntos novos)",
-    what: "Conjunto criado/alterado com a expansão de público ligada: desliga a caixa (o conjunto segue ativo). Brasil inteiro: pausa.",
+    what: "Conjunto criado/alterado com a expansão de público ligada: desliga a caixa (o conjunto segue ativo). Brasil inteiro (falha de configuração): pausa o conjunto.",
     when: "06h, 08h30, 10h30, 13h, 15h e 20h — cada rodada olha o que mudou desde a anterior",
     calls: "1 por conta",
   },
@@ -45,10 +45,11 @@ export const CHECKS: CheckInfo[] = [
   },
   {
     id: "custo",
-    name: "Custo alto — conjuntos e criativos (2 dias + hoje)",
-    what: "Acima de 2x o CPA ideal: avisa (1x por dia). Acima de 3x, ou gastou 3x o ideal sem conversa: PAUSA na hora e avisa.",
+    name: "Custo alto — pausa criativos (2 dias + hoje)",
+    what:
+      "Acima de 2x o CPA ideal: avisa (1x por dia). PAUSA só CRIATIVO ATIVO — conjunto NUNCA é pausado, só avisado. O criativo é pausado se estiver acima de 3x (ou gastou 3x sem conversa) nos 2 dias + hoje E também nos dias fechados (anteontem + ontem), e se já rodava desde anteontem — criativo novo só recebe aviso.",
     when: "07h, 12h e 19h",
-    calls: "1 por conta",
+    calls: "1 a 2 por conta",
   },
   {
     id: "cpa_dia",
