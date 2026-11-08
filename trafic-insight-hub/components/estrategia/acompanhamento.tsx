@@ -20,58 +20,61 @@ import { offerStatuses, type OfferKind, type OffersSummary, type OfferStatus } f
 import type { ActivityItem } from "@/lib/estrategia/activities";
 import { useEstr } from "./shell";
 import { Card, Pill, ago, fmtBRL, fmtCpa, fmtInt } from "./ui";
-import type { Linha, OfferFlags } from "./use-carteira";
+import type { Linha } from "./use-carteira";
 import { AvisarGestores } from "./avisar-gestores";
 
 // Etapa 238/243: Tráfego → Acompanhamento. Uma linha por conta, sem rolagem lateral:
 // conta · prioridade (só leitura) · investimento no período (meta embaixo) · ritmo · CPA no período · ofertas · otimização · descrição.
 
 
-const DOT: Record<OfferStatus, string> = { ATIVO: "bg-emerald-500", INATIVO: "bg-amber-500", INEXISTENTE: "bg-zinc-400" };
 
 // Etapa 260: só as 3 ofertas (GERAL sempre; EXAME e PROMO nas contas que anunciam ou quando rodou no mês), cada uma com
 // Ativo / Inativo / Inexistente e o CPA dos 2 últimos dias. Sem o detalhe do nome da oferta.
 const STATUS_TXT: Record<OfferStatus, string> = { ATIVO: "Ativo", INATIVO: "Inativo", INEXISTENTE: "Inexistente" };
-function Ofertas({ s, flags }: { s: OffersSummary | null; flags: OfferFlags | null }) {
+function Ofertas({ s, label }: { s: OffersSummary | null; label: string }) {
+  // Etapa 285: as 3 ofertas sempre numa linha só — GERAL | PROMO | EXAME — cada uma um retângulo com a cor do status
+  // (verde ativa, amarela inativa, cinza não existe). O CPA dos 2 últimos dias abre ao clicar no retângulo.
   const st = s ? offerStatuses(s) : null;
-  const rows: Array<{ kind: OfferKind; label: string; status: OfferStatus | null }> = [{ kind: "geral", label: "GERAL", status: st?.geral ?? null }];
-  if (flags?.exame || (st && st.exame !== "INEXISTENTE")) rows.push({ kind: "exame", label: "EXAME", status: st?.exame ?? null });
-  if (flags?.promo || (st && st.promo !== "INEXISTENTE")) rows.push({ kind: "promo", label: "PROMO", status: st?.promo ?? null });
-  // Etapa 284: cada oferta vira UMA linha (uma "pílula"): bolinha + nome da oferta + status (só quando não está ativa) e,
-  // do lado direito, o CPA dos 2 últimos dias. Inexistente fica apagada e tracejada.
+  const rows: Array<{ kind: OfferKind; label: string; status: OfferStatus | null }> = [
+    { kind: "geral", label: "GERAL", status: st?.geral ?? null },
+    { kind: "promo", label: "PROMO", status: st?.promo ?? null },
+    { kind: "exame", label: "EXAME", status: st?.exame ?? null },
+  ];
   return (
-    <div className="flex flex-col gap-1 text-xs">
+    <div className="flex items-center gap-1">
       {rows.map((r) => {
         const cpa = s?.metrics ? cpaOf(s.metrics.last2d[r.kind]) : null;
-        const st = r.status;
         const tone =
-          st === "ATIVO"
-            ? "border-emerald-500/25 bg-emerald-500/[0.07]"
-            : st === "INATIVO"
-              ? "border-amber-500/25 bg-amber-500/[0.06]"
-              : st === "INEXISTENTE"
-                ? "border-dashed border-zinc-300 dark:border-white/15"
-                : "border-zinc-200 dark:border-white/10";
-        return (
-          <div
-            key={r.kind}
-            className={`flex items-center gap-1.5 rounded-md border px-2 py-[3px] ${tone}`}
-            title={st ? `${r.label}: ${STATUS_TXT[st]}${st !== "INEXISTENTE" && s?.metrics ? ` · CPA dos 2 últimos dias: ${fmtCpa(cpa)}` : ""}` : "Sem retrato de ofertas pra essa conta"}
-          >
-            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${st ? DOT[st] : "bg-zinc-300"}`} />
-            <span className={`font-semibold ${st === "INEXISTENTE" ? "text-zinc-400" : ""}`}>{r.label}</span>
-            {st === "INATIVO" ? <span className="text-[11px] text-amber-700 dark:text-amber-400">inativa</span> : null}
-            {st === "INEXISTENTE" ? <span className="text-[11px] text-red-600 dark:text-red-400">não existe</span> : null}
-            <span className="ml-auto pl-1 text-right whitespace-nowrap tabular-nums">
-              {st == null ? (
-                <span className="text-zinc-400">—</span>
-              ) : st === "INEXISTENTE" || !s?.metrics ? null : cpa == null || cpa === Infinity ? (
-                <span className="text-[11px] text-zinc-500">{fmtCpa(cpa)}</span>
-              ) : (
-                <span className="font-semibold">{fmtCpa(cpa)}</span>
-              )}
+          r.status === "ATIVO"
+            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300"
+            : r.status === "INATIVO"
+              ? "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-300"
+              : "border-zinc-300 bg-zinc-100 text-zinc-400 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-500";
+        const chip = (
+          <span className={`inline-flex min-w-[52px] items-center justify-center rounded-md border px-1.5 py-1 text-[11px] font-bold tracking-wide ${tone}`}>
+            {r.label}
+          </span>
+        );
+        if (r.status == null || r.status === "INEXISTENTE") {
+          return (
+            <span key={r.kind} title={r.status == null ? "Sem retrato de ofertas pra essa conta" : `${r.label}: não existe`}>
+              {chip}
             </span>
-          </div>
+          );
+        }
+        return (
+          <Detalhe
+            key={r.kind}
+            plain
+            align={r.kind === "exame" ? "right" : "left"}
+            label={`CPA da oferta ${r.label} de ${label}`}
+            linhas={[
+              [r.label, STATUS_TXT[r.status]],
+              ["CPA (2 últimos dias)", s?.metrics ? fmtCpa(cpa) : "sem dados"],
+            ]}
+          >
+            {chip}
+          </Detalhe>
         );
       })}
     </div>
@@ -79,7 +82,19 @@ function Ofertas({ s, flags }: { s: OffersSummary | null; flags: OfferFlags | nu
 }
 
 // Etapa 284: clicar no número abre uma caixinha com as metas (em vez das linhas cinzas embaixo, que poluíam).
-function Detalhe({ children, linhas, align = "right", label }: { children: React.ReactNode; linhas: Array<[string, string]>; align?: "left" | "right"; label: string }) {
+function Detalhe({
+  children,
+  linhas,
+  align = "right",
+  label,
+  plain = false,
+}: {
+  children: React.ReactNode;
+  linhas: Array<[string, string]>;
+  align?: "left" | "right";
+  label: string;
+  plain?: boolean; // sem o sublinhado pontilhado (o próprio filho já parece clicável)
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement | null>(null);
   useEffect(() => {
@@ -101,7 +116,7 @@ function Detalhe({ children, linhas, align = "right", label }: { children: React
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-label={label}
-        className="cursor-pointer rounded underline decoration-zinc-400/60 decoration-dotted underline-offset-4 hover:decoration-zinc-500"
+        className={plain ? "cursor-pointer rounded" : "cursor-pointer rounded underline decoration-zinc-400/60 decoration-dotted underline-offset-4 hover:decoration-zinc-500"}
       >
         {children}
       </button>
@@ -339,14 +354,14 @@ export function Acompanhamento({
         <table className="w-full table-fixed text-sm">
           <colgroup>
             {/* Conta · Responsável · Prioridade · Investimento · Ritmo · Leads · CPA · Ofertas · Otimização · Descrição */}
-            <col className="w-[15%]" />
+            <col className="w-[19%]" />
             <col className="w-[8%]" />
             <col className="w-[7%]" />
             <col className="w-[11%]" />
             <col className="w-[12%]" />
             <col className="w-[5%]" />
             <col className="w-[8%]" />
-            <col className="w-[22%]" />
+            <col className="w-[18%]" />
             <col className="w-[7%]" />
             <col className="w-[5%]" />
           </colgroup>
@@ -378,7 +393,7 @@ export function Acompanhamento({
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ l, r, spend, leads, cpa }) => {
+            {rows.map(({ l, r, spend, leads, cpa }, idx) => {
               const prio = options.find((o) => o.id === l.priority);
               // Com uma conta fixada, as outras ficam com os números embaçados (o nome continua legível).
               const blur = pinnedVisible && l.id !== pinned ? "pointer-events-none select-none blur-[4px] opacity-50" : "";
@@ -390,7 +405,9 @@ export function Acompanhamento({
                       ? "bg-red-500/[0.10] shadow-[inset_3px_0_0_0_rgb(239_68_68)] hover:bg-red-500/[0.14]"
                       : pinnedVisible && l.id === pinned
                         ? "bg-blue-600/[0.06]"
-                        : "hover:bg-zinc-50 dark:hover:bg-white/[0.02]"
+                        : idx % 2 === 1
+                          ? "bg-zinc-100/70 hover:bg-zinc-200/60 dark:bg-white/[0.045] dark:hover:bg-white/[0.07]"
+                          : "hover:bg-zinc-50 dark:hover:bg-white/[0.025]"
                   }`}
                 >
                   <td className="py-3 pr-2 pl-4">
@@ -506,7 +523,7 @@ export function Acompanhamento({
                     )}
                   </td>
                   <td className={`px-2 py-3 ${blur}`}>
-                    <Ofertas s={l.offers} flags={l.flags} />
+                    <Ofertas s={l.offers} label={l.name} />
                   </td>
                   <td className={`px-2 py-3 ${blur}`}>
                     <Otimizacao
