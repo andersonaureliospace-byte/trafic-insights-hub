@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { Btn } from "@/components/estrategia/ui";
 import { matchesResp } from "@/components/estrategia/use-carteira";
+import { usePriorityOptions } from "@/lib/priority-context";
 import {
   NovaTarefa,
   ProgramarFeedbacks,
@@ -46,6 +47,7 @@ const flat = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
 
 function Quadro() {
   const { ui } = useEstr();
+  const { options } = usePriorityOptions();
   const params = useSearchParams();
   const [board, setBoard] = useState<Board | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -164,6 +166,7 @@ function Quadro() {
   }
 
   const hoje = board?.hoje ?? "";
+  const cliById = useMemo(() => new Map((board?.clientes ?? []).map((c) => [c.id, c])), [board]);
   const nomeDia = (d: string) => (d === hoje ? "Hoje" : d === addDays(hoje, 1) ? "Amanhã" : d === addDays(hoje, -1) ? "Ontem" : DIAS_LONGO[weekday(d)]);
 
   return (
@@ -274,6 +277,24 @@ function Quadro() {
                             {t.client_name ? <div className="mt-0.5 truncate text-xs font-semibold text-zinc-600 dark:text-zinc-300">{t.client_name}</div> : null}
                             {t.descricao && !feita ? <div className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{t.descricao}</div> : null}
                             <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+                              {(() => {
+                                const c = t.ad_account_id ? cliById.get(t.ad_account_id.replace(/^act_/, "")) : undefined;
+                                const prio = c?.priority ? options.find((o) => o.id === c.priority) : undefined;
+                                return (
+                                  <>
+                                    {prio ? (
+                                      <span className="rounded px-1.5 py-0.5 font-semibold" style={{ color: prio.color, backgroundColor: `${prio.color}22` }}>
+                                        ● {prio.label}
+                                      </span>
+                                    ) : null}
+                                    {c?.sensivel ? (
+                                      <span className="rounded bg-fuchsia-500/20 px-1.5 py-0.5 font-bold text-fuchsia-700 dark:text-fuchsia-300" title="Conta sensível (marcada na ficha do cliente)">
+                                        ⚠ Sensível
+                                      </span>
+                                    ) : null}
+                                  </>
+                                );
+                              })()}
                               {t.responsavel ? <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium dark:bg-white/10">👤 {t.responsavel}</span> : null}
                               {atrasada ? <span className="rounded bg-amber-500/15 px-1.5 py-0.5 font-semibold text-amber-700 dark:text-amber-300">atrasada · {fmtDia(t.data)}</span> : null}
                             </div>

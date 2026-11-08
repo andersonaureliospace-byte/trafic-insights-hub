@@ -39,10 +39,13 @@ export interface ClienteUI {
   id: string;
   name: string;
   responsible: string | null;
+  priority?: string | null;
+  sensivel?: boolean;
 }
 
 export const TIPO_ICON: Record<TarefaUI["tipo"], string> = { manual: "✎", rotina: "🔁", alerta: "🚨", feedback: "💬" };
 export const TIPO_LABEL: Record<TarefaUI["tipo"], string> = { manual: "Tarefa", rotina: "Rotina", alerta: "Alerta do Tráfego", feedback: "Feedback" };
+const PRIO_LABEL: Record<string, string> = { inauguracao: "Inauguração", critica: "Crítica", alta: "Alta", media: "Média", baixa: "Baixa" };
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const input = "h-9 w-full rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]";
 const area = "w-full rounded-lg border border-zinc-300 bg-white px-2.5 py-2 text-sm dark:border-white/10 dark:bg-[#141924]";
@@ -125,6 +128,8 @@ function EscolherClientes({ clientes, sel, onChange }: { clientes: ClienteUI[]; 
               }}
             />
             <span className="flex-1 truncate">{c.name}</span>
+            {c.sensivel ? <span className="rounded bg-fuchsia-500/20 px-1 text-[10px] font-bold text-fuchsia-700 dark:text-fuchsia-300">⚠ Sensível</span> : null}
+            {c.priority ? <span className="text-[11px] font-semibold text-zinc-500">{PRIO_LABEL[c.priority] ?? c.priority}</span> : null}
             <span className="text-xs text-zinc-500">{c.responsible ?? "sem gestor"}</span>
           </label>
         ))}

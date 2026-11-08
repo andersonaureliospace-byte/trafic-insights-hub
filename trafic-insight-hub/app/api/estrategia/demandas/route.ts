@@ -62,13 +62,15 @@ export async function GET(request: Request) {
     } catch {
       /* sem tabela ainda: o select abaixo avisa */
     }
-    const [noPeriodo, atrasadas, rotinas, gRow, fbAbertos] = await Promise.all([
+    const [noPeriodo, atrasadas, rotinas, gRow, fbAbertos, sensRow] = await Promise.all([
       supabase.from("estr_tarefas").select(TAREFA_COLS).eq("user_id", user.id).gte("data", from).lte("data", to).neq("status", "excluida").limit(3000),
       supabase.from("estr_tarefas").select(TAREFA_COLS).eq("user_id", user.id).lt("data", from).eq("status", "aberta").limit(1000),
       supabase.from("estr_rotinas").select(ROTINA_COLS).eq("user_id", user.id).order("created_at", { ascending: true }),
       supabase.from("user_ui_prefs").select("pref_value").eq("user_id", user.id).eq("pref_key", "gestores").maybeSingle(),
       supabase.from("estr_tarefas").select("ad_account_id").eq("user_id", user.id).eq("tipo", "feedback").eq("status", "aberta"),
+      supabase.from("user_ui_prefs").select("pref_value").eq("user_id", user.id).eq("pref_key", "contas_sensiveis").maybeSingle(),
     ]);
+    const sens = (sensRow.data?.pref_value && typeof sensRow.data.pref_value === "object" ? sensRow.data.pref_value : {}) as Record<string, boolean>;
     if (noPeriodo.error) {
       if (semTabela(noPeriodo.error.message)) return NextResponse.json({ semTabela: true, tarefas: [], rotinas: [], clientes: [], gestores: [], semFeedback: [], hoje, from, to });
       throw noPeriodo.error;
@@ -83,7 +85,8 @@ export async function GET(request: Request) {
       to,
       tarefas: [...((atrasadas.data ?? []) as Tarefa[]), ...((noPeriodo.data ?? []) as Tarefa[])],
       rotinas: (rotinas.data ?? []) as Rotina[],
-      clientes: carteira.map((a) => ({ id: a.id, name: a.name, responsible: a.responsible })),
+      // Etapa 287: prioridade (Asana) e conta sensível, pra mostrar nos cartões
+      clientes: carteira.map((a) => ({ id: a.id, name: a.name, responsible: a.responsible, priority: a.priority, sensivel: !!(sens[a.id] || sens[`act_${a.id}`]) })),
       gestores,
       // clientes sem feedback programado (nenhuma tarefa de feedback aberta, em qualquer dia)
       semFeedback: (() => {
