@@ -6,7 +6,6 @@ import { usePriorityOptions } from "@/lib/priority-context";
 import { FocoDescricao } from "@/components/foco/foco-descricao";
 import {
   CPA_PERIODS,
-  RITMO_BAND,
   calendarSP,
   closedDaysIn,
   cpaOf,
@@ -309,7 +308,7 @@ export function Acompanhamento({
 
   return (
     <div className="flex flex-col gap-3">
-      <Card className="overflow-hidden">
+      <Card className="overflow-visible">
         <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-4 py-3 dark:border-white/10">
           <label htmlFor="estr-period" className="text-xs text-zinc-500">Período</label>
           <select id="estr-period" value={period} onChange={(e) => setUi({ period: e.target.value })} className={selectCls}>
@@ -589,14 +588,6 @@ export function Acompanhamento({
         </table>
       </Card>
 
-      <p className="text-xs leading-relaxed text-zinc-500">
-        <b className="text-zinc-700 dark:text-zinc-300">Investimento</b>, <b className="text-zinc-700 dark:text-zinc-300">Leads</b> e <b className="text-zinc-700 dark:text-zinc-300">CPA</b> seguem o período escolhido (só o mês
-        atual). Clique no valor do Investimento, do Ritmo ou do CPA pra ver as metas. Marque contas (☐) pra <b className="text-zinc-700 dark:text-zinc-300">Avisar gestores</b>. <b className="text-zinc-700 dark:text-zinc-300">Ritmo</b>: investimento diário atual e quanto falta pra
-        ficar em dia com a meta (positivo = abaixo, negativo = passou; menos de R$ {RITMO_BAND} fica verde); embaixo, a meta diária.{" "}
-        <b className="text-zinc-700 dark:text-zinc-300">Ofertas</b>: CPA dos 2 últimos dias. <b className="text-zinc-700 dark:text-zinc-300">Otimização</b>: há
-        quanto tempo foi a última mudança relevante (orçamento, liga/desliga, conjunto ou anúncio novo, público, criativo ou lance); passe o mouse pra ver o
-        que foi.
-      </p>
 
       {criarTarefa ? (
         <NovaTarefa
