@@ -4,6 +4,7 @@ import { ConfigSaldo } from "./config-saldo";
 import Link from "next/link";
 import { useState } from "react";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
+import { parseAdsetName } from "@/lib/offers/rule";
 import { cpaOf, cpaSortKey, calendarSP } from "@/lib/estrategia/calc";
 import type { ActivityItem } from "@/lib/estrategia/activities";
 import { Card, SEV_RANK, SevBadge, ago, fmtBRL, fmtCpa, isAlertSev, type Sev } from "./ui";
@@ -65,12 +66,6 @@ export const relevantNaming = (items: NamingIssue[]) => items.filter((it) => !is
 // Dá pra corrigir com um clique: tem sugestão completa (sem "?") e não precisa conferir nada.
 export const canAutoFix = (it: NamingIssue) => !!it.id && !!it.suggestion && !it.suggestion.includes("?") && !it.needsInput;
 
-// "LOCALIZAÇÃO fora do padrão" → "LOCALIZAÇÃO"; "Estrutura fora do padrão (5 partes, esperado 6)" → "Estrutura (partes faltando/sobrando)".
-function shortProblem(p: string): string {
-  if (/^Estrutura fora do padrão/.test(p)) return "Estrutura (partes faltando ou sobrando)";
-  return p.replace(/ fora do padrão$/, "");
-}
-
 const ENTITY_LABEL: Record<NamingIssue["entity"], string> = { campaign: "Campanha", adset: "Conjunto", ad: "Criativo" };
 
 // Explicação curta de cada erro, na língua do POP.
@@ -123,6 +118,48 @@ export async function renameIssues(items: NamingIssue[], onEach?: (it: NamingIss
   };
   await Promise.all([worker(), worker(), worker()]);
   return done;
+}
+
+// Etapa 284: conjuntos (ligados) em que não dá pra saber se é GERAL, EXAME ou PROMO pelas primeiras palavras do nome.
+export function semTipo(items: NamingIssue[]): NamingIssue[] {
+  const seen = new Set<string>();
+  return items.filter((it) => {
+    if (it.entity !== "adset" || parseAdsetName(it.current_name)) return false;
+    const k = it.id ?? `${it.ad_account_id}:${it.current_name}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+function SemTipoDetails({ name, items, onClose }: { name: string; items: NamingIssue[]; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-40 flex justify-end bg-black/40" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-label={`Conjuntos sem tipo de oferta em ${name}`}
+        className="flex h-full w-full max-w-xl flex-col border-l border-zinc-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#10141c]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-3 border-b border-zinc-200 p-5 dark:border-white/10">
+          <div>
+            <div className="text-base font-semibold">{name}</div>
+            <div className="text-xs text-zinc-500">
+              {items.length} {items.length === 1 ? "conjunto" : "conjuntos"} sem tipo de oferta — comece o nome com GERAL, EXAME ou PROMO
+            </div>
+          </div>
+          <button onClick={onClose} className="h-9 shrink-0 rounded-lg border border-zinc-300 px-3 text-sm dark:border-white/10">Fechar</button>
+        </div>
+        <ul className="flex-1 divide-y divide-zinc-100 overflow-y-auto dark:divide-white/5">
+          {items.map((it, i) => (
+            <li key={it.id ?? i} className="px-5 py-3">
+              <code className="block rounded-md bg-zinc-100 px-2 py-1.5 font-mono text-xs break-all dark:bg-white/5">{it.current_name}</code>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
 }
 
 export function NamingDetails({
@@ -387,31 +424,31 @@ export function buildGroups(linhas: Linha[], srv: AlertasServer | null, naming: 
   });
 
   // 5) Nomenclatura
+  // Etapa 284: a auditoria de nomenclatura foi encerrada. A caixa mostra só os conjuntos ligados em que não deu pra
+  // identificar o tipo da oferta (GERAL / EXAME / PROMO nas primeiras palavras do nome).
   const nm = new Map<string, NamingIssue[]>();
-  for (const it of relevantNaming(naming.items)) {
+  for (const it of semTipo(naming.items)) {
     const id = it.ad_account_id.replace(/^act_/, "");
     if (!byId.has(id)) continue;
     nm.set(id, [...(nm.get(id) ?? []), it]);
   }
   groups.push({
     key: "nomes",
-    title: "Nomenclatura fora do padrão",
+    title: "Conjuntos sem tipo de oferta",
     icon: "🏷",
-    items: [...nm.entries()].map(([id, list]) => {
-      // Os erros que mais aparecem nessa conta (ex.: "TIPO fora do padrão ×3").
-      const tally = new Map<string, number>();
-      for (const it of list) for (const p of it.problems) tally.set(shortProblem(p), (tally.get(shortProblem(p)) ?? 0) + 1);
-      const top = [...tally.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
-      return {
-        id,
-        name: nameOf(id),
-        detail: `${list.length} ${list.length === 1 ? "nome" : "nomes"} · ${top.map(([p, n]) => (n > 1 ? `${p} ×${n}` : p)).join(" · ")}`,
-        sev: "baixa" as Sev,
-        naming: true,
-      };
-    }),
-    foot: naming.loading ? "Verificando os nomes na Meta…" : naming.error ? `Não deu pra verificar: ${naming.error}` : "Campanhas, conjuntos e anúncios ligados · regra do POP de nomenclatura",
-    emptyText: naming.loading ? "Verificando…" : undefined,
+    items: [...nm.entries()].map(([id, list]) => ({
+      id,
+      name: nameOf(id),
+      detail: `${list.length} ${list.length === 1 ? "conjunto" : "conjuntos"} sem GERAL, EXAME ou PROMO no começo do nome`,
+      sev: "baixa" as Sev,
+      naming: true,
+    })),
+    foot: naming.loading
+      ? "Verificando os nomes na Meta…"
+      : naming.error
+        ? `Não deu pra verificar: ${naming.error}`
+        : "Conjuntos ligados · o tipo da oferta sai das primeiras palavras do nome",
+    emptyText: naming.loading ? "Verificando…" : "Todos os conjuntos com tipo de oferta identificado.",
   });
 
   // 6) Otimizações recentes (últimas 24h) + contas paradas
@@ -463,7 +500,6 @@ export function Alertas({
   srv,
   naming,
   loading,
-  onNamingFixed,
   onSaldoChanged,
 }: {
   linhas: Linha[];
@@ -478,9 +514,6 @@ export function Alertas({
   const groups = buildGroups(linhas, srv, naming);
   const [namingOpen, setNamingOpen] = useState<string | null>(null);
   const [search, setSearch] = useState<Record<string, string>>({});
-  const [fixingAll, setFixingAll] = useState<string | null>(null);
-  const visibleIds = new Set(linhas.map((l) => l.id));
-  const allFixable = relevantNaming(naming.items).filter((it) => canAutoFix(it) && visibleIds.has(it.ad_account_id.replace(/^act_/, "")));
 
   // Contas que precisam de atenção: soma dos alertas por conta (crítico vale mais).
   const score = new Map<string, { n: number; pts: number; top: Sev; titles: string[] }>();
@@ -541,22 +574,6 @@ export function Alertas({
                     ⚙ Configurar
                   </button>
                 ) : null}
-                {g.key === "nomes" && allFixable.length ? (
-                  <button
-                    onClick={async () => {
-                      setFixingAll("…");
-                      let n = 0;
-                      const ids = await renameIssues(allFixable, () => setFixingAll(`${++n}/${allFixable.length}`));
-                      setFixingAll(null);
-                      if (ids.length) onNamingFixed?.(ids);
-                    }}
-                    disabled={!!fixingAll}
-                    title="Renomeia na Meta todos os nomes com sugestão completa (de todas as contas da lista)"
-                    className="ml-auto rounded-md border border-blue-500 px-2 py-0.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:text-blue-300 dark:hover:bg-blue-950/40"
-                  >
-                    {fixingAll ? `Corrigindo ${fixingAll}` : `Corrigir todos (${allFixable.length})`}
-                  </button>
-                ) : null}
                 <span
                   className={`min-w-6 rounded-md px-1.5 py-0.5 text-center text-xs font-bold tabular-nums ${
                     n > 0 ? "bg-red-500/15 text-red-700 dark:text-red-300" : "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
@@ -603,7 +620,7 @@ export function Alertas({
                             onClick={() => setNamingOpen(it.id)}
                             className="mt-1 text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
                           >
-                            Ver o que está errado →
+                            Ver os conjuntos →
                           </button>
                         ) : null}
                       </div>
@@ -660,11 +677,10 @@ export function Alertas({
         )}
       </div>
       {namingOpen ? (
-        <NamingDetails
+        <SemTipoDetails
           name={byId.get(namingOpen)?.name ?? namingOpen}
-          items={relevantNaming(naming.items).filter((x) => x.ad_account_id.replace(/^act_/, "") === namingOpen)}
+          items={semTipo(naming.items).filter((x) => x.ad_account_id.replace(/^act_/, "") === namingOpen)}
           onClose={() => setNamingOpen(null)}
-          onFixed={onNamingFixed}
         />
       ) : null}
     </div>

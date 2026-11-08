@@ -26,8 +26,6 @@ import { AvisarGestores } from "./avisar-gestores";
 // Etapa 238/243: Tráfego → Acompanhamento. Uma linha por conta, sem rolagem lateral:
 // conta · prioridade (só leitura) · investimento no período (meta embaixo) · ritmo · CPA no período · ofertas · otimização · descrição.
 
-const fmtMeta = (v: number | null) =>
-  v == null ? "sem meta" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v);
 
 const DOT: Record<OfferStatus, string> = { ATIVO: "bg-emerald-500", INATIVO: "bg-amber-500", INEXISTENTE: "bg-zinc-400" };
 
@@ -39,29 +37,90 @@ function Ofertas({ s, flags }: { s: OffersSummary | null; flags: OfferFlags | nu
   const rows: Array<{ kind: OfferKind; label: string; status: OfferStatus | null }> = [{ kind: "geral", label: "GERAL", status: st?.geral ?? null }];
   if (flags?.exame || (st && st.exame !== "INEXISTENTE")) rows.push({ kind: "exame", label: "EXAME", status: st?.exame ?? null });
   if (flags?.promo || (st && st.promo !== "INEXISTENTE")) rows.push({ kind: "promo", label: "PROMO", status: st?.promo ?? null });
+  // Etapa 284: cada oferta vira UMA linha (uma "pílula"): bolinha + nome da oferta + status (só quando não está ativa) e,
+  // do lado direito, o CPA dos 2 últimos dias. Inexistente fica apagada e tracejada.
   return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 text-xs">
+    <div className="flex flex-col gap-1 text-xs">
       {rows.map((r) => {
         const cpa = s?.metrics ? cpaOf(s.metrics.last2d[r.kind]) : null;
-        const missing = r.status === "INEXISTENTE";
+        const st = r.status;
+        const tone =
+          st === "ATIVO"
+            ? "border-emerald-500/25 bg-emerald-500/[0.07]"
+            : st === "INATIVO"
+              ? "border-amber-500/25 bg-amber-500/[0.06]"
+              : st === "INEXISTENTE"
+                ? "border-dashed border-zinc-300 dark:border-white/15"
+                : "border-zinc-200 dark:border-white/10";
         return (
-          <div key={r.kind} className="contents">
-            <span className="font-semibold text-zinc-500">{r.label}</span>
-            <span className="flex min-w-0 items-center gap-1.5">
-              {r.status ? <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOT[r.status]}`} /> : null}
-              {r.status == null ? (
-                <span className="text-zinc-400" title="Sem retrato de ofertas pra essa conta">—</span>
+          <div
+            key={r.kind}
+            className={`flex items-center gap-1.5 rounded-md border px-2 py-[3px] ${tone}`}
+            title={st ? `${r.label}: ${STATUS_TXT[st]}${st !== "INEXISTENTE" && s?.metrics ? ` · CPA dos 2 últimos dias: ${fmtCpa(cpa)}` : ""}` : "Sem retrato de ofertas pra essa conta"}
+          >
+            <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${st ? DOT[st] : "bg-zinc-300"}`} />
+            <span className={`font-semibold ${st === "INEXISTENTE" ? "text-zinc-400" : ""}`}>{r.label}</span>
+            {st === "INATIVO" ? <span className="text-[11px] text-amber-700 dark:text-amber-400">inativa</span> : null}
+            {st === "INEXISTENTE" ? <span className="text-[11px] text-red-600 dark:text-red-400">não existe</span> : null}
+            <span className="ml-auto pl-1 text-right whitespace-nowrap tabular-nums">
+              {st == null ? (
+                <span className="text-zinc-400">—</span>
+              ) : st === "INEXISTENTE" || !s?.metrics ? null : cpa == null || cpa === Infinity ? (
+                <span className="text-[11px] text-zinc-500">{fmtCpa(cpa)}</span>
               ) : (
-                <span className={`font-medium ${missing ? "text-red-600 dark:text-red-400" : ""}`}>{STATUS_TXT[r.status]}</span>
+                <span className="font-semibold">{fmtCpa(cpa)}</span>
               )}
-            </span>
-            <span className="text-right tabular-nums" title="CPA dos 2 últimos dias (só o mês atual)">
-              {s?.metrics && !missing && r.status !== null ? fmtCpa(cpa) : ""}
             </span>
           </div>
         );
       })}
     </div>
+  );
+}
+
+// Etapa 284: clicar no número abre uma caixinha com as metas (em vez das linhas cinzas embaixo, que poluíam).
+function Detalhe({ children, linhas, align = "right", label }: { children: React.ReactNode; linhas: Array<[string, string]>; align?: "left" | "right"; label: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const fora = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("mousedown", fora);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", fora);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [open]);
+  if (linhas.length === 0) return <>{children}</>;
+  return (
+    <span ref={ref} className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={label}
+        className="cursor-pointer rounded underline decoration-zinc-400/60 decoration-dotted underline-offset-4 hover:decoration-zinc-500"
+      >
+        {children}
+      </button>
+      {open ? (
+        <span
+          role="dialog"
+          className={`absolute top-full z-30 mt-1.5 flex w-max min-w-[220px] flex-col gap-1.5 rounded-lg border border-zinc-200 bg-white p-3 text-left text-xs shadow-xl dark:border-white/10 dark:bg-[#161b26] ${
+            align === "right" ? "right-0" : "left-0"
+          }`}
+        >
+          {linhas.map(([k, v]) => (
+            <span key={k} className="flex items-baseline justify-between gap-4">
+              <span className="text-zinc-500">{k}</span>
+              <span className="font-semibold text-zinc-900 tabular-nums dark:text-zinc-100">{v}</span>
+            </span>
+          ))}
+        </span>
+      ) : null}
+    </span>
   );
 }
 
@@ -126,10 +185,13 @@ export function Acompanhamento({
   linhas,
   activities,
   activitiesFailed,
+  pagamento,
 }: {
   linhas: Linha[];
   activities: Record<string, ActivityItem[]> | null;
   activitiesFailed: string[];
+  // Etapa 284: contas com erro de pagamento ou sem saldo → linha vermelha (id da conta → motivo)
+  pagamento?: Record<string, string>;
 }) {
   const { ui, setUi } = useEstr();
   const { options } = usePriorityOptions();
@@ -323,8 +385,12 @@ export function Acompanhamento({
               return (
                 <tr
                   key={l.id}
-                  className={`border-b border-zinc-100 align-top last:border-0 hover:bg-zinc-50 dark:border-white/5 dark:hover:bg-white/[0.02] ${
-                    pinnedVisible && l.id === pinned ? "bg-blue-600/[0.06]" : ""
+                  className={`border-b border-zinc-100 align-top last:border-0 dark:border-white/5 ${
+                    pagamento?.[l.id]
+                      ? "bg-red-500/[0.10] shadow-[inset_3px_0_0_0_rgb(239_68_68)] hover:bg-red-500/[0.14]"
+                      : pinnedVisible && l.id === pinned
+                        ? "bg-blue-600/[0.06]"
+                        : "hover:bg-zinc-50 dark:hover:bg-white/[0.02]"
                   }`}
                 >
                   <td className="py-3 pr-2 pl-4">
@@ -354,6 +420,11 @@ export function Acompanhamento({
                     >
                       {l.name}
                     </a>
+                    {pagamento?.[l.id] ? (
+                      <span className="mt-1 inline-block max-w-full truncate rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold text-white" title={pagamento[l.id]}>
+                        💳 {pagamento[l.id]}
+                      </span>
+                    ) : null}
                     </div>
                     </div>
                   </td>
@@ -378,19 +449,39 @@ export function Acompanhamento({
                     )}
                   </td>
                   <td className={`px-2 py-3 text-right tabular-nums ${blur}`}>
-                    {spend != null ? fmtBRL(spend) : "—"}
-                    {r.dailyTarget != null ? (
-                      <div className="text-xs whitespace-nowrap text-zinc-500" title="Investimento ideal até ontem | até hoje">
-                        {fmtMeta(r.dailyTarget * (cal.day - 1))} | {fmtMeta(r.dailyTarget * cal.day)}
-                      </div>
-                    ) : null}
-                    <div className="text-xs text-zinc-500" title="Meta mensal">{fmtMeta(l.monthly)}</div>
+                    <Detalhe
+                      label={`Metas de investimento de ${l.name}`}
+                      linhas={
+                        r.dailyTarget != null
+                          ? [
+                              ["Investimento ideal até ontem", fmtBRL(r.dailyTarget * (cal.day - 1))],
+                              ["Investimento ideal até hoje", fmtBRL(r.dailyTarget * cal.day)],
+                              ["Meta mensal", fmtBRL(l.monthly ?? 0)],
+                            ]
+                          : []
+                      }
+                    >
+                      {spend != null ? fmtBRL(spend) : "—"}
+                    </Detalhe>
                   </td>
                   <td className={`px-2 py-3 tabular-nums ${blur}`}>
                     <div className="flex flex-wrap items-center gap-1">
-                      <span className="font-semibold" title="Investimento diário atual (orçamento do dia de tudo que está ligado)">
-                        {l.dailyBudget === undefined ? "…" : l.dailyBudget == null ? "—" : fmtBRL(l.dailyBudget)}
-                      </span>
+                      <Detalhe
+                        align="left"
+                        label={`Ritmo de ${l.name}`}
+                        linhas={
+                          r.dailyTarget != null
+                            ? [
+                                r.gap != null && r.gap < 0 ? ["Passou da meta até ontem", fmtBRL(-r.gap)] : ["Faltam (pra ficar em dia até ontem)", fmtBRL(Math.max(0, r.gap ?? 0))],
+                                ["Meta diária", fmtBRL(r.dailyTarget)],
+                              ]
+                            : []
+                        }
+                      >
+                        <span className="font-semibold" title="Investimento diário atual (orçamento do dia de tudo que está ligado)">
+                          {l.dailyBudget === undefined ? "…" : l.dailyBudget == null ? "—" : fmtBRL(l.dailyBudget)}
+                        </span>
+                      </Detalhe>
                       {r.gap != null ? (
                         <Pill
                           tone={ritmoTone(r.gap)}
@@ -401,16 +492,18 @@ export function Acompanhamento({
                         </Pill>
                       ) : null}
                     </div>
-                    {r.dailyTarget != null ? (
-                      <div className="text-xs text-zinc-500" title="Meta diária">{fmtBRL(r.dailyTarget)}</div>
-                    ) : null}
                   </td>
                   <td className={`px-2 py-3 text-right text-sm font-semibold tabular-nums ${blur}`}>
                     {l.nums && leads != null ? new Intl.NumberFormat("pt-BR").format(Math.round(leads)) : <span className="text-xs font-normal text-zinc-400">—</span>}
                   </td>
                   <td className={`px-2 py-3 text-right ${blur}`}>
-                    {l.nums ? <Pill tone={cpa === Infinity ? "bad" : cpaTone(cpa, l.cpaTarget)}>{fmtCpa(cpa)}</Pill> : <span className="text-xs text-zinc-400">—</span>}
-                    <div className="mt-0.5 text-xs text-zinc-500 tabular-nums" title="CPA ideal">{l.cpaTarget != null ? fmtBRL(l.cpaTarget) : ""}</div>
+                    {l.nums ? (
+                      <Detalhe label={`Meta de CPA de ${l.name}`} linhas={l.cpaTarget != null ? [["Meta de CPA", fmtBRL(l.cpaTarget)]] : []}>
+                        <Pill tone={cpa === Infinity ? "bad" : cpaTone(cpa, l.cpaTarget)}>{fmtCpa(cpa)}</Pill>
+                      </Detalhe>
+                    ) : (
+                      <span className="text-xs text-zinc-400">—</span>
+                    )}
                   </td>
                   <td className={`px-2 py-3 ${blur}`}>
                     <Ofertas s={l.offers} flags={l.flags} />
@@ -456,7 +549,7 @@ export function Acompanhamento({
 
       <p className="text-xs leading-relaxed text-zinc-500">
         <b className="text-zinc-700 dark:text-zinc-300">Investimento</b>, <b className="text-zinc-700 dark:text-zinc-300">Leads</b> e <b className="text-zinc-700 dark:text-zinc-300">CPA</b> seguem o período escolhido (só o mês
-        atual); embaixo, o investimento ideal até ontem | até hoje, a meta mensal e o CPA ideal. Marque contas (☐) pra <b className="text-zinc-700 dark:text-zinc-300">Avisar gestores</b>. <b className="text-zinc-700 dark:text-zinc-300">Ritmo</b>: investimento diário atual e quanto falta pra
+        atual). Clique no valor do Investimento, do Ritmo ou do CPA pra ver as metas. Marque contas (☐) pra <b className="text-zinc-700 dark:text-zinc-300">Avisar gestores</b>. <b className="text-zinc-700 dark:text-zinc-300">Ritmo</b>: investimento diário atual e quanto falta pra
         ficar em dia com a meta (positivo = abaixo, negativo = passou; menos de R$ {RITMO_BAND} fica verde); embaixo, a meta diária.{" "}
         <b className="text-zinc-700 dark:text-zinc-300">Ofertas</b>: CPA dos 2 últimos dias. <b className="text-zinc-700 dark:text-zinc-300">Otimização</b>: há
         quanto tempo foi a última mudança relevante (orçamento, liga/desliga, conjunto ou anúncio novo, público, criativo ou lance); passe o mouse pra ver o

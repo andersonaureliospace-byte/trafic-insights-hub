@@ -55,6 +55,14 @@ export default function TrafegoPage() {
     [visible, foco, isSens],
   );
   const nSens = visible.filter((l) => isSens(l.id)).length;
+  // Etapa 284: erro de pagamento ou saldo abaixo do limite → a linha fica vermelha no Acompanhamento
+  const pagamento = useMemo(() => {
+    const m: Record<string, string> = {};
+    const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+    for (const b of srv?.balance ?? []) if (b.low && !b.handled) m[b.ad_account_id.replace(/^act_/, "")] = `Saldo baixo: ${brl(b.balance)}`;
+    for (const p of srv?.payment ?? []) if (p.reason) m[p.ad_account_id.replace(/^act_/, "")] = `Pagamento: ${p.reason}`;
+    return m;
+  }, [srv]);
   const nCrit = visible.filter((l) => l.priority === "critica").length;
 
   // Alertas do servidor: depois que a carteira carregou (precisa da lista de contas).
@@ -203,7 +211,7 @@ export default function TrafegoPage() {
                 {foco === "sensiveis" && nSens === 0 ? "Nenhuma conta marcada como sensível. Marque em Clientes → ficha do cliente → Conta sensível." : "Nenhuma conta nesse filtro."}
               </div>
             ) : (
-              <Acompanhamento linhas={focoLinhas} activities={srv?.activities ?? null} activitiesFailed={srv?.activitiesFailed ?? []} />
+              <Acompanhamento linhas={focoLinhas} activities={srv?.activities ?? null} activitiesFailed={srv?.activitiesFailed ?? []} pagamento={pagamento} />
             )}
           </>
         ) : tab === "acomp" ? (
@@ -211,6 +219,7 @@ export default function TrafegoPage() {
             linhas={visible}
             activities={srv?.activities ?? null}
             activitiesFailed={srv?.activitiesFailed ?? []}
+            pagamento={pagamento}
           />
         ) : (
           <>

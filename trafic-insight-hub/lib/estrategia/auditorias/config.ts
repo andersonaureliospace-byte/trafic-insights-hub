@@ -61,7 +61,7 @@ export const CHECKS: CheckInfo[] = [
   {
     id: "saldo",
     name: "Saldo e pagamento",
-    what: "Contas Pix/Híbrida com saldo abaixo do limite e contas com erro de pagamento.",
+    what: "Contas Pix/Híbrida com saldo abaixo do limite e contas com erro de pagamento. URGENTE: de hora em hora (07h15–21h15) avisa na hora, sem esperar o resumo (1x por dia por conta).",
     when: "04h30 (vai no resumo das 08h) e 15h45 (vai no das 17h)",
     calls: "1–2 pra todas",
   },
@@ -132,7 +132,7 @@ export interface Job {
   check: CheckId;
   lot: number; // 0-based
   lots: number; // em quantos lotes as contas daquela rodada foram divididas (1 = todas de uma vez)
-  variant?: "midday" | "evening" | OtimFaixa; // CPA do dia / faixa do prazo de otimização
+  variant?: "midday" | "evening" | "urgente" | OtimFaixa; // CPA do dia / faixa do prazo de otimização / saldo urgente
   days?: number[]; // dias da semana (0 = domingo); sem = todo dia
 }
 
@@ -172,6 +172,9 @@ const AGENDA: Array<[number, Job]> = [
   [hm(12), { check: "otimizacao", lot: 0, lots: 1, variant: "alta", days: [1, 2, 3, 4, 5] }],
   [hm(19), { check: "otimizacao", lot: 0, lots: 2, variant: "mediabaixa", days: [1, 2, 3, 4, 5] }],
   [hm(19, 15), { check: "otimizacao", lot: 1, lots: 2, variant: "mediabaixa", days: [1, 2, 3, 4, 5] }],
+  // Etapa 284: erro de pagamento / falta de saldo é URGENTE — confere de hora em hora (07h15 às 21h15) e avisa NA HORA
+  // (não espera o resumo), 1x por dia por conta. São só 2 pedidos pra carteira toda.
+  ...Array.from({ length: 15 }, (_, i) => [hm(7 + i, 15), { check: "saldo", lot: 0, lots: 1, variant: "urgente" }] as [number, Job]),
 ];
 
 export function jobsAt(minuteOfDay: number, weekday?: number): Job[] {

@@ -61,9 +61,29 @@ export type ParsedAdset = { type: "GERAL" | "EXAME" | "PROMO"; payment: "CREDIAR
 
 // Lê o nome do conjunto. null = não é GERAL/EXAME/PROMO (nome fora do padrão).
 export function parseAdsetName(name: string): ParsedAdset | null {
-  const parts = splitParts(name);
+  let parts = splitParts(name);
   if (parts.length === 0) return null;
-  const t = mapAdsetType(parts[0]);
+  // Etapa 284: o tipo (GERAL / EXAME / PROMO) é procurado nas PRIMEIRAS PALAVRAS do nome, não só na 1ª parte antes do "|"
+  // (ex.: "SPEED | GERAL | …" ou "NOVO GERAL | …" também valem). Até a 3ª palavra.
+  let t = mapAdsetType(parts[0]);
+  if (!t) {
+    // o tipo é uma parte inteira logo depois (2ª ou 3ª parte): o nome passa a contar dali
+    for (let k = 1; k < Math.min(3, parts.length) && !t; k++) {
+      const hit = mapAdsetType(parts[k]);
+      if (hit && normName(parts.slice(0, k).join(" ")).split(" ").length <= 2) {
+        t = hit;
+        parts = parts.slice(k);
+      }
+    }
+  }
+  if (!t) {
+    // o tipo está no meio da 1ª parte ("NOVO GERAL …"): só o tipo; a oferta sai das partes seguintes
+    const words = parts[0].trim().split(/\s+/).slice(0, 3);
+    for (let i = 1; i < words.length && !t; i++) {
+      const hit = mapAdsetType(words[i]);
+      if (hit) t = { type: hit.type, rest: "" };
+    }
+  }
   if (!t) return null;
   const payment = extractTags(parts.join(" ")).payment;
   // A OFERTA fica entre o TIPO e a IDADE. Quando há mais de uma parte nesse trecho, a última é a localização.

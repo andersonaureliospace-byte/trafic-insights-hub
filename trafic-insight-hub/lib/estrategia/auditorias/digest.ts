@@ -162,3 +162,48 @@ export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditC
 }
 
 export const checkLabel = (id: string) => (id === "custo_pausa" ? "Pausados (custo 3x)" : (CHECK_BY_ID[id as CheckId]?.name ?? id));
+
+
+// Etapa 284: aviso URGENTE de pagamento / saldo — sai na hora (não espera o resumo). Só o que é novo no dia (a chave
+// "urgente:…:dia" não deixa repetir). Vai pro grupo do Saldo, separado por gestor.
+export async function sendUrgent(db: SupabaseClient, userId: string, cfg: AuditConfig, findings: Finding[]): Promise<{ sent: number; error: string | null }> {
+  if (findings.length === 0) return { sent: 0, error: null };
+  const g = groupFor(cfg, "saldo");
+  const rows = findings.map((f) => ({
+    user_id: userId,
+    check_id: "saldo",
+    ad_account_id: f.acc.id,
+    client_name: f.acc.name,
+    responsible: f.acc.responsible,
+    line: f.line.slice(0, 500),
+    dedupe_key: f.dedupe ?? null,
+    group_id: g?.id ?? null,
+    group_name: g?.name ?? null,
+    sent_at: g ? new Date().toISOString() : null, // já sai agora; sem grupo fica na fila (aparece no resumo/tela)
+  }));
+  const { data, error } = await db
+    .from("estr_digest_items")
+    .upsert(rows, { onConflict: "user_id,dedupe_key", ignoreDuplicates: true })
+    .select("client_name, responsible, line");
+  if (error) return { sent: 0, error: `fila de avisos: ${error.message}` };
+  const novos = (data ?? []) as Array<{ client_name: string; responsible: string | null; line: string }>;
+  if (novos.length === 0 || !g) return { sent: 0, error: g ? null : "Nenhum grupo escolhido pro Saldo em Automações → Auditorias." };
+
+  const byResp = new Map<string, typeof novos>();
+  for (const n of novos) {
+    const r = n.responsible?.trim() || "Sem responsável";
+    byResp.set(r, [...(byResp.get(r) ?? []), n]);
+  }
+  const out = ["🚨 *URGENTE — pagamento / saldo*"];
+  for (const r of [...byResp.keys()].sort((a, b) => a.localeCompare(b, "pt-BR"))) {
+    out.push("", `👤 *${r.toUpperCase()}*`);
+    for (const n of byResp.get(r) ?? []) out.push(`• ${n.client_name} — ${n.line}`);
+  }
+  try {
+    const inst = await requireWhatsappInstance(db as never, userId);
+    for (const part of chunks(out.join("\n"))) await sendText({ api_url: inst.api_url, token: inst.token }, g.id, part);
+    return { sent: novos.length, error: null };
+  } catch (e) {
+    return { sent: 0, error: (e as Error).message.slice(0, 200) };
+  }
+}

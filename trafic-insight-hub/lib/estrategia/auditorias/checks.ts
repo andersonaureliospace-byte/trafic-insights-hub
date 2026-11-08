@@ -413,7 +413,7 @@ export async function runCpaDia(token: string, accounts: Acc[], deadline: number
 
 // ---------- Saldo + erro de pagamento (1–2 pedidos pra todas as contas) ----------
 
-export async function runSaldo(db: SupabaseClient, userId: string, token: string, accounts: Acc[], slot: string): Promise<CheckResult> {
+export async function runSaldo(db: SupabaseClient, userId: string, token: string, accounts: Acc[], slot: string, urgente = false): Promise<CheckResult> {
   const findings: Finding[] = [];
   const day = todayBrt();
   const byId = new Map(accounts.map((a) => [a.id, a]));
@@ -425,7 +425,7 @@ export async function runSaldo(db: SupabaseClient, userId: string, token: string
       check: "saldo",
       acc: a,
       line: `Saldo ${fmtCurrency(s.balance, s.currency)} (limite ${fmtCurrency(s.threshold, s.currency)})`,
-      dedupe: `saldo:${a.id}:${day}:${slot}`,
+      dedupe: urgente ? `urgente:saldo:${a.id}:${day}` : `saldo:${a.id}:${day}:${slot}`,
     });
   }
   // Erro de pagamento: o status da conta já vem na mesma lista de contas (em memória por 60s — sem pedido extra).
@@ -436,7 +436,7 @@ export async function runSaldo(db: SupabaseClient, userId: string, token: string
     if (!a) continue;
     const reason = paymentReason(m);
     if (reason && !recent.boleto.has(m.account_id)) {
-      findings.push({ check: "saldo", acc: a, line: `Pagamento: ${reason}`, dedupe: `pagamento:${a.id}:${day}:${slot}` });
+      findings.push({ check: "saldo", acc: a, line: `Pagamento: ${reason}`, dedupe: urgente ? `urgente:pagamento:${a.id}:${day}` : `pagamento:${a.id}:${day}:${slot}` });
     }
   }
   return { findings, calls: 2, skipped: 0, errors: [] };

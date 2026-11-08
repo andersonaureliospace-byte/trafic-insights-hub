@@ -28,7 +28,7 @@ import {
   type Acc,
   type CheckResult,
 } from "./checks";
-import { queueFindings, sendDigest, type DigestResult } from "./digest";
+import { queueFindings, sendDigest, sendUrgent, type DigestResult } from "./digest";
 import { runPlano } from "./plano";
 import { runOtimizacao } from "./otimizacao";
 import type { OtimFaixa } from "./config";
@@ -120,7 +120,13 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
             res = await runCpaDia(t, lot, deadline, j.variant === "evening" ? "evening" : "midday");
             break;
           case "saldo":
-            res = await runSaldo(db, userId, t, lot, slot);
+            if (j.variant === "urgente") {
+              // Etapa 284: urgente — manda agora (não vai pra fila do resumo)
+              const r = await runSaldo(db, userId, t, lot, slot, true);
+              const u = await sendUrgent(db, userId, cfg, r.findings);
+              res = { ...r, findings: [], count: r.findings.length, errors: u.error ? [...r.errors, u.error] : r.errors };
+              entry.queued = u.sent;
+            } else res = await runSaldo(db, userId, t, lot, slot);
             break;
           case "verba_mensal":
             // Etapa 260: com o Plano de ação ligado, o investimento do mês vai nele (não repete no resumo das 08h).
@@ -155,7 +161,7 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
         if (j.check !== "plano") entry.found = res.count ?? res.findings.length;
         if (res.checked != null) entry.accounts = res.checked;
         entry.skipped = res.skipped;
-        entry.queued = await queueFindings(db, userId, cfg, res.findings);
+        if (res.findings.length) entry.queued = await queueFindings(db, userId, cfg, res.findings);
         if (res.errors.length) entry.error = res.errors.slice(0, 3).join(" · ");
       } catch (e) {
         entry.error = (e as Error).message.slice(0, 300);
