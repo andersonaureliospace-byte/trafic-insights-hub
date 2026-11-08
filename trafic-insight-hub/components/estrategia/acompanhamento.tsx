@@ -181,7 +181,7 @@ export function Acompanhamento({
     const list = found.map((l) => {
       const r = ritmoOf(l.monthly, l.nums?.untilYesterday ?? 0, cal);
       const sum = l.nums?.periods[period] ?? null;
-      return { l, r, spend: sum?.spend ?? null, cpa: sum ? cpaOf(sum) : null };
+      return { l, r, spend: sum?.spend ?? null, leads: sum ? sum.results : null, cpa: sum ? cpaOf(sum) : null };
     });
     const by = ui.sort;
     const rank: Record<string, number> = { inauguracao: 0, critica: 1, alta: 2, media: 3, baixa: 4 };
@@ -304,6 +304,7 @@ export function Acompanhamento({
               <th className={th}>Prioridade</th>
               <th className={`${th} text-right`}>Investimento</th>
               <th className={th} title="Investimento diário atual · quanto falta pra ficar em dia com a meta">Ritmo</th>
+              <th className={`${th} text-right`} title="Leads/conversas no período escolhido">Leads</th>
               <th className={`${th} text-right`}>CPA</th>
               <th className={th}>Ofertas</th>
               <th className={th} title="Há quanto tempo foi a última otimização relevante">Otimização</th>
@@ -313,7 +314,7 @@ export function Acompanhamento({
             </tr>
           </thead>
           <tbody>
-            {rows.map(({ l, r, spend, cpa }) => {
+            {rows.map(({ l, r, spend, leads, cpa }) => {
               const prio = options.find((o) => o.id === l.priority);
               // Com uma conta fixada, as outras ficam com os números embaçados (o nome continua legível).
               const blur = pinnedVisible && l.id !== pinned ? "pointer-events-none select-none blur-[4px] opacity-50" : "";
@@ -402,6 +403,9 @@ export function Acompanhamento({
                       <div className="text-xs text-zinc-500" title="Meta diária">{fmtBRL(r.dailyTarget)}</div>
                     ) : null}
                   </td>
+                  <td className={`px-2 py-3 text-right text-sm font-semibold tabular-nums ${blur}`}>
+                    {l.nums && leads != null ? new Intl.NumberFormat("pt-BR").format(Math.round(leads)) : <span className="text-xs font-normal text-zinc-400">—</span>}
+                  </td>
                   <td className={`px-2 py-3 text-right ${blur}`}>
                     {l.nums ? <Pill tone={cpa === Infinity ? "bad" : cpaTone(cpa, l.cpaTarget)}>{fmtCpa(cpa)}</Pill> : <span className="text-xs text-zinc-400">—</span>}
                     <div className="mt-0.5 text-xs text-zinc-500 tabular-nums" title="CPA ideal">{l.cpaTarget != null ? fmtBRL(l.cpaTarget) : ""}</div>
@@ -439,7 +443,7 @@ export function Acompanhamento({
             })}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-sm text-zinc-500">
+                <td colSpan={10} className="px-4 py-10 text-center text-sm text-zinc-500">
                   {q.trim() ? `Nenhuma conta com "${q.trim()}".` : "Nenhuma conta pra esse responsável."}
                 </td>
               </tr>
@@ -449,7 +453,7 @@ export function Acompanhamento({
       </Card>
 
       <p className="text-xs leading-relaxed text-zinc-500">
-        <b className="text-zinc-700 dark:text-zinc-300">Investimento</b> e <b className="text-zinc-700 dark:text-zinc-300">CPA</b> seguem o período escolhido (só o mês
+        <b className="text-zinc-700 dark:text-zinc-300">Investimento</b>, <b className="text-zinc-700 dark:text-zinc-300">Leads</b> e <b className="text-zinc-700 dark:text-zinc-300">CPA</b> seguem o período escolhido (só o mês
         atual); embaixo, o investimento ideal até ontem | até hoje, a meta mensal e o CPA ideal. Marque contas (☐) pra <b className="text-zinc-700 dark:text-zinc-300">Avisar gestores</b>. <b className="text-zinc-700 dark:text-zinc-300">Ritmo</b>: investimento diário atual e quanto falta pra
         ficar em dia com a meta (positivo = abaixo, negativo = passou; menos de R$ {RITMO_BAND} fica verde); embaixo, a meta diária.{" "}
         <b className="text-zinc-700 dark:text-zinc-300">Ofertas</b>: CPA dos 2 últimos dias. <b className="text-zinc-700 dark:text-zinc-300">Otimização</b>: há
