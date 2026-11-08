@@ -276,15 +276,17 @@ export function Acompanhamento({
         </div>
         <table className="w-full table-fixed text-sm">
           <colgroup>
-            <col className="w-[16%]" />
-            <col className="w-[9%]" />
+            {/* Conta · Responsável · Prioridade · Investimento · Ritmo · Leads · CPA · Ofertas · Otimização · Descrição */}
+            <col className="w-[15%]" />
             <col className="w-[8%]" />
+            <col className="w-[7%]" />
             <col className="w-[11%]" />
             <col className="w-[12%]" />
-            <col className="w-[9%]" />
+            <col className="w-[5%]" />
+            <col className="w-[8%]" />
             <col className="w-[22%]" />
             <col className="w-[7%]" />
-            <col className="w-[6%]" />
+            <col className="w-[5%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-zinc-200 text-left text-[11px] tracking-wide text-zinc-500 uppercase dark:border-white/10">
