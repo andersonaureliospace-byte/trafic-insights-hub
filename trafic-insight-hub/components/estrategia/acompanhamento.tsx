@@ -22,6 +22,8 @@ import { useEstr } from "./shell";
 import { Card, Pill, ago, fmtBRL, fmtCpa, fmtInt } from "./ui";
 import type { Linha } from "./use-carteira";
 import { AvisarGestores } from "./avisar-gestores";
+import { NovaTarefa } from "./demandas-modais";
+import Link from "next/link";
 
 // Etapa 238/243: Tráfego → Acompanhamento. Uma linha por conta, sem rolagem lateral:
 // conta · prioridade (só leitura) · investimento no período (meta embaixo) · ritmo · CPA no período · ofertas · otimização · descrição.
@@ -217,6 +219,17 @@ export function Acompanhamento({
   // Etapa 272: contas marcadas pro "Avisar gestores"
   const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
   const [avisar, setAvisar] = useState(false);
+  // Etapa 286: criar tarefa (Demandas) pras contas marcadas + quantas tarefas abertas cada conta tem
+  const [criarTarefa, setCriarTarefa] = useState(false);
+  const [tarefas, setTarefas] = useState<Record<string, { abertas: number; atrasadas: number }>>({});
+  const carregarTarefas = () =>
+    fetch("/api/estrategia/demandas?resumo=1", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => setTarefas(d.porConta ?? {}))
+      .catch(() => {});
+  useEffect(() => {
+    void carregarTarefas();
+  }, []);
   const marcar = (id: string) =>
     setMarcadas((s) => {
       const n = new Set(s);
@@ -346,6 +359,7 @@ export function Acompanhamento({
             <span className="flex items-center gap-2 rounded-lg bg-blue-600/10 px-2 py-1 text-xs">
               <b className="text-blue-700 dark:text-blue-300">{marcadas.size} marcada{marcadas.size === 1 ? "" : "s"}</b>
               <button onClick={() => setAvisar(true)} className="rounded-md bg-blue-600 px-2 py-0.5 font-medium text-white hover:bg-blue-700">📣 Avisar gestores</button>
+              <button onClick={() => setCriarTarefa(true)} className="rounded-md bg-violet-600 px-2 py-0.5 font-medium text-white hover:bg-violet-700">📋 Criar tarefa</button>
               <button onClick={() => setMarcadas(new Set())} className="text-zinc-500 hover:underline">limpar</button>
             </span>
           ) : null}
@@ -437,6 +451,17 @@ export function Acompanhamento({
                     >
                       {l.name}
                     </a>
+                    {tarefas[l.id] ? (
+                      <Link
+                        href={`/estrategia/demandas?cliente=${encodeURIComponent(l.name)}`}
+                        title={`${tarefas[l.id].abertas} tarefa(s) aberta(s)${tarefas[l.id].atrasadas ? `, ${tarefas[l.id].atrasadas} atrasada(s)` : ""} — abrir em Demandas`}
+                        className={`mt-1 mr-1 inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${
+                          tarefas[l.id].atrasadas ? "bg-amber-500/20 text-amber-800 dark:text-amber-300" : "bg-violet-500/15 text-violet-700 dark:text-violet-300"
+                        }`}
+                      >
+                        📋 {tarefas[l.id].abertas}
+                      </Link>
+                    ) : null}
                     {pagamento?.[l.id] ? (
                       <span className="mt-1 inline-block max-w-full truncate rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold text-white" title={pagamento[l.id]}>
                         💳 {pagamento[l.id]}
@@ -573,6 +598,19 @@ export function Acompanhamento({
         que foi.
       </p>
 
+      {criarTarefa ? (
+        <NovaTarefa
+          clientes={linhas.map((x) => ({ id: x.id, name: x.name, responsible: x.responsible }))}
+          gestores={[...new Set(linhas.map((x) => x.responsible).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, "pt-BR"))}
+          hoje={cal.today}
+          inicial={{ contas: [...marcadas] }}
+          onClose={() => setCriarTarefa(false)}
+          onSaved={() => {
+            setCriarTarefa(false);
+            void carregarTarefas();
+          }}
+        />
+      ) : null}
       {avisar ? (
         <AvisarGestores
           linhas={rows.filter((x) => marcadas.has(x.l.id)).map((x) => ({ l: x.l, cpa: x.cpa, spend: x.spend }))}

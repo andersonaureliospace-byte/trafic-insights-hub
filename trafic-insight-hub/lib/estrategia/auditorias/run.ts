@@ -31,6 +31,8 @@ import {
 import { queueFindings, sendDigest, sendUrgent, type DigestResult } from "./digest";
 import { runPlano } from "./plano";
 import { runOtimizacao } from "./otimizacao";
+import { tarefasDeAlertas } from "@/lib/estrategia/demandas";
+import { calendarSP } from "@/lib/estrategia/calc";
 import type { OtimFaixa } from "./config";
 
 export async function loadConfig(db: SupabaseClient, userId: string): Promise<AuditConfig> {
@@ -124,6 +126,7 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
               // Etapa 284: urgente — manda agora (não vai pra fila do resumo)
               const r = await runSaldo(db, userId, t, lot, slot, true);
               const u = await sendUrgent(db, userId, cfg, r.findings);
+              await tarefasDeAlertas(db, userId, r.findings, calendarSP().today).catch(() => 0); // Etapa 286: vira tarefa
               res = { ...r, findings: [], count: r.findings.length, errors: u.error ? [...r.errors, u.error] : r.errors };
               entry.queued = u.sent;
             } else res = await runSaldo(db, userId, t, lot, slot);
@@ -161,7 +164,11 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
         if (j.check !== "plano") entry.found = res.count ?? res.findings.length;
         if (res.checked != null) entry.accounts = res.checked;
         entry.skipped = res.skipped;
-        if (res.findings.length) entry.queued = await queueFindings(db, userId, cfg, res.findings);
+        if (res.findings.length) {
+          entry.queued = await queueFindings(db, userId, cfg, res.findings);
+          // Etapa 286: alertas graves (saldo/pagamento, sem entrega, criativo pausado, erro) viram tarefa no quadro Demandas
+          await tarefasDeAlertas(db, userId, res.findings, calendarSP().today).catch(() => 0);
+        }
         if (res.errors.length) entry.error = res.errors.slice(0, 3).join(" · ");
       } catch (e) {
         entry.error = (e as Error).message.slice(0, 300);
