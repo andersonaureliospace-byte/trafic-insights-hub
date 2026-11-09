@@ -274,7 +274,7 @@ export function Acompanhamento({
       : linhas;
     const list = found.map((l) => {
       const r = ritmoOf(l.monthly, l.nums?.untilYesterday ?? 0, cal);
-      const sum = l.nums?.periods[period] ?? null;
+      const sum = l.nums?.periods?.[period] ?? null;
       return { l, r, spend: sum?.spend ?? null, leads: sum ? sum.results : null, cpa: sum ? cpaOf(sum) : null };
     });
     const by = ui.sort;
@@ -611,8 +611,9 @@ export function Acompanhamento({
             if (!n) return undefined;
             return ([["u7", "últ. 7 dias"], ["sp", "semana passada"], ["m", "este mês"]] as const).map(([k, label]) => ({
               label,
-              leads: n.periods[k].results,
-              cpa: fmtCpa(cpaOf(n.periods[k])),
+              // cópia guardada antiga pode não ter os períodos novos (até clicar em Atualizar)
+              leads: n.periods?.[k]?.results ?? null,
+              cpa: n.periods?.[k] ? fmtCpa(cpaOf(n.periods[k])) : "—",
             }));
           })()}
           onClose={() => {
