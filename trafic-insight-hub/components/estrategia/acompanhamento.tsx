@@ -22,7 +22,9 @@ import { Card, Pill, ago, fmtBRL, fmtCpa, fmtInt } from "./ui";
 import type { Linha } from "./use-carteira";
 import { AvisarGestores } from "./avisar-gestores";
 import { NovaTarefa } from "./demandas-modais";
+import { NovoFeedbackPrint } from "./novo-feedback-print";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 // Etapa 238/243: Tráfego → Acompanhamento. Uma linha por conta, sem rolagem lateral:
 // conta · prioridade (só leitura) · investimento no período (meta embaixo) · ritmo · CPA no período · ofertas · otimização · descrição.
@@ -220,6 +222,9 @@ export function Acompanhamento({
   const [avisar, setAvisar] = useState(false);
   // Etapa 286: criar tarefa (Demandas) pras contas marcadas + quantas tarefas abertas cada conta tem
   const [criarTarefa, setCriarTarefa] = useState(false);
+  // Etapa 291: atalho de feedback por conta
+  const [feedbackDe, setFeedbackDe] = useState<string | null>(null);
+  const router = useRouter();
   const [tarefas, setTarefas] = useState<Record<string, { abertas: number; atrasadas: number }>>({});
   const carregarTarefas = () =>
     fetch("/api/estrategia/demandas?resumo=1", { cache: "no-store" })
@@ -375,8 +380,8 @@ export function Acompanhamento({
             <col className="w-[5%]" />
             <col className="w-[8%]" />
             <col className="w-[18%]" />
-            <col className="w-[7%]" />
-            <col className="w-[5%]" />
+            <col className="w-[6%]" />
+            <col className="w-[6%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-zinc-200 text-left text-[11px] tracking-wide text-zinc-500 uppercase dark:border-white/10">
@@ -556,7 +561,15 @@ export function Acompanhamento({
                       now={now}
                     />
                   </td>
-                  <td className="py-3 pr-4 pl-2 text-right">
+                  <td className="py-3 pr-4 pl-2 text-right whitespace-nowrap">
+                    <button
+                      onClick={() => setFeedbackDe(l.id)}
+                      title="Enviar feedback (print + pontos de atenção → IA escreve → você envia)"
+                      aria-label={`Enviar feedback de ${l.name}`}
+                      className="mr-1 h-7 rounded-lg border border-zinc-300 px-2 text-xs font-medium transition-colors hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
+                    >
+                      💬
+                    </button>
                     <button
                       data-desc-btn
                       onClick={(e) => {
@@ -589,6 +602,20 @@ export function Acompanhamento({
       </Card>
 
 
+      {feedbackDe ? (
+        <NovoFeedbackPrint
+          clienteId={feedbackDe}
+          enviarAqui
+          onClose={() => {
+            setFeedbackDe(null);
+            void carregarTarefas();
+          }}
+          onCreated={() => {
+            setFeedbackDe(null);
+            router.push("/estrategia/clientes/feedbacks");
+          }}
+        />
+      ) : null}
       {criarTarefa ? (
         <NovaTarefa
           clientes={linhas.map((x) => ({ id: x.id, name: x.name, responsible: x.responsible }))}

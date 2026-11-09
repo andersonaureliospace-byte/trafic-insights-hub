@@ -524,12 +524,12 @@ function Detail({ f, onChanged }: { f: Feedback; onChanged: () => Promise<void> 
           plano={resumo}
           busy={busy === "enviar"}
           onCancel={() => setConfirmSend(false)}
-          onConfirm={() =>
+          onConfirm={(proximo) =>
             void run("enviar", async () => {
               await save();
-              await call("/api/feedbacks/enviar", "POST", { id: f.id });
+              await call("/api/feedbacks/enviar", "POST", { id: f.id, proximo });
               setConfirmSend(false);
-              return "Enviado pro cliente!";
+              return proximo ? `Enviado pro cliente! Próximo feedback em ${proximo.split("-").reverse().slice(0, 2).join("/")}.` : "Enviado pro cliente!";
             })
           }
         />
@@ -571,8 +571,16 @@ function SendPreview({
   plano: string;
   busy: boolean;
   onCancel: () => void;
-  onConfirm: () => void;
+  onConfirm: (proximo: string | null) => void;
 }) {
+  // Etapa 291: ao enviar, conclui a tarefa de feedback de hoje (Demandas) e já programa o próximo
+  const hojeSP = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const mais = (n: number) => {
+    const [y, m, d] = hojeSP.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+  };
+  const [proximo, setProximo] = useState(mais(7));
+  const [programar, setProgramar] = useState(true);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onCancel();
@@ -637,9 +645,26 @@ function SendPreview({
           </>
           )}
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-white/10">
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-white/10">
+          <label className="mr-auto flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+            <input type="checkbox" checked={programar} onChange={(e) => setProgramar(e.target.checked)} />
+            Próximo feedback em
+            <input
+              type="date"
+              value={proximo}
+              onChange={(e) => setProximo(e.target.value)}
+              disabled={!programar}
+              aria-label="Data do próximo feedback"
+              className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs disabled:opacity-50 dark:border-white/10 dark:bg-[#141924]"
+            />
+            {[7, 15, 30].map((n) => (
+              <button key={n} type="button" disabled={!programar} onClick={() => setProximo(mais(n))} className="rounded border border-zinc-300 px-1.5 py-0.5 hover:bg-zinc-100 disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5">
+                +{n}d
+              </button>
+            ))}
+          </label>
           <Btn onClick={onCancel} disabled={busy}>Voltar e editar</Btn>
-          <Btn primary onClick={onConfirm} disabled={busy}>{busy ? "Enviando…" : "📤 Confirmar envio"}</Btn>
+          <Btn primary onClick={() => onConfirm(programar ? proximo : null)} disabled={busy}>{busy ? "Enviando…" : "📤 Confirmar envio"}</Btn>
         </div>
       </div>
     </div>

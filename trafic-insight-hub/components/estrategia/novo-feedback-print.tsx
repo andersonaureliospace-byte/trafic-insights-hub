@@ -61,7 +61,17 @@ async function subir(file: Blob, kind: "print" | "audio", name: string, mime: st
   return up.path;
 }
 
-export function NovoFeedbackPrint({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
+export function NovoFeedbackPrint({
+  onClose,
+  onCreated,
+  clienteId,
+  enviarAqui = false,
+}: {
+  onClose: () => void;
+  onCreated: (id: string) => void;
+  clienteId?: string; // Etapa 291: já abre com o cliente escolhido (atalho do Acompanhamento)
+  enviarAqui?: boolean; // revisa e envia aqui mesmo, sem ir pra aba Feedbacks
+}) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [cq, setCq] = useState("");
@@ -85,7 +95,15 @@ export function NovoFeedbackPrint({ onClose, onCreated }: { onClose: () => void;
 
   useEffect(() => {
     loadClientes()
-      .then((l) => setClientes(l.filter((c) => c.selected && !c.archived).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"))))
+      .then((l) => {
+        const list = l.filter((c) => c.selected && !c.archived).sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
+        setClientes(list);
+        const pre = clienteId ? list.find((c) => c.id === clienteId.replace(/^act_/, "")) : undefined;
+        if (pre) {
+          setCliente(pre);
+          setAbrirCli(false);
+        }
+      })
       .catch(() => {});
     fetch("/api/estrategia/prefs?key=feedback_modelos", { cache: "no-store" })
       .then((r) => r.json())
@@ -95,7 +113,7 @@ export function NovoFeedbackPrint({ onClose, onCreated }: { onClose: () => void;
         setModelosOrig(v);
       })
       .catch(() => {});
-  }, []);
+  }, [clienteId]);
 
   const lista = useMemo(() => {
     const t = flat(cq).split(/\s+/).filter(Boolean);
@@ -170,6 +188,49 @@ export function NovoFeedbackPrint({ onClose, onCreated }: { onClose: () => void;
   const prontos = anexos.filter((a) => a.path);
   const pode = !!cliente && prontos.length > 0 && !subindo && !gravando && !gerando;
 
+  // ---- Etapa 291: revisar e enviar aqui mesmo ----
+  const [rev, setRev] = useState<{ id: string; resumo: string; prints: string[]; grupo: string | null; aiErro: string | null } | null>(null);
+  const hojeSP = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+  const mais = (n: number) => {
+    const [y, m, d] = hojeSP.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+  };
+  const [proximo, setProximo] = useState(mais(7));
+  const [programar, setProgramar] = useState(true);
+  const [enviando, setEnviando] = useState(false);
+  const [enviado, setEnviado] = useState<string | null>(null);
+
+  async function abrirRevisao(id: string) {
+    const d = (await fetch("/api/feedbacks", { cache: "no-store" }).then((r) => r.json())) as {
+      feedbacks?: Array<{ id: string; resumo: string | null; print_urls?: string[]; wa_group_name: string | null; wa_group_id: string | null; ai_error: string | null }>;
+    };
+    const f = d.feedbacks?.find((x) => x.id === id);
+    if (!f) {
+      onCreated(id);
+      return;
+    }
+    setRev({ id, resumo: f.resumo ?? "", prints: f.print_urls ?? [], grupo: f.wa_group_name ?? f.wa_group_id, aiErro: f.ai_error });
+  }
+
+  async function enviar() {
+    if (!rev) return;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const r1 = await fetch("/api/feedbacks", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: rev.id, resumo: rev.resumo }) }).then((x) => x.json());
+      if (r1.error) throw new Error(r1.error);
+      const r2 = await post<{ tarefa?: { concluidas: number; proximo: string | null } | null }>("/api/feedbacks/enviar", { id: rev.id, proximo: programar ? proximo : null });
+      const t = r2.tarefa;
+      setEnviado(
+        `Enviado pro grupo ✓${t?.concluidas ? " · tarefa de feedback concluída" : ""}${t?.proximo ? ` · próximo em ${t.proximo.split("-").reverse().slice(0, 2).join("/")}` : ""}`,
+      );
+      window.dispatchEvent(new Event("feedbacks:changed"));
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    setEnviando(false);
+  }
+
   async function gerar() {
     if (!cliente) return;
     setGerando(true);
@@ -183,7 +244,8 @@ export function NovoFeedbackPrint({ onClose, onCreated }: { onClose: () => void;
         audio: audio?.path ? { path: audio.path, mime: audio.mime } : null,
       });
       anexos.forEach((a) => URL.revokeObjectURL(a.preview));
-      onCreated(r.id);
+      if (enviarAqui) await abrirRevisao(r.id);
+      else onCreated(r.id);
     } catch (e) {
       setErro((e as Error).message);
     }
@@ -206,6 +268,73 @@ export function NovoFeedbackPrint({ onClose, onCreated }: { onClose: () => void;
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [gerando, onClose]);
+
+  if (rev) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Revisar e enviar feedback">
+        <div className="flex max-h-[94vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#121722]">
+          <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-white/10">
+            <h2 className="truncate text-base font-semibold">📸 Feedback · {cliente?.name}</h2>
+            <button onClick={onClose} disabled={enviando} aria-label="Fechar" className="rounded px-2 text-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5">×</button>
+          </div>
+          <div className="flex flex-col gap-3 overflow-y-auto p-5">
+            <div className="rounded-lg bg-[#efeae2] p-3 dark:bg-[#0b141a]">
+              <p className="mb-2 text-center text-[11px] text-zinc-500">{rev.grupo ? `Vai pro grupo “${rev.grupo}”` : "Sem grupo de WhatsApp vinculado a esse cliente"}</p>
+              {rev.prints.map((u, i) => (
+                <div key={u} className="ml-auto mb-1.5 w-[85%] rounded-lg rounded-tr-none bg-[#d9fdd3] p-1.5 shadow-sm dark:bg-[#005c4b]">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- prévia do print */}
+                  <img src={u} alt="" className="w-full rounded-md" />
+                  {i === rev.prints.length - 1 && rev.resumo.trim() ? (
+                    <p className="px-1.5 pt-1.5 text-sm whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">{rev.resumo.trim()}</p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+            {rev.aiErro ? <p className="text-xs text-amber-600">A IA não conseguiu escrever ({rev.aiErro}). Escreva o texto abaixo.</p> : null}
+            <label className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase" htmlFor="fp-rev">Texto (vai de legenda no print)</label>
+            <textarea
+              id="fp-rev"
+              value={rev.resumo}
+              onChange={(e) => setRev({ ...rev, resumo: e.target.value })}
+              rows={6}
+              disabled={!!enviado}
+              className={`${inputCls} py-2`}
+            />
+            <label className="flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
+              <input type="checkbox" checked={programar} onChange={(e) => setProgramar(e.target.checked)} disabled={!!enviado} />
+              Próximo feedback em
+              <input
+                type="date"
+                value={proximo}
+                onChange={(e) => setProximo(e.target.value)}
+                disabled={!programar || !!enviado}
+                aria-label="Data do próximo feedback"
+                className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs disabled:opacity-50 dark:border-white/10 dark:bg-[#141924]"
+              />
+              {[7, 15, 30].map((n) => (
+                <button key={n} type="button" disabled={!programar || !!enviado} onClick={() => setProximo(mais(n))} className="rounded border border-zinc-300 px-1.5 py-0.5 hover:bg-zinc-100 disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5">
+                  +{n}d
+                </button>
+              ))}
+            </label>
+            <p className="text-[11px] text-zinc-500">Ao enviar, a tarefa de feedback de hoje desse cliente (Demandas) já fica concluída.</p>
+            {erro ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{erro}</div> : null}
+            {enviado ? <div className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">{enviado}</div> : null}
+          </div>
+          <div className="flex items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-white/10">
+            {enviado ? (
+              <Btn primary onClick={onClose}>Fechar</Btn>
+            ) : (
+              <>
+                <Btn onClick={() => onCreated(rev.id)} disabled={enviando}>Revisar depois (Feedbacks)</Btn>
+                <Btn primary onClick={() => void enviar()} disabled={enviando || !rev.grupo}>{enviando ? "Enviando…" : "📤 Enviar pro grupo"}</Btn>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Feedback por print">
