@@ -243,8 +243,10 @@ export function NovoFeedbackPrint({
     setEnviando(false);
   }
 
-  async function gerar() {
+  const [semIaRun, setSemIaRun] = useState(false);
+  async function gerar(semIa = false) {
     if (!cliente) return;
+    setSemIaRun(semIa);
     setGerando(true);
     setErro(null);
     try {
@@ -254,6 +256,7 @@ export function NovoFeedbackPrint({
         prints: prontos.map((a) => ({ path: a.path, mime: a.mime })),
         pontos,
         audio: audio?.path ? { path: audio.path, mime: audio.mime } : null,
+        semIa,
       });
       anexos.forEach((a) => URL.revokeObjectURL(a.preview));
       if (enviarAqui) await abrirRevisao(r.id);
@@ -522,9 +525,12 @@ export function NovoFeedbackPrint({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-white/10">
-          <span className="mr-auto text-xs text-zinc-500">{subindo ? "Subindo arquivos…" : gerando ? "A IA está escrevendo… (uns segundos)" : ""}</span>
+          <span className="mr-auto text-xs text-zinc-500">{subindo ? "Subindo arquivos…" : gerando ? (semIaRun ? "Preparando a revisão…" : "A IA está escrevendo… (uns segundos)") : ""}</span>
           <Btn onClick={onClose} disabled={gerando}>Cancelar</Btn>
-          <Btn primary onClick={() => void gerar()} disabled={!pode}>{gerando ? "Gerando…" : "✨ Gerar feedback com IA"}</Btn>
+          <Btn onClick={() => void gerar(true)} disabled={!pode} title="Usa o texto dos pontos de atenção como está (sem passar pela IA). Você ainda revisa antes de enviar.">
+            📤 Enviar sem IA
+          </Btn>
+          <Btn primary onClick={() => void gerar()} disabled={!pode}>{gerando && !semIaRun ? "Gerando…" : "✨ Gerar feedback com IA"}</Btn>
         </div>
       </div>
     </div>

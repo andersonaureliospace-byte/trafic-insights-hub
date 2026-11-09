@@ -57,16 +57,20 @@ export async function POST(request: Request) {
       const clientName = ((b?.[0]?.client_name as string | undefined) ?? "").trim() || adAccountId;
       const group = await resolveClientGroup(supabase, user.id, adAccountId);
       const id = crypto.randomUUID();
+      // Etapa 298: semIa → o texto é o que você escreveu nos pontos de atenção (vai direto pra revisão, sem a IA)
+      const semIa = body.semIa === true;
+      const pontosTxt = String(body.pontos ?? "").slice(0, 4000);
       const { error } = await supabase.from("client_feedbacks").insert({
         id,
         user_id: user.id,
         ad_account_id: adAccountId,
         client_name: clientName,
         titulo: String(body.titulo ?? "").trim().slice(0, 200) || "Feedback de resultado",
-        status: "processando",
+        status: semIa ? "revisao" : "processando",
+        ...(semIa ? { resumo: pontosTxt } : {}),
         tipo: "print",
         prints,
-        pontos: String(body.pontos ?? "").slice(0, 4000),
+        pontos: pontosTxt,
         audio_path: audioPath,
         audio_mime: audioPath ? String(audio?.mime ?? "audio/webm").split(";")[0] : null,
         wa_group_id: group?.id ?? null,
@@ -76,7 +80,7 @@ export async function POST(request: Request) {
         if (/tipo|prints|pontos/.test(error.message)) throw new Error("Rode o SQL supabase/migrations/0046_feedback_prints.sql no Supabase.");
         throw error;
       }
-      await processFeedback(supabase, id);
+      if (!semIa) await processFeedback(supabase, id);
       return NextResponse.json({ ok: true, id });
     }
 
