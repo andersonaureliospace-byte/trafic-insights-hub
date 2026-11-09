@@ -4,6 +4,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useSearchParams } from "next/navigation";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { Btn } from "@/components/estrategia/ui";
+import { NovoFeedbackPrint } from "@/components/estrategia/novo-feedback-print";
 import { matchesResp } from "@/components/estrategia/use-carteira";
 import { usePriorityOptions } from "@/lib/priority-context";
 import {
@@ -55,6 +56,8 @@ function Quadro() {
   const [verFeitas, setVerFeitas] = useState(true);
   const [aberta, setAberta] = useState<TarefaUI | null>(null);
   const [nova, setNova] = useState<{ data?: string } | null>(null);
+  // Etapa 300: clicar num cartão de feedback abre a tela de enviar o feedback (print, sem IA ou vídeo)
+  const [feedbackDe, setFeedbackDe] = useState<TarefaUI | null>(null);
   const [fbOpen, setFbOpen] = useState(false);
   const [proxFb, setProxFb] = useState<TarefaUI | null>(null);
   const dragId = useRef<string | null>(null);
@@ -246,7 +249,7 @@ function Quadro() {
                           dragId.current = null;
                           setDropAt(null);
                         }}
-                        onClick={() => setAberta(t)}
+                        onClick={() => (t.tipo === "feedback" && t.ad_account_id && !feita ? setFeedbackDe(t) : setAberta(t))}
                         className={`group cursor-pointer rounded-lg border p-2.5 shadow-sm transition-colors ${
                           feita
                             ? "border-zinc-200 bg-zinc-50 opacity-60 dark:border-white/5 dark:bg-white/[0.02]"
@@ -270,6 +273,17 @@ function Quadro() {
                             <div className={`text-sm leading-snug font-medium ${feita ? "line-through" : ""}`}>
                               <span className="mr-1" title={TIPO_LABEL[t.tipo]}>{TIPO_ICON[t.tipo]}</span>
                               {t.titulo}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAberta(t);
+                                }}
+                                title="Editar a tarefa (dia, gestor, excluir…)"
+                                aria-label={`Editar ${t.titulo}`}
+                                className="float-right rounded px-1 text-xs text-zinc-400 opacity-0 group-hover:opacity-100 hover:bg-zinc-100 hover:text-zinc-700 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+                              >
+                                ✎
+                              </button>
                             </div>
                             {t.client_name ? <div className="mt-0.5 truncate text-xs font-semibold text-zinc-600 dark:text-zinc-300">{t.client_name}</div> : null}
                             {t.descricao && !feita ? <div className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{t.descricao}</div> : null}
@@ -320,6 +334,20 @@ function Quadro() {
             recarregar();
           }}
           onConcluir={(t) => void concluir(t)}
+        />
+      ) : null}
+      {feedbackDe?.ad_account_id ? (
+        <NovoFeedbackPrint
+          clienteId={feedbackDe.ad_account_id}
+          enviarAqui
+          onClose={() => {
+            setFeedbackDe(null);
+            recarregar();
+          }}
+          onCreated={() => {
+            setFeedbackDe(null);
+            recarregar();
+          }}
         />
       ) : null}
       {nova && board ? (

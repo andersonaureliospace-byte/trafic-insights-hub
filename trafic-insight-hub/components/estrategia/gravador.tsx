@@ -62,7 +62,7 @@ interface Resultado {
 
 interface Ctx {
   fase: Fase;
-  abrir: () => void;
+  abrir: (clienteId?: string) => void; // Etapa 300: já abre com o cliente escolhido
 }
 const GravCtx = createContext<Ctx>({ fase: "idle", abrir: () => {} });
 export const useGravador = () => useContext(GravCtx);
@@ -164,8 +164,9 @@ export function GravadorProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("beforeunload", h);
   }, [fase]);
 
-  const abrir = useCallback(() => {
+  const abrir = useCallback((clienteId?: string) => {
     if (fase === "gravando" || fase === "pausado" || fase === "enviando") return;
+    if (typeof clienteId === "string" && clienteId) setPrefs({ cliente: clienteId.replace(/^act_/, "") });
     setSetupMsg(null);
     setTrocando(false);
     setQ("");
@@ -175,7 +176,7 @@ export function GravadorProvider({ children }: { children: ReactNode }) {
         .then((list) => setClientes(list.filter((c) => !c.archived)))
         .catch((e: Error) => setSetupMsg(e.message));
     }
-  }, [fase, clientes]);
+  }, [fase, clientes, setPrefs]);
 
   const lista = useMemo(() => {
     const t = flat(q);
@@ -569,7 +570,7 @@ export function GravarButton() {
   const ocupado = fase === "gravando" || fase === "pausado" || fase === "enviando";
   return (
     <button
-      onClick={abrir}
+      onClick={() => abrir()}
       disabled={ocupado}
       title={ocupado ? "Já tem uma gravação em andamento" : "Gravar a tela pra um cliente"}
       className="flex h-9 items-center gap-1.5 rounded-lg bg-red-600 px-3 text-sm font-semibold whitespace-nowrap text-white hover:bg-red-700 disabled:opacity-60"

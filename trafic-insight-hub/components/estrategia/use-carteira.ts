@@ -164,7 +164,7 @@ async function dailyFor(ids: string[], days: number): Promise<Record<string, Dai
 // Etapa 247: números travados — a carteira carregada fica guardada neste navegador e é o que aparece ao abrir, trocar de
 // aba ou dar refresh. Busca de novo na Meta só no botão "Atualizar" ou quando os números ficaram velhos (Etapa 248:
 // mais de 2 horas sem atualizar, ou de outro dia) — aí atualiza sozinho ao abrir ou ao voltar pra aba.
-const CACHE_KEY = "estr_carteira_v1";
+export const CACHE_KEY = "estr_carteira_v1";
 export const STALE_MS = 2 * 3600_000;
 export const isStale = (at: number | null) =>
   at == null || Date.now() - at > STALE_MS || new Date(at).toDateString() !== new Date().toDateString();

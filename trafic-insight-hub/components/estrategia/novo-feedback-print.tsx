@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Btn } from "@/components/estrategia/ui";
-import { loadClientes, type Cliente } from "@/components/estrategia/use-carteira";
+import { CACHE_KEY, loadClientes, readCache, type Cliente, type Linha } from "@/components/estrategia/use-carteira";
+import { useGravador } from "@/components/estrategia/gravador";
+import { CPA_PERIODS, PREV_LABEL, type CpaPeriod } from "@/lib/estrategia/calc";
 
 // Etapa 271: Feedback por print — escolhe o cliente, cola/arrasta o(s) print(s) do resultado, escreve ou fala os pontos
 // de atenção e a IA escreve o feedback no seu jeito. Depois você revisa na lista e envia (o texto vai de legenda no print).
@@ -75,7 +77,8 @@ export function NovoFeedbackPrint({
   onCreated,
   clienteId,
   enviarAqui = false,
-  comparacao,
+  comparacao: comparacaoProp,
+  periodoInicial,
 }: {
   onClose: () => void;
   onCreated: (id: string) => void;
@@ -83,7 +86,12 @@ export function NovoFeedbackPrint({
   enviarAqui?: boolean; // revisa e envia aqui mesmo, sem ir pra aba Feedbacks
   // Etapa 294: leads e CPA do período escolhido no quadro × a mesma fatia logo antes (vem do Acompanhamento)
   comparacao?: { atual: Fatia; anterior: Fatia };
+  // Etapa 300: período das métricas (dá pra trocar aqui dentro); os números vêm da última carga do Acompanhamento
+  periodoInicial?: CpaPeriod;
 }) {
+  const { abrir: abrirGravador, fase: faseGravador } = useGravador();
+  const [periodo, setPeriodo] = useState<CpaPeriod>(periodoInicial ?? "u7");
+  const [cacheLinhas] = useState<Linha[] | null>(() => readCache<Linha[]>(CACHE_KEY)?.data ?? null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [cq, setCq] = useState("");
@@ -93,6 +101,18 @@ export function NovoFeedbackPrint({
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const comparacao = useMemo(() => {
+    const n = cliente ? cacheLinhas?.find((l) => l.id === cliente.id)?.nums : null;
+    const a = n?.periods?.[periodo];
+    const b = n?.prev?.[periodo];
+    if (a && b) {
+      return {
+        atual: { label: (CPA_PERIODS.find((p) => p.id === periodo)?.label ?? periodo).toLowerCase(), leads: a.results, spend: a.spend },
+        anterior: { label: PREV_LABEL[periodo], leads: b.results, spend: b.spend },
+      };
+    }
+    return comparacaoProp;
+  }, [cliente, cacheLinhas, periodo, comparacaoProp]);
 
   // áudio dos pontos de atenção
   const [gravando, setGravando] = useState(false);
@@ -380,6 +400,20 @@ export function NovoFeedbackPrint({
                     <div className="text-base font-semibold tabular-nums">{cliente.monthly != null ? brl(cliente.monthly) : "—"}</div>
                   </div>
                 </div>
+                <div className="flex items-center gap-2">
+                  <label htmlFor="fp-periodo" className="text-[11px] text-zinc-500">Período das métricas</label>
+                  <select
+                    id="fp-periodo"
+                    value={periodo}
+                    onChange={(e) => setPeriodo(e.target.value as CpaPeriod)}
+                    className="h-7 rounded-md border border-zinc-300 bg-white px-1.5 text-xs dark:border-white/10 dark:bg-[#141924]"
+                  >
+                    {CPA_PERIODS.map((p) => (
+                      <option key={p.id} value={p.id}>{p.label}</option>
+                    ))}
+                  </select>
+                  {!comparacao ? <span className="text-[11px] text-zinc-500">sem números (clique em Atualizar no Acompanhamento)</span> : null}
+                </div>
                 {comparacao ? (
                   (() => {
                     const { atual, anterior } = comparacao;
@@ -524,9 +558,19 @@ export function NovoFeedbackPrint({
           {erro ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{erro}</div> : null}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-white/10">
+        <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-white/10">
           <span className="mr-auto text-xs text-zinc-500">{subindo ? "Subindo arquivos…" : gerando ? (semIaRun ? "Preparando a revisão…" : "A IA está escrevendo… (uns segundos)") : ""}</span>
           <Btn onClick={onClose} disabled={gerando}>Cancelar</Btn>
+          <Btn
+            onClick={() => {
+              abrirGravador(cliente?.id);
+              onClose();
+            }}
+            disabled={gerando || faseGravador === "gravando" || faseGravador === "pausado" || faseGravador === "enviando"}
+            title="Gravar a tela com a sua voz (feedback em vídeo) pra esse cliente"
+          >
+            🎥 Feedback por vídeo
+          </Btn>
           <Btn onClick={() => void gerar(true)} disabled={!pode} title="Usa o texto dos pontos de atenção como está (sem passar pela IA). Você ainda revisa antes de enviar.">
             📤 Enviar sem IA
           </Btn>

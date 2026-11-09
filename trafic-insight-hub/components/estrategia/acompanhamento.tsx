@@ -601,6 +601,7 @@ export function Acompanhamento({
         <NovoFeedbackPrint
           clienteId={feedbackDe}
           enviarAqui
+          periodoInicial={period}
           comparacao={(() => {
             // período escolhido no quadro × a mesma fatia logo antes (cópia antiga pode não ter: some até Atualizar)
             const n = linhas.find((x) => x.id === feedbackDe)?.nums;
