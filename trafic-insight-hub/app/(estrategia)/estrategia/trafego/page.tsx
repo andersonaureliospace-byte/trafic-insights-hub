@@ -10,7 +10,7 @@ import { Btn, hhmm } from "@/components/estrategia/ui";
 // Etapa 238: Hub estratégico → Tráfego (Acompanhamento + Alertas).
 export default function TrafegoPage() {
   const { ui } = useEstr();
-  const { linhas, loading, error, at, reload } = useCarteira();
+  const { linhas, loading, error, at, reload, refreshFicha } = useCarteira();
   const [tab, setTab] = useState<"acomp" | "foco" | "alertas">("acomp");
   // Etapa 277: aba "Sensíveis e críticas" — só as contas que pedem atenção (marcadas como sensíveis na ficha e/ou com
   // prioridade Crítica). O filtro escolhido fica guardado neste navegador.
@@ -137,7 +137,7 @@ export default function TrafegoPage() {
   return (
     <div className="flex flex-col">
       <PageHeader
-        title="Tráfego"
+        title="Acompanhamento"
         sub={tab === "acomp" ? `Visão das contas da carteira${atLabel ? ` · ${atLabel}` : ""}` : `Central de monitoramento e alertas${atLabel ? ` · ${atLabel}` : ""}`}
       >
         <Btn primary onClick={refresh} disabled={loading}>
@@ -149,7 +149,7 @@ export default function TrafegoPage() {
         <div role="tablist" className="flex gap-1 border-b border-zinc-200 dark:border-white/10">
           {(
             [
-              ["acomp", "Acompanhamento"],
+              ["acomp", "Todas as contas"],
               ["foco", "Sensíveis e críticas"],
               ["alertas", "Alertas"],
             ] as const
@@ -204,14 +204,14 @@ export default function TrafegoPage() {
                   {label}
                 </button>
               ))}
-              <span className="text-xs text-zinc-500">Sensível: marque na ficha do cliente (Clientes). Crítica: prioridade do Asana.</span>
+              <span className="text-xs text-zinc-500">Sensível: marque na ficha do cliente (📝). Crítica: prioridade do Asana.</span>
             </div>
             {focoLinhas.length === 0 ? (
               <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-white/10">
-                {foco === "sensiveis" && nSens === 0 ? "Nenhuma conta marcada como sensível. Marque em Clientes → ficha do cliente → Conta sensível." : "Nenhuma conta nesse filtro."}
+                {foco === "sensiveis" && nSens === 0 ? "Nenhuma conta marcada como sensível. Marque na ficha do cliente (📝 na linha) → Conta sensível." : "Nenhuma conta nesse filtro."}
               </div>
             ) : (
-              <Acompanhamento linhas={focoLinhas} activities={srv?.activities ?? null} activitiesFailed={srv?.activitiesFailed ?? []} pagamento={pagamento} />
+              <Acompanhamento linhas={focoLinhas} activities={srv?.activities ?? null} activitiesFailed={srv?.activitiesFailed ?? []} pagamento={pagamento} onClienteSalvo={() => void refreshFicha()} />
             )}
           </>
         ) : tab === "acomp" ? (
@@ -220,6 +220,7 @@ export default function TrafegoPage() {
             activities={srv?.activities ?? null}
             activitiesFailed={srv?.activitiesFailed ?? []}
             pagamento={pagamento}
+            onClienteSalvo={() => void refreshFicha()}
           />
         ) : (
           <>

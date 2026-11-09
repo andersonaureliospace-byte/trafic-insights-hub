@@ -24,7 +24,7 @@ import {
 
 // Etapa 286: quadro Demandas — Kanban por dia. A 1ª coluna é sempre Hoje (com as atrasadas no topo), depois Amanhã e
 // os próximos dias. Arraste o cartão pra cima/baixo ou pra outro dia. Concluídas vão pro fim da coluna. Rotinas geram as
-// tarefas sozinhas; alertas graves do Tráfego e feedbacks também viram tarefa.
+// tarefas sozinhas; alertas graves do Acompanhamento e feedbacks também viram tarefa.
 
 interface Board {
   hoje: string;
@@ -171,7 +171,7 @@ function Quadro() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Demandas" sub="Tarefas por dia — rotinas, alertas graves do Tráfego e feedbacks">
+      <PageHeader title="Demandas" sub="Tarefas por dia — rotinas, alertas graves do Acompanhamento e feedbacks">
         <Btn primary onClick={() => setNova({})}>+ Nova tarefa</Btn>
         <Btn onClick={() => setRotinasOpen(true)}>🔁 Rotinas{board?.rotinas.length ? ` (${board.rotinas.length})` : ""}</Btn>
         <Btn onClick={() => setFbOpen(true)}>

@@ -3,103 +3,32 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
-import { loadClientes, loadOfferFlags, matchesResp, saveOfferFlags, type Cliente, type OfferFlags } from "@/components/estrategia/use-carteira";
+import { loadClientes, matchesResp, type Cliente } from "@/components/estrategia/use-carteira";
 import { Btn, Card, Pill, fmtBRL } from "@/components/estrategia/ui";
 import { ClientesTabs } from "@/components/estrategia/clientes-tabs";
 import { NovoClienteDialog } from "@/components/estrategia/novo-cliente-dialog";
-import { DescricaoAsana } from "@/components/estrategia/descricao-asana";
-import { usePriorityOptions } from "@/lib/priority-context";
-import { calendarSP } from "@/lib/estrategia/calc";
+import { FichaCliente, PAY_LABEL, statusOf } from "@/components/estrategia/ficha-cliente";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 
-// Etapa 238: Hub estratégico → Clientes. Lista + ficha do cliente (responsável, status, verba, CPA ideal, pagamento,
-// cliente desde). Arquivar tira o cliente de todas as telas e das automações, sem apagar nada (dá pra trazer de volta).
+// Etapa 238: Hub estratégico → Clientes. Lista + ficha do cliente. Arquivar tira o cliente de todas as telas e das
+// automações, sem apagar nada (dá pra trazer de volta). Etapa 296: a ficha virou um componente (FichaCliente), o mesmo
+// que abre no Acompanhamento.
 
-type Status = "ativo" | "inauguracao" | "pausado";
-const STATUS_LABEL: Record<Status, string> = { ativo: "Ativo", inauguracao: "Inauguração", pausado: "Pausado" };
-const PAY_LABEL: Record<string, string> = { pix: "Pix (pré-paga)", hybrid: "Híbrida", boleto: "Boleto", card: "Cartão" };
-
-function statusOf(c: Cliente): Status {
-  if (!c.active) return "pausado";
-  if (c.priority === "inauguracao") return "inauguracao";
-  return "ativo";
-}
-
-interface Form {
-  name: string; // Etapa 255: nome do cliente editável na ficha
-  responsible: string;
-  status: Status;
-  monthly: string;
-  cpaTarget: string;
-  payment: string;
-  since: string; // YYYY-MM
-  exame: boolean; // Etapa 242: anuncia EXAME
-  promo: boolean; // Etapa 260: anuncia PROMO (BOLETO saiu)
-  sensivel: boolean; // Etapa 261: conta sensível (otimizar até as 09h)
-}
-
-function formOf(c: Cliente, pay: string | null, f: OfferFlags | undefined, sens = false): Form {
-  return {
-    name: c.name,
-    responsible: c.responsible ?? "",
-    status: statusOf(c),
-    monthly: c.monthly != null ? String(c.monthly) : "",
-    cpaTarget: c.cpaTarget != null ? String(c.cpaTarget) : "",
-    payment: pay ?? "",
-    since: c.clientSince ? c.clientSince.slice(0, 7) : "",
-    exame: !!f?.exame,
-    promo: !!f?.promo,
-    sensivel: sens,
-  };
-}
-
-const num = (s: string): number | null => {
-  const t = s.trim().replace(/\./g, "").replace(",", ".");
-  if (!t) return null;
-  const n = Number(t);
-  return Number.isFinite(n) ? n : null;
-};
-
-const inputCls = "h-9 w-full rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]";
-
-function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={htmlFor} className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
-        {label}
-      </label>
-      {children}
-    </div>
-  );
-}
+const STATUS_LABEL = { ativo: "Ativo", inauguracao: "Inauguração", pausado: "Pausado" } as const;
 
 export default function ClientesPage() {
   const { ui, gestores } = useEstr();
-  const { options } = usePriorityOptions();
   const [clientes, setClientes] = useState<Cliente[] | null>(null);
   const [pay, setPay] = useState<Record<string, string | null>>({});
-  const [flags, setFlags] = useState<Record<string, OfferFlags>>({});
-  const [sens, setSens] = useState<Record<string, boolean>>({}); // Etapa 261
   const [sel, setSel] = useState<string | null>(null);
-  const [form, setForm] = useState<Form | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const [novoOpen, setNovoOpen] = useState(false); // Etapa 253
   const [q, setQ] = useState(""); // pesquisa pelo nome do cliente
-  const [saving, setSaving] = useState(false);
-  const [confirmArchive, setConfirmArchive] = useState(false);
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [list, p, f] = await Promise.all([
-        loadClientes(),
-        fetch("/api/pix-accounts", { cache: "no-store" }).then((r) => r.json()),
-        loadOfferFlags().catch(() => ({}) as Record<string, OfferFlags>),
-      ]);
-      setFlags(f);
-      const sv = await fetch("/api/estrategia/prefs?key=contas_sensiveis", { cache: "no-store" }).then((r) => r.json()).catch(() => ({}));
-      setSens(sv?.value && typeof sv.value === "object" ? (sv.value as Record<string, boolean>) : {});
+      const [list, p] = await Promise.all([loadClientes(), fetch("/api/pix-accounts", { cache: "no-store" }).then((r) => r.json())]);
       setClientes(list.filter((c) => c.selected || c.archived));
       const map: Record<string, string | null> = {};
       for (const r of (p.pixAccounts ?? []) as Array<{ ad_account_id: string; payment_type: string | null }>) {
@@ -131,89 +60,6 @@ export default function ClientesPage() {
     [clientes, showArchived, ui.resp, q],
   );
   const cur = useMemo(() => list.find((c) => c.id === sel) ?? list[0] ?? null, [list, sel]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- ficha acompanha o cliente escolhido
-    setForm(cur ? formOf(cur, pay[cur.id] ?? null, flags[cur.id], !!sens[cur.id]) : null);
-    setConfirmArchive(false);
-    setMsg(null);
-  }, [cur, pay, flags, sens]);
-
-  async function patchBinding(c: Cliente, body: Record<string, unknown>) {
-    const d = await fetch("/api/account-bindings", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ad_account_id: c.rawId, ...body }),
-    }).then((r) => r.json());
-    if (d.error) throw new Error(d.error);
-  }
-
-  async function save() {
-    if (!cur || !form) return;
-    setSaving(true);
-    setMsg(null);
-    try {
-      if (!form.name.trim()) throw new Error("O nome do cliente não pode ficar vazio.");
-      const body: Record<string, unknown> = {
-        responsible: form.responsible || null,
-        monthly_investment: num(form.monthly),
-        cpa_target: num(form.cpaTarget),
-        client_since: form.since ? `${form.since}-01` : null,
-      };
-      if (form.name.trim() !== cur.name) body.client_name = form.name.trim();
-      const before = statusOf(cur);
-      if (form.status !== before) {
-        body.active = form.status !== "pausado";
-        if (form.status === "inauguracao") body.priority = "inauguracao";
-        else if (cur.priority === "inauguracao") body.priority = null;
-      }
-      await patchBinding(cur, body);
-      const f0 = flags[cur.id];
-      if (!f0 || f0.exame !== form.exame || !!f0.promo !== form.promo) {
-        const latest = await loadOfferFlags().catch(() => flags);
-        await saveOfferFlags({ ...latest, [cur.id]: { exame: form.exame, promo: form.promo } });
-      }
-      if (!!sens[cur.id] !== form.sensivel) {
-        const latest = await fetch("/api/estrategia/prefs?key=contas_sensiveis", { cache: "no-store" }).then((r) => r.json());
-        const next = { ...((latest?.value as Record<string, boolean> | null) ?? {}) };
-        if (form.sensivel) next[cur.id] = true;
-        else delete next[cur.id];
-        const d = await fetch("/api/estrategia/prefs", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: "contas_sensiveis", value: next }) }).then((r) => r.json());
-        if (d.error) throw new Error(d.error);
-      }
-      if ((pay[cur.id] ?? "") !== form.payment) {
-        const d = await fetch("/api/pix-accounts", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ad_account_id: cur.rawId, payment_type: form.payment || null }),
-        }).then((r) => r.json());
-        if (d.error) throw new Error(d.error);
-      }
-      setMsg({ ok: true, text: "Alterações salvas." });
-      await load();
-    } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function archive(value: boolean) {
-    if (!cur) return;
-    setSaving(true);
-    try {
-      await patchBinding(cur, { archived: value });
-      setConfirmArchive(false);
-      setSel(null);
-      await load();
-    } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  const prioLabel = (id: string | null) => (id ? (options.find((o) => o.id === id)?.label ?? id) : "—");
 
   return (
     <div className="flex flex-col">
@@ -339,135 +185,18 @@ export default function ClientesPage() {
         </div>
 
         <Card className="h-fit p-5 xl:sticky xl:top-16">
-          {!cur || !form ? (
+          {!cur ? (
             <p className="text-sm text-zinc-500">Escolha um cliente na lista.</p>
           ) : (
-            <div className="flex flex-col gap-4">
-              <div>
-                <h2 className="text-lg font-semibold">{cur.name}</h2>
-                <div className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Ficha do cliente</div>
-              </div>
-              {cur.archived ? (
-                <div className="flex flex-col gap-3">
-                  <p className="text-sm text-zinc-500">Cliente arquivado: não aparece nas telas nem entra nas automações. Os dados continuam guardados.</p>
-                  <Btn primary onClick={() => void archive(false)} disabled={saving}>Trazer de volta</Btn>
-                </div>
-              ) : (
-                <>
-                  <Field label="Nome do cliente" htmlFor="f-nome">
-                    <input id="f-nome" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
-                  </Field>
-                  <Field label="Responsável" htmlFor="f-resp">
-                    <select id="f-resp" value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} className={inputCls}>
-                      <option value="">Sem responsável</option>
-                      {[...new Set([...gestores, ...(form.responsible ? [form.responsible] : [])])].map((g) => (
-                        <option key={g} value={g}>{g}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Status" htmlFor="f-status">
-                    <select id="f-status" value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Status })} className={inputCls}>
-                      {(Object.keys(STATUS_LABEL) as Status[]).map((s) => (
-                        <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-                      ))}
-                    </select>
-                  </Field>
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Verba mensal (R$)" htmlFor="f-verba">
-                      <input id="f-verba" inputMode="decimal" value={form.monthly} onChange={(e) => setForm({ ...form, monthly: e.target.value })} className={inputCls} />
-                    </Field>
-                    <Field label="CPA ideal (R$)" htmlFor="f-cpa">
-                      <input id="f-cpa" inputMode="decimal" value={form.cpaTarget} onChange={(e) => setForm({ ...form, cpaTarget: e.target.value })} className={inputCls} />
-                    </Field>
-                  </div>
-                  {num(form.monthly) ? (
-                    <div className="-mt-2 text-xs text-zinc-500">≈ {fmtBRL((num(form.monthly) as number) / calendarSP().daysInMonth)} por dia neste mês</div>
-                  ) : null}
-                  <div className="grid grid-cols-2 gap-3">
-                    <Field label="Pagamento" htmlFor="f-pay">
-                      <select id="f-pay" value={form.payment} onChange={(e) => setForm({ ...form, payment: e.target.value })} className={inputCls}>
-                        <option value="">Não definido</option>
-                        {Object.entries(PAY_LABEL).map(([k, v]) => (
-                          <option key={k} value={k}>{v}</option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Cliente desde" htmlFor="f-since">
-                      <input id="f-since" type="month" value={form.since} onChange={(e) => setForm({ ...form, since: e.target.value })} className={inputCls} />
-                    </Field>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={form.sensivel} onChange={(e) => setForm({ ...form, sensivel: e.target.checked })} className="h-4 w-4 accent-blue-600" />
-                    Conta sensível <span className="text-xs text-zinc-500">(otimizar até as 09h)</span>
-                  </label>
-                  <Field label="Ofertas que a conta anuncia">
-                    <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-sm">
-                      <span className="flex items-center gap-2 text-zinc-500">
-                        <input type="checkbox" checked disabled className="h-4 w-4" /> GERAL (todas)
-                      </span>
-                      <label className="flex items-center gap-2">
-                        <input type="checkbox" checked={form.exame} onChange={(e) => setForm({ ...form, exame: e.target.checked })} className="h-4 w-4 accent-blue-600" />
-                        EXAME
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input type="checkbox" checked={form.promo} onChange={(e) => setForm({ ...form, promo: e.target.checked })} className="h-4 w-4 accent-blue-600" />
-                        PROMO
-                      </label>
-                    </div>
-                    {!flags[cur.id] ? <p className="text-xs text-amber-600 dark:text-amber-400">Ainda não definido. Marque e salve.</p> : null}
-                  </Field>
-                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
-                    <dt className="text-zinc-500">Conta de anúncio</dt>
-                    <dd className="font-mono text-xs break-all">
-                      <a
-                        href={adsManagerUrl(cur.id)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="Abrir no Gerenciador de Anúncios"
-                        className="text-blue-700 hover:underline dark:text-blue-300"
-                      >
-                        act_{cur.id} ↗
-                      </a>
-                    </dd>
-                    <dt className="text-zinc-500">Prioridade Asana</dt>
-                    <dd className="font-medium">{prioLabel(cur.priority)}</dd>
-                    <dt className="text-zinc-500">WhatsApp</dt>
-                    <dd>{cur.whatsapp ?? "—"}</dd>
-                    <dt className="text-zinc-500">Grupo WhatsApp</dt>
-                    <dd className="text-zinc-500 italic">em breve</dd>
-                  </dl>
-                  {msg ? <div className={`text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{msg.text}</div> : null}
-                  <div className="flex items-center gap-2 border-t border-zinc-200 pt-4 dark:border-white/10">
-                    <div className="flex-1">
-                      <Btn primary onClick={() => void save()} disabled={saving}>{saving ? "Salvando…" : "Salvar alterações"}</Btn>
-                    </div>
-                    {confirmArchive ? (
-                      <>
-                        <Btn onClick={() => setConfirmArchive(false)}>Cancelar</Btn>
-                        <button
-                          onClick={() => void archive(true)}
-                          disabled={saving}
-                          className="h-9 rounded-lg bg-red-600 px-3 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
-                        >
-                          Arquivar
-                        </button>
-                      </>
-                    ) : (
-                      <Btn onClick={() => setConfirmArchive(true)} title="Arquivar cliente (some das telas, dá pra trazer de volta)">
-                        🗑 Arquivar
-                      </Btn>
-                    )}
-                  </div>
-                  {/* Etapa 259: buscar/enviar a descrição do Asana pela ficha */}
-                  <DescricaoAsana accountId={cur.rawId} clientName={cur.name} />
-                  {confirmArchive ? (
-                    <p className="text-xs text-zinc-500">
-                      O cliente some das telas e sai das automações. Nada é apagado: dá pra trazer de volta em &quot;Ver arquivados&quot;.
-                    </p>
-                  ) : null}
-                </>
-              )}
-            </div>
+            <FichaCliente
+              key={cur.id}
+              id={cur.id}
+              onSaved={() => void load()}
+              onArchived={() => {
+                setSel(null);
+                void load();
+              }}
+            />
           )}
         </Card>
       </div>

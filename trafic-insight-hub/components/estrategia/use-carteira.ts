@@ -258,6 +258,24 @@ export function useCarteira() {
     }
   }, []);
 
+  // Etapa 290/296: recarrega só o que vem da ficha (Supabase, nada da Meta) e junta com os números já carregados.
+  const refreshFicha = useCallback(async () => {
+    try {
+      const all = await loadClientes();
+      const vivos = all.filter((x) => x.selected && x.active && !x.archived);
+      setLinhas((cur) => {
+        if (!cur) return cur;
+        const old = new Map(cur.map((l) => [l.id, l]));
+        return vivos.map((x) => {
+          const o = old.get(x.id);
+          return o ? { ...o, ...x } : ({ ...x, nums: null, offers: null, offersAt: null, flags: null } as Linha);
+        });
+      });
+    } catch {
+      /* fica com o que já tem */
+    }
+  }, []);
+
   // Guarda também a tabela assim que chega (antes do investimento diário).
   useEffect(() => {
     if (linhas && atRef.current) writeCache(CACHE_KEY, linhas, atRef.current);
@@ -280,26 +298,14 @@ export function useCarteira() {
     }
     // Etapa 290: o que vem da ficha do cliente (nome, gestor, prioridade, metas, grupo) é recarregado sempre que a tela
     // abre — é só o Supabase, nada da Meta. Conta que saiu da carteira some; conta nova entra (sem números até Atualizar).
-    void loadClientes()
-      .then((all) => {
-        const vivos = all.filter((x) => x.selected && x.active && !x.archived);
-        setLinhas((cur) => {
-          if (!cur) return cur;
-          const old = new Map(cur.map((l) => [l.id, l]));
-          return vivos.map((x) => {
-            const o = old.get(x.id);
-            return o ? { ...o, ...x } : ({ ...x, nums: null, offers: null, offersAt: null, flags: null } as Linha);
-          });
-        });
-      })
-      .catch(() => {});
-  }, [load]);
+    void refreshFicha();
+  }, [load, refreshFicha]);
 
   const patchLinha = useCallback((id: string, patch: Partial<Linha>) => {
     setLinhas((cur) => (cur ?? []).map((l) => (l.id === id ? { ...l, ...patch } : l)));
   }, []);
 
-  return { linhas, loading, error, at, reload: load, patchLinha };
+  return { linhas, loading, error, at, reload: load, patchLinha, refreshFicha };
 }
 
 export function matchesResp(resp: string, responsible: string | null): boolean {

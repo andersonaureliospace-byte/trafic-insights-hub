@@ -44,7 +44,7 @@ export interface ClienteUI {
 }
 
 export const TIPO_ICON: Record<TarefaUI["tipo"], string> = { manual: "✎", rotina: "🔁", alerta: "🚨", feedback: "💬" };
-export const TIPO_LABEL: Record<TarefaUI["tipo"], string> = { manual: "Tarefa", rotina: "Rotina", alerta: "Alerta do Tráfego", feedback: "Feedback" };
+export const TIPO_LABEL: Record<TarefaUI["tipo"], string> = { manual: "Tarefa", rotina: "Rotina", alerta: "Alerta", feedback: "Feedback" };
 const PRIO_LABEL: Record<string, string> = { inauguracao: "Inauguração", critica: "Crítica", alta: "Alta", media: "Média", baixa: "Baixa" };
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const input = "h-9 w-full rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]";

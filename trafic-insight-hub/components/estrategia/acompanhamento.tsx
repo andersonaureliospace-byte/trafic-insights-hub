@@ -24,6 +24,7 @@ import type { Linha } from "./use-carteira";
 import { AvisarGestores } from "./avisar-gestores";
 import { NovaTarefa } from "./demandas-modais";
 import { NovoFeedbackPrint } from "./novo-feedback-print";
+import { FichaCliente } from "./ficha-cliente";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -160,41 +161,32 @@ function Otimizacao({ acts, failed, now }: { acts: ActivityItem[] | undefined; f
 }
 
 // Balão da descrição (o mesmo quadro do Foco), ao lado do botão.
-function DescricaoBalao({ l, anchor, onClose }: { l: Linha; anchor: DOMRect; onClose: () => void }) {
-  const ref = useRef<HTMLDivElement>(null);
+// Etapa 296: o 📝 abre uma caixa grande com a ficha do cliente (editar tudo aqui mesmo) e a descrição do Asana ao lado.
+function FichaModal({ l, onClose, onSaved }: { l: Linha; onClose: () => void; onSaved?: () => void }) {
   useEffect(() => {
-    const onDown = (e: MouseEvent) => {
-      const t = e.target as Node;
-      // o editor do Foco abre uma caixa própria (fixed) fora do balão: não fecha ao clicar nela
-      if (ref.current?.contains(t) || (t as HTMLElement).closest?.(".fixed.z-50, [data-desc-btn]")) return;
-      onClose();
-    };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
-  const width = Math.min(420, window.innerWidth - 16);
-  const left = Math.max(8, Math.min(anchor.right - width, window.innerWidth - width - 8));
-  const below = anchor.bottom + 6;
-  const top = below + 240 > window.innerHeight ? Math.max(8, anchor.top - 246) : below;
   return (
-    <div
-      ref={ref}
-      role="dialog"
-      aria-label={`Descrição de ${l.name}`}
-      style={{ top, left, width }}
-      className="fixed z-40 flex h-60 flex-col overflow-hidden rounded-xl border border-zinc-300 bg-white shadow-2xl dark:border-white/15 dark:bg-[#10141c]"
-    >
-      <div className="flex items-center justify-between border-b border-zinc-200 px-3 py-1.5 text-xs dark:border-white/10">
-        <span className="font-semibold">{l.name}</span>
-        <button onClick={onClose} aria-label="Fechar" className="text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">✕</button>
-      </div>
-      <div className="min-h-0 flex-1">
-        <FocoDescricao accountId={l.id} />
+    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div role="dialog" aria-label={`Ficha de ${l.name}`} className="w-full max-w-5xl rounded-xl border border-zinc-300 bg-white shadow-2xl dark:border-white/15 dark:bg-[#10141c]">
+        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-white/10">
+          <div>
+            <div className="text-base font-semibold">{l.name}</div>
+            <div className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Ficha do cliente</div>
+          </div>
+          <button onClick={onClose} aria-label="Fechar" className="text-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">✕</button>
+        </div>
+        <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <FichaCliente id={l.id} titulo={false} descricao={false} onSaved={onSaved} onArchived={() => { onSaved?.(); onClose(); }} />
+          <div className="flex min-h-[22rem] flex-col">
+            <div className="mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Descrição no Asana</div>
+            <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-200 dark:border-white/10">
+              <FocoDescricao accountId={l.id} />
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -205,16 +197,19 @@ export function Acompanhamento({
   activities,
   activitiesFailed,
   pagamento,
+  onClienteSalvo,
 }: {
   linhas: Linha[];
   activities: Record<string, ActivityItem[]> | null;
   activitiesFailed: string[];
   // Etapa 284: contas com erro de pagamento ou sem saldo → linha vermelha (id da conta → motivo)
   pagamento?: Record<string, string>;
+  // Etapa 296: depois de salvar a ficha pelo 📝, recarrega o quadro
+  onClienteSalvo?: () => void;
 }) {
   const { ui, setUi } = useEstr();
   const { options } = usePriorityOptions();
-  const [desc, setDesc] = useState<{ l: Linha; anchor: DOMRect } | null>(null);
+  const [desc, setDesc] = useState<{ l: Linha } | null>(null);
   // Etapa 248: pesquisa (nome, responsável, grupo do WhatsApp, ID) e conta fixada (as outras ficam com os números embaçados).
   const [q, setQ] = useState("");
   const [pinned, setPinned] = useState<string | null>(null);
@@ -572,12 +567,8 @@ export function Acompanhamento({
                       💬
                     </button>
                     <button
-                      data-desc-btn
-                      onClick={(e) => {
-                        const anchor = e.currentTarget.getBoundingClientRect();
-                        setDesc((cur) => (cur?.l.id === l.id ? null : { l, anchor }));
-                      }}
-                      title="Descrição do cliente no Asana"
+                      onClick={() => setDesc({ l })}
+                      title="Ficha do cliente + descrição do Asana"
                       aria-label={`Descrição de ${l.name}`}
                       className={`h-7 rounded-lg border px-2 text-xs font-medium transition-colors ${
                         desc?.l.id === l.id
@@ -648,7 +639,7 @@ export function Acompanhamento({
           onClose={() => setAvisar(false)}
         />
       ) : null}
-      {desc ? <DescricaoBalao l={desc.l} anchor={desc.anchor} onClose={() => setDesc(null)} /> : null}
+      {desc ? <FichaModal l={desc.l} onClose={() => setDesc(null)} onSaved={onClienteSalvo} /> : null}
     </div>
   );
 }

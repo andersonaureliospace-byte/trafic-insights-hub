@@ -156,7 +156,7 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
           <div className="flex h-12 items-center gap-2 overflow-x-auto px-3 lg:px-6">
             <span className="mr-2 text-sm font-bold tracking-tight whitespace-nowrap text-blue-700 dark:text-blue-400">Trafic Insight Hub</span>
             <nav className="flex items-center gap-0.5">
-              <Item href="/estrategia/trafego">Tráfego</Item>
+              <Item href="/estrategia/trafego">Acompanhamento</Item>
               <Item href="/estrategia/demandas">Demandas</Item>
               <Item href="/estrategia/clientes">Clientes</Item>
               <Item href="/estrategia/pop">POP</Item>
