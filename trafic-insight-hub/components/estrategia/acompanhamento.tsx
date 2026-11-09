@@ -606,6 +606,15 @@ export function Acompanhamento({
         <NovoFeedbackPrint
           clienteId={feedbackDe}
           enviarAqui
+          leads={(() => {
+            const n = linhas.find((x) => x.id === feedbackDe)?.nums;
+            if (!n) return undefined;
+            return ([["u7", "últ. 7 dias"], ["sp", "semana passada"], ["m", "este mês"]] as const).map(([k, label]) => ({
+              label,
+              leads: n.periods[k].results,
+              cpa: fmtCpa(cpaOf(n.periods[k])),
+            }));
+          })()}
           onClose={() => {
             setFeedbackDe(null);
             void carregarTarefas();
@@ -631,7 +640,7 @@ export function Acompanhamento({
       ) : null}
       {avisar ? (
         <AvisarGestores
-          linhas={rows.filter((x) => marcadas.has(x.l.id)).map((x) => ({ l: x.l, cpa: x.cpa, spend: x.spend }))}
+          linhas={rows.filter((x) => marcadas.has(x.l.id)).map((x) => ({ l: x.l, cpa: x.cpa, spend: x.spend, leads: x.leads }))}
           periodLabel={(CPA_PERIODS.find((p) => p.id === period)?.label ?? period).toLowerCase()}
           onClose={() => setAvisar(false)}
         />

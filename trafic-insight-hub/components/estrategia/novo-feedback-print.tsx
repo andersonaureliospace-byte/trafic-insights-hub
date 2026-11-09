@@ -66,11 +66,13 @@ export function NovoFeedbackPrint({
   onCreated,
   clienteId,
   enviarAqui = false,
+  leads,
 }: {
   onClose: () => void;
   onCreated: (id: string) => void;
   clienteId?: string; // Etapa 291: já abre com o cliente escolhido (atalho do Acompanhamento)
   enviarAqui?: boolean; // revisa e envia aqui mesmo, sem ir pra aba Feedbacks
+  leads?: Array<{ label: string; leads: number | null; cpa: string }>; // Etapa 292: volume de leads (vem do Acompanhamento)
 }) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cliente, setCliente] = useState<Cliente | null>(null);
@@ -365,6 +367,17 @@ export function NovoFeedbackPrint({
                     <div className="text-base font-semibold tabular-nums">{cliente.monthly != null ? brl(cliente.monthly) : "—"}</div>
                   </div>
                 </div>
+                {leads?.length ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {leads.map((x) => (
+                      <div key={x.label} className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
+                        <div className="text-[11px] text-zinc-500">Leads · {x.label}</div>
+                        <div className="text-base font-semibold tabular-nums">{x.leads != null ? new Intl.NumberFormat("pt-BR").format(Math.round(x.leads)) : "—"}</div>
+                        <div className="text-[11px] text-zinc-500 tabular-nums">CPA {x.cpa}</div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="rounded-lg border border-zinc-200 p-2 dark:border-white/10">

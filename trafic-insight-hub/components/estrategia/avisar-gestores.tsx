@@ -14,6 +14,7 @@ export interface LinhaAviso {
   l: Linha;
   cpa: number | null; // CPA no período do quadro (Infinity = gastou sem resultado)
   spend: number | null; // gasto no período do quadro
+  leads?: number | null; // Etapa 292: leads no período do quadro
 }
 
 type Metrica = "invest" | "cpa";
@@ -95,7 +96,8 @@ export function AvisarGestores({
   const cpa = useMemo(() => {
     const itens: Array<{ l: Linha; linha: string }> = [];
     const fora: string[] = [];
-    for (const { l, cpa: c, spend } of linhas) {
+    for (const { l, cpa: c, spend, leads } of linhas) {
+      const nLeads = leads != null ? ` · ${Math.round(leads)} lead${Math.round(leads) === 1 ? "" : "s"}` : "";
       if (c === Infinity) {
         itens.push({ l, linha: `• ${l.name} — gastou ${brl(spend ?? 0)} sem nenhum resultado (${periodLabel}).` });
         continue;
@@ -104,7 +106,7 @@ export function AvisarGestores({
         fora.push(`${l.name} (${c == null ? "sem gasto" : l.cpaTarget == null ? "sem CPA ideal" : "CPA ok"})`);
         continue;
       }
-      itens.push({ l, linha: `• ${l.name} — CPA alto (${periodLabel}): ${brl(c)}, o ideal é ${brl(l.cpaTarget)}.` });
+      itens.push({ l, linha: `• ${l.name} — CPA alto (${periodLabel}): ${brl(c)}, o ideal é ${brl(l.cpaTarget)}${nLeads}.` });
     }
     return { itens, fora };
   }, [linhas, periodLabel]);

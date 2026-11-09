@@ -3,7 +3,7 @@
 
 import type { DailyCpaPoint } from "@/lib/meta/daily-cpa";
 
-export type CpaPeriod = "h" | "o" | "oh" | "u2" | "u3" | "u2h" | "u3h" | "m" | "mo";
+export type CpaPeriod = "h" | "o" | "oh" | "u2" | "u3" | "u2h" | "u3h" | "u7" | "sp" | "m" | "mo";
 
 export const CPA_PERIODS: Array<{ id: CpaPeriod; label: string; short: string }> = [
   { id: "h", label: "Hoje", short: "hoje" },
@@ -13,6 +13,8 @@ export const CPA_PERIODS: Array<{ id: CpaPeriod; label: string; short: string }>
   { id: "u3", label: "Últimos 3 dias", short: "últ. 3 dias" },
   { id: "u2h", label: "Últimos 2 dias + hoje", short: "últ. 2 dias + hoje" },
   { id: "u3h", label: "Últimos 3 dias + hoje", short: "últ. 3 dias + hoje" },
+  { id: "u7", label: "Últimos 7 dias", short: "últ. 7 dias" },
+  { id: "sp", label: "Semana passada", short: "semana passada" },
   { id: "m", label: "Este mês", short: "este mês" },
   { id: "mo", label: "Este mês até ontem", short: "mês até ontem" },
 ];
@@ -50,7 +52,8 @@ const sum = (list: Array<Sum | undefined>): Sum => list.reduce<Sum>((acc, x) => 
 // Quantos dias fechados do mês atual entram em cada período (pra avisar quando o período foi cortado no começo do mês).
 export function closedDaysIn(period: CpaPeriod, cal = calendarSP()): { wanted: number; got: number } {
   // "Este mês" sempre é o mês inteiro até aqui: não tem o que avisar (no dia 01, "até ontem" fica vazio).
-  if (period === "m" || period === "mo") return { wanted: 0, got: 0 };
+  // Etapa 292: "últimos 7 dias" e "semana passada" podem pegar o mês anterior — não são cortados no dia 01.
+  if (period === "m" || period === "mo" || period === "u7" || period === "sp") return { wanted: 0, got: 0 };
   const wanted = { h: 0, o: 1, oh: 1, u2: 2, u3: 3, u2h: 2, u3h: 3 }[period];
   return { wanted, got: Math.min(wanted, cal.day - 1) };
 }
@@ -72,6 +75,18 @@ export function numbersFrom(points: DailyCpaPoint[], cal = calendarSP()): Accoun
   const o2 = closed[n - 2];
   const o3 = closed[n - 3];
   const untilYesterday = sum(closed);
+  // Etapa 292: últimos 7 dias fechados (ontem pra trás) e a semana passada (segunda a domingo) — esses atravessam o mês.
+  const addD = (ymd: string, k: number) => {
+    const [y, m, d] = ymd.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d + k)).toISOString().slice(0, 10);
+  };
+  const [ty, tm, td] = cal.today.split("-").map(Number);
+  const dow = new Date(Date.UTC(ty, tm - 1, td)).getUTCDay(); // 0 = domingo
+  const mondayThisWeek = addD(cal.today, -((dow + 6) % 7));
+  const lastWeekFrom = addD(mondayThisWeek, -7);
+  const lastWeekTo = addD(mondayThisWeek, -1);
+  const u7From = addD(cal.today, -7);
+  const inRange = (from: string, to: string) => points.filter((p) => p.date >= from && p.date <= to && p.date < cal.today);
   const month = add(untilYesterday, today);
   return {
     todaySpend: today?.spend ?? 0,
@@ -86,6 +101,8 @@ export function numbersFrom(points: DailyCpaPoint[], cal = calendarSP()): Accoun
       u3: sum([o3, o2, o]),
       u2h: sum([o2, o, today]),
       u3h: sum([o3, o2, o, today]),
+      u7: sum(inRange(u7From, addD(cal.today, -1))),
+      sp: sum(inRange(lastWeekFrom, lastWeekTo)),
       m: month,
       mo: untilYesterday,
     },
