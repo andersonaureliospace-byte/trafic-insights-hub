@@ -667,9 +667,12 @@ export async function runPrioridade(db: SupabaseClient, userId: string, token: s
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const byName = new Map(accounts.map((a) => [normName(a.name), a]));
   for (const r of results) {
-    if (r.outcome !== "updated") continue;
     const a = byId.get(String(r.accountId).replace(/^act_/, ""));
-    if (a) findings.push({ check: "prioridade", acc: a, line: `Prioridade: ${label(r.from)} → ${label(r.to)}`, dedupe: `prioridade:${a.id}:${day}` });
+    if (!a) continue;
+    if (r.outcome === "updated") findings.push({ check: "prioridade", acc: a, line: `Prioridade: ${label(r.from)} → ${label(r.to)}`, dedupe: `prioridade:${a.id}:${day}` });
+    // Etapa 289: conta que ficou sem prioridade calculada diz o porquê (ex.: sem meta de CPA, sem gasto)
+    else if (r.outcome === "skipped" && r.reason !== "Em inauguração")
+      findings.push({ check: "prioridade", acc: a, line: `Prioridade não calculada: ${r.reason ?? "motivo desconhecido"}`, dedupe: `prioridade-skip:${a.id}:${day}` });
   }
   const asanaIssue = (names: string[], txt: string) => {
     for (const n of names) {

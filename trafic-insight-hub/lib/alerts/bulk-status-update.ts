@@ -91,13 +91,21 @@ export async function checkAndUpdateBulkStatus(
   const accountIds = (selected ?? []).map((s) => s.ad_account_id as string).filter((id) => !off.has(id));
   if (accountIds.length === 0) return { results: [], sendError: null };
 
+  // Etapa 289: acha a ficha do cliente com ou sem o "act_" no número (contas novas podiam ficar sem prioridade porque a
+  // ficha estava gravada num formato e a lista de contas noutro) e grava sempre na ficha que já existe.
+  const bare = (id: string) => String(id).replace(/^act_/, "");
   const { data: bindings, error: bindingsErr } = await db
     .from("account_bindings")
     .select("ad_account_id, client_name, cpa_target, priority")
     .eq("user_id", userId)
-    .in("ad_account_id", accountIds);
+    .in("ad_account_id", [...new Set(accountIds.flatMap((id) => [bare(id), `act_${bare(id)}`]))]);
   if (bindingsErr) throw bindingsErr;
-  const bindingByAccount = new Map((bindings ?? []).map((b) => [b.ad_account_id as string, b]));
+  const bindingByAccount = new Map<string, NonNullable<typeof bindings>[number]>();
+  for (const b of bindings ?? []) {
+    const k = bare(b.ad_account_id as string);
+    // se existir nos dois formatos, fica a que tem meta de CPA
+    if (!bindingByAccount.has(k) || (b.cpa_target != null && bindingByAccount.get(k)?.cpa_target == null)) bindingByAccount.set(k, b);
+  }
 
   // Últimos 3 dias, sem contar hoje — igual ao diálogo manual (days=3, sem
   // includeToday), só que numa chamada só pra todas as contas de uma vez.
@@ -113,7 +121,7 @@ export async function checkAndUpdateBulkStatus(
   }
 
   const entries: Entry[] = accountIds.map((accountId) => {
-    const binding = bindingByAccount.get(accountId);
+    const binding = bindingByAccount.get(bare(accountId));
     const clientName = (binding?.client_name as string | null) || accountId;
     const currentPriority = (binding?.priority as string | null) ?? null;
     const cpaTarget = (binding?.cpa_target as number | null) ?? null;
@@ -191,7 +199,7 @@ export async function checkAndUpdateBulkStatus(
 
   const upsertRows = sorted.map((e, i) => ({
     user_id: userId,
-    ad_account_id: e.accountId,
+    ad_account_id: (bindingByAccount.get(bare(e.accountId))?.ad_account_id as string | undefined) ?? e.accountId,
     sort_order: i,
     updated_at: new Date().toISOString(),
     // Etapa 185: SEMPRE manda o status (o novo se mudou, o atual se não mudou/foi pulado). Antes só as linhas "updated" levavam
