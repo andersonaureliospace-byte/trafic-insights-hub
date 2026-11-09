@@ -64,7 +64,25 @@ export interface AccountNumbers {
   untilYesterday: number; // dia 01 até ontem
   periods: Record<CpaPeriod, Sum>;
   month: Sum;
+  // Etapa 294: a mesma fatia de período, logo antes (pra comparar). Ex.: últimos 3 dias → os 3 dias antes deles;
+  // este mês → os mesmos dias do mês passado.
+  prev?: Partial<Record<CpaPeriod, Sum>>;
 }
+
+// Rótulo do "período anterior" de cada período.
+export const PREV_LABEL: Record<CpaPeriod, string> = {
+  h: "ontem",
+  o: "anteontem",
+  oh: "os 2 dias antes",
+  u2: "os 2 dias antes",
+  u3: "os 3 dias antes",
+  u2h: "os 3 dias antes",
+  u3h: "os 4 dias antes",
+  u7: "os 7 dias antes",
+  sp: "semana retrasada",
+  m: "mesmos dias do mês passado",
+  mo: "mesmos dias do mês passado",
+};
 
 export function numbersFrom(points: DailyCpaPoint[], cal = calendarSP()): AccountNumbers {
   const today = points.find((p) => p.date === cal.today);
@@ -106,6 +124,28 @@ export function numbersFrom(points: DailyCpaPoint[], cal = calendarSP()): Accoun
       m: month,
       mo: untilYesterday,
     },
+    prev: (() => {
+      const T = cal.today;
+      const r = (a: number, b: number) => sum(inRange(addD(T, a), addD(T, b)));
+      // mesmos dias do mês passado (dia 01 até o mesmo dia; se o mês passado for menor, até o último dia dele)
+      const [py, pm] = tm === 1 ? [ty - 1, 12] : [ty, tm - 1];
+      const prevStart = `${py}-${String(pm).padStart(2, "0")}-01`;
+      const prevLast = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+      const prevDay = (d: number) => `${py}-${String(pm).padStart(2, "0")}-${String(Math.max(1, Math.min(d, prevLast))).padStart(2, "0")}`;
+      return {
+        h: r(-1, -1),
+        o: r(-2, -2),
+        oh: r(-3, -2),
+        u2: r(-4, -3),
+        u3: r(-6, -4),
+        u2h: r(-5, -3),
+        u3h: r(-7, -4),
+        u7: r(-14, -8),
+        sp: sum(inRange(addD(lastWeekFrom, -7), addD(lastWeekTo, -7))),
+        m: sum(inRange(prevStart, prevDay(td))),
+        mo: td > 1 ? sum(inRange(prevStart, prevDay(td - 1))) : { spend: 0, results: 0 },
+      };
+    })(),
   };
 }
 

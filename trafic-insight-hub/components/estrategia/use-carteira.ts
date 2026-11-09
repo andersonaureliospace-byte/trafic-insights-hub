@@ -201,8 +201,9 @@ export function useCarteira() {
     try {
       const clientes = (await loadClientes()).filter((c) => c.selected && c.active && !c.archived);
       const cal = calendarSP();
-      // Etapa 292: 14 dias no mínimo (semana passada + últimos 7 dias podem pegar o mês anterior)
-      const days = Math.max(14, cal.day);
+      // Etapa 294: busca o mês atual + o mês passado inteiro (até 62 dias), pra comparar cada período com a mesma fatia
+      // anterior (este mês × mesmos dias do mês passado; últimos 7 × 7 antes; semana passada × retrasada).
+      const days = Math.min(62, cal.day + 31);
       const [daily, offers, flagsSaved] = await Promise.all([
         dailyFor(
           clientes.map((c) => c.rawId),

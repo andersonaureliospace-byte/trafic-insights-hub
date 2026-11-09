@@ -113,7 +113,21 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
         const t = token as string;
         switch (j.check) {
           case "expansao":
-            res = await runExpansaoWhatsapp(db, userId, t, lot, deadline, { expansao: isCheckOn(cfg, "expansao"), whatsapp: isCheckOn(cfg, "whatsapp") });
+            res = await runExpansaoWhatsapp(db, userId, t, lot, deadline, {
+              expansao: isCheckOn(cfg, "expansao"),
+              whatsapp: isCheckOn(cfg, "whatsapp"),
+              full: slot.startsWith("06:"), // Etapa 295: 1ª rodada do dia confere todos os conjuntos ativos
+            });
+            {
+              // Etapa 295: WhatsApp do anúncio diferente da ficha (ou ficha sem WhatsApp) é urgente — avisa NA HORA
+              const wpp = res.findings.filter((f) => f.check === "whatsapp");
+              if (wpp.length) {
+                const u = await sendUrgent(db, userId, cfg, wpp, "whatsapp", "🚨 *URGENTE — WhatsApp do anúncio*");
+                await tarefasDeAlertas(db, userId, wpp, calendarSP().today).catch(() => 0);
+                res = { ...res, findings: res.findings.filter((f) => f.check !== "whatsapp"), count: res.findings.length, errors: u.error ? [...res.errors, u.error] : res.errors };
+                entry.queued = u.sent;
+              }
+            }
             break;
           case "custo":
             res = await runCustoAlto(db, userId, t, lot, deadline);

@@ -20,6 +20,15 @@ interface Anexo {
 const inputCls = "w-full rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]";
 const flat = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 const keyOf = () => Math.random().toString(36).slice(2, 10);
+export interface Fatia {
+  label: string;
+  leads: number | null;
+  spend: number | null;
+}
+const cpaFatia = (f: Fatia) => (f.spend == null || f.spend <= 0 ? null : !f.leads ? Infinity : f.spend / f.leads);
+const fmtCpaF = (v: number | null) => (v == null ? "sem gasto" : v === Infinity ? "sem lead" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v));
+const pct = (a: number | null, b: number | null) => (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b) || b === 0 ? null : ((a - b) / b) * 100);
+const fmtPct = (v: number | null) => (v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(0)}%`);
 const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
 function put(url: string, file: Blob, mime: string, apikey: string | null, onProgress: (p: number) => void) {
@@ -66,13 +75,14 @@ export function NovoFeedbackPrint({
   onCreated,
   clienteId,
   enviarAqui = false,
-  leads,
+  comparacao,
 }: {
   onClose: () => void;
   onCreated: (id: string) => void;
   clienteId?: string; // Etapa 291: já abre com o cliente escolhido (atalho do Acompanhamento)
   enviarAqui?: boolean; // revisa e envia aqui mesmo, sem ir pra aba Feedbacks
-  leads?: Array<{ label: string; leads: number | null; cpa: string }>; // Etapa 292: volume de leads (vem do Acompanhamento)
+  // Etapa 294: leads e CPA do período escolhido no quadro × a mesma fatia logo antes (vem do Acompanhamento)
+  comparacao?: { atual: Fatia; anterior: Fatia };
 }) {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [cliente, setCliente] = useState<Cliente | null>(null);
@@ -367,16 +377,38 @@ export function NovoFeedbackPrint({
                     <div className="text-base font-semibold tabular-nums">{cliente.monthly != null ? brl(cliente.monthly) : "—"}</div>
                   </div>
                 </div>
-                {leads?.length ? (
-                  <div className="grid grid-cols-3 gap-2">
-                    {leads.map((x) => (
-                      <div key={x.label} className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
-                        <div className="text-[11px] text-zinc-500">Leads · {x.label}</div>
-                        <div className="text-base font-semibold tabular-nums">{x.leads != null ? new Intl.NumberFormat("pt-BR").format(Math.round(x.leads)) : "—"}</div>
-                        <div className="text-[11px] text-zinc-500 tabular-nums">CPA {x.cpa}</div>
+                {comparacao ? (
+                  (() => {
+                    const { atual, anterior } = comparacao;
+                    const cA = cpaFatia(atual);
+                    const cB = cpaFatia(anterior);
+                    const dL = pct(atual.leads, anterior.leads);
+                    const dC = pct(cA, cB);
+                    const fmtN = (v: number | null) => (v == null ? "—" : new Intl.NumberFormat("pt-BR").format(Math.round(v)));
+                    return (
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
+                          <div className="truncate text-[11px] text-zinc-500">Leads · {atual.label}</div>
+                          <div className="text-base font-semibold tabular-nums">{fmtN(atual.leads)}</div>
+                          <div className="text-[11px] text-zinc-500 tabular-nums">CPA {fmtCpaF(cA)}</div>
+                        </div>
+                        <div className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
+                          <div className="truncate text-[11px] text-zinc-500">Leads · {anterior.label}</div>
+                          <div className="text-base font-semibold tabular-nums">{fmtN(anterior.leads)}</div>
+                          <div className="text-[11px] text-zinc-500 tabular-nums">CPA {fmtCpaF(cB)}</div>
+                        </div>
+                        <div className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
+                          <div className="text-[11px] text-zinc-500">Comparação</div>
+                          <div className={`text-base font-semibold tabular-nums ${dL == null ? "" : dL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                            {fmtPct(dL)} <span className="text-[11px] font-normal text-zinc-500">leads</span>
+                          </div>
+                          <div className={`text-[11px] tabular-nums ${dC == null ? "text-zinc-500" : dC <= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+                            {fmtPct(dC)} CPA
+                          </div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
+                    );
+                  })()
                 ) : null}
               </div>
             ) : (

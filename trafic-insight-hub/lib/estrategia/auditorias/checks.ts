@@ -117,7 +117,7 @@ export async function runExpansaoWhatsapp(
   token: string,
   accounts: Acc[],
   deadline: number,
-  opts: { expansao: boolean; whatsapp: boolean },
+  opts: { expansao: boolean; whatsapp: boolean; full?: boolean },
 ): Promise<CheckResult> {
   const findings: Finding[] = [];
   const errors: string[] = [];
@@ -132,7 +132,9 @@ export async function runExpansaoWhatsapp(
     async (a) => {
       const started = Date.now();
       // Desde a última conferência (com 10 min de folga); conta nunca conferida: últimas 24h.
-      const since = (lastBy.get(a.id) ?? started - 24 * 3600_000) - 10 * 60_000;
+      // Etapa 295: na 1ª rodada do dia (06h) confere TODOS os conjuntos ativos (antes, conjunto errado que ninguém mexeu
+      // nunca era conferido).
+      const since = opts.full ? 0 : (lastBy.get(a.id) ?? started - 24 * 3600_000) - 10 * 60_000;
       const params: Record<string, string> = {
         fields:
           "id,name,status,effective_status,end_time,updated_time,created_time,destination_type,promoted_object,targeting,campaign{name,effective_status},ads.effective_status(['ACTIVE']).limit(1){id}",
@@ -144,7 +146,7 @@ export async function runExpansaoWhatsapp(
         rows = await metaGetAll<AdsetRow>(
           token,
           `/${act(a.id)}/adsets`,
-          { ...params, filtering: JSON.stringify([{ field: "updated_time", operator: "GREATER_THAN", value: Math.floor(since / 1000) }]) },
+          opts.full ? params : { ...params, filtering: JSON.stringify([{ field: "updated_time", operator: "GREATER_THAN", value: Math.floor(since / 1000) }]) },
           3,
         );
       } catch (e) {
@@ -186,9 +188,18 @@ export async function runExpansaoWhatsapp(
           }
         }
 
-        if (opts.whatsapp && a.whatsapp) {
+        if (opts.whatsapp) {
           const num = r.promoted_object?.whatsapp_phone_number;
-          if (num && !sameWhatsapp(num, a.whatsapp)) {
+          // Etapa 295: ficha sem WhatsApp → avisa (antes pulava calado e nunca comparava)
+          if (num && !a.whatsapp) {
+            findings.push({
+              check: "whatsapp",
+              acc: a,
+              line: `Ficha do cliente sem WhatsApp — não deu pra conferir (anúncios usando ${num}). Cadastre o WhatsApp na ficha.`,
+              dedupe: `whatsapp-ficha:${a.id}:${day.slice(0, 7)}`, // 1x por mês por conta
+            });
+          }
+          if (num && a.whatsapp && !sameWhatsapp(num, a.whatsapp)) {
             findings.push({
               check: "whatsapp",
               acc: a,

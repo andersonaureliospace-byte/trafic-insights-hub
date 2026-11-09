@@ -6,6 +6,7 @@ import { usePriorityOptions } from "@/lib/priority-context";
 import { FocoDescricao } from "@/components/foco/foco-descricao";
 import {
   CPA_PERIODS,
+  PREV_LABEL,
   calendarSP,
   closedDaysIn,
   cpaOf,
@@ -606,15 +607,16 @@ export function Acompanhamento({
         <NovoFeedbackPrint
           clienteId={feedbackDe}
           enviarAqui
-          leads={(() => {
+          comparacao={(() => {
+            // período escolhido no quadro × a mesma fatia logo antes (cópia antiga pode não ter: some até Atualizar)
             const n = linhas.find((x) => x.id === feedbackDe)?.nums;
-            if (!n) return undefined;
-            return ([["u7", "últ. 7 dias"], ["sp", "semana passada"], ["m", "este mês"]] as const).map(([k, label]) => ({
-              label,
-              // cópia guardada antiga pode não ter os períodos novos (até clicar em Atualizar)
-              leads: n.periods?.[k]?.results ?? null,
-              cpa: n.periods?.[k] ? fmtCpa(cpaOf(n.periods[k])) : "—",
-            }));
+            const a = n?.periods?.[period];
+            const b = n?.prev?.[period];
+            if (!a || !b) return undefined;
+            return {
+              atual: { label: (CPA_PERIODS.find((p) => p.id === period)?.label ?? period).toLowerCase(), leads: a.results, spend: a.spend },
+              anterior: { label: PREV_LABEL[period], leads: b.results, spend: b.spend },
+            };
           })()}
           onClose={() => {
             setFeedbackDe(null);

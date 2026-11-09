@@ -98,6 +98,7 @@ const GRAVES: Partial<Record<string, string>> = {
   sem_entrega: "Conta sem entrega",
   custo_pausa: "Criativo pausado por custo alto — subir substituto",
   erros: "Erro de veiculação",
+  whatsapp: "WhatsApp do anúncio diferente da ficha",
 };
 export async function tarefasDeAlertas(db: SupabaseClient, userId: string, findings: Finding[], hoje: string): Promise<number> {
   const rows = findings

@@ -166,12 +166,20 @@ export const checkLabel = (id: string) => (id === "custo_pausa" ? "Pausados (cus
 
 // Etapa 284: aviso URGENTE de pagamento / saldo — sai na hora (não espera o resumo). Só o que é novo no dia (a chave
 // "urgente:…:dia" não deixa repetir). Vai pro grupo do Saldo, separado por gestor.
-export async function sendUrgent(db: SupabaseClient, userId: string, cfg: AuditConfig, findings: Finding[]): Promise<{ sent: number; error: string | null }> {
+export async function sendUrgent(
+  db: SupabaseClient,
+  userId: string,
+  cfg: AuditConfig,
+  findings: Finding[],
+  // Etapa 295: também usado pro WhatsApp do anúncio diferente da ficha
+  check: CheckId = "saldo",
+  titulo = "🚨 *URGENTE — pagamento / saldo*",
+): Promise<{ sent: number; error: string | null }> {
   if (findings.length === 0) return { sent: 0, error: null };
-  const g = groupFor(cfg, "saldo");
+  const g = groupFor(cfg, check);
   const rows = findings.map((f) => ({
     user_id: userId,
-    check_id: "saldo",
+    check_id: check,
     ad_account_id: f.acc.id,
     client_name: f.acc.name,
     responsible: f.acc.responsible,
@@ -187,14 +195,14 @@ export async function sendUrgent(db: SupabaseClient, userId: string, cfg: AuditC
     .select("client_name, responsible, line");
   if (error) return { sent: 0, error: `fila de avisos: ${error.message}` };
   const novos = (data ?? []) as Array<{ client_name: string; responsible: string | null; line: string }>;
-  if (novos.length === 0 || !g) return { sent: 0, error: g ? null : "Nenhum grupo escolhido pro Saldo em Automações → Auditorias." };
+  if (novos.length === 0 || !g) return { sent: 0, error: g ? null : `Nenhum grupo escolhido pra "${check}" em Automações → Auditorias.` };
 
   const byResp = new Map<string, typeof novos>();
   for (const n of novos) {
     const r = n.responsible?.trim() || "Sem responsável";
     byResp.set(r, [...(byResp.get(r) ?? []), n]);
   }
-  const out = ["🚨 *URGENTE — pagamento / saldo*"];
+  const out = [titulo];
   for (const r of [...byResp.keys()].sort((a, b) => a.localeCompare(b, "pt-BR"))) {
     out.push("", `👤 *${r.toUpperCase()}*`);
     for (const n of byResp.get(r) ?? []) out.push(`• ${n.client_name} — ${n.line}`);

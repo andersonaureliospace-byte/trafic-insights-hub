@@ -235,7 +235,8 @@ export async function getAccountsDailyCpa(
   days: number,
   includeToday = false,
 ): Promise<Record<string, DailyCpaPoint[]>> {
-  const clampedDays = Math.max(1, Math.min(31, Math.floor(days) || 1));
+  // Etapa 294: até 62 dias (o Tráfego compara este mês com os mesmos dias do mês passado)
+  const clampedDays = Math.max(1, Math.min(62, Math.floor(days) || 1));
   const now = new Date();
   const todayDate = spDate(now);
   const until = spDate(includeToday ? now : new Date(now.getTime() - 86_400_000));
