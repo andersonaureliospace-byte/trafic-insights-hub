@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Btn } from "@/components/estrategia/ui";
 import { CACHE_KEY, loadClientes, readCache, type Cliente, type Linha } from "@/components/estrategia/use-carteira";
 import { useGravador } from "@/components/estrategia/gravador";
+import { ClienteWhatsapp } from "@/components/estrategia/whatsapp-panel";
+import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { CPA_PERIODS, PREV_LABEL, type CpaPeriod } from "@/lib/estrategia/calc";
 
 // Etapa 271: Feedback por print — escolhe o cliente, cola/arrasta o(s) print(s) do resultado, escreve ou fala os pontos
@@ -306,10 +308,17 @@ export function NovoFeedbackPrint({
 
   if (rev) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Revisar e enviar feedback">
+      <div className="fixed inset-0 z-50 flex items-center justify-center gap-3 bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Revisar e enviar feedback">
         <div className="flex max-h-[94vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#121722]">
           <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-white/10">
-            <h2 className="truncate text-base font-semibold">📸 Feedback · {cliente?.name}</h2>
+            <h2 className="truncate text-base font-semibold">
+              📸 Feedback · {cliente?.name}
+              {cliente ? (
+                <a href={adsManagerUrl(cliente.id)} target="_blank" rel="noopener noreferrer" title="Abrir no Gerenciador de Anúncios" className="ml-2 text-xs font-medium text-blue-700 hover:underline dark:text-blue-300">
+                  ↗ Gerenciador
+                </a>
+              ) : null}
+            </h2>
             <button onClick={onClose} disabled={enviando} aria-label="Fechar" className="rounded px-2 text-lg text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5">×</button>
           </div>
           <div className="flex flex-col gap-3 overflow-y-auto p-5">
@@ -367,12 +376,17 @@ export function NovoFeedbackPrint({
             )}
           </div>
         </div>
+        {cliente ? (
+          <aside className="hidden h-[94vh] w-[26rem] shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl lg:flex dark:bg-[#121722]" aria-label="WhatsApp do cliente">
+            <ClienteWhatsapp key={cliente.id} clienteId={cliente.id} clienteNome={cliente.name} />
+          </aside>
+        ) : null}
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Feedback por print">
+    <div className="fixed inset-0 z-50 flex items-center justify-center gap-3 bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Feedback por print">
       <div className="flex max-h-[94vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-[#121722]">
         <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-3 dark:border-white/10">
           <h2 className="text-base font-semibold">📸 Feedback por print</h2>
@@ -386,7 +400,18 @@ export function NovoFeedbackPrint({
             {cliente && !abrirCli ? (
               <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="flex-1 truncate text-sm font-semibold">{cliente.name}</span>
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                    {cliente.name}
+                    <a
+                      href={adsManagerUrl(cliente.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Abrir no Gerenciador de Anúncios"
+                      className="ml-2 rounded border border-zinc-300 px-1.5 py-0.5 text-[11px] font-medium text-blue-700 hover:bg-blue-600/10 dark:border-white/10 dark:text-blue-300"
+                    >
+                      ↗ Gerenciador
+                    </a>
+                  </span>
                   <span className="text-xs text-zinc-500">{cliente.responsible ?? ""}</span>
                   <Btn small onClick={() => setAbrirCli(true)}>Trocar</Btn>
                 </div>
@@ -577,6 +602,11 @@ export function NovoFeedbackPrint({
           <Btn primary onClick={() => void gerar()} disabled={!pode}>{gerando && !semIaRun ? "Gerando…" : "✨ Gerar feedback com IA"}</Btn>
         </div>
       </div>
+      {cliente ? (
+          <aside className="hidden h-[94vh] w-[26rem] shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl lg:flex dark:bg-[#121722]" aria-label="WhatsApp do cliente">
+            <ClienteWhatsapp key={cliente.id} clienteId={cliente.id} clienteNome={cliente.name} />
+          </aside>
+        ) : null}
     </div>
   );
 }

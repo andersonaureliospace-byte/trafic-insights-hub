@@ -208,7 +208,7 @@ export function WhatsappPanel({ onClose, onUnread }: { onClose: () => void; onUn
   );
 }
 
-function ChatView({ chat, title, onBack }: { chat: Chat; title: string; onBack: () => void }) {
+function ChatView({ chat, title, onBack }: { chat: Chat; title: string; onBack?: () => void }) {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -316,9 +316,13 @@ function ChatView({ chat, title, onBack }: { chat: Chat; title: string; onBack: 
   return (
     <>
       <div className="flex items-center gap-2 border-b border-zinc-200 px-2 py-2 dark:border-white/10">
-        <button onClick={onBack} aria-label="Voltar pra lista" className="h-8 w-8 rounded-md text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5">
-          ←
-        </button>
+        {onBack ? (
+          <button onClick={onBack} aria-label="Voltar pra lista" className="h-8 w-8 rounded-md text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5">
+            ←
+          </button>
+        ) : (
+          <span className="pl-1 text-emerald-600">💬</span>
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{title}</p>
           {chat.ad_account_ids.length ? <p className="truncate text-[11px] text-zinc-500">{chat.name}</p> : null}
@@ -607,6 +611,37 @@ function ConfigDialog({ chats, onClose, onSaved }: { chats: Chat[]; onClose: () 
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// Etapa 301: o grupo de WhatsApp de UM cliente (espelhado), pra abrir ao lado da tela de feedback.
+export function ClienteWhatsapp({ clienteId, clienteNome }: { clienteId: string; clienteNome: string }) {
+  const [chat, setChat] = useState<Chat | null | undefined>(undefined);
+  useEffect(() => {
+    const id = clienteId.replace(/^act_/, "");
+    let vivo = true;
+    fetch("/api/wa/chats", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { chats?: Chat[] }) => {
+        if (!vivo) return;
+        setChat((d.chats ?? []).find((c) => (c.ad_account_ids ?? []).some((a) => a.replace(/^act_/, "") === id)) ?? null);
+      })
+      .catch(() => vivo && setChat(null));
+    return () => {
+      vivo = false;
+    };
+  }, [clienteId]);
+  if (chat === undefined) return <p className="p-4 text-center text-xs text-zinc-500">Carregando o WhatsApp…</p>;
+  if (!chat)
+    return (
+      <p className="p-4 text-center text-xs text-zinc-500">
+        Esse cliente não tem grupo no WhatsApp do Hub. Ligue o grupo no painel do WhatsApp (⚙) pra ele aparecer aqui.
+      </p>
+    );
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <ChatView key={chat.chat_jid} chat={chat} title={clienteNome} />
     </div>
   );
 }
