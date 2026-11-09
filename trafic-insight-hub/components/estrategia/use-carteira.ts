@@ -272,7 +272,25 @@ export function useCarteira() {
     }
     // Etapa 257: só busca sozinho na primeira vez neste navegador. Depois disso, a Meta só é consultada no botão
     // "Atualizar" (as auditorias automáticas é que gastam as requisições; a tela não fica atualizando sozinha).
-    if (!c) void load();
+    if (!c) {
+      void load();
+      return;
+    }
+    // Etapa 290: o que vem da ficha do cliente (nome, gestor, prioridade, metas, grupo) é recarregado sempre que a tela
+    // abre — é só o Supabase, nada da Meta. Conta que saiu da carteira some; conta nova entra (sem números até Atualizar).
+    void loadClientes()
+      .then((all) => {
+        const vivos = all.filter((x) => x.selected && x.active && !x.archived);
+        setLinhas((cur) => {
+          if (!cur) return cur;
+          const old = new Map(cur.map((l) => [l.id, l]));
+          return vivos.map((x) => {
+            const o = old.get(x.id);
+            return o ? { ...o, ...x } : ({ ...x, nums: null, offers: null, offersAt: null, flags: null } as Linha);
+          });
+        });
+      })
+      .catch(() => {});
   }, [load]);
 
   const patchLinha = useCallback((id: string, patch: Partial<Linha>) => {
