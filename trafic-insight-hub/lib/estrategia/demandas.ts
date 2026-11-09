@@ -92,6 +92,7 @@ export async function gerarRotinas(db: SupabaseClient, userId: string, from: str
   return n;
 }
 
+const TAREFAS_DE_ALERTA_DESLIGADAS = true;
 // Alertas graves das Auditorias que viram tarefa no dia (1 por conta por tipo por dia).
 const GRAVES: Partial<Record<string, string>> = {
   saldo: "Saldo / pagamento",
@@ -101,6 +102,8 @@ const GRAVES: Partial<Record<string, string>> = {
   whatsapp: "WhatsApp do anúncio diferente da ficha",
 };
 export async function tarefasDeAlertas(db: SupabaseClient, userId: string, findings: Finding[], hoje: string): Promise<number> {
+  // Etapa 299: o quadro Demandas passou a ser só de feedbacks — alerta não vira mais tarefa (o aviso no WhatsApp continua).
+  if (TAREFAS_DE_ALERTA_DESLIGADAS) return 0;
   const rows = findings
     .filter((f) => GRAVES[f.check])
     .map((f) => {

@@ -142,7 +142,7 @@ function EscolherClientes({ clientes, sel, onChange }: { clientes: ClienteUI[]; 
 // ---------- Nova tarefa ----------
 export function NovaTarefa({
   clientes,
-  gestores,
+  gestores: _gestores,
   hoje,
   inicial,
   onClose,
@@ -155,13 +155,14 @@ export function NovaTarefa({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [titulo, setTitulo] = useState("");
+  // Etapa 299: o quadro Demandas é só de feedbacks — toda tarefa nova é um feedback de cliente
+  const [titulo, setTitulo] = useState("Feedback do cliente");
   const [descricao, setDescricao] = useState("");
   const [data, setData] = useState(inicial?.data ?? hoje);
-  const [comCliente, setComCliente] = useState(true);
+  const comCliente = true;
   const [sel, setSel] = useState<Set<string>>(new Set(inicial?.contas ?? []));
-  const [resp, setResp] = useState("");
-  const [feedback, setFeedback] = useState(false);
+  const resp = "";
+  const feedback = true;
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   async function salvar() {
@@ -178,21 +179,21 @@ export function NovaTarefa({
   const pode = titulo.trim() && (!comCliente || sel.size > 0) && !busy;
   return (
     <Modal
-      title="+ Nova tarefa"
+      title="+ Novo feedback"
       onClose={onClose}
       footer={
         <>
           {erro ? <span className="mr-auto text-xs text-red-600">{erro}</span> : null}
           <Btn onClick={onClose}>Cancelar</Btn>
           <Btn primary disabled={!pode} onClick={() => void salvar()}>
-            {busy ? "Criando…" : comCliente && sel.size > 1 ? `Criar ${sel.size} tarefas` : "Criar tarefa"}
+            {busy ? "Criando…" : sel.size > 1 ? `Programar ${sel.size} feedbacks` : "Programar feedback"}
           </Btn>
         </>
       }
     >
       <div className="flex flex-col gap-1">
-        <label className={lbl} htmlFor="nt-titulo">O que fazer</label>
-        <input id="nt-titulo" autoFocus value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex.: Subir criativos novos" className={input} />
+        <label className={lbl} htmlFor="nt-titulo">Título</label>
+        <input id="nt-titulo" value={titulo} onChange={(e) => setTitulo(e.target.value)} className={input} />
       </div>
       <div className="flex flex-col gap-1">
         <label className={lbl} htmlFor="nt-desc">Detalhes (opcional)</label>
@@ -203,26 +204,10 @@ export function NovaTarefa({
           <label className={lbl} htmlFor="nt-data">Dia</label>
           <input id="nt-data" type="date" value={data} onChange={(e) => setData(e.target.value)} className={`${input} w-44`} />
         </div>
-        <label className="flex items-center gap-2 pb-2 text-sm">
-          <input type="checkbox" checked={feedback} onChange={(e) => setFeedback(e.target.checked)} />É um feedback pro cliente
-        </label>
       </div>
       <div className="flex flex-col gap-2">
-        <span className={lbl}>Pra quem</span>
-        <div className="flex gap-2">
-          <button className={chip(comCliente)} onClick={() => setComCliente(true)}>Cliente(s)</button>
-          <button className={chip(!comCliente)} onClick={() => setComCliente(false)}>Sem cliente</button>
-        </div>
-        {comCliente ? (
-          <EscolherClientes clientes={clientes} sel={sel} onChange={setSel} />
-        ) : (
-          <select aria-label="Gestor" value={resp} onChange={(e) => setResp(e.target.value)} className={input}>
-            <option value="">Eu (sem gestor)</option>
-            {gestores.map((g) => (
-              <option key={g} value={g}>{g}</option>
-            ))}
-          </select>
-        )}
+        <span className={lbl}>Cliente(s)</span>
+        <EscolherClientes clientes={clientes} sel={sel} onChange={setSel} />
       </div>
     </Modal>
   );

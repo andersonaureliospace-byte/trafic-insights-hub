@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { calendarSP } from "@/lib/estrategia/calc";
 import { loadCarteira } from "@/lib/estrategia/auditorias/run";
-import { ROTINA_COLS, TAREFA_COLS, addDaysYmd, gerarRotinas, type Rotina, type Tarefa } from "@/lib/estrategia/demandas";
+import { ROTINA_COLS, TAREFA_COLS, addDaysYmd, type Rotina, type Tarefa } from "@/lib/estrategia/demandas";
 import { resolveClientGroup } from "@/lib/feedbacks/core";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
@@ -40,6 +40,7 @@ export async function GET(request: Request) {
         .from("estr_tarefas")
         .select("ad_account_id, data")
         .eq("user_id", user.id)
+        .eq("tipo", "feedback")
         .eq("status", "aberta")
         .lte("data", addDaysYmd(hoje, 6))
         .not("ad_account_id", "is", null);
@@ -57,14 +58,18 @@ export async function GET(request: Request) {
     const from = isYmd(qs.get("from")) ? (qs.get("from") as string) : hoje;
     const to = isYmd(qs.get("to")) ? (qs.get("to") as string) : addDaysYmd(from, 6);
     const carteira = await loadCarteira(supabase, user.id);
+    // Etapa 299: o quadro é só de feedbacks. Rotinas desligadas e tarefas de outro tipo (manual/rotina/alerta) excluídas.
     try {
-      await gerarRotinas(supabase, user.id, from < hoje ? hoje : from, to, carteira);
+      await Promise.all([
+        supabase.from("estr_rotinas").update({ ativa: false }).eq("user_id", user.id).eq("ativa", true),
+        supabase.from("estr_tarefas").update({ status: "excluida", updated_at: new Date().toISOString() }).eq("user_id", user.id).neq("tipo", "feedback").neq("status", "excluida"),
+      ]);
     } catch {
       /* sem tabela ainda: o select abaixo avisa */
     }
     const [noPeriodo, atrasadas, rotinas, gRow, fbAbertos, sensRow] = await Promise.all([
-      supabase.from("estr_tarefas").select(TAREFA_COLS).eq("user_id", user.id).gte("data", from).lte("data", to).neq("status", "excluida").limit(3000),
-      supabase.from("estr_tarefas").select(TAREFA_COLS).eq("user_id", user.id).lt("data", from).eq("status", "aberta").limit(1000),
+      supabase.from("estr_tarefas").select(TAREFA_COLS).eq("user_id", user.id).eq("tipo", "feedback").gte("data", from).lte("data", to).neq("status", "excluida").limit(3000),
+      supabase.from("estr_tarefas").select(TAREFA_COLS).eq("user_id", user.id).eq("tipo", "feedback").lt("data", from).eq("status", "aberta").limit(1000),
       supabase.from("estr_rotinas").select(ROTINA_COLS).eq("user_id", user.id).order("created_at", { ascending: true }),
       supabase.from("user_ui_prefs").select("pref_value").eq("user_id", user.id).eq("pref_key", "gestores").maybeSingle(),
       supabase.from("estr_tarefas").select("ad_account_id").eq("user_id", user.id).eq("tipo", "feedback").eq("status", "aberta"),
@@ -115,7 +120,7 @@ export async function POST(request: Request) {
       const contas = (Array.isArray(body.contas) ? body.contas : []).map((c) => norm(String(c))).filter(Boolean);
       const carteira = contas.length ? await loadCarteira(supabase, user.id) : [];
       const byId = new Map(carteira.map((a) => [a.id, a]));
-      const tipo = action === "feedbacks_programar" ? "feedback" : body.tipo === "feedback" ? "feedback" : "manual";
+      const tipo = "feedback"; // Etapa 299: só feedbacks no quadro
       const base = { user_id: user.id, titulo, descricao: String(body.descricao ?? "").slice(0, 4000), tipo, data, ordem: Date.now() / 1e6 };
       const rows: Array<Record<string, unknown>> = contas.length
         ? contas.map((id) => ({ ...base, ad_account_id: id, client_name: byId.get(id)?.name ?? id, responsavel: byId.get(id)?.responsible ?? null }))

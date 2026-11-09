@@ -362,7 +362,7 @@ export function Acompanhamento({
             <span className="flex items-center gap-2 rounded-lg bg-blue-600/10 px-2 py-1 text-xs">
               <b className="text-blue-700 dark:text-blue-300">{marcadas.size} marcada{marcadas.size === 1 ? "" : "s"}</b>
               <button onClick={() => setAvisar(true)} className="rounded-md bg-blue-600 px-2 py-0.5 font-medium text-white hover:bg-blue-700">📣 Avisar gestores</button>
-              <button onClick={() => setCriarTarefa(true)} className="rounded-md bg-violet-600 px-2 py-0.5 font-medium text-white hover:bg-violet-700">📋 Criar tarefa</button>
+              <button onClick={() => setCriarTarefa(true)} className="rounded-md bg-violet-600 px-2 py-0.5 font-medium text-white hover:bg-violet-700">📋 Programar feedback</button>
               <button onClick={() => setMarcadas(new Set())} className="text-zinc-500 hover:underline">limpar</button>
             </span>
           ) : null}
@@ -457,7 +457,7 @@ export function Acompanhamento({
                     {tarefas[l.id] ? (
                       <Link
                         href={`/estrategia/demandas?cliente=${encodeURIComponent(l.name)}`}
-                        title={`${tarefas[l.id].abertas} tarefa(s) aberta(s)${tarefas[l.id].atrasadas ? `, ${tarefas[l.id].atrasadas} atrasada(s)` : ""} — abrir em Demandas`}
+                        title={`${tarefas[l.id].abertas} feedback(s) programado(s)${tarefas[l.id].atrasadas ? `, ${tarefas[l.id].atrasadas} atrasada(s)` : ""} — abrir em Demandas`}
                         className={`mt-1 mr-1 inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold ${
                           tarefas[l.id].atrasadas ? "bg-amber-500/20 text-amber-800 dark:text-amber-300" : "bg-violet-500/15 text-violet-700 dark:text-violet-300"
                         }`}

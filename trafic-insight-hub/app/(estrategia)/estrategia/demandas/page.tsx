@@ -10,7 +10,6 @@ import {
   NovaTarefa,
   ProgramarFeedbacks,
   ProximoFeedback,
-  RotinasModal,
   TIPO_ICON,
   TIPO_LABEL,
   TarefaModal,
@@ -56,7 +55,6 @@ function Quadro() {
   const [verFeitas, setVerFeitas] = useState(true);
   const [aberta, setAberta] = useState<TarefaUI | null>(null);
   const [nova, setNova] = useState<{ data?: string } | null>(null);
-  const [rotinasOpen, setRotinasOpen] = useState(false);
   const [fbOpen, setFbOpen] = useState(false);
   const [proxFb, setProxFb] = useState<TarefaUI | null>(null);
   const dragId = useRef<string | null>(null);
@@ -171,9 +169,8 @@ function Quadro() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Demandas" sub="Tarefas por dia — rotinas, alertas graves do Acompanhamento e feedbacks">
-        <Btn primary onClick={() => setNova({})}>+ Nova tarefa</Btn>
-        <Btn onClick={() => setRotinasOpen(true)}>🔁 Rotinas{board?.rotinas.length ? ` (${board.rotinas.length})` : ""}</Btn>
+      <PageHeader title="Demandas" sub="Feedbacks dos clientes, por dia">
+        <Btn primary onClick={() => setNova({})}>+ Novo feedback</Btn>
         <Btn onClick={() => setFbOpen(true)}>
           💬 Feedbacks{board?.semFeedback.length ? <span className="ml-1 rounded-full bg-amber-500/20 px-1.5 text-[11px] font-bold text-amber-700 dark:text-amber-300">{board.semFeedback.length} sem data</span> : null}
         </Btn>
@@ -225,7 +222,7 @@ function Quadro() {
                 <span className={`text-sm font-semibold ${isHoje ? "text-blue-700 dark:text-blue-300" : ""}`}>{nomeDia(d)}</span>
                 <span className="text-xs text-zinc-500">{fmtDia(d)}</span>
                 <span className="ml-auto rounded-md bg-zinc-100 px-1.5 text-xs font-semibold tabular-nums dark:bg-white/10">{abertas.length}</span>
-                <button onClick={() => setNova({ data: d })} title="Nova tarefa nesse dia" aria-label={`Nova tarefa em ${fmtDia(d)}`} className="rounded px-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5">
+                <button onClick={() => setNova({ data: d })} title="Novo feedback nesse dia" aria-label={`Novo feedback em ${fmtDia(d)}`} className="rounded px-1 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-white/5">
                   +
                 </button>
               </header>
@@ -337,9 +334,6 @@ function Quadro() {
             recarregar();
           }}
         />
-      ) : null}
-      {rotinasOpen && board ? (
-        <RotinasModal rotinas={board.rotinas} clientes={board.clientes} gestores={board.gestores} onClose={() => setRotinasOpen(false)} onChanged={recarregar} />
       ) : null}
       {fbOpen && board ? (
         <ProgramarFeedbacks
