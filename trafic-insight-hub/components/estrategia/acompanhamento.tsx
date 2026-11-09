@@ -161,34 +161,37 @@ function Otimizacao({ acts, failed, now }: { acts: ActivityItem[] | undefined; f
 }
 
 // Balão da descrição (o mesmo quadro do Foco), ao lado do botão.
-// Etapa 296: o 📝 abre uma caixa grande com a ficha do cliente (editar tudo aqui mesmo) e a descrição do Asana ao lado.
-function FichaModal({ l, onClose, onSaved }: { l: Linha; onClose: () => void; onSaved?: () => void }) {
+// Etapa 296: o 📝 abre a ficha do cliente num painel lateral à direita (como em Clientes), com a descrição do Asana
+// embaixo. O quadro continua visível e clicável; clicar no 📝 de outra linha troca o cliente do painel.
+function FichaLateral({ l, onClose, onSaved }: { l: Linha; onClose: () => void; onSaved?: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
   return (
-    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/50 p-3 sm:p-6" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-label={`Ficha de ${l.name}`} className="w-full max-w-5xl rounded-xl border border-zinc-300 bg-white shadow-2xl dark:border-white/15 dark:bg-[#10141c]">
-        <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3 dark:border-white/10">
-          <div>
-            <div className="text-base font-semibold">{l.name}</div>
-            <div className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Ficha do cliente</div>
-          </div>
-          <button onClick={onClose} aria-label="Fechar" className="text-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">✕</button>
+    <aside
+      role="dialog"
+      aria-label={`Ficha de ${l.name}`}
+      className="fixed top-12 right-0 bottom-0 z-40 flex w-full max-w-[24rem] flex-col border-l border-zinc-200 bg-white shadow-2xl dark:border-white/10 dark:bg-[#10141c]"
+    >
+      <div className="flex items-start justify-between gap-2 border-b border-zinc-200 px-5 py-3 dark:border-white/10">
+        <div className="min-w-0">
+          <div className="truncate text-lg font-semibold">{l.name}</div>
+          <div className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Ficha do cliente</div>
         </div>
-        <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <FichaCliente id={l.id} titulo={false} descricao={false} onSaved={onSaved} onArchived={() => { onSaved?.(); onClose(); }} />
-          <div className="flex min-h-[22rem] flex-col">
-            <div className="mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Descrição no Asana</div>
-            <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-zinc-200 dark:border-white/10">
-              <FocoDescricao accountId={l.id} />
-            </div>
+        <button onClick={onClose} aria-label="Fechar" className="text-lg text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200">✕</button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-5">
+        <FichaCliente key={l.id} id={l.id} titulo={false} descricao={false} onSaved={onSaved} onArchived={() => { onSaved?.(); onClose(); }} />
+        <div className="mt-5 border-t border-zinc-200 pt-4 dark:border-white/10">
+          <div className="mb-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Descrição no Asana</div>
+          <div className="h-72 overflow-hidden rounded-lg border border-zinc-200 dark:border-white/10">
+            <FocoDescricao key={l.id} accountId={l.id} />
           </div>
         </div>
       </div>
-    </div>
+    </aside>
   );
 }
 
@@ -308,7 +311,7 @@ export function Acompanhamento({
   const th = "px-2 py-2.5 font-semibold";
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className={`flex flex-col gap-3 ${desc ? "lg:pr-[24.5rem]" : ""}`}>
       <Card className="overflow-visible">
         <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-4 py-3 dark:border-white/10">
           <label htmlFor="estr-period" className="text-xs text-zinc-500">Período</label>
@@ -567,7 +570,7 @@ export function Acompanhamento({
                       💬
                     </button>
                     <button
-                      onClick={() => setDesc({ l })}
+                      onClick={() => setDesc((cur) => (cur?.l.id === l.id ? null : { l }))}
                       title="Ficha do cliente + descrição do Asana"
                       aria-label={`Descrição de ${l.name}`}
                       className={`h-7 rounded-lg border px-2 text-xs font-medium transition-colors ${
@@ -639,7 +642,7 @@ export function Acompanhamento({
           onClose={() => setAvisar(false)}
         />
       ) : null}
-      {desc ? <FichaModal l={desc.l} onClose={() => setDesc(null)} onSaved={onClienteSalvo} /> : null}
+      {desc ? <FichaLateral l={desc.l} onClose={() => setDesc(null)} onSaved={onClienteSalvo} /> : null}
     </div>
   );
 }
