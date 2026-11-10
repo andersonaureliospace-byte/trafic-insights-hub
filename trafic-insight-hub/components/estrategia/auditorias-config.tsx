@@ -9,6 +9,7 @@ import {
   estimatedCallsByHour,
   groupFor,
   isCheckOn,
+  isDireto,
   minuteToHHMM,
   normalizeConfig,
   type AuditConfig,
@@ -176,7 +177,7 @@ export function AuditoriasConfig() {
     }
   }
 
-  const setCheck = (id: CheckId, patch: { on?: boolean; group?: GroupRef | null }) =>
+  const setCheck = (id: CheckId, patch: { on?: boolean; group?: GroupRef | null; direto?: boolean }) =>
     cfg && void save({ ...cfg, checks: { ...cfg.checks, [id]: { ...cfg.checks[id], ...patch } } });
 
   async function digestNow() {
@@ -240,6 +241,11 @@ export function AuditoriasConfig() {
                     {c.when} · {c.calls}
                   </div>
                 </div>
+                {/* Etapa 301: manda no WhatsApp pessoal do gestor da conta (cadastro em Gestores); sem número cai no grupo. */}
+                <label className="mt-1 inline-flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-zinc-600 dark:text-zinc-300" title="Manda no WhatsApp do gestor responsável (cadastrado em Gestores). Quem não tem número continua recebendo no grupo.">
+                  <input type="checkbox" checked={isDireto(cfg, c.id)} disabled={saving} onChange={(e) => setCheck(c.id, { direto: e.target.checked })} />
+                  Direto pro gestor
+                </label>
                 <GroupPicker
                   value={cfg.checks[c.id]?.group}
                   groups={groups}

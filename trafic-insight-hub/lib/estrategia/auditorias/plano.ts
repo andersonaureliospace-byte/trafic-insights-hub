@@ -10,7 +10,7 @@ import { readStoredDaysMany } from "@/lib/meta/daily-store";
 import { calendarSP, ritmoOf } from "@/lib/estrategia/calc";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
-import { groupFor, type AuditConfig } from "./config";
+import { groupFor, isDireto, type AuditConfig } from "./config";
 import { ROBO, gestorHeader, loadGestorNumbers } from "./gestores";
 import type { Acc } from "./checks";
 
@@ -100,7 +100,7 @@ export async function runPlano(db: SupabaseClient, userId: string, cfg: AuditCon
   const erros: string[] = [];
   const paraGrupo: string[] = [];
   for (const [g, lista] of porGestor) {
-    const num = g === "Sem responsável" ? "" : (nums.get(g.trim().toLowerCase()) ?? "");
+    const num = g === "Sem responsável" || !isDireto(cfg, "plano") ? "" : (nums.get(g.trim().toLowerCase()) ?? "");
     if (!num) {
       paraGrupo.push(g);
       continue;

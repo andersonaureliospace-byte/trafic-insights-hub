@@ -11,7 +11,7 @@ import { memoMeta, tokenTag } from "@/lib/meta/memo";
 import { isRelevantActivity } from "@/lib/estrategia/activities";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
-import { groupFor, OTIM_PRAZO, type AuditConfig, type OtimFaixa } from "./config";
+import { groupFor, isDireto, OTIM_PRAZO, type AuditConfig, type OtimFaixa } from "./config";
 import type { Acc, CheckResult } from "./checks";
 import { ROBO, gestorHeader, loadGestorNumbers } from "./gestores";
 
@@ -95,14 +95,32 @@ export async function runOtimizacao(
       byResp.set(r, [...(byResp.get(r) ?? []), a]);
     }
     const nums = await loadGestorNumbers(db, userId);
+    const cab = `${ROBO} ⏰ *Prazo de otimização — ${p.label} até ${p.hora}*`;
+    // Etapa 301: "direto pro gestor" → cada um recebe só as contas dele no privado; quem não tem número fica no grupo.
+    if (isDireto(cfg, "otimizacao")) {
+      const inst = await requireWhatsappInstance(db as never, userId);
+      for (const [r, list] of [...byResp.entries()]) {
+        const num = nums.get(r.trim().toLowerCase());
+        if (!num) continue;
+        try {
+          await sendText({ api_url: inst.api_url, token: inst.token }, num, [cab, "", ...list.map((a) => `• ${a.name}`).sort((x, y) => x.localeCompare(y, "pt-BR"))].join("\n"));
+          byResp.delete(r);
+        } catch (e) {
+          errors.push(`Privado ${r}: ${(e as Error).message.slice(0, 150)}`);
+        }
+      }
+    }
+    const restantes = [...byResp.values()].flat();
     const mentions: string[] = [];
-    const lines = [`${ROBO} ⏰ *Prazo de otimização — ${p.label} até ${p.hora}*`, `${pendentes.length} de ${alvo.length} ${alvo.length === 1 ? "conta" : "contas"} sem otimização hoje${lot.total > 1 ? ` (parte ${lot.index + 1}/${lot.total})` : ""}`];
+    const lines = restantes.length === 0 ? [] : [cab, `${restantes.length} de ${alvo.length} ${alvo.length === 1 ? "conta" : "contas"} sem otimização hoje${lot.total > 1 ? ` (parte ${lot.index + 1}/${lot.total})` : ""}`];
     for (const [r, list] of [...byResp.entries()].sort((x, y) => x[0].localeCompare(y[0], "pt-BR"))) {
       lines.push("", gestorHeader(r, nums, mentions));
       for (const a of list.sort((x, y) => x.name.localeCompare(y.name, "pt-BR"))) lines.push(`• ${a.name}`);
     }
     const to = groupFor(cfg, "otimizacao")?.id;
-    if (!to) errors.push("Sem grupo pro Prazo de otimização (Automações → Auditorias).");
+    if (lines.length === 0) {
+      /* tudo foi no privado */
+    } else if (!to) errors.push("Sem grupo pro Prazo de otimização (Automações → Auditorias).");
     else {
       const inst = await requireWhatsappInstance(db as never, userId);
       await sendText({ api_url: inst.api_url, token: inst.token }, to, lines.join("\n"), { mentions });

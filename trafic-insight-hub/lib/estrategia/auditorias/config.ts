@@ -229,7 +229,8 @@ export interface GroupRef {
 }
 
 export interface AuditConfig {
-  checks: Partial<Record<CheckId, { on?: boolean; group?: GroupRef | null }>>;
+  // Etapa 301: direto = manda no WhatsApp pessoal do gestor da conta (Gestores); gestor sem número cai no grupo.
+  checks: Partial<Record<CheckId, { on?: boolean; group?: GroupRef | null; direto?: boolean }>>;
   defaultGroup: GroupRef | null; // grupo padrão de quem não tem grupo próprio
   digestTimes: string[]; // "HH:MM" (múltiplos de 15 min)
   myWhatsapp?: string | null; // Etapa 261: seu WhatsApp (só números com DDD) — o Prazo de otimização vai direto pra cá
@@ -250,6 +251,8 @@ export function normalizeConfig(raw: unknown): AuditConfig {
 
 export const isCheckOn = (cfg: AuditConfig, id: CheckId) => cfg.checks[id]?.on !== false; // ligada por padrão
 export const groupFor = (cfg: AuditConfig, id: CheckId): GroupRef | null => cfg.checks[id]?.group ?? cfg.defaultGroup;
+// O plano de ação já nasceu indo pro privado; as demais vão pro grupo até você trocar.
+export const isDireto = (cfg: AuditConfig, id: CheckId): boolean => cfg.checks[id]?.direto ?? id === "plano";
 
 // Hub operacional em standby (Etapa 257): telas antigas redirecionam pro estratégico e as automações antigas ficam
 // pausadas (menos as que alimentam o Hub). Pra reativar, troque pra false.

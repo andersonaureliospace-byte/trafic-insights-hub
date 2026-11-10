@@ -4,7 +4,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
-import { CHECK_BY_ID, groupFor, type AuditConfig, type CheckId } from "./config";
+import { CHECK_BY_ID, groupFor, isDireto, type AuditConfig, type CheckId } from "./config";
 import { ROBO, gestorHeader, loadGestorNumbers } from "./gestores";
 import type { Finding } from "./checks";
 
@@ -56,7 +56,7 @@ interface ItemRow {
   created_at: string;
 }
 
-export function buildDigest(items: ItemRow[], nums: Map<string, string> = new Map()): { text: string; mentions: string[] } {
+export function buildDigest(items: ItemRow[], nums: Map<string, string> = new Map(), privado = false): { text: string; mentions: string[] } {
   // Mesmo tipo + mesma conta + mesma linha repetida (ex.: saldo em duas rodadas antes do resumo): fica só a mais nova.
   const seen = new Set<string>();
   const uniq = [...items]
@@ -84,7 +84,8 @@ export function buildDigest(items: ItemRow[], nums: Map<string, string> = new Ma
   const out: string[] = [`${ROBO} *Auditoria*`];
   for (const r of resps) {
     const list = byResp.get(r) ?? [];
-    out.push("", gestorHeader(r, nums, mentions));
+    out.push("");
+    if (!privado) out.push(gestorHeader(r, nums, mentions));
     for (const s of SECTIONS) {
       const sec = list.filter((i) => i.check_id === s.id);
       if (sec.length === 0) continue;
@@ -135,25 +136,43 @@ export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditC
     const g = groupFor(cfg, (i.check_id === "custo_pausa" ? "custo" : i.check_id) as CheckId);
     return { ...i, group_id: g?.id ?? i.group_id, group_name: g?.name ?? i.group_name };
   });
-  const noGroup = resolved.filter((i) => !i.group_id).length;
-  const byGroup = new Map<string, ItemRow[]>();
-  for (const i of resolved) if (i.group_id) byGroup.set(i.group_id, [...(byGroup.get(i.group_id) ?? []), i]);
-  if (byGroup.size === 0) return { groups: 0, items: 0, noGroup, error: noGroup ? "Nenhum grupo escolhido em Automações → Auditorias." : null };
-
+  const nums = await loadGestorNumbers(db, userId);
   const inst = await requireWhatsappInstance(db as never, userId);
   const creds = { api_url: inst.api_url, token: inst.token };
-  const nums = await loadGestorNumbers(db, userId);
   let sentItems = 0;
   let lastError: string | null = null;
+  const marcar = async (ids: string[]) => {
+    const now = new Date().toISOString();
+    for (let k = 0; k < ids.length; k += 200) await db.from("estr_digest_items").update({ sent_at: now }).in("id", ids.slice(k, k + 200));
+  };
+
+  // Etapa 301: automações marcadas "direto pro gestor" vão no WhatsApp pessoal dele (gestor sem número segue pro grupo).
+  const restantes: typeof resolved = [];
+  const porNumero = new Map<string, ItemRow[]>();
+  for (const i of resolved) {
+    const num = nums.get((i.responsible ?? "").trim().toLowerCase());
+    if (num && isDireto(cfg, (i.check_id === "custo_pausa" ? "custo" : i.check_id) as CheckId)) porNumero.set(num, [...(porNumero.get(num) ?? []), i]);
+    else restantes.push(i);
+  }
+  for (const [num, list] of porNumero) {
+    try {
+      for (const part of chunks(buildDigest(list, nums, true).text)) await sendText(creds, num, part);
+      await marcar(list.map((i) => i.id));
+      sentItems += list.length;
+    } catch (e) {
+      lastError = `${list[0]?.responsible ?? num}: ${(e as Error).message.slice(0, 200)}`;
+    }
+  }
+
+  const noGroup = restantes.filter((i) => !i.group_id).length;
+  const byGroup = new Map<string, ItemRow[]>();
+  for (const i of restantes) if (i.group_id) byGroup.set(i.group_id, [...(byGroup.get(i.group_id) ?? []), i]);
+  if (byGroup.size === 0) return { groups: porNumero.size, items: sentItems, noGroup, error: lastError ?? (noGroup ? "Nenhum grupo escolhido em Automações → Auditorias." : null) };
   for (const [groupId, list] of byGroup) {
     try {
       const d = buildDigest(list, nums);
       for (const part of chunks(d.text)) await sendText(creds, groupId, part, { mentions: d.mentions });
-      const now = new Date().toISOString();
-      const ids = list.map((i) => i.id);
-      for (let k = 0; k < ids.length; k += 200) {
-        await db.from("estr_digest_items").update({ sent_at: now }).in("id", ids.slice(k, k + 200));
-      }
+      await marcar(list.map((i) => i.id));
       sentItems += list.length;
     } catch (e) {
       lastError = `${list[0]?.group_name ?? groupId}: ${(e as Error).message.slice(0, 200)}`;
@@ -161,7 +180,7 @@ export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditC
   }
   // Limpa o que já foi enviado há mais de 15 dias (as chaves de "1x por dia" só precisam de 1 dia).
   await db.from("estr_digest_items").delete().eq("user_id", userId).lt("sent_at", new Date(Date.now() - 15 * 86_400_000).toISOString());
-  return { groups: byGroup.size, items: sentItems, noGroup, error: lastError };
+  return { groups: byGroup.size + porNumero.size, items: sentItems, noGroup, error: lastError };
 }
 
 export const checkLabel = (id: string) => (id === "custo_pausa" ? "Pausados (custo 3x)" : (CHECK_BY_ID[id as CheckId]?.name ?? id));
@@ -180,6 +199,9 @@ export async function sendUrgent(
 ): Promise<{ sent: number; error: string | null }> {
   if (findings.length === 0) return { sent: 0, error: null };
   const g = groupFor(cfg, check);
+  const nums = await loadGestorNumbers(db, userId);
+  const direto = isDireto(cfg, check);
+  const temNumero = (r: string | null) => direto && nums.has((r ?? "").trim().toLowerCase());
   const rows = findings.map((f) => ({
     user_id: userId,
     check_id: check,
@@ -190,7 +212,7 @@ export async function sendUrgent(
     dedupe_key: f.dedupe ?? null,
     group_id: g?.id ?? null,
     group_name: g?.name ?? null,
-    sent_at: g ? new Date().toISOString() : null, // já sai agora; sem grupo fica na fila (aparece no resumo/tela)
+    sent_at: g || temNumero(f.acc.responsible) ? new Date().toISOString() : null, // já sai agora; sem destino fica na fila
   }));
   const { data, error } = await db
     .from("estr_digest_items")
@@ -198,25 +220,47 @@ export async function sendUrgent(
     .select("client_name, responsible, line");
   if (error) return { sent: 0, error: `fila de avisos: ${error.message}` };
   const novos = (data ?? []) as Array<{ client_name: string; responsible: string | null; line: string }>;
-  if (novos.length === 0 || !g) return { sent: 0, error: g ? null : `Nenhum grupo escolhido pra "${check}" em Automações → Auditorias.` };
+  if (novos.length === 0) return { sent: 0, error: null };
+  const cab = titulo.startsWith(ROBO) ? titulo : `${ROBO} ${titulo}`;
+  const inst0 = await requireWhatsappInstance(db as never, userId);
+  const creds0 = { api_url: inst0.api_url, token: inst0.token };
+  let enviados = 0;
+  let erro: string | null = null;
+
+  // Etapa 301: direto pro gestor (quem tem número cadastrado); o resto vai pro grupo.
+  const privados = new Map<string, typeof novos>();
+  const doGrupo: typeof novos = [];
+  for (const n of novos) {
+    const num = temNumero(n.responsible) ? (nums.get((n.responsible ?? "").trim().toLowerCase()) as string) : "";
+    if (num) privados.set(num, [...(privados.get(num) ?? []), n]);
+    else doGrupo.push(n);
+  }
+  for (const [num, list] of privados) {
+    try {
+      for (const part of chunks([cab, "", ...list.map((n) => `• ${n.client_name} — ${n.line}`)].join("\n"))) await sendText(creds0, num, part);
+      enviados += list.length;
+    } catch (e) {
+      erro = (e as Error).message.slice(0, 200);
+    }
+  }
+  if (doGrupo.length === 0) return { sent: enviados, error: erro };
+  if (!g) return { sent: enviados, error: `Nenhum grupo escolhido pra "${check}" em Automações → Auditorias.` };
 
   const byResp = new Map<string, typeof novos>();
-  for (const n of novos) {
+  for (const n of doGrupo) {
     const r = n.responsible?.trim() || "Sem responsável";
     byResp.set(r, [...(byResp.get(r) ?? []), n]);
   }
-  const nums = await loadGestorNumbers(db, userId);
   const mentions: string[] = [];
-  const out = [titulo.startsWith(ROBO) ? titulo : `${ROBO} ${titulo}`];
+  const out = [cab];
   for (const r of [...byResp.keys()].sort((a, b) => a.localeCompare(b, "pt-BR"))) {
     out.push("", gestorHeader(r, nums, mentions));
     for (const n of byResp.get(r) ?? []) out.push(`• ${n.client_name} — ${n.line}`);
   }
   try {
-    const inst = await requireWhatsappInstance(db as never, userId);
-    for (const part of chunks(out.join("\n"))) await sendText({ api_url: inst.api_url, token: inst.token }, g.id, part, { mentions });
-    return { sent: novos.length, error: null };
+    for (const part of chunks(out.join("\n"))) await sendText(creds0, g.id, part, { mentions });
+    return { sent: enviados + doGrupo.length, error: erro };
   } catch (e) {
-    return { sent: 0, error: (e as Error).message.slice(0, 200) };
+    return { sent: enviados, error: (e as Error).message.slice(0, 200) };
   }
 }
