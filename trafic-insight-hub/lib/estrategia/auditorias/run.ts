@@ -6,7 +6,6 @@ import { getUserMetaToken } from "@/lib/current-user";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 import {
   AUDIT_PREF_KEY,
-  hhmmToMinute,
   isCheckOn,
   jobsAt,
   minuteToHHMM,
@@ -131,6 +130,8 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
             break;
           case "custo":
             res = await runCustoAlto(db, userId, t, lot, deadline);
+            // Etapa 300: aviso de custo 2x desligado por enquanto — só as pausas (3x) seguem avisando.
+            res = { ...res, findings: res.findings.filter((f) => f.check !== "custo") };
             break;
           case "cpa_dia":
             res = await runCpaDia(t, lot, deadline, j.variant === "evening" ? "evening" : "midday");
@@ -191,8 +192,9 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
     }
   }
 
-  const isDigestTime = cfg.digestTimes.some((t) => hhmmToMinute(t) === minute);
-  if (isDigestTime || opts.forceDigest) {
+  // Etapa 300: não acumula mais — o que entrou na fila nesta batida já sai agora (sendDigest não faz nada se a fila
+  // estiver vazia). Os horários de resumo da tela deixaram de ser usados.
+  {
     try {
       report.digest = await sendDigest(db, userId, cfg, slot);
     } catch (e) {

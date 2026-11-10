@@ -13,6 +13,7 @@ import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { groupFor, OTIM_PRAZO, type AuditConfig, type OtimFaixa } from "./config";
 import type { Acc, CheckResult } from "./checks";
+import { ROBO, gestorHeader, loadGestorNumbers } from "./gestores";
 
 const act = (id: string) => (id.startsWith("act_") ? id : `act_${id}`);
 
@@ -93,16 +94,18 @@ export async function runOtimizacao(
       const r = a.responsible || "Sem responsável";
       byResp.set(r, [...(byResp.get(r) ?? []), a]);
     }
-    const lines = [`⏰ *Prazo de otimização — ${p.label} até ${p.hora}*`, `${pendentes.length} de ${alvo.length} ${alvo.length === 1 ? "conta" : "contas"} sem otimização hoje${lot.total > 1 ? ` (parte ${lot.index + 1}/${lot.total})` : ""}`];
+    const nums = await loadGestorNumbers(db, userId);
+    const mentions: string[] = [];
+    const lines = [`${ROBO} ⏰ *Prazo de otimização — ${p.label} até ${p.hora}*`, `${pendentes.length} de ${alvo.length} ${alvo.length === 1 ? "conta" : "contas"} sem otimização hoje${lot.total > 1 ? ` (parte ${lot.index + 1}/${lot.total})` : ""}`];
     for (const [r, list] of [...byResp.entries()].sort((x, y) => x[0].localeCompare(y[0], "pt-BR"))) {
-      lines.push("", `👤 *${r.toUpperCase()}*`);
+      lines.push("", gestorHeader(r, nums, mentions));
       for (const a of list.sort((x, y) => x.name.localeCompare(y.name, "pt-BR"))) lines.push(`• ${a.name}`);
     }
     const to = groupFor(cfg, "otimizacao")?.id;
     if (!to) errors.push("Sem grupo pro Prazo de otimização (Automações → Auditorias).");
     else {
       const inst = await requireWhatsappInstance(db as never, userId);
-      await sendText({ api_url: inst.api_url, token: inst.token }, to, lines.join("\n"));
+      await sendText({ api_url: inst.api_url, token: inst.token }, to, lines.join("\n"), { mentions });
     }
   }
   return { findings: [], calls, skipped, errors, count: pendentes.length, checked: alvo.length };

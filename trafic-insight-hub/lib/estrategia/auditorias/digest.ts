@@ -1,10 +1,11 @@
-// Etapa 257: fila de avisos das Auditorias + resumo. Nada sai na hora: cada achado entra na fila e, nos horários de
-// resumo, vai UMA mensagem por grupo, separada por gestor (responsável da conta) e, dentro de cada gestor, por tipo.
+// Etapa 257: fila de avisos das Auditorias. Etapa 300: não acumula mais pro resumo — ao fim de cada batida (15 min)
+// o que entrou na fila sai na hora, uma mensagem por grupo, separada por gestor (marcado no grupo) e por tipo.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { CHECK_BY_ID, groupFor, type AuditConfig, type CheckId } from "./config";
+import { ROBO, gestorHeader, loadGestorNumbers } from "./gestores";
 import type { Finding } from "./checks";
 
 // Ordem e título de cada seção dentro do gestor.
@@ -14,7 +15,6 @@ const SECTIONS: Array<{ id: CheckId | "custo_pausa"; title: string }> = [
   { id: "sem_entrega", title: "⛔ Sem entrega" },
   { id: "erros", title: "❌ Erros de veiculação" },
   { id: "cpa_dia", title: "🔴 CPA alto hoje" },
-  { id: "custo", title: "⚠️ Custo alto (acima de 2x o ideal)" },
   { id: "whatsapp", title: "💬 WhatsApp diferente da ficha" },
   { id: "expansao", title: "📍 Localização corrigida" },
   { id: "verba_diaria", title: "📉 Investimento diário baixo" },
@@ -56,7 +56,7 @@ interface ItemRow {
   created_at: string;
 }
 
-export function buildDigest(items: ItemRow[], slot: string): string {
+export function buildDigest(items: ItemRow[], nums: Map<string, string> = new Map()): { text: string; mentions: string[] } {
   // Mesmo tipo + mesma conta + mesma linha repetida (ex.: saldo em duas rodadas antes do resumo): fica só a mais nova.
   const seen = new Set<string>();
   const uniq = [...items]
@@ -80,10 +80,11 @@ export function buildDigest(items: ItemRow[], slot: string): string {
   }
   const resps = [...byResp.keys()].sort((a, b) => (a === "Sem responsável" ? 1 : b === "Sem responsável" ? -1 : a.localeCompare(b, "pt-BR")));
 
-  const out: string[] = [`📋 *Auditorias — resumo das ${slot.replace(":", "h")}*`, `${uniq.length} ${uniq.length === 1 ? "item" : "itens"}`];
+  const mentions: string[] = [];
+  const out: string[] = [`${ROBO} *Auditoria*`];
   for (const r of resps) {
     const list = byResp.get(r) ?? [];
-    out.push("", `👤 *${r.toUpperCase()}* (${list.length})`);
+    out.push("", gestorHeader(r, nums, mentions));
     for (const s of SECTIONS) {
       const sec = list.filter((i) => i.check_id === s.id);
       if (sec.length === 0) continue;
@@ -91,7 +92,7 @@ export function buildDigest(items: ItemRow[], slot: string): string {
       for (const i of sec.sort((a, b) => a.client_name.localeCompare(b.client_name, "pt-BR"))) out.push(`• ${i.client_name} — ${i.line}`);
     }
   }
-  return out.join("\n");
+  return { text: out.join("\n"), mentions };
 }
 
 // Quebra em partes de até ~3.800 caracteres (entre linhas), só se passar do tamanho de uma mensagem.
@@ -117,7 +118,7 @@ export interface DigestResult {
 }
 
 // Manda tudo que está na fila (um resumo por grupo). Itens sem grupo configurado ficam na fila e aparecem na tela.
-export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditConfig, slot: string): Promise<DigestResult> {
+export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditConfig, _slot?: string): Promise<DigestResult> {
   const { data, error } = await db
     .from("estr_digest_items")
     .select("id, check_id, ad_account_id, client_name, responsible, line, group_id, group_name, created_at")
@@ -141,11 +142,13 @@ export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditC
 
   const inst = await requireWhatsappInstance(db as never, userId);
   const creds = { api_url: inst.api_url, token: inst.token };
+  const nums = await loadGestorNumbers(db, userId);
   let sentItems = 0;
   let lastError: string | null = null;
   for (const [groupId, list] of byGroup) {
     try {
-      for (const part of chunks(buildDigest(list, slot))) await sendText(creds, groupId, part);
+      const d = buildDigest(list, nums);
+      for (const part of chunks(d.text)) await sendText(creds, groupId, part, { mentions: d.mentions });
       const now = new Date().toISOString();
       const ids = list.map((i) => i.id);
       for (let k = 0; k < ids.length; k += 200) {
@@ -173,7 +176,7 @@ export async function sendUrgent(
   findings: Finding[],
   // Etapa 295: também usado pro WhatsApp do anúncio diferente da ficha
   check: CheckId = "saldo",
-  titulo = "🚨 *URGENTE — pagamento / saldo*",
+  titulo = `${ROBO} 🚨 *URGENTE — pagamento / saldo*`,
 ): Promise<{ sent: number; error: string | null }> {
   if (findings.length === 0) return { sent: 0, error: null };
   const g = groupFor(cfg, check);
@@ -202,14 +205,16 @@ export async function sendUrgent(
     const r = n.responsible?.trim() || "Sem responsável";
     byResp.set(r, [...(byResp.get(r) ?? []), n]);
   }
-  const out = [titulo];
+  const nums = await loadGestorNumbers(db, userId);
+  const mentions: string[] = [];
+  const out = [titulo.startsWith(ROBO) ? titulo : `${ROBO} ${titulo}`];
   for (const r of [...byResp.keys()].sort((a, b) => a.localeCompare(b, "pt-BR"))) {
-    out.push("", `👤 *${r.toUpperCase()}*`);
+    out.push("", gestorHeader(r, nums, mentions));
     for (const n of byResp.get(r) ?? []) out.push(`• ${n.client_name} — ${n.line}`);
   }
   try {
     const inst = await requireWhatsappInstance(db as never, userId);
-    for (const part of chunks(out.join("\n"))) await sendText({ api_url: inst.api_url, token: inst.token }, g.id, part);
+    for (const part of chunks(out.join("\n"))) await sendText({ api_url: inst.api_url, token: inst.token }, g.id, part, { mentions });
     return { sent: novos.length, error: null };
   } catch (e) {
     return { sent: 0, error: (e as Error).message.slice(0, 200) };

@@ -67,10 +67,12 @@ export function extractConnect(json: unknown): WhatsappConnectResult {
   };
 }
 
-export async function sendText(creds: WhatsappCreds, groupId: string, text: string): Promise<void> {
+// `mentions`: números (com 55) marcados na mensagem — o texto também precisa ter "@<número>" pra aparecer marcado.
+export async function sendText(creds: WhatsappCreds, groupId: string, text: string, opts: { mentions?: string[] } = {}): Promise<void> {
+  const mentions = [...new Set((opts.mentions ?? []).map((m) => m.replace(/\D/g, "")).filter(Boolean))];
   await waFetch(creds, "/send/text", {
     method: "POST",
-    body: JSON.stringify({ number: groupId, text }),
+    body: JSON.stringify(mentions.length ? { number: groupId, text, mentions: mentions.join(",") } : { number: groupId, text }),
   });
 }
 
