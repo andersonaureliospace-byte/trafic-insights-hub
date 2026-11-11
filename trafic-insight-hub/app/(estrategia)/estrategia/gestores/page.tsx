@@ -5,6 +5,7 @@ import { PageHeader, useEstr, type Gestor } from "@/components/estrategia/shell"
 import { loadClientes, type Cliente } from "@/components/estrategia/use-carteira";
 import { Btn, Card, Pill, fmtBRL } from "@/components/estrategia/ui";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
+import { GestorErros } from "@/components/estrategia/gestor-erros";
 
 // Etapa 239: Configurações → Gestores. Cadastro (nome + WhatsApp) e atribuição de contas em massa.
 // Renomear um gestor troca o nome em todas as contas dele; excluir deixa as contas dele sem responsável.
@@ -464,6 +465,9 @@ export default function GestoresPage() {
             </table>
           </div>
         </Card>
+
+        {/* Etapa 302: histórico de erros dos gestores */}
+        <GestorErros gestores={gestoresFull.map((g) => g.name)} clientes={clientes ?? []} />
       </div>
     </div>
   );

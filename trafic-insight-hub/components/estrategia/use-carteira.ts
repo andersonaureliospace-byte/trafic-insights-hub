@@ -85,6 +85,19 @@ export interface Linha extends Cliente {
   dailyBudget?: number | null;
   // Etapa 242: se a conta anuncia EXAME / BOLETO (GERAL todas anunciam). null = ainda não definido.
   flags: OfferFlags | null;
+  // Etapa 303: os últimos 3 dias fechados + hoje, dia a dia (aba Gráficos do Acompanhamento). Sem a chave = cache antigo.
+  ult4?: DailyCpaPoint[];
+}
+
+// Etapa 303: 4 dias (3 fechados + hoje) a partir dos pontos diários que a carteira já busca; dia sem dado = zero.
+export function ultimos4(points: DailyCpaPoint[] | undefined, cal = calendarSP()): DailyCpaPoint[] {
+  const by = new Map((points ?? []).map((p) => [p.date, p]));
+  const [y, m, d] = cal.today.split("-").map(Number);
+  return [3, 2, 1, 0].map((k) => {
+    const date = new Date(Date.UTC(y, m - 1, d - k)).toISOString().slice(0, 10);
+    const p = by.get(date);
+    return p ? { ...p } : { date, spend: 0, results: 0, cpa: null };
+  });
 }
 
 export async function loadOfferFlags(): Promise<Record<string, OfferFlags>> {
@@ -234,6 +247,7 @@ export function useCarteira() {
         clientes.map((c) => ({
           ...c,
           nums: daily[c.id] ? numbersFrom(daily[c.id], cal) : null,
+          ult4: daily[c.id] ? ultimos4(daily[c.id], cal) : undefined,
           offers: snap[c.id]?.summary ?? null,
           offersAt: snap[c.id]?.at ?? null,
           flags: flags[c.id] ?? null,

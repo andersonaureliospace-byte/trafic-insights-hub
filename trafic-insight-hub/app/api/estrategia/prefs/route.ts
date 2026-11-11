@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
 import { SWITCHES_PREF_KEY } from "@/lib/automation-switches";
 import { AUDIT_PREF_KEY } from "@/lib/estrategia/auditorias/config";
+import { GESTOR_ERROS_KEY } from "@/lib/estrategia/gestor-erros";
 
 // Etapa 238: preferências do Hub estratégico, guardadas no Supabase (user_ui_prefs) pra valer igual em qualquer navegador.
 //   estrategia_ui       = filtros da tela (responsável, período do CPA, ordenação)
@@ -10,8 +11,9 @@ import { AUDIT_PREF_KEY } from "@/lib/estrategia/auditorias/config";
 //   offer_flags         = por conta: { exame: bool, promo: bool } — se a conta anuncia EXAME / PROMO (Etapa 242/260)
 //   estr_auditorias     = configuração das Auditorias (Etapa 257)
 //   contas_sensiveis    = por conta: true — conta sensível, otimizar até as 09h (Etapa 261)
+//   gestor_erros        = histórico de erros dos gestores (Etapa 302)
 //   feedback_modelos    = texto: feedbacks reais do usuário, modelo de tom pra IA do Feedback por print (Etapa 271)
-const KEYS = new Set(["estrategia_ui", "gestores", "offer_flags", SWITCHES_PREF_KEY, AUDIT_PREF_KEY, "contas_sensiveis", "feedback_modelos"]);
+const KEYS = new Set(["estrategia_ui", "gestores", "offer_flags", SWITCHES_PREF_KEY, AUDIT_PREF_KEY, "contas_sensiveis", "feedback_modelos", GESTOR_ERROS_KEY]);
 
 export async function GET(request: Request) {
   try {

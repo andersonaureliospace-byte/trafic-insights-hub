@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { Acompanhamento } from "@/components/estrategia/acompanhamento";
+import { Graficos } from "@/components/estrategia/graficos";
 import { Alertas, buildGroups, countAlerts, type AlertasServer, type NamingData } from "@/components/estrategia/alertas";
 import { matchesResp, readCache, useCarteira, writeCache } from "@/components/estrategia/use-carteira";
 import { Btn, hhmm } from "@/components/estrategia/ui";
@@ -11,7 +12,7 @@ import { Btn, hhmm } from "@/components/estrategia/ui";
 export default function TrafegoPage() {
   const { ui } = useEstr();
   const { linhas, loading, error, at, reload, refreshFicha } = useCarteira();
-  const [tab, setTab] = useState<"acomp" | "foco" | "alertas">("acomp");
+  const [tab, setTab] = useState<"acomp" | "foco" | "alertas" | "graficos">("acomp");
   // Etapa 277: aba "Sensíveis e críticas" — só as contas que pedem atenção (marcadas como sensíveis na ficha e/ou com
   // prioridade Crítica). O filtro escolhido fica guardado neste navegador.
   const [foco, setFoco] = useState<"ambas" | "sensiveis" | "criticas">("ambas");
@@ -138,7 +139,7 @@ export default function TrafegoPage() {
     <div className="flex flex-col">
       <PageHeader
         title="Acompanhamento"
-        sub={tab === "acomp" ? `Visão das contas da carteira${atLabel ? ` · ${atLabel}` : ""}` : `Central de monitoramento e alertas${atLabel ? ` · ${atLabel}` : ""}`}
+        sub={tab === "acomp" || tab === "graficos" ? `Visão das contas da carteira${atLabel ? ` · ${atLabel}` : ""}` : `Central de monitoramento e alertas${atLabel ? ` · ${atLabel}` : ""}`}
       >
         <Btn primary onClick={refresh} disabled={loading}>
           {loading ? "Atualizando…" : "Atualizar"}
@@ -152,6 +153,7 @@ export default function TrafegoPage() {
               ["acomp", "Todas as contas"],
               ["foco", "Sensíveis e críticas"],
               ["alertas", "Alertas"],
+              ["graficos", "Gráficos"],
             ] as const
           ).map(([k, label]) => (
             <button
@@ -222,6 +224,8 @@ export default function TrafegoPage() {
             pagamento={pagamento}
             onClienteSalvo={() => void refreshFicha()}
           />
+        ) : tab === "graficos" ? (
+          <Graficos linhas={visible} />
         ) : (
           <>
             {srvError ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">Alertas: {srvError}</div> : null}

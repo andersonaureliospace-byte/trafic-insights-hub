@@ -28,6 +28,7 @@ import {
   type CheckResult,
 } from "./checks";
 import { queueFindings, sendDigest, sendUrgent, type DigestResult } from "./digest";
+import { registrarErrosAutomacao } from "@/lib/estrategia/gestor-erros";
 import { runPlano } from "./plano";
 import { runOtimizacao } from "./otimizacao";
 import { tarefasDeAlertas } from "@/lib/estrategia/demandas";
@@ -117,6 +118,8 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
               whatsapp: isCheckOn(cfg, "whatsapp"),
               full: slot.startsWith("06:"), // Etapa 295: 1ª rodada do dia confere todos os conjuntos ativos
             });
+            // Etapa 302: vira registro no histórico de erros do gestor (Configurações → Gestores)
+            await registrarErrosAutomacao(db, userId, res.findings).catch(() => 0);
             {
               // Etapa 295: WhatsApp do anúncio diferente da ficha (ou ficha sem WhatsApp) é urgente — avisa NA HORA
               const wpp = res.findings.filter((f) => f.check === "whatsapp");
