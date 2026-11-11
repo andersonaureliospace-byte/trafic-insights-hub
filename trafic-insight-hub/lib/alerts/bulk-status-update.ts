@@ -80,7 +80,8 @@ export async function checkAndUpdateBulkStatus(
   token: string,
   // Etapa 259: notify=false (Auditorias do Hub estratégico) sincroniza o Asana mas não publica o alerta antigo —
   // quem avisa é o resumo das Auditorias.
-  opts: { send: boolean; notify?: boolean } = { send: false },
+  // Etapa 305: until = último dia dos 3 (YYYY-MM-DD) pra refazer uma rodada antiga; sem ele, termina ontem.
+  opts: { send: boolean; notify?: boolean; until?: string } = { send: false },
 ): Promise<CheckBulkStatusResult> {
   const { data: selected, error: selectedErr } = await db
     .from("user_selected_accounts")
@@ -109,7 +110,7 @@ export async function checkAndUpdateBulkStatus(
 
   // Últimos 3 dias, sem contar hoje — igual ao diálogo manual (days=3, sem
   // includeToday), só que numa chamada só pra todas as contas de uma vez.
-  const dailyCpa = await getAccountsDailyCpa(token, accountIds, 3, false);
+  const dailyCpa = await getAccountsDailyCpa(token, accountIds, 3, false, opts.until);
 
   interface Entry {
     accountId: string;

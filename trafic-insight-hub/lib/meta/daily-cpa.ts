@@ -244,12 +244,16 @@ export async function getAccountsDailyCpa(
   accountIds: string[],
   days: number,
   includeToday = false,
+  // Etapa 305: último dia do período (YYYY-MM-DD, já fechado) pra refazer uma rodada antiga — ex.: prioridade de segunda.
+  untilOverride?: string,
 ): Promise<Record<string, DailyCpaPoint[]>> {
   // Etapa 294: até 62 dias (o Tráfego compara este mês com os mesmos dias do mês passado)
   const clampedDays = Math.max(1, Math.min(62, Math.floor(days) || 1));
   const now = new Date();
   const todayDate = spDate(now);
-  const until = spDate(includeToday ? now : new Date(now.getTime() - 86_400_000));
+  const until = untilOverride && /^\d{4}-\d{2}-\d{2}$/.test(untilOverride) && untilOverride < todayDate
+    ? untilOverride
+    : spDate(includeToday ? now : new Date(now.getTime() - 86_400_000));
   const since = addDaysYmd(until, -(clampedDays - 1));
 
   const out: Record<string, DailyCpaPoint[]> = {};
