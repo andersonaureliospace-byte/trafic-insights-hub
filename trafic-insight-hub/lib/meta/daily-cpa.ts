@@ -75,10 +75,13 @@ async function getAccountDailyCpa(
   const id = actId.startsWith("act_") ? actId : `act_${actId}`;
 
   const byDate = new Map<string, { spend: number; results: number }>();
+  // Etapa 304: por conjunto o pedido fica pesado — busca em janelas de 7 dias; uma janela que falha não zera as outras.
+  for (let from = since; from <= until; from = addDaysYmd(from, 7)) {
+  const to = addDaysYmd(from, 6) < until ? addDaysYmd(from, 6) : until;
   try {
     const rows = await metaGetAll<DailyInsightRow>(token, `/${id}/insights`, {
       fields: "date_start,campaign_id,campaign_name,spend,results,actions",
-      time_range: JSON.stringify({ since, until }),
+      time_range: JSON.stringify({ since: from, until: to }),
       time_increment: "1",
       // Etapa 304: por CONJUNTO, não por campanha. Em CBO com conjuntos de otimizações diferentes (conversa + clique) o
       // "resultado" da campanha vem misturado ("múltiplas conversões") e contava só parte das conversas.
@@ -100,7 +103,8 @@ async function getAccountDailyCpa(
       if (r != null) cur.results += r;
     }
   } catch (e) {
-    console.error("daily-cpa insights err", id, e);
+    console.error("daily-cpa insights err", id, from, to, e);
+  }
   }
 
   const points: DailyCpaPoint[] = [];
@@ -267,7 +271,24 @@ export async function getAccountsDailyCpa(
         }
         if (until >= todayDate) points.push({ date: todayDate, spend: 0, results: 0, cpa: null });
       } else {
-        points = await getAccountDailyCpa(token, actId, since, until, excluded);
+        // Etapa 304: pergunta à Meta só os dias que o backup não tem (antes ia o período inteiro — 62 dias por conjunto
+        // estourava nas contas grandes e a tela ficava só com o gasto de hoje); o resto vem do backup.
+        let firstMissing: string | null = null;
+        let lastMissing: string | null = null;
+        for (let d = since; d <= closedUntil; d = addDaysYmd(d, 1)) {
+          if (days?.has(d)) continue;
+          if (!firstMissing) firstMissing = d;
+          lastMissing = d;
+        }
+        // Hoje (se pedido) vem logo abaixo, pelo getAccountTodayCpa.
+        const live = firstMissing && lastMissing ? await getAccountDailyCpa(token, actId, firstMissing, lastMissing, excluded) : [];
+        const liveBy = new Map(live.map((p) => [p.date, p]));
+        points = [];
+        for (let d = since; d <= until; d = addDaysYmd(d, 1)) {
+          const v = d <= closedUntil ? days?.get(d) : undefined;
+          if (v) points.push({ date: d, spend: v.spend, results: v.results, cpa: v.results > 0 && v.spend > 0 ? v.spend / v.results : null });
+          else points.push(liveBy.get(d) ?? { date: d, spend: 0, results: 0, cpa: null });
+        }
       }
       if (includeToday) {
         const today = await getAccountTodayCpa(token, actId, todayDate, excluded);
