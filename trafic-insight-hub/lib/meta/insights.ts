@@ -319,7 +319,9 @@ export async function getAccountInsight(
           ? "campaign_id,campaign_name,spend"
           : "campaign_id,campaign_name,objective,spend,actions,cost_per_action_type,results,cost_per_result",
         ...(stored?.live ? { time_range: JSON.stringify(stored.live) } : presetParams(datePreset)),
-        level: "campaign",
+        // Etapa 304: por CONJUNTO, não por campanha. Em CBO com conjuntos de otimizações diferentes (conversa + clique) o
+      // "resultado" da campanha vem misturado ("múltiplas conversões") e contava só parte das conversas.
+      level: "adset",
         limit: "500",
         ...(spendOnly ? {} : { use_unified_attribution_setting: "true" }),
       });

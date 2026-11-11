@@ -80,7 +80,9 @@ async function getAccountDailyCpa(
       fields: "date_start,campaign_id,campaign_name,spend,results,actions",
       time_range: JSON.stringify({ since, until }),
       time_increment: "1",
-      level: "campaign",
+      // Etapa 304: por CONJUNTO, não por campanha. Em CBO com conjuntos de otimizações diferentes (conversa + clique) o
+      // "resultado" da campanha vem misturado ("múltiplas conversões") e contava só parte das conversas.
+      level: "adset",
       limit: "500",
       use_unified_attribution_setting: "true",
     });
@@ -148,7 +150,9 @@ async function fetchAccountTodayCpa(
     const rows = await metaGetAll<Omit<DailyInsightRow, "date_start">>(token, `/${id}/insights`, {
       fields: "campaign_id,campaign_name,spend,results,actions",
       date_preset: "today",
-      level: "campaign",
+      // Etapa 304: por CONJUNTO, não por campanha. Em CBO com conjuntos de otimizações diferentes (conversa + clique) o
+      // "resultado" da campanha vem misturado ("múltiplas conversões") e contava só parte das conversas.
+      level: "adset",
       limit: "500",
       use_unified_attribution_setting: "true",
     });
@@ -201,7 +205,9 @@ export async function getAccountsMonthCpa(
         const rows = await metaGetAll<Omit<DailyInsightRow, "date_start">>(token, `/${id}/insights`, {
           fields: "campaign_id,campaign_name,spend,results,actions",
           date_preset: "this_month",
-          level: "campaign",
+          // Etapa 304: por CONJUNTO, não por campanha. Em CBO com conjuntos de otimizações diferentes (conversa + clique) o
+      // "resultado" da campanha vem misturado ("múltiplas conversões") e contava só parte das conversas.
+      level: "adset",
           limit: "500",
           use_unified_attribution_setting: "true",
         });
