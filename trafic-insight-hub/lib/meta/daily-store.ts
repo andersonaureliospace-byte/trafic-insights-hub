@@ -138,23 +138,31 @@ async function fetchAccountDaysOnce(token: string, actId: string, range: YmdRang
   const excluded = new Set<string>();
   for (const c of camps) if (c.id && c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) excluded.add(c.id);
 
-  const rows = await metaGetAll<{
+  // Etapa 304: por conjunto o pedido fica pesado (contas grandes x 37 dias → "Service temporarily unavailable"):
+  // busca em janelas de 7 dias e junta.
+  type InsRow = {
     date_start?: string;
     campaign_id?: string;
     campaign_name?: string;
     spend?: string;
     results?: Array<{ indicator?: string; values?: Array<{ value?: string }> }>;
     actions?: Array<{ action_type?: string; value?: string }>;
-  }>(token, `/${id}/insights`, {
+  };
+  const rows: InsRow[] = [];
+  for (let from = range.since; from <= range.until; from = addDaysYmd(from, 7)) {
+    const to = addDaysYmd(from, 6) < range.until ? addDaysYmd(from, 6) : range.until;
+    const part = await metaGetAll<InsRow>(token, `/${id}/insights`, {
     fields: "date_start,campaign_id,campaign_name,spend,results,actions",
-    time_range: JSON.stringify(range),
+    time_range: JSON.stringify({ since: from, until: to }),
     time_increment: "1",
     // Etapa 304: por CONJUNTO, não por campanha. Em CBO com conjuntos de otimizações diferentes (conversa + clique) o
       // "resultado" da campanha vem misturado ("múltiplas conversões") e contava só parte das conversas.
       level: "adset",
     limit: "500",
     use_unified_attribution_setting: "true",
-  });
+    });
+    rows.push(...part);
+  }
   const inputs: CampaignDayInput[] = rows.map((r) => {
     const lr = leadResultOf(r.results, r.actions);
     const v = lr.value;
