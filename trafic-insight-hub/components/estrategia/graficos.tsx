@@ -5,6 +5,7 @@ import { Card } from "@/components/estrategia/ui";
 import { calendarSP } from "@/lib/estrategia/calc";
 import type { Linha } from "@/components/estrategia/use-carteira";
 import type { DailyCpaPoint } from "@/lib/meta/daily-cpa";
+import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 
 // Etapa 303: Acompanhamento → Gráficos. Uma faixa por conta com 3 gráficos dos últimos 3 dias fechados + hoje:
 // resultado por dia (área), custo por resultado (barras + linha do CPA ideal) e valor investido (barras deitadas + meta/dia).
@@ -20,11 +21,14 @@ const X = (i: number) => L + SLOT * (i + 0.5);
 const brl = (v: number, d = 0) => `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d })}`;
 const curto = (v: number) => (v >= 1000 ? `R$${(v / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}k` : `R$${Math.round(v)}`);
 
+// Teto do eixo = 4 passos "redondos" (1, 2, 5, 10, 20, 50…), pra os rótulos saírem inteiros.
 function nice(m: number): number {
   if (!(m > 0)) return 4;
-  const p = Math.pow(10, Math.floor(Math.log10(m)));
-  const n = m / p;
-  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+  const raw = m / 4;
+  const p = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / p;
+  const step = Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * p);
+  return step * 4;
 }
 
 function rotulo(ymd: string, hoje: string): string {
@@ -183,9 +187,15 @@ function GraficoInvestido({ dias, hoje, nome, metaDia }: { dias: DailyCpaPoint[]
             </text>
             <rect x={56} y={y} width={TRILHO} height={22} rx={11} className="fill-zinc-100 dark:fill-white/[0.05]" />
             {w > 0 ? <rect x={56} y={y} width={w} height={22} rx={11} fill={`url(#gi${id})`} fillOpacity={ehHoje ? 0.55 : 1} /> : null}
-            <text x={56 + w + 6} y={y + 15} fontSize={12} fontWeight={700} className="fill-zinc-800 dark:fill-zinc-100">
-              {curto(d.spend)}
-            </text>
+            {w > TRILHO - 70 ? (
+              <text x={56 + w - 10} y={y + 15} textAnchor="end" fontSize={12} fontWeight={700} fill="#ffffff">
+                {curto(d.spend)}
+              </text>
+            ) : (
+              <text x={56 + w + 6} y={y + 15} fontSize={12} fontWeight={700} className="fill-zinc-800 dark:fill-zinc-100">
+                {curto(d.spend)}
+              </text>
+            )}
             {pct != null ? (
               <text
                 x={352}
@@ -277,7 +287,25 @@ export function Graficos({ linhas }: { linhas: Linha[] }) {
       {contas.map(({ l, dias, spend, results, cpa, ideal, metaDia }) => (
         <Card key={l.id} className="p-4">
           <div className="mb-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="text-base font-bold">{l.name}</span>
+            {/* Etapa 303: atalho pro Gerenciador de Anúncios da conta */}
+            <a
+              href={adsManagerUrl(l.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abrir no Gerenciador de Anúncios"
+              className="group inline-flex items-center gap-1.5 text-base font-bold hover:text-blue-600 hover:underline dark:hover:text-blue-400"
+            >
+              {l.name}
+              <span aria-hidden className="text-sm font-normal text-zinc-400 group-hover:text-blue-600 dark:group-hover:text-blue-400">↗</span>
+            </a>
+            <a
+              href={adsManagerUrl(l.id)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-md border border-zinc-300 px-2 py-0.5 text-xs font-medium text-zinc-600 hover:border-blue-500 hover:text-blue-600 dark:border-white/15 dark:text-zinc-300 dark:hover:text-blue-300"
+            >
+              Gerenciador
+            </a>
             <span className="text-xs text-zinc-500">
               {l.responsible ?? "Sem responsável"}
               {ideal ? ` · CPA ideal ${brl(ideal, 2)}` : " · sem CPA ideal na ficha"}
