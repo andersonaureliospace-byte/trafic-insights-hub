@@ -87,6 +87,8 @@ export interface Linha extends Cliente {
   flags: OfferFlags | null;
   // Etapa 303: os últimos 3 dias fechados + hoje, dia a dia (aba Gráficos do Acompanhamento). Sem a chave = cache antigo.
   ult4?: DailyCpaPoint[];
+  // Etapa 306: os pontos diários que já vêm na busca (até ~62 dias) — período personalizado do Acompanhamento.
+  daily?: DailyCpaPoint[];
 }
 
 // Etapa 303: 4 dias (3 fechados + hoje) a partir dos pontos diários que a carteira já busca; dia sem dado = zero.
@@ -248,6 +250,7 @@ export function useCarteira() {
           ...c,
           nums: daily[c.id] ? numbersFrom(daily[c.id], cal) : null,
           ult4: daily[c.id] ? ultimos4(daily[c.id], cal) : undefined,
+          daily: daily[c.id] ?? undefined,
           offers: snap[c.id]?.summary ?? null,
           offersAt: snap[c.id]?.at ?? null,
           flags: flags[c.id] ?? null,

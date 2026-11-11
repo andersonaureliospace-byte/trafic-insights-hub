@@ -261,6 +261,35 @@ export function Acompanhamento({
   const [now] = useState(() => Date.now());
   const period = (CPA_PERIODS.some((p) => p.id === ui.period) ? ui.period : "u3") as CpaPeriod;
   const cal = useMemo(() => calendarSP(), []);
+  // Etapa 306: período personalizado (duas datas). As datas ficam lembradas neste navegador.
+  const custom = ui.period === "custom";
+  const addD = (ymd: string, k: number) => {
+    const [y, m, d] = ymd.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d + k)).toISOString().slice(0, 10);
+  };
+  const minDia = addD(cal.today, -(Math.min(62, cal.day + 31) - 1)); // o que a busca da carteira traz
+  const [de, setDe] = useState(() => addD(cal.today, -3));
+  const [ate, setAte] = useState(() => addD(cal.today, -1));
+  useEffect(() => {
+    try {
+      const v = JSON.parse(window.localStorage.getItem("estr_periodo_custom") ?? "null") as { de?: string; ate?: string } | null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- datas lembradas neste navegador
+      if (v?.de) setDe(v.de);
+      if (v?.ate) setAte(v.ate);
+    } catch {
+      /* sem armazenamento */
+    }
+  }, []);
+  const guardarDatas = (d: string, a: string) => {
+    try {
+      window.localStorage.setItem("estr_periodo_custom", JSON.stringify({ de: d, ate: a }));
+    } catch {
+      /* só nesta sessão */
+    }
+  };
+  const [ini, fim] = de <= ate ? [de, ate] : [ate, de];
+  const fmtDia = (ymd: string) => `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}`;
+  const periodLabel = custom ? `de ${fmtDia(ini)} a ${fmtDia(fim)}` : (CPA_PERIODS.find((p) => p.id === period)?.label ?? period).toLowerCase();
 
   const rows = useMemo(() => {
     const flat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -273,7 +302,11 @@ export function Acompanhamento({
       : linhas;
     const list = found.map((l) => {
       const r = ritmoOf(l.monthly, l.nums?.untilYesterday ?? 0, cal);
-      const sum = l.nums?.periods?.[period] ?? null;
+      const sum = custom
+        ? l.daily
+          ? l.daily.filter((p) => p.date >= ini && p.date <= fim).reduce((a, p) => ({ spend: a.spend + p.spend, results: a.results + p.results }), { spend: 0, results: 0 })
+          : null
+        : (l.nums?.periods?.[period] ?? null);
       return { l, r, spend: sum?.spend ?? null, leads: sum ? sum.results : null, cpa: sum ? cpaOf(sum) : null };
     });
     const by = ui.sort;
@@ -303,7 +336,7 @@ export function Acompanhamento({
       if (i > 0) list.unshift(...list.splice(i, 1));
     }
     return list;
-  }, [linhas, period, ui.sort, cal, activities, q, pinned]);
+  }, [linhas, period, custom, ini, fim, ui.sort, cal, activities, q, pinned]);
   const pinnedVisible = !!pinned && linhas.some((l) => l.id === pinned);
 
   const clip = closedDaysIn(period, cal);
@@ -315,12 +348,47 @@ export function Acompanhamento({
       <Card className="overflow-visible">
         <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-4 py-3 dark:border-white/10">
           <label htmlFor="estr-period" className="text-xs text-zinc-500">Período</label>
-          <select id="estr-period" value={period} onChange={(e) => setUi({ period: e.target.value })} className={selectCls}>
+          <select id="estr-period" value={custom ? "custom" : period} onChange={(e) => setUi({ period: e.target.value })} className={selectCls}>
             {CPA_PERIODS.map((p) => (
               <option key={p.id} value={p.id}>{p.label}</option>
             ))}
+            <option value="custom">Personalizado</option>
           </select>
-          {clip.got < clip.wanted ? (
+          {custom ? (
+            <span className="flex flex-wrap items-center gap-1.5">
+              <label htmlFor="estr-de" className="text-xs text-zinc-500">De</label>
+              <input
+                id="estr-de"
+                type="date"
+                value={de}
+                min={minDia}
+                max={cal.today}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  setDe(e.target.value);
+                  guardarDatas(e.target.value, ate);
+                }}
+                className={selectCls}
+              />
+              <label htmlFor="estr-ate" className="text-xs text-zinc-500">até</label>
+              <input
+                id="estr-ate"
+                type="date"
+                value={ate}
+                min={minDia}
+                max={cal.today}
+                onChange={(e) => {
+                  if (!e.target.value) return;
+                  setAte(e.target.value);
+                  guardarDatas(de, e.target.value);
+                }}
+                className={selectCls}
+              />
+              {ini < minDia ? <span className="text-xs text-amber-600 dark:text-amber-400">Só dá até {fmtDia(minDia)} pra trás</span> : null}
+              {linhas.length > 0 && linhas.every((l) => !l.daily) ? <span className="text-xs text-amber-600 dark:text-amber-400">Clique em Atualizar pra usar o personalizado</span> : null}
+            </span>
+          ) : null}
+          {!custom && clip.got < clip.wanted ? (
             <span className="text-xs text-amber-600 dark:text-amber-400">
               Só o mês atual: {clip.got === 0 ? "nenhum dia fechado ainda" : `${clip.got} dia${clip.got > 1 ? "s" : ""} fechado${clip.got > 1 ? "s" : ""}`}
               {period === "h" || period.endsWith("h") ? " + hoje" : ""}
@@ -605,6 +673,7 @@ export function Acompanhamento({
           comparacao={(() => {
             // período escolhido no quadro × a mesma fatia logo antes (cópia antiga pode não ter: some até Atualizar)
             const n = linhas.find((x) => x.id === feedbackDe)?.nums;
+            if (custom) return undefined;
             const a = n?.periods?.[period];
             const b = n?.prev?.[period];
             if (!a || !b) return undefined;
@@ -639,7 +708,7 @@ export function Acompanhamento({
       {avisar ? (
         <AvisarGestores
           linhas={rows.filter((x) => marcadas.has(x.l.id)).map((x) => ({ l: x.l, cpa: x.cpa, spend: x.spend, leads: x.leads }))}
-          periodLabel={(CPA_PERIODS.find((p) => p.id === period)?.label ?? period).toLowerCase()}
+          periodLabel={periodLabel}
           onClose={() => setAvisar(false)}
         />
       ) : null}
