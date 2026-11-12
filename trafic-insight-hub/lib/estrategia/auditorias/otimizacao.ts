@@ -2,7 +2,7 @@
 // (/activities) se a conta teve pelo menos uma OTIMIZAÇÃO RELEVANTE hoje (orçamento, liga/desliga, criação,
 // público, criativo, lance — a mesma regra da coluna Otimização). O que foi feito pelo usuário dono do token
 // (as automações do Hub rodam com ele) não conta. A mensagem vai pro grupo escolhido na linha (ou o grupo padrão).
-//   Sensíveis (marcação na ficha) até 09h · Críticas até 10h · Altas até 12h · Médias e baixas até 19h.
+//   Sensíveis (marcação na ficha) até 09h · Críticas até 10h · Altas até 12h · Médias e baixas até 17h.
 // Conta sensível só é cobrada às 09h (não entra de novo na faixa da prioridade). Inauguração fica de fora.
 
 import type { SupabaseClient } from "@supabase/supabase-js";

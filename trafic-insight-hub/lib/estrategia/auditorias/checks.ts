@@ -240,6 +240,7 @@ function over(spend: number, conv: number, ideal: number, x: number): boolean {
   if (spend < ideal * x) return false;
   return conv <= 0 || spend / conv > ideal * x;
 }
+const valorTxt = (spend: number, conv: number) => (conv > 0 ? brl(spend / conv) : `${brl(spend)} sem conversa`);
 const cpaTxt = (spend: number, conv: number) => (conv > 0 ? `CPA ${brl(spend / conv)}` : `${brl(spend)} sem conversa`);
 
 // Etapa 280: CONJUNTO NUNCA É PAUSADO (pedido do Anderson) — conjunto só recebe aviso. Pausa só CRIATIVO ATIVO.
@@ -313,7 +314,6 @@ export async function runCustoAlto(db: SupabaseClient, userId: string, token: st
 
       // pausa só com: >3x no período todo E >3x nos dias fechados E rodando desde anteontem
       const shouldPause = (b: Bucket) => b.firstDay <= since && over(b.all.spend, b.all.conv, ideal, PAUSE_X) && over(b.closed.spend, b.closed.conv, ideal, PAUSE_X);
-      const detalhe = (b: Bucket) => `${cpaTxt(b.all.spend, b.all.conv)} em 2 dias + hoje; ${cpaTxt(b.closed.spend, b.closed.conv)} nos dias fechados`;
 
       const toPause: Array<{ id: string; type: "ad"; line: string }> = [];
       const adCandidates: Array<{ ad: AdAgg; g: SetAgg }> = [];
@@ -353,7 +353,9 @@ export async function runCustoAlto(db: SupabaseClient, userId: string, token: st
         const ids = new Set(ativos.map((x) => x.id));
         for (const { ad, g } of adCandidates) {
           if (!ids.has(ad.id)) continue;
-          toPause.push({ id: ad.id, type: "ad", line: `Criativo ${ad.name} (${g.name}): ${detalhe(ad)} (ideal ${brl(ideal)})` });
+          // Etapa (nov/2026): mensagem enxuta — só o nome do conjunto e o CPA dele (2 dias + hoje); o CPA ideal vai no
+          // cabeçalho da conta, no resumo.
+          toPause.push({ id: ad.id, type: "ad", line: `${g.name} — ${valorTxt(g.all.spend, g.all.conv)}` });
         }
         for (const { ad, g } of adAlerts) {
           if (!ids.has(ad.id)) continue; // já pausado: não avisa
@@ -379,7 +381,7 @@ export async function runCustoAlto(db: SupabaseClient, userId: string, token: st
           findings.push({
             check: "custo_pausa",
             acc: a,
-            line: `${p.line} → ${ok ? "PAUSADO" : `falha ao pausar (${res[i]?.error ?? "erro"}) — pause à mão`}`,
+            line: ok ? p.line : `${p.line} ⚠️ não pausou, pause à mão`,
             dedupe: `pausa:${p.id}:${today}`,
           });
         });

@@ -104,14 +104,14 @@ export const CHECKS: CheckInfo[] = [
     id: "plano",
     name: "Plano de ação da manhã",
     what: "Vai no WhatsApp pessoal de cada gestor (número de Configurações → Gestores): o que fazer em cada conta dele, por oferta (GERAL / EXAME / PROMO), da mais urgente pra menos. Entra só conta com ponto vermelho ou dois laranjas. Saldo, erros e sem entrega ficam nos resumos; o investimento do mês vai aqui (e sai do resumo das 08h). Gestor sem número e contas sem responsável vão pro grupo desta linha.",
-    when: "07h45 (com o retrato das ofertas das 05h20, o backup da madrugada e as pausas das 07h)",
+    when: "08h (com o retrato das ofertas das 05h20, o backup da madrugada e as pausas das 07h)",
     calls: "0 (só o que já está guardado)",
   },
   {
     id: "otimizacao",
     name: "Prazo de otimização",
     what: "Conta que não teve nenhuma otimização do gestor hoje até o prazo (orçamento, liga/desliga, criativo, público, lance — o que as automações do Hub fizeram não conta). Vai pro grupo escolhido aqui (ou o padrão), separado por gestor.",
-    when: "Seg a sex · Sensíveis 09h · Críticas 10h · Altas 12h · Médias e baixas 19h",
+    when: "Seg a sex · Sensíveis 09h · Críticas 10h · Altas 12h · Médias e baixas 17h",
     calls: "1 por conta da faixa",
   },
 ];
@@ -125,7 +125,7 @@ export const OTIM_PRAZO: Record<OtimFaixa, { label: string; hora: string }> = {
   sensivel: { label: "Sensíveis", hora: "09h" },
   critica: { label: "Críticas", hora: "10h" },
   alta: { label: "Altas", hora: "12h" },
-  mediabaixa: { label: "Médias e baixas", hora: "19h" },
+  mediabaixa: { label: "Médias e baixas", hora: "17h" },
 };
 
 export interface Job {
@@ -165,13 +165,14 @@ const AGENDA: Array<[number, Job]> = [
   ...round("erros", 19, 0, 4),
   ...round("expansao", 20, 0, 4),
   [hm(4, 15), { check: "prioridade", lot: 0, lots: 1, days: [1, 4] }], // segunda e quinta
-  [hm(7, 45), { check: "plano", lot: 0, lots: 1 }], // Etapa 263: um pouco antes das 08h
+  [hm(8), { check: "plano", lot: 0, lots: 1 }], // Etapa 263 (nov/2026: 07h45 → 08h, aviso só em horário comercial)
   // Etapa 261: prazo de otimização (seg a sex), conferido na hora do prazo.
   [hm(9), { check: "otimizacao", lot: 0, lots: 1, variant: "sensivel", days: [1, 2, 3, 4, 5] }],
   [hm(10), { check: "otimizacao", lot: 0, lots: 1, variant: "critica", days: [1, 2, 3, 4, 5] }],
   [hm(12), { check: "otimizacao", lot: 0, lots: 1, variant: "alta", days: [1, 2, 3, 4, 5] }],
-  [hm(19), { check: "otimizacao", lot: 0, lots: 2, variant: "mediabaixa", days: [1, 2, 3, 4, 5] }],
-  [hm(19, 15), { check: "otimizacao", lot: 1, lots: 2, variant: "mediabaixa", days: [1, 2, 3, 4, 5] }],
+  // nov/2026: médias e baixas passaram de 19h pra 17h (aviso só até as 17h)
+  [hm(16, 45), { check: "otimizacao", lot: 0, lots: 2, variant: "mediabaixa", days: [1, 2, 3, 4, 5] }],
+  [hm(17), { check: "otimizacao", lot: 1, lots: 2, variant: "mediabaixa", days: [1, 2, 3, 4, 5] }],
   // Etapa 284: erro de pagamento / falta de saldo é URGENTE — confere de hora em hora (07h15 às 21h15) e avisa NA HORA
   // (não espera o resumo), 1x por dia por conta. São só 2 pedidos pra carteira toda.
   ...Array.from({ length: 15 }, (_, i) => [hm(7 + i, 15), { check: "saldo", lot: 0, lots: 1, variant: "urgente" }] as [number, Job]),

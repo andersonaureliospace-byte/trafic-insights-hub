@@ -4,13 +4,25 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
+import { fmtCurrency } from "@/lib/format";
 import { CHECK_BY_ID, groupFor, isDireto, type AuditConfig, type CheckId } from "./config";
 import { ROBO, gestorHeader, loadGestorNumbers } from "./gestores";
 import type { Finding } from "./checks";
 
+// Etapa (nov/2026): notificação só em horário comercial (08h às 17h, Brasília). Fora disso as conferências rodam
+// normalmente, mas o aviso fica na fila e sai na primeira batida a partir das 08h.
+export const HORARIO_ENVIO = { from: 8 * 60, to: 17 * 60 } as const;
+export function dentroDoHorario(now: Date = new Date()): boolean {
+  const parts = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now);
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? 0) % 24;
+  const m = Number(parts.find((p) => p.type === "minute")?.value ?? 0);
+  const min = h * 60 + m;
+  return min >= HORARIO_ENVIO.from && min <= HORARIO_ENVIO.to;
+}
+
 // Ordem e título de cada seção dentro do gestor.
 const SECTIONS: Array<{ id: CheckId | "custo_pausa"; title: string }> = [
-  { id: "custo_pausa", title: "🚨 Criativos pausados agora (custo 3x o ideal)" },
+  { id: "custo_pausa", title: "🚨 Criativos pausados (custo 3x)" },
   { id: "saldo", title: "💰 Saldo / pagamento" },
   { id: "sem_entrega", title: "⛔ Sem entrega" },
   { id: "erros", title: "❌ Erros de veiculação" },
@@ -56,7 +68,12 @@ interface ItemRow {
   created_at: string;
 }
 
-export function buildDigest(items: ItemRow[], nums: Map<string, string> = new Map(), privado = false): { text: string; mentions: string[] } {
+export function buildDigest(
+  items: ItemRow[],
+  nums: Map<string, string> = new Map(),
+  privado = false,
+  ideals: Map<string, number> = new Map(),
+): { text: string; mentions: string[] } {
   // Mesmo tipo + mesma conta + mesma linha repetida (ex.: saldo em duas rodadas antes do resumo): fica só a mais nova.
   const seen = new Set<string>();
   const uniq = [...items]
@@ -90,6 +107,18 @@ export function buildDigest(items: ItemRow[], nums: Map<string, string> = new Ma
       const sec = list.filter((i) => i.check_id === s.id);
       if (sec.length === 0) continue;
       out.push(`*${s.title}*`);
+      if (s.id === "custo_pausa") {
+        // Enxuto: conta (com CPA ideal) uma vez só; embaixo cada conjunto com o CPA dele, sem repetir.
+        const porConta = new Map<string, ItemRow[]>();
+        for (const i of sec) porConta.set(i.ad_account_id, [...(porConta.get(i.ad_account_id) ?? []), i]);
+        const contas = [...porConta.values()].sort((a, b) => a[0].client_name.localeCompare(b[0].client_name, "pt-BR"));
+        for (const lst of contas) {
+          const ideal = ideals.get(String(lst[0].ad_account_id).replace(/^act_/, ""));
+          out.push(`*${lst[0].client_name}*${ideal ? ` — CPA ideal ${fmtCurrency(ideal)}` : ""}`);
+          for (const line of [...new Set(lst.map((i) => i.line))]) out.push(`• ${line}`);
+        }
+        continue;
+      }
       for (const i of sec.sort((a, b) => a.client_name.localeCompare(b.client_name, "pt-BR"))) out.push(`• ${i.client_name} — ${i.line}`);
     }
   }
@@ -120,6 +149,7 @@ export interface DigestResult {
 
 // Manda tudo que está na fila (um resumo por grupo). Itens sem grupo configurado ficam na fila e aparecem na tela.
 export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditConfig, _slot?: string): Promise<DigestResult> {
+  if (!dentroDoHorario()) return { groups: 0, items: 0, noGroup: 0, error: null }; // fica na fila até as 08h
   const { data, error } = await db
     .from("estr_digest_items")
     .select("id, check_id, ad_account_id, client_name, responsible, line, group_id, group_name, created_at")
@@ -137,6 +167,13 @@ export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditC
     return { ...i, group_id: g?.id ?? i.group_id, group_name: g?.name ?? i.group_name };
   });
   const nums = await loadGestorNumbers(db, userId);
+  const ideals = new Map<string, number>();
+  if (resolved.some((i) => i.check_id === "custo_pausa")) {
+    const { data: binds } = await db.from("account_bindings").select("ad_account_id, cpa_target").eq("user_id", userId);
+    for (const b of (binds ?? []) as Array<{ ad_account_id: string; cpa_target: number | null }>) {
+      if (b.cpa_target && b.cpa_target > 0) ideals.set(String(b.ad_account_id).replace(/^act_/, ""), Number(b.cpa_target));
+    }
+  }
   const inst = await requireWhatsappInstance(db as never, userId);
   const creds = { api_url: inst.api_url, token: inst.token };
   let sentItems = 0;
@@ -156,7 +193,7 @@ export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditC
   }
   for (const [num, list] of porNumero) {
     try {
-      for (const part of chunks(buildDigest(list, nums, true).text)) await sendText(creds, num, part);
+      for (const part of chunks(buildDigest(list, nums, true, ideals).text)) await sendText(creds, num, part);
       await marcar(list.map((i) => i.id));
       sentItems += list.length;
     } catch (e) {
@@ -170,7 +207,7 @@ export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditC
   if (byGroup.size === 0) return { groups: porNumero.size, items: sentItems, noGroup, error: lastError ?? (noGroup ? "Nenhum grupo escolhido em Automações → Auditorias." : null) };
   for (const [groupId, list] of byGroup) {
     try {
-      const d = buildDigest(list, nums);
+      const d = buildDigest(list, nums, false, ideals);
       for (const part of chunks(d.text)) await sendText(creds, groupId, part, { mentions: d.mentions });
       await marcar(list.map((i) => i.id));
       sentItems += list.length;
@@ -199,6 +236,7 @@ export async function sendUrgent(
 ): Promise<{ sent: number; error: string | null }> {
   if (findings.length === 0) return { sent: 0, error: null };
   const g = groupFor(cfg, check);
+  const agora = dentroDoHorario(); // fora do horário comercial: vai pra fila e sai às 08h junto do resumo
   const nums = await loadGestorNumbers(db, userId);
   const direto = isDireto(cfg, check);
   const temNumero = (r: string | null) => direto && nums.has((r ?? "").trim().toLowerCase());
@@ -212,7 +250,7 @@ export async function sendUrgent(
     dedupe_key: f.dedupe ?? null,
     group_id: g?.id ?? null,
     group_name: g?.name ?? null,
-    sent_at: g || temNumero(f.acc.responsible) ? new Date().toISOString() : null, // já sai agora; sem destino fica na fila
+    sent_at: agora && (g || temNumero(f.acc.responsible)) ? new Date().toISOString() : null, // já sai agora; sem destino (ou fora do horário) fica na fila
   }));
   const { data, error } = await db
     .from("estr_digest_items")
@@ -220,7 +258,7 @@ export async function sendUrgent(
     .select("client_name, responsible, line");
   if (error) return { sent: 0, error: `fila de avisos: ${error.message}` };
   const novos = (data ?? []) as Array<{ client_name: string; responsible: string | null; line: string }>;
-  if (novos.length === 0) return { sent: 0, error: null };
+  if (novos.length === 0 || !agora) return { sent: 0, error: null };
   const cab = titulo.startsWith(ROBO) ? titulo : `${ROBO} ${titulo}`;
   const inst0 = await requireWhatsappInstance(db as never, userId);
   const creds0 = { api_url: inst0.api_url, token: inst0.token };
