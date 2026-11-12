@@ -181,6 +181,12 @@ export function jobsAt(minuteOfDay: number, weekday?: number): Job[] {
   return AGENDA.filter(([t, j]) => t === minuteOfDay && (weekday == null || !j.days || j.days.includes(weekday))).map(([, j]) => j);
 }
 
+// Rodada manual de UMA conferência fora do horário (ex.: refazer a prioridade depois de um backup incompleto):
+// todos os lotes dela, sem olhar hora nem dia da semana.
+export function jobsOfCheck(check: string): Job[] {
+  return AGENDA.filter(([, j]) => j.check === check).map(([, j]) => j);
+}
+
 // O que a conferência de WhatsApp precisa é a mesma busca da expansão.
 export function minuteToHHMM(m: number): string {
   return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;

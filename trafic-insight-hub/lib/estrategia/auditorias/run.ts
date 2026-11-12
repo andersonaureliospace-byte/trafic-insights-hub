@@ -8,6 +8,7 @@ import {
   AUDIT_PREF_KEY,
   isCheckOn,
   jobsAt,
+  jobsOfCheck,
   minuteToHHMM,
   normalizeConfig,
   type AuditConfig,
@@ -90,7 +91,8 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
   const report: TickReport = { slot, jobs: [], digest: null };
 
   const weekday = new Date(new Date().toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })).getDay();
-  let jobs = jobsAt(minute, weekday);
+  // Etapa (nov/2026): `only` sem `minute` = rodada manual daquela conferência agora, fora da agenda.
+  let jobs = opts.only && opts.minute == null ? jobsOfCheck(opts.only) : jobsAt(minute, weekday);
   if (opts.only) jobs = jobs.filter((j) => j.check === opts.only);
   // A conferência de WhatsApp usa a mesma busca da expansão: roda se qualquer uma das duas estiver ligada.
   jobs = jobs.filter((j) => (j.check === "expansao" ? isCheckOn(cfg, "expansao") || isCheckOn(cfg, "whatsapp") : isCheckOn(cfg, j.check)));

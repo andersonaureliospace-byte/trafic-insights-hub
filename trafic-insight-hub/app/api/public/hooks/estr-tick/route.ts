@@ -1,6 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { runTick } from "@/lib/estrategia/auditorias/run";
+import { jobsOfCheck, type CheckId } from "@/lib/estrategia/auditorias/config";
 import { chainDisparos, hasStalledDisparo } from "@/lib/estrategia/disparos";
 
 // Etapa 257: batida das Auditorias do Hub estratégico. O n8n chama a cada 15 min (fluxo "Auditorias — Hub estratégico");
@@ -28,7 +29,11 @@ export async function POST(request: Request) {
     after(async () => {
       if (await hasStalledDisparo(db, userId as string).catch(() => false)) await chainDisparos(origin);
     });
-    const report = await runTick(db, userId);
+    // Corpo opcional { "only": "prioridade" } roda só essa conferência agora, fora da agenda (refazer manual).
+    // Sem corpo (o n8n a cada 15 min) continua igual: o Hub decide pelo horário.
+    const body = (await request.json().catch(() => ({}))) as { only?: string };
+    const only = typeof body.only === "string" && jobsOfCheck(body.only).length > 0 ? (body.only as CheckId) : undefined;
+    const report = await runTick(db, userId, only ? { only } : {});
     return NextResponse.json({ ok: true, ...report });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });
