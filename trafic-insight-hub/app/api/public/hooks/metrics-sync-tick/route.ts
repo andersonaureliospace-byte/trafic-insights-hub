@@ -23,7 +23,7 @@ export const POST = withRunLog("metrics-sync", async (request: Request) => {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   const body = (await request.json().catch(() => ({}))) as { force?: boolean };
-  const deadlineMs = Date.now() + 48_000;
+  const deadlineMs = Date.now() + 40_000; // folga pra responder antes do corte de 60s da Vercel
 
   const supabase = createServiceClient();
   const { data: creds, error: credsErr } = await supabase

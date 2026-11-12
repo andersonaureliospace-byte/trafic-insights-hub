@@ -241,25 +241,41 @@ export async function syncAccounts(
     }
     return true;
   });
-  const deadline = opts.deadlineMs ?? Date.now() + 50_000;
+  const deadline = opts.deadlineMs ?? Date.now() + 40_000;
   let next = 0;
+  const done = new Set<string>();
   const worker = async () => {
     while (next < queue.length) {
       if (Date.now() > deadline) return;
       const id = queue[next++];
       try {
         await syncAccountDays(token, id, range);
-        report.synced.push(id);
+        if (Date.now() <= deadline) report.synced.push(id);
       } catch (e) {
-        report.failed.push({ account: id, error: (e as Error).message.slice(0, 200) });
+        if (Date.now() <= deadline) report.failed.push({ account: id, error: (e as Error).message.slice(0, 200) });
       }
+      done.add(id);
     }
   };
-  await Promise.all(Array.from({ length: Math.min(SYNC_CONCURRENCY, queue.length) }, worker));
-  report.pending = queue.slice(next);
+  // Etapa (nov/2026): o prazo antes só era conferido ANTES de começar cada conta. Com a Meta lenta, uma conta
+  // em andamento (6+ chamadas seguidas) passava do limite de 60s da Vercel e a função era cortada (504 no n8n).
+  // Agora a resposta sai no prazo de qualquer jeito: contas ainda em andamento voltam como "pendentes" e a
+  // próxima chamada refaz (gravar de novo é seguro — é upsert).
+  let timedOut = false;
+  const workers = Promise.all(Array.from({ length: Math.min(SYNC_CONCURRENCY, queue.length) }, worker));
+  await Promise.race([
+    workers,
+    new Promise<void>((r) =>
+      setTimeout(() => {
+        timedOut = true;
+        r();
+      }, Math.max(0, deadline - Date.now())),
+    ),
+  ]);
+  report.pending = timedOut ? queue.filter((id) => !done.has(id)) : queue.slice(next);
 
   // Poda: nada mais velho que a janela. Só quando não sobrou nada pendente (não apaga no meio do trabalho).
-  if (report.pending.length === 0) {
+  if (!timedOut && report.pending.length === 0) {
     const { error } = await db.from(TABLE).delete().lt("day", range.since);
     report.pruned = !error;
   }
