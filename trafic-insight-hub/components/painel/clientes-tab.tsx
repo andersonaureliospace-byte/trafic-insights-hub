@@ -79,6 +79,24 @@ export function ClientesTab({
 }) {
   const [search, setSearch] = useState("");
   const [configId, setConfigId] = useState<string | null>(null);
+  // Etapa 307: copia os IDs das contas de uma vez (um por linha, sem "act_"). Desativados ficam de fora.
+  const [copiado, setCopiado] = useState<string | null>(null);
+  async function copiarIds() {
+    const ids = filtered.filter((a) => bindings[a.account_id]?.active !== false).map((a) => String(a.account_id).replace(/^act_/, ""));
+    const texto = ids.join("\n");
+    try {
+      await navigator.clipboard.writeText(texto);
+    } catch {
+      const t = document.createElement("textarea");
+      t.value = texto;
+      document.body.appendChild(t);
+      t.select();
+      document.execCommand("copy");
+      t.remove();
+    }
+    setCopiado(`${ids.length} IDs copiados`);
+    setTimeout(() => setCopiado(null), 2500);
+  }
 
   const filtered = useMemo(() => {
     const q = norm(search.trim());
@@ -105,13 +123,22 @@ export function ClientesTab({
             Clique em ⚙ pra ver ID da conta, Meta de leads e Grupo de WhatsApp.
           </p>
         </div>
-        <button
-          onClick={onRefresh}
-          disabled={refreshing}
-          className="h-8 shrink-0 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
-        >
-          {refreshing ? "Atualizando…" : "↻ Atualizar"}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            onClick={() => void copiarIds()}
+            title="Copia o ID de todas as contas da lista (uma por linha). Clientes desativados ficam de fora."
+            className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium dark:border-zinc-700"
+          >
+            {copiado ?? "⧉ Copiar IDs das contas"}
+          </button>
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="h-8 rounded-md border border-zinc-300 px-2.5 text-sm font-medium disabled:opacity-50 dark:border-zinc-700"
+          >
+            {refreshing ? "Atualizando…" : "↻ Atualizar"}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
