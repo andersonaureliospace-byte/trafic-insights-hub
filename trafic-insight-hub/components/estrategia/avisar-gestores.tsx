@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { RITMO_BAND, calendarSP } from "@/lib/estrategia/calc";
+import { calendarSP } from "@/lib/estrategia/calc";
 import { Btn } from "./ui";
 import type { Linha } from "./use-carteira";
 
@@ -16,6 +16,9 @@ export interface LinhaAviso {
   spend: number | null; // gasto no período do quadro
   leads?: number | null; // Etapa 292: leads no período do quadro
 }
+
+// Etapa 308: só avisa investimento atrasado a partir de R$ 100 abaixo do ideal até ontem.
+const AVISO_INVEST_MIN = 100;
 
 type Metrica = "invest" | "cpa";
 interface Group {
@@ -80,14 +83,15 @@ export function AvisarGestores({
       const ideal = (l.monthly / cal.daysInMonth) * passed;
       const gasto = l.nums.untilYesterday;
       const atraso = ideal - gasto;
-      if (passed <= 0 || atraso < RITMO_BAND) {
+      // Etapa 308: diferença de até R$ 100 é pouca — não avisa (ex.: R$ 1.176 de R$ 1.200). Acima da meta também não.
+      if (passed <= 0 || atraso < AVISO_INVEST_MIN) {
         fora.push(`${l.name} (em dia)`);
         continue;
       }
       const porDia = Math.max(0, l.monthly - gasto) / restam;
       itens.push({
         l,
-        linha: `• ${l.name} — precisa investir ${brl0(atraso)}, está atrasada. Investido ${brl0(gasto)} de ${brl0(ideal)} ideal até ontem (meta ${brl0(l.monthly)}; ${brl0(porDia)}/dia até o fim do mês).`,
+        linha: `• ${l.name} — ${brl0(atraso)} abaixo · ${brl0(porDia)}/dia pra fechar o mês`,
       });
     }
     return { itens, fora };
@@ -99,17 +103,17 @@ export function AvisarGestores({
     for (const { l, cpa: c, spend, leads } of linhas) {
       const nLeads = leads != null ? ` · ${Math.round(leads)} lead${Math.round(leads) === 1 ? "" : "s"}` : "";
       if (c === Infinity) {
-        itens.push({ l, linha: `• ${l.name} — gastou ${brl(spend ?? 0)} sem nenhum resultado (${periodLabel}).` });
+        itens.push({ l, linha: `• ${l.name} — ${brl(spend ?? 0)} gastos sem lead` });
         continue;
       }
       if (c == null || l.cpaTarget == null || c <= l.cpaTarget) {
         fora.push(`${l.name} (${c == null ? "sem gasto" : l.cpaTarget == null ? "sem CPA ideal" : "CPA ok"})`);
         continue;
       }
-      itens.push({ l, linha: `• ${l.name} — CPA alto (${periodLabel}): ${brl(c)}, o ideal é ${brl(l.cpaTarget)}${nLeads}.` });
+      itens.push({ l, linha: `• ${l.name} — CPA ${brl(c)} (ideal ${brl(l.cpaTarget)})${nLeads}` });
     }
     return { itens, fora };
-  }, [linhas, periodLabel]);
+  }, [linhas]);
 
   // ---- monta as mensagens: uma por gestor (só as contas dele) e, se ligado, uma pro grupo separada por gestor ----
   const GRUPO = "__grupo__";

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { Acompanhamento } from "@/components/estrategia/acompanhamento";
-import { Graficos } from "@/components/estrategia/graficos";
+import { CardsContas } from "@/components/estrategia/cards-contas";
 import { Alertas, buildGroups, countAlerts, type AlertasServer, type NamingData } from "@/components/estrategia/alertas";
 import { matchesResp, readCache, useCarteira, writeCache } from "@/components/estrategia/use-carteira";
 import { Btn, hhmm } from "@/components/estrategia/ui";
@@ -98,35 +98,35 @@ export default function TrafegoPage() {
     }
   }, []);
 
-  // Etapa 247: alertas e nomes também ficam travados — ao abrir usa o que foi guardado; só o "Atualizar" busca de novo.
+  // Etapa 247/309: alertas e nomes ficam travados — usa o que foi guardado hoje; buscar de novo só pelo "Atualizar alertas".
   useEffect(() => {
     if (!ids) return;
     const c = readCache<AlertasServer>("estr_alertas_v1");
-    // Usa os guardados só se não forem mais velhos que a carteira (quando a carteira atualizou sozinha, atualiza junto).
-    if (c && (at == null || c.at >= at - 120_000)) {
+    // Etapa 309: usa os guardados (de hoje); não busca de novo só porque a carteira atualizou.
+    if (c && new Date(c.at).toDateString() === new Date().toDateString()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- alertas guardados neste navegador
       setSrv(c.data);
       return;
     }
     void loadAlertas(ids.split(","));
-  }, [ids, loadAlertas, at]);
+  }, [ids, loadAlertas]);
+  // Etapa 309: nomenclatura (3 pedidos por conta) só quando abre a aba Alertas, 1x por dia.
   useEffect(() => {
-    if (!ids) return;
+    if (!ids || tab !== "alertas") return;
     const c = readCache<NamingData["items"]>("estr_naming_v1");
-    if (c && (at == null || c.at >= at - 120_000)) {
+    if (c && new Date(c.at).toDateString() === new Date().toDateString()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- nomes guardados neste navegador
       setNaming({ items: c.data, loading: false, error: null });
       return;
     }
     void loadNaming();
-  }, [ids, loadNaming, at]);
+  }, [ids, loadNaming, tab]);
 
   const alertCount = useMemo(() => countAlerts(buildGroups(visible, srv, naming)), [visible, srv, naming]);
 
+  // Etapa 309: Atualizar = só as métricas de hoje. Alertas têm o próprio botão ("Atualizar alertas").
   function refresh() {
     void reload();
-    if (ids) void loadAlertas(ids.split(","));
-    void loadNaming();
   }
   // "atualizado às 10:32" — se for de outro dia, mostra a data também (números travados podem ser de ontem).
   const atLabel = at
@@ -153,14 +153,18 @@ export default function TrafegoPage() {
               ["acomp", "Todas as contas"],
               ["foco", "Sensíveis e críticas"],
               ["alertas", "Alertas"],
-              ["graficos", "Gráficos"],
+              ["graficos", "Ontem × hoje"],
             ] as const
           ).map(([k, label]) => (
             <button
               key={k}
               role="tab"
               aria-selected={tab === k}
-              onClick={() => setTab(k)}
+              onClick={() => {
+                setTab(k);
+                // Etapa 310: abrir "Ontem × hoje" já puxa as métricas de hoje (mesmo Atualizar, a ordem acompanha)
+                if (k === "graficos" && tab !== "graficos" && !loading) void reload();
+              }}
               className={`-mb-px flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
                 tab === k ? "border-blue-600 text-blue-700 dark:border-blue-400 dark:text-blue-300" : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
               }`}
@@ -225,13 +229,20 @@ export default function TrafegoPage() {
             onClienteSalvo={() => void refreshFicha()}
           />
         ) : tab === "graficos" ? (
-          <Graficos linhas={visible} />
+          <CardsContas linhas={visible} isSens={isSens} loading={loading} />
         ) : (
           <>
             {srvError ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">Alertas: {srvError}</div> : null}
             <div className="flex items-center gap-2 text-xs text-zinc-500">
               {srv ? `Alertas de saldo, erros e otimizações às ${hhmm(Date.parse(srv.at))}` : srvLoading ? "Buscando alertas…" : null}
-              <Btn small onClick={() => void loadAlertas(ids.split(","))} disabled={srvLoading || !ids}>
+              <Btn
+                small
+                onClick={() => {
+                  void loadAlertas(ids.split(","));
+                  void loadNaming();
+                }}
+                disabled={srvLoading || !ids}
+              >
                 {srvLoading ? "Buscando…" : "Atualizar alertas"}
               </Btn>
             </div>

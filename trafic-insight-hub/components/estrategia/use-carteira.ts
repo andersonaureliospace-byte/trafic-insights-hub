@@ -149,8 +149,10 @@ async function budgetsFor(ids: string[]): Promise<Record<string, number | null>>
 // Contas por chamada ao daily-cpa (pra não estourar o tempo da função com 50 contas de uma vez).
 const CHUNK = 10;
 
-async function dailyFor(ids: string[], days: number): Promise<Record<string, DailyCpaPoint[]>> {
+// Etapa 309: dias fechados do backup + hoje da Meta (1 pedido por conta). `failed` = contas em que a Meta não respondeu hoje.
+async function dailyFor(ids: string[], days: number): Promise<{ out: Record<string, DailyCpaPoint[]>; failed: Set<string> }> {
   const out: Record<string, DailyCpaPoint[]> = {};
+  const failed = new Set<string>();
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
   let next = 0;
@@ -158,22 +160,24 @@ async function dailyFor(ids: string[], days: number): Promise<Record<string, Dai
     while (next < chunks.length) {
       const c = chunks[next++];
       try {
-        const d = await fetch("/api/meta/daily-cpa", {
+        const d = await fetch("/api/estrategia/hoje", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: AbortSignal.timeout(120_000),
-          body: JSON.stringify({ accountIds: c, days, includeToday: true }),
+          body: JSON.stringify({ accountIds: c, days }),
         }).then((r) => r.json());
         if (d.error) throw new Error(d.error);
         for (const [k, v] of Object.entries((d.daily ?? {}) as Record<string, DailyCpaPoint[]>)) out[normId(k)] = v;
+        for (const k of (d.failed ?? []) as string[]) failed.add(normId(k));
       } catch (e) {
+        for (const k of c) failed.add(normId(k));
         // Um lote que falhou não derruba a tela: essas contas aparecem "sem dados" e o resto segue.
         console.error("estrategia daily err", (e as Error).message);
       }
     }
   };
   await Promise.all([worker(), worker()]);
-  return out;
+  return { out, failed };
 }
 
 // Etapa 247: números travados — a carteira carregada fica guardada neste navegador e é o que aparece ao abrir, trocar de
@@ -208,6 +212,10 @@ export function useCarteira() {
   const [at, setAt] = useState<number | null>(null);
   const run = useRef(0);
   const atRef = useRef<number | null>(null);
+  const linhasRef = useRef<Linha[] | null>(null);
+  useEffect(() => {
+    linhasRef.current = linhas;
+  }, [linhas]);
 
   const load = useCallback(async () => {
     const my = ++run.current;
@@ -219,7 +227,7 @@ export function useCarteira() {
       // Etapa 294: busca o mês atual + o mês passado inteiro (até 62 dias), pra comparar cada período com a mesma fatia
       // anterior (este mês × mesmos dias do mês passado; últimos 7 × 7 antes; semana passada × retrasada).
       const days = Math.min(62, cal.day + 31);
-      const [daily, offers, flagsSaved] = await Promise.all([
+      const [{ out: daily, failed }, offers, flagsSaved] = await Promise.all([
         dailyFor(
           clientes.map((c) => c.rawId),
           days,
@@ -245,25 +253,32 @@ export function useCarteira() {
         changed = true;
       }
       if (changed) void saveOfferFlags(flags).catch(() => {});
-      setLinhas(
-        clientes.map((c) => ({
+      // Etapa 309: conta em que a Meta não respondeu hoje fica com os números de antes (não zera). O orçamento diário
+      // anterior fica na tela até o novo chegar (logo abaixo).
+      const antes = new Map((linhasRef.current ?? []).map((l) => [l.id, l]));
+      const novas: Linha[] = clientes.map((c) => {
+        const old = antes.get(c.id);
+        const ok = !!daily[c.id] && !failed.has(c.id);
+        return {
           ...c,
-          nums: daily[c.id] ? numbersFrom(daily[c.id], cal) : null,
-          ult4: daily[c.id] ? ultimos4(daily[c.id], cal) : undefined,
-          daily: daily[c.id] ?? undefined,
+          nums: ok ? numbersFrom(daily[c.id], cal) : (old?.nums ?? null),
+          ult4: ok ? ultimos4(daily[c.id], cal) : old?.ult4,
+          daily: ok ? daily[c.id] : old?.daily,
           offers: snap[c.id]?.summary ?? null,
           offersAt: snap[c.id]?.at ?? null,
           flags: flags[c.id] ?? null,
-        })),
-      );
+          dailyBudget: old?.dailyBudget,
+        };
+      });
+      setLinhas(novas);
       const now = Date.now();
       setAt(now);
       atRef.current = now;
-      // Investimento diário atual: chega depois (mais lento), sem segurar a tabela.
+      // Investimento diário atual: busca de novo em TODO Atualizar (pedido do Anderson); chega depois, sem segurar a tabela.
       void budgetsFor(clientes.map((c) => c.rawId)).then((b) => {
         if (my !== run.current) return;
         setLinhas((cur) => {
-          const next = (cur ?? []).map((l) => ({ ...l, dailyBudget: l.id in b ? b[l.id] : null }));
+          const next = (cur ?? []).map((l) => ({ ...l, dailyBudget: l.id in b ? b[l.id] : (l.dailyBudget ?? null) }));
           writeCache(CACHE_KEY, next, now);
           return next;
         });
