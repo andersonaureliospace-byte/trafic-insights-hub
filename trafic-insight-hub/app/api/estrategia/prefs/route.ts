@@ -12,8 +12,9 @@ import { GESTOR_ERROS_KEY } from "@/lib/estrategia/gestor-erros";
 //   estr_auditorias     = configuração das Auditorias (Etapa 257)
 //   contas_sensiveis    = por conta: true — conta sensível, otimizar até as 09h (Etapa 261)
 //   gestor_erros        = histórico de erros dos gestores (Etapa 302)
+//   cards_vistos        = contas marcadas como vistas na aba Ontem × hoje { periodo, ids } — zera 00h e 12h (Etapa 311)
 //   feedback_modelos    = texto: feedbacks reais do usuário, modelo de tom pra IA do Feedback por print (Etapa 271)
-const KEYS = new Set(["estrategia_ui", "gestores", "offer_flags", SWITCHES_PREF_KEY, AUDIT_PREF_KEY, "contas_sensiveis", "feedback_modelos", GESTOR_ERROS_KEY]);
+const KEYS = new Set(["estrategia_ui", "gestores", "offer_flags", SWITCHES_PREF_KEY, AUDIT_PREF_KEY, "contas_sensiveis", "feedback_modelos", GESTOR_ERROS_KEY, "cards_vistos"]);
 
 export async function GET(request: Request) {
   try {

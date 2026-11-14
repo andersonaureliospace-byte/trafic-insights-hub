@@ -1,6 +1,7 @@
 // Etapa 260 → Etapa 300: "Suas contas para olhar" da manhã — só o nome da conta e o motivo, sem métricas.
 // Motivos (só o que o Hub já guarda, sem pedido à Meta):
-//   - CPA alto: CPA dos 3 últimos dias fechados acima de 3x o ideal (ou gastou 3x o ideal sem conversa);
+//   - CPA alto (Etapa 312): CPL de ONTEM mais de R$ 4 acima do ideal (ou gastou ideal + R$ 4 sem conversa).
+//     A pausa de criativo a 3x o ideal continua sendo da auditoria de custo alto (07h, 12h, 19h) — não é aviso aqui;
 //   - Investimento abaixo da meta: do dia 01 até ontem, atrasada R$ 50 ou 5% da meta do mês (o que for maior).
 // Vai no WhatsApp pessoal de cada gestor; gestor sem número vai pro grupo do Plano, marcando o gestor.
 // Gestor sem nenhuma conta pra olhar não recebe mensagem.
@@ -15,8 +16,7 @@ import { ROBO, gestorHeader, loadGestorNumbers } from "./gestores";
 import type { Acc } from "./checks";
 
 export const PLANO_REGRAS = {
-  cpaX: 3, // CPA 3 dias acima de 3x o ideal
-  semConversaX: 3, // gastou 3x o ideal em 3 dias sem conversa
+  cpaAcima: 4, // CPL de ontem mais de R$ 4 acima do ideal (sem conversa: gastou ideal + R$ 4)
   verbaMin: 50, // atraso mínimo (R$)…
   verbaPct: 0.05, // …ou 5% da meta do mês, o que for maior
 };
@@ -34,8 +34,8 @@ function addDays(ymd: string, n: number): string {
 export async function buildPlano(_db: SupabaseClient, _userId: string, accounts: Acc[]): Promise<ContaPlano[]> {
   const cal = calendarSP();
   const yesterday = addDays(cal.today, -1);
-  const [stored3, storedMonth] = await Promise.all([
-    readStoredDaysMany(accounts.map((a) => a.id), addDays(cal.today, -3), yesterday),
+  const [storedOntem, storedMonth] = await Promise.all([
+    readStoredDaysMany(accounts.map((a) => a.id), yesterday, yesterday),
     cal.day > 1 ? readStoredDaysMany(accounts.map((a) => a.id), cal.monthStart, yesterday) : Promise.resolve(new Map()),
   ]);
 
@@ -47,11 +47,12 @@ export async function buildPlano(_db: SupabaseClient, _userId: string, accounts:
     if (ideal) {
       let spend = 0;
       let res = 0;
-      for (const d of stored3.get(a.id)?.values() ?? []) {
+      for (const d of storedOntem.get(a.id)?.values() ?? []) {
         spend += d.spend;
         res += d.results;
       }
-      const alto = res > 0 ? spend / res > ideal * PLANO_REGRAS.cpaX : spend >= ideal * PLANO_REGRAS.semConversaX;
+      const limite = ideal + PLANO_REGRAS.cpaAcima;
+      const alto = res > 0 ? spend / res > limite : spend > limite;
       if (alto) motivos.push("CPA alto");
     }
 

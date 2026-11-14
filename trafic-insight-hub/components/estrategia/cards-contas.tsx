@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { calendarSP } from "@/lib/estrategia/calc";
 import type { Linha } from "@/components/estrategia/use-carteira";
@@ -36,6 +36,21 @@ const PRIO: Record<string, { label: string; cls: string; dot: string }> = {
   baixa: { label: "Baixa", cls: "bg-green-500/15 text-green-700 dark:text-green-200", dot: "bg-green-500" },
   inauguracao: { label: "Inauguração", cls: "bg-zinc-500/15 text-zinc-700 dark:text-zinc-200", dot: "bg-zinc-400" },
 };
+// Etapa 311: contas marcadas como vistas somem da tela até o próximo reset (00h e 12h de Brasília) ou o botão Resetar.
+// Fica no Supabase (user_ui_prefs "cards_vistos"), igual em qualquer navegador.
+function periodoAtual(): string {
+  const p = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? "";
+  return `${g("year")}-${g("month")}-${g("day")}${Number(g("hour")) >= 12 ? "T12" : "T00"}`;
+}
+async function salvarVistos(periodo: string, ids: string[]) {
+  await fetch("/api/estrategia/prefs", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key: "cards_vistos", value: { periodo, ids } }),
+  }).catch(() => {});
+}
+
 const cpaTxt = (spend: number, res: number) => (spend <= 0 ? "—" : res === 0 ? "sem conversa" : brl(spend / res));
 
 function Num({ label, value, cls = "" }: { label: string; value: string; cls?: string }) {
@@ -50,6 +65,30 @@ function Num({ label, value, cls = "" }: { label: string; value: string; cls?: s
 export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSens: (id: string) => boolean; loading: boolean }) {
   const [busca, setBusca] = useState("");
   const cal = calendarSP();
+  const [vistos, setVistos] = useState<{ periodo: string; ids: string[] }>({ periodo: "", ids: [] });
+  const [periodo, setPeriodo] = useState(periodoAtual);
+  useEffect(() => {
+    fetch("/api/estrategia/prefs?key=cards_vistos", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        const v = d?.value as { periodo?: string; ids?: string[] } | null;
+        if (v?.periodo && Array.isArray(v.ids)) setVistos({ periodo: v.periodo, ids: v.ids });
+      })
+      .catch(() => {});
+    // a tela pode ficar aberta na virada (00h / 12h): confere a cada minuto
+    const t = setInterval(() => setPeriodo(periodoAtual()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+  const ocultos = useMemo(() => new Set(vistos.periodo === periodo ? vistos.ids : []), [vistos, periodo]);
+  const marcar = (id: string) => {
+    const ids = [...ocultos, id];
+    setVistos({ periodo, ids });
+    void salvarVistos(periodo, ids);
+  };
+  const resetar = () => {
+    setVistos({ periodo, ids: [] });
+    void salvarVistos(periodo, []);
+  };
 
   const cards = useMemo(() => {
     const [y, m, d] = cal.today.split("-").map(Number);
@@ -57,6 +96,7 @@ export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSe
     const flat = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
     const q = flat(busca.trim());
     const list = linhas
+      .filter((l) => !ocultos.has(l.id))
       .filter((l) => !q || flat(`${l.name} ${l.responsible ?? ""}`).includes(q))
       .map((l) => {
         const pts = l.daily ?? [];
@@ -69,7 +109,7 @@ export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSe
         return { l, o, h, ideal, tS, tR, score, nt: nivel(tS, tR, ideal), semDados: !l.daily };
       });
     return list.sort((a, b) => b.score - a.score);
-  }, [linhas, busca, cal.today]);
+  }, [linhas, busca, cal.today, ocultos]);
 
   const semDados = linhas.length > 0 && linhas.every((l) => !l.daily);
 
@@ -80,6 +120,14 @@ export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSe
           Da pior pra melhor (CPA de ontem + hoje ÷ ideal). Ontem vem do backup; hoje e a ordem atualizam ao abrir esta aba ou no Atualizar.
           {loading ? " Atualizando hoje…" : ""}
         </p>
+        {ocultos.size > 0 ? (
+          <span className="flex items-center gap-2 text-xs text-zinc-500">
+            {ocultos.size} {ocultos.size === 1 ? "vista" : "vistas"} (voltam às {periodo.endsWith("T12") ? "00h" : "12h"})
+            <button onClick={resetar} className="h-8 rounded-lg border border-zinc-300 px-2.5 text-sm font-medium hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5">
+              Resetar
+            </button>
+          </span>
+        ) : null}
         <label htmlFor="cc-busca" className="sr-only">Buscar conta</label>
         <input
           id="cc-busca"
@@ -102,6 +150,14 @@ export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSe
           return (
             <div key={l.id} className={`flex flex-col gap-3 rounded-xl border bg-white p-3.5 dark:bg-[#121722] ${BORDA[nt]}`}>
               <div className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={false}
+                  onChange={() => marcar(l.id)}
+                  aria-label={`Marcar ${l.name} como vista`}
+                  title="Marcar como vista (sai da tela até o próximo reset: 00h ou 12h)"
+                  className="mt-0.5 h-[18px] w-[18px] flex-none cursor-pointer accent-blue-600"
+                />
                 <span className={`inline-flex h-[22px] min-w-[26px] flex-none items-center justify-center rounded-md text-xs font-bold ${RANK[nt]}`}>{i + 1}</span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-bold" title={l.name}>{l.name}</div>
