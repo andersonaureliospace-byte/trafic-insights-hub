@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Btn } from "@/components/estrategia/ui";
 import { CACHE_KEY, loadClientes, readCache, type Cliente, type Linha } from "@/components/estrategia/use-carteira";
+import { NotasCliente } from "./notas-cliente";
 import { useGravador } from "@/components/estrategia/gravador";
 import { ClienteWhatsapp } from "@/components/estrategia/whatsapp-panel";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -609,6 +610,8 @@ export function NovoFeedbackPrint({
               ) : null}
             </div>
           </div>
+
+          {cliente ? <NotasCliente key={cliente.id} clienteId={cliente.id} /> : null}
 
           <details className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
             <summary className="cursor-pointer text-xs font-semibold text-zinc-500">Meu jeito de escrever (exemplos pra IA copiar o tom)</summary>

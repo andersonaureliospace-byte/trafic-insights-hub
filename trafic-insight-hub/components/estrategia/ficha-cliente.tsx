@@ -6,6 +6,7 @@ import { loadClientes, loadOfferFlags, saveOfferFlags, normId, type Cliente, typ
 import { Btn, fmtBRL } from "./ui";
 import { DescricaoAsana } from "./descricao-asana";
 import { usePriorityOptions } from "@/lib/priority-context";
+import { NotasCliente } from "./notas-cliente";
 import { calendarSP } from "@/lib/estrategia/calc";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 
@@ -340,6 +341,7 @@ export function FichaCliente({
             <dt className="text-zinc-500">Grupo WhatsApp</dt>
             <dd>{dados.grupo ?? <span className="text-zinc-500 italic">sem grupo ligado</span>}</dd>
           </dl>
+          <NotasCliente clienteId={cur.id} />
           {msg ? <div className={`text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{msg.text}</div> : null}
           <div className="flex items-center gap-2 border-t border-zinc-200 pt-4 dark:border-white/10">
             <div className="flex-1">
