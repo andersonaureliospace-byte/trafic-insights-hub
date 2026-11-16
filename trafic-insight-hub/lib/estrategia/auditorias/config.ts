@@ -54,7 +54,7 @@ export const CHECKS: CheckInfo[] = [
   {
     id: "cpa_dia",
     name: "CPA alto no dia",
-    what: "CPA de hoje acima do ideal: meio-dia (+R$ 20) e à tarde (+R$ 10). Gastou isso sem conversa também entra.",
+    what: "CPA de hoje mais de R$ 5 acima do ideal (meio-dia e tarde). Gastou ideal + R$ 5 sem conversa também entra.",
     when: "11h30 e 15h30",
     calls: "1 por conta",
   },

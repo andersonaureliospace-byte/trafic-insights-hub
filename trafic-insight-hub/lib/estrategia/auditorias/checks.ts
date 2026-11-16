@@ -394,7 +394,8 @@ export async function runCustoAlto(db: SupabaseClient, userId: string, token: st
 
 // ---------- CPA alto no dia (hoje até agora) ----------
 
-export const CPA_DIA_DIFF = { midday: 20, evening: 10 } as const;
+// Etapa 313: avisa quando o CPA de hoje passa R$ 5 do ideal (meio-dia e tarde).
+export const CPA_DIA_DIFF = { midday: 5, evening: 5 } as const;
 
 export async function runCpaDia(token: string, accounts: Acc[], deadline: number, variant: "midday" | "evening"): Promise<CheckResult> {
   const findings: Finding[] = [];
