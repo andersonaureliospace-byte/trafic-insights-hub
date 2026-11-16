@@ -67,7 +67,8 @@ async function fetchWindow(token: string, act: string, hours: number): Promise<A
       what: r.translated_event_type || (r.event_type as string),
       object: r.object_name ?? null,
       type: r.event_type as string,
-      relevant: isRelevantActivity(r.event_type as string) && !HUB_APP.test(r.application_name ?? ""),
+      // Etapa 324: mudança da própria Meta (fim da análise, "anúncio exibido"…) também não é otimização do gestor
+      relevant: isRelevantActivity(r.event_type as string) && !HUB_APP.test(r.application_name ?? "") && (r.actor_name ?? "") !== "Meta",
     }))
     .sort((a, b) => b.time.localeCompare(a.time));
 }

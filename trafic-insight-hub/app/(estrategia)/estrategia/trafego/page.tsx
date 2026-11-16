@@ -124,9 +124,31 @@ export default function TrafegoPage() {
 
   const alertCount = useMemo(() => countAlerts(buildGroups(visible, srv, naming)), [visible, srv, naming]);
 
-  // Etapa 309: Atualizar = só as métricas de hoje. Alertas têm o próprio botão ("Atualizar alertas").
+  // Etapa 324: otimizações (quem mexeu na conta e quando) — junto do Atualizar e ao abrir Ontem × hoje.
+  const loadOtim = useCallback(async (accountIds: string[]) => {
+    if (accountIds.length === 0) return;
+    try {
+      const d = await fetch("/api/estrategia/otimizacoes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountIds }),
+      }).then((r) => r.json());
+      if (d.error) return;
+      setSrv((cur) => {
+        if (!cur) return cur;
+        const next = { ...cur, activities: { ...cur.activities, ...(d.activities ?? {}) }, activitiesFailed: d.failed ?? [] };
+        writeCache("estr_alertas_v1", next);
+        return next;
+      });
+    } catch {
+      /* fica com o que já tinha */
+    }
+  }, []);
+
+  // Etapa 309/324: Atualizar = métricas de hoje + otimizações. Saldo/erros/nomes têm o próprio botão ("Atualizar alertas").
   function refresh() {
     void reload();
+    if (ids) void loadOtim(ids.split(","));
   }
   // "atualizado às 10:32" — se for de outro dia, mostra a data também (números travados podem ser de ontem).
   const atLabel = at
@@ -163,7 +185,10 @@ export default function TrafegoPage() {
               onClick={() => {
                 setTab(k);
                 // Etapa 310: abrir "Ontem × hoje" já puxa as métricas de hoje (mesmo Atualizar, a ordem acompanha)
-                if (k === "graficos" && tab !== "graficos" && !loading) void reload();
+                if (k === "graficos" && tab !== "graficos" && !loading) {
+                  void reload();
+                  if (ids) void loadOtim(ids.split(","));
+                }
               }}
               className={`-mb-px flex items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
                 tab === k ? "border-blue-600 text-blue-700 dark:border-blue-400 dark:text-blue-300" : "border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
