@@ -111,13 +111,30 @@ export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSe
     return list.sort((a, b) => b.score - a.score);
   }, [linhas, busca, cal.today, ocultos]);
 
+  // Etapa 314: separado por categoria — Inauguração, Sensíveis, Críticas, Altas, Médias, Baixas, Sem prioridade.
+  // Conta sensível fica em "Sensíveis" (qualquer prioridade); inauguração vem antes de tudo. Dentro de cada uma, pior CPA primeiro.
+  const grupos = useMemo(() => {
+    const ordem = [
+      { k: "inauguracao", t: "Inauguração", dot: "bg-zinc-400" },
+      { k: "sensivel", t: "Sensíveis", dot: "bg-purple-500" },
+      { k: "critica", t: "Críticas", dot: "bg-red-500" },
+      { k: "alta", t: "Altas", dot: "bg-orange-500" },
+      { k: "media", t: "Médias", dot: "bg-yellow-500" },
+      { k: "baixa", t: "Baixas", dot: "bg-green-500" },
+      { k: "sem", t: "Sem prioridade", dot: "bg-zinc-500" },
+    ];
+    const de = (l: Linha) =>
+      l.priority === "inauguracao" ? "inauguracao" : isSens(l.id) ? "sensivel" : l.priority && PRIO[l.priority] ? l.priority : "sem";
+    return ordem.map((g) => ({ ...g, itens: cards.filter((c) => de(c.l) === g.k) })).filter((g) => g.itens.length > 0);
+  }, [cards, isSens]);
+
   const semDados = linhas.length > 0 && linhas.every((l) => !l.daily);
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="mr-auto text-sm text-zinc-500">
-          Da pior pra melhor (CPA de ontem + hoje ÷ ideal). Ontem vem do backup; hoje e a ordem atualizam ao abrir esta aba ou no Atualizar.
+          Por categoria e, dentro de cada uma, da pior pra melhor (CPA de ontem + hoje ÷ ideal). Ontem vem do backup; hoje e a ordem atualizam ao abrir esta aba ou no Atualizar.
           {loading ? " Atualizando hoje…" : ""}
         </p>
         {ocultos.size > 0 ? (
@@ -144,8 +161,15 @@ export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSe
       </div>
       {semDados ? <div className="rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300">Clique em Atualizar pra carregar os cards.</div> : null}
 
+      {grupos.map((g) => (
+      <section key={g.k} className="flex flex-col gap-2">
+        <h3 className="flex items-center gap-2 pt-2 text-sm font-semibold">
+          <span className={`h-2 w-2 rounded-full ${g.dot}`} />
+          {g.t}
+          <span className="text-xs font-normal text-zinc-500">· {g.itens.length}</span>
+        </h3>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-3">
-        {cards.map(({ l, o, h, ideal, tS, tR, nt }, i) => {
+        {g.itens.map(({ l, o, h, ideal, tS, tR, nt }, i) => {
           const pr = l.priority ? PRIO[l.priority] : null;
           return (
             <div key={l.id} className={`flex flex-col gap-3 rounded-xl border bg-white p-3.5 dark:bg-[#121722] ${BORDA[nt]}`}>
@@ -218,6 +242,8 @@ export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSe
           );
         })}
       </div>
+      </section>
+      ))}
       {cards.length === 0 ? <div className="py-8 text-center text-sm text-zinc-500">Nenhuma conta nesse filtro.</div> : null}
     </div>
   );

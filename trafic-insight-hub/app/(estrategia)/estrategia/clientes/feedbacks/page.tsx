@@ -17,6 +17,7 @@ import type { Tone } from "@/lib/estrategia/calc";
 type Status = "enviando" | "processando" | "revisao" | "enviado";
 
 interface Feedback {
+  agendado?: string | null; // Etapa 315: envio programado (ISO)
   id: string;
   ad_account_id: string;
   client_name: string;
@@ -56,6 +57,10 @@ function statusInfo(f: Feedback): { tone: Tone; label: string } {
   if (f.status === "enviando") return { tone: "off", label: "Subindo vídeo…" };
   if (f.status === "processando") return { tone: "info", label: "Gerando plano…" };
   if (f.status === "enviado") return { tone: "ok", label: "Enviado" };
+  if (f.agendado) {
+    const d = new Date(f.agendado);
+    return { tone: "info", label: `🕒 Programado ${d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` };
+  }
   if (f.send_error) return { tone: "bad", label: "Erro no envio" };
   return { tone: "warn", label: "Aguardando revisão" };
 }
@@ -84,9 +89,15 @@ export default function FeedbacksPage() {
 
   const load = useCallback(async () => {
     try {
-      const d = (await fetch("/api/feedbacks", { cache: "no-store" }).then((r) => r.json())) as { feedbacks?: Feedback[]; error?: string };
+      const [d, ag] = await Promise.all([
+        fetch("/api/feedbacks", { cache: "no-store" }).then((r) => r.json()) as Promise<{ feedbacks?: Feedback[]; error?: string }>,
+        fetch("/api/feedbacks/agendar", { cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => ({})) as Promise<{ agendados?: Array<{ id: string; quando: string }> }>,
+      ]);
       if (d.error) throw new Error(d.error);
-      setItems(d.feedbacks ?? []);
+      const quando = new Map((ag.agendados ?? []).map((a) => [a.id, a.quando]));
+      setItems((d.feedbacks ?? []).map((f) => ({ ...f, agendado: f.status === "enviado" ? null : (quando.get(f.id) ?? null) })));
       setError(null);
     } catch (e) {
       setError((e as Error).message);
@@ -339,6 +350,16 @@ function Detail({ f, onChanged }: { f: Feedback; onChanged: () => Promise<void> 
           </div>
         </div>
         <Pill tone={st.tone}>{st.label}</Pill>
+        {f.agendado && f.status !== "enviado" ? (
+          <Btn
+            small
+            onClick={() =>
+              void fetch(`/api/feedbacks/agendar?id=${encodeURIComponent(f.id)}`, { method: "DELETE" }).then(() => window.dispatchEvent(new Event("feedbacks:changed")))
+            }
+          >
+            Cancelar programação
+          </Btn>
+        ) : null}
       </div>
 
       {isPrint ? (

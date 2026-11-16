@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { runTick } from "@/lib/estrategia/auditorias/run";
 import { jobsOfCheck, type CheckId } from "@/lib/estrategia/auditorias/config";
 import { chainDisparos, hasStalledDisparo } from "@/lib/estrategia/disparos";
+import { enviarAgendados } from "@/lib/feedbacks/agendados";
 
 // Etapa 257: batida das Auditorias do Hub estratégico. O n8n chama a cada 15 min (fluxo "Auditorias — Hub estratégico");
 // o Hub decide o que rodar pelo horário de Brasília (agenda em lib/estrategia/auditorias/config.ts). Protegido pelo
@@ -28,6 +29,8 @@ export async function POST(request: Request) {
     const origin = new URL(request.url).origin;
     after(async () => {
       if (await hasStalledDisparo(db, userId as string).catch(() => false)) await chainDisparos(origin);
+      // Etapa 315: feedbacks com envio programado que já passaram do horário
+      await enviarAgendados(db as never, userId as string).catch((e) => console.error("feedbacks agendados", (e as Error).message));
     });
     // Corpo opcional { "only": "prioridade" } roda só essa conferência agora, fora da agenda (refazer manual).
     // Sem corpo (o n8n a cada 15 min) continua igual: o Hub decide pelo horário.

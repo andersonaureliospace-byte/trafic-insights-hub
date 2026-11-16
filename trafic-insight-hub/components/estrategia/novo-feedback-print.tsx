@@ -232,6 +232,14 @@ export function NovoFeedbackPrint({
   const [proximo, setProximo] = useState(mais(7));
   const [programar, setProgramar] = useState(true);
   const [enviando, setEnviando] = useState(false);
+  // Etapa 315: programar o envio (dia e hora) — sai pelo estr-tick, que roda a cada 15 min
+  const [agendarAberto, setAgendarAberto] = useState(false);
+  const [quandoAg, setQuandoAg] = useState(() => {
+    const d = new Date(Date.now() + 60 * 60_000);
+    d.setMinutes(0, 0, 0);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
   const [enviado, setEnviado] = useState<string | null>(null);
 
   async function abrirRevisao(id: string) {
@@ -258,6 +266,24 @@ export function NovoFeedbackPrint({
       setEnviado(
         `Enviado pro grupo ✓${t?.concluidas ? " · tarefa de feedback concluída" : ""}${t?.proximo ? ` · próximo em ${t.proximo.split("-").reverse().slice(0, 2).join("/")}` : ""}`,
       );
+      window.dispatchEvent(new Event("feedbacks:changed"));
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    setEnviando(false);
+  }
+
+  async function agendar() {
+    if (!rev) return;
+    setEnviando(true);
+    setErro(null);
+    try {
+      const quando = new Date(quandoAg);
+      if (Number.isNaN(quando.getTime())) throw new Error("Escolha o dia e a hora.");
+      await post("/api/feedbacks/agendar", { id: rev.id, quando: quando.toISOString(), resumo: rev.resumo, proximo: programar ? proximo : null });
+      const dia = quando.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+      const hora = quando.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+      setEnviado(`Programado pra ${dia} às ${hora} ✓ (sai em até 15 min depois desse horário)`);
       window.dispatchEvent(new Event("feedbacks:changed"));
     } catch (e) {
       setErro((e as Error).message);
@@ -362,6 +388,22 @@ export function NovoFeedbackPrint({
               ))}
             </label>
             <p className="text-[11px] text-zinc-500">Ao enviar, a tarefa de feedback de hoje desse cliente (Demandas) já fica concluída.</p>
+            {agendarAberto && !enviado ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 p-2 text-xs dark:border-white/10">
+                <label htmlFor="fp-quando" className="text-zinc-600 dark:text-zinc-400">Enviar em</label>
+                <input
+                  id="fp-quando"
+                  type="datetime-local"
+                  value={quandoAg}
+                  onChange={(e) => setQuandoAg(e.target.value)}
+                  className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs dark:border-white/10 dark:bg-[#141924]"
+                />
+                <Btn small primary onClick={() => void agendar()} disabled={enviando || !rev.grupo || !quandoAg}>
+                  {enviando ? "Programando…" : "Confirmar"}
+                </Btn>
+                <span className="text-[11px] text-zinc-500">Sai em até 15 min depois do horário escolhido.</span>
+              </div>
+            ) : null}
             {erro ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{erro}</div> : null}
             {enviado ? <div className="rounded-lg bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-300">{enviado}</div> : null}
           </div>
@@ -371,6 +413,7 @@ export function NovoFeedbackPrint({
             ) : (
               <>
                 <Btn onClick={() => onCreated(rev.id)} disabled={enviando}>Revisar depois (Feedbacks)</Btn>
+                <Btn onClick={() => setAgendarAberto((v) => !v)} disabled={enviando || !rev.grupo}>🕒 Programar envio</Btn>
                 <Btn primary onClick={() => void enviar()} disabled={enviando || !rev.grupo}>{enviando ? "Enviando…" : "📤 Enviar pro grupo"}</Btn>
               </>
             )}
