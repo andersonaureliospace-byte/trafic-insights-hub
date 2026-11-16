@@ -31,7 +31,11 @@ interface ActivityRow {
   event_time?: string;
   actor_name?: string;
   object_name?: string;
+  application_name?: string;
 }
+
+// Etapa 322: o Hub age na Meta pelo app "speed" (mesmo login do gestor). Mudança feita pelo Hub não conta como otimização.
+const HUB_APP = /^speed$/i;
 
 const SKIP = /billing|funding|payment|spend_limit|account_spending_limit|charge|receipt|invoice/i;
 const CONCURRENCY = 4;
@@ -48,7 +52,7 @@ async function fetchWindow(token: string, act: string, hours: number): Promise<A
     token,
     `/${act}/activities`,
     {
-      fields: "event_type,translated_event_type,event_time,actor_name,object_name",
+      fields: "event_type,translated_event_type,event_time,actor_name,object_name,application_name",
       since: String(since),
       until: String(until),
       limit: "500",
@@ -63,7 +67,7 @@ async function fetchWindow(token: string, act: string, hours: number): Promise<A
       what: r.translated_event_type || (r.event_type as string),
       object: r.object_name ?? null,
       type: r.event_type as string,
-      relevant: isRelevantActivity(r.event_type as string),
+      relevant: isRelevantActivity(r.event_type as string) && !HUB_APP.test(r.application_name ?? ""),
     }))
     .sort((a, b) => b.time.localeCompare(a.time));
 }

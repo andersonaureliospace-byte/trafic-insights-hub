@@ -6,6 +6,7 @@ import { NovoFeedbackPrint } from "./novo-feedback-print";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { calendarSP } from "@/lib/estrategia/calc";
 import type { Linha } from "@/components/estrategia/use-carteira";
+import type { ActivityItem } from "@/lib/estrategia/activities";
 
 // Etapa 310: Acompanhamento → Ontem × hoje. Um card por conta, só números:
 //   ontem (do backup, fixo): investimento, custo por conversa, conversas — e prioridade/sensível embaixo
@@ -64,11 +65,42 @@ function Num({ label, value, cls = "" }: { label: string; value: string; cls?: s
   );
 }
 
-export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSens: (id: string) => boolean; loading: boolean }) {
+// Etapa 322: última otimização do gestor (histórico da Meta; o que o Hub faz sozinho não conta)
+function Otimizacao({ acts, agora }: { acts: ActivityItem[] | undefined | null; agora: number }) {
+  if (acts === undefined) return <span className="text-zinc-400">Otimização: …</span>;
+  const last = (acts ?? []).find((a) => a.relevant);
+  if (!last) return <span className="font-semibold text-red-600 dark:text-red-300" title="Nenhuma otimização nos últimos 7 dias">Sem otimização há +7 dias</span>;
+  const d = new Date(last.time);
+  const hoje = new Date(agora).toDateString() === d.toDateString();
+  const horas = (agora - d.getTime()) / 3600_000;
+  const quando = hoje
+    ? `hoje às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+    : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  const cls = hoje ? "text-emerald-600 dark:text-emerald-300" : horas < 48 ? "text-amber-600 dark:text-amber-300" : "text-red-600 dark:text-red-300";
+  return (
+    <span className={`font-semibold ${cls}`} title={`${last.what}${last.object ? ` — ${last.object}` : ""}${last.actor ? ` (${last.actor})` : ""}`}>
+      {hoje ? "✓ Otimizada " : "Última otimização "}
+      {quando}
+    </span>
+  );
+}
+
+export function CardsContas({
+  linhas,
+  isSens,
+  loading,
+  activities,
+}: {
+  linhas: Linha[];
+  isSens: (id: string) => boolean;
+  loading: boolean;
+  activities?: Record<string, ActivityItem[]> | null;
+}) {
   const [busca, setBusca] = useState("");
   const cal = calendarSP();
   const router = useRouter();
-  const [feedbackDe, setFeedbackDe] = useState<string | null>(null); // Etapa 317: feedback direto do card
+  const [feedbackDe, setFeedbackDe] = useState<string | null>(null);
+  const [agora] = useState(() => Date.now()); // hora em que a aba abriu (pra "otimizada hoje")
   const [vistos, setVistos] = useState<{ periodo: string; ids: string[] }>({ periodo: "", ids: [] });
   const [periodo, setPeriodo] = useState(periodoAtual);
   useEffect(() => {
@@ -245,7 +277,7 @@ export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSe
               </div>
 
               <div className="flex justify-between gap-2 border-t border-zinc-200 pt-2 text-xs text-zinc-500 dark:border-white/[0.06]">
-                <span>Ontem + hoje</span>
+                <Otimizacao agora={agora} acts={activities ? (activities[l.id] ?? activities[`act_${l.id}`] ?? null) : undefined} />
                 <span className="tabular-nums">
                   CPA <strong className={COR_CPA[nt]}>{cpaTxt(tS, tR)}</strong>
                   {ideal && tR > 0 ? ` · ${(tS / tR / ideal).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}x o ideal` : ""}

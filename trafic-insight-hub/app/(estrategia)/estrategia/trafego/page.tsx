@@ -229,7 +229,7 @@ export default function TrafegoPage() {
             onClienteSalvo={() => void refreshFicha()}
           />
         ) : tab === "graficos" ? (
-          <CardsContas linhas={visible} isSens={isSens} loading={loading} />
+          <CardsContas linhas={visible} isSens={isSens} loading={loading} activities={srv?.activities ?? null} />
         ) : (
           <>
             {srvError ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">Alertas: {srvError}</div> : null}
