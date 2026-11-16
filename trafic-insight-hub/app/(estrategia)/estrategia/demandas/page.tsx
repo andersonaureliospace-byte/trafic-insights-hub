@@ -62,6 +62,23 @@ function Quadro() {
   const [proxFb, setProxFb] = useState<TarefaUI | null>(null);
   const dragId = useRef<string | null>(null);
   const [dropAt, setDropAt] = useState<{ dia: string; idx: number } | null>(null);
+  // Etapa 316: selecionar várias tarefas de uma vez (concluir, mover de dia, excluir)
+  const [selecionando, setSelecionando] = useState(false);
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [moverPara, setMoverPara] = useState("");
+  const [proxDias, setProxDias] = useState(0);
+  const [emMassa, setEmMassa] = useState(false);
+  const alternarSel = (id: string) =>
+    setSel((cur) => {
+      const n = new Set(cur);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const sairSelecao = () => {
+    setSelecionando(false);
+    setSel(new Set());
+  };
 
   const carregar = useCallback(async (off: number) => {
     try {
@@ -130,6 +147,32 @@ function Quadro() {
     }
   }
 
+  async function emLote(acao: "concluir" | "mover" | "excluir") {
+    if (!board || sel.size === 0) return;
+    if (acao === "mover" && !moverPara) return;
+    const escolhidas = board.tarefas.filter((t) => sel.has(t.id));
+    setEmMassa(true);
+    setErro(null);
+    try {
+      for (const t of escolhidas) {
+        if (acao === "concluir") {
+          if (t.status === "feita") continue;
+          const proxima = t.tipo === "feedback" && proxDias > 0 ? addDays(hoje, proxDias) : undefined;
+          await api({ action: "concluir", id: t.id, feito: true, ...(proxima ? { proxima } : {}) });
+        } else if (acao === "mover") {
+          await api({ action: "mover", id: t.id, data: moverPara, ordem: t.ordem });
+        } else {
+          await api({ action: "excluir", id: t.id });
+        }
+      }
+      sairSelecao();
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    setEmMassa(false);
+    recarregar();
+  }
+
   // ---- arrastar ----
   function onDragOverCol(e: React.DragEvent, dia: string) {
     e.preventDefault();
@@ -194,8 +237,31 @@ function Quadro() {
           <input type="checkbox" checked={verFeitas} onChange={(e) => setVerFeitas(e.target.checked)} />
           Mostrar concluídas
         </label>
+        <Btn small onClick={() => (selecionando ? sairSelecao() : setSelecionando(true))}>{selecionando ? "Cancelar seleção" : "☑ Selecionar vários"}</Btn>
         {erro ? <span className="text-xs text-red-600">{erro}</span> : null}
       </div>
+      {selecionando ? (
+        <div className="mx-4 mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-600/5 px-3 py-2 text-sm lg:mx-6 dark:bg-blue-500/10">
+          <span className="font-medium tabular-nums">{sel.size} {sel.size === 1 ? "selecionada" : "selecionadas"}</span>
+          <span className="text-xs text-zinc-500">(clique nos cards)</span>
+          <span className="mx-1 h-5 w-px bg-zinc-300 dark:bg-white/10" />
+          <Btn small primary onClick={() => void emLote("concluir")} disabled={emMassa || sel.size === 0}>✓ Concluir</Btn>
+          <label htmlFor="dm-prox" className="text-xs text-zinc-500">próximo feedback</label>
+          <select id="dm-prox" value={proxDias} onChange={(e) => setProxDias(Number(e.target.value))} className="h-8 rounded-md border border-zinc-300 bg-white px-1.5 text-xs dark:border-white/10 dark:bg-[#141924]">
+            <option value={0}>não programar</option>
+            <option value={7}>+7 dias</option>
+            <option value={15}>+15 dias</option>
+            <option value={30}>+30 dias</option>
+          </select>
+          <span className="mx-1 h-5 w-px bg-zinc-300 dark:bg-white/10" />
+          <label htmlFor="dm-mover" className="text-xs text-zinc-500">Mover para</label>
+          <input id="dm-mover" type="date" value={moverPara} onChange={(e) => setMoverPara(e.target.value)} className="h-8 rounded-md border border-zinc-300 bg-white px-1.5 text-xs dark:border-white/10 dark:bg-[#141924]" />
+          <Btn small onClick={() => void emLote("mover")} disabled={emMassa || sel.size === 0 || !moverPara}>Mover</Btn>
+          <span className="mx-1 h-5 w-px bg-zinc-300 dark:bg-white/10" />
+          <Btn small onClick={() => void emLote("excluir")} disabled={emMassa || sel.size === 0}>🗑 Excluir</Btn>
+          {emMassa ? <span className="text-xs text-zinc-500">Aplicando…</span> : null}
+        </div>
+      ) : null}
 
       {board?.semTabela ? (
         <div className="m-6 rounded-xl border border-dashed border-amber-400 p-6 text-sm">
@@ -249,9 +315,13 @@ function Quadro() {
                           dragId.current = null;
                           setDropAt(null);
                         }}
-                        onClick={() => (t.tipo === "feedback" && t.ad_account_id && !feita ? setFeedbackDe(t) : setAberta(t))}
+                        onClick={() =>
+                          selecionando ? alternarSel(t.id) : t.tipo === "feedback" && t.ad_account_id && !feita ? setFeedbackDe(t) : setAberta(t)
+                        }
                         className={`group cursor-pointer rounded-lg border p-2.5 shadow-sm transition-colors ${
-                          feita
+                          selecionando && sel.has(t.id)
+                            ? "border-blue-500 bg-blue-600/10 ring-2 ring-blue-500/60"
+                            : feita
                             ? "border-zinc-200 bg-zinc-50 opacity-60 dark:border-white/5 dark:bg-white/[0.02]"
                             : t.tipo === "alerta"
                               ? "border-red-500/40 bg-red-500/[0.06] hover:border-red-500/70"
@@ -263,10 +333,10 @@ function Quadro() {
                         <div className="flex items-start gap-2">
                           <input
                             type="checkbox"
-                            checked={feita}
+                            checked={selecionando ? sel.has(t.id) : feita}
                             onClick={(e) => e.stopPropagation()}
-                            onChange={() => void concluir(t)}
-                            aria-label={feita ? `Reabrir ${t.titulo}` : `Concluir ${t.titulo}`}
+                            onChange={() => (selecionando ? alternarSel(t.id) : void concluir(t))}
+                            aria-label={selecionando ? `Selecionar ${t.titulo}` : feita ? `Reabrir ${t.titulo}` : `Concluir ${t.titulo}`}
                             className="mt-0.5 shrink-0"
                           />
                           <div className="min-w-0 flex-1">
