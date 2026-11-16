@@ -257,13 +257,18 @@ export function FichaCliente({
             <Field label="Prioridade" htmlFor={`f-prio-${cur.id}`}>
               <select
                 id={`f-prio-${cur.id}`}
-                value={form.status === "inauguracao" ? "" : form.priority}
-                onChange={(e) => setForm({ ...form, priority: e.target.value })}
-                disabled={form.status === "inauguracao"}
-                title={form.status === "inauguracao" ? "Em inauguração (pelo Status)" : "A rotina de segunda e quinta recalcula pelo CPA quando a conta já tem gasto e CPA ideal"}
+                value={form.status === "inauguracao" ? "inauguracao" : form.priority}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  // Inauguração aqui = Status "Inauguração" (é assim que o Hub guarda); trocar pra outra tira da inauguração
+                  if (v === "inauguracao") setForm({ ...form, status: "inauguracao" });
+                  else setForm({ ...form, priority: v, status: form.status === "inauguracao" ? "ativo" : form.status });
+                }}
+                title="A rotina de segunda e quinta recalcula pelo CPA quando a conta já tem gasto e CPA ideal (menos Inauguração)"
                 className={inputCls}
               >
-                <option value="">{form.status === "inauguracao" ? "Inauguração" : "Sem prioridade"}</option>
+                <option value="">Sem prioridade</option>
+                <option value="inauguracao">Inauguração</option>
                 {options
                   .filter((o) => o.id !== "inauguracao")
                   .map((o) => (
