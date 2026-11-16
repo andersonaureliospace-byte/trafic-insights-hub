@@ -204,7 +204,7 @@ export function CardsContas({
           {g.t}
           <span className="text-xs font-normal text-zinc-500">· {g.itens.length}</span>
         </h3>
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(290px,1fr))] gap-3">
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(330px,1fr))] gap-3">
         {g.itens.map(({ l, o, h, ideal, tS, tR, nt }, i) => {
           const pr = l.priority ? PRIO[l.priority] : null;
           return (
@@ -220,7 +220,7 @@ export function CardsContas({
                 />
                 <span className={`inline-flex h-[22px] min-w-[26px] flex-none items-center justify-center rounded-md text-xs font-bold ${RANK[nt]}`}>{i + 1}</span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-bold" title={l.name}>{l.name}</div>
+                  <div className="text-sm leading-snug font-bold break-words" title={l.name}>{l.name}</div>
                   <div className="text-xs text-zinc-500">
                     {l.responsible ?? "Sem responsável"} · {ideal ? `CPA ideal ${brl(ideal)}` : "sem CPA ideal"}
                   </div>
@@ -232,7 +232,7 @@ export function CardsContas({
                   aria-label={`Enviar feedback de ${l.name}`}
                   className="flex-none rounded-md border border-zinc-300 px-2 py-0.5 text-xs text-zinc-500 hover:border-blue-500 hover:text-blue-600 dark:border-white/15 dark:hover:text-blue-300"
                 >
-                  💬 Feedback
+                  💬
                 </button>
                 <a
                   href={adsManagerUrl(l.id)}
