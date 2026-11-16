@@ -38,9 +38,10 @@ export function adsManagerUrl(accountId: string, preset?: string): string {
   const businessId = businessByAccount.get(numericId);
   const business = businessId ? `&business_id=${encodeURIComponent(businessId)}` : "";
   const today = todayBrt();
-  const key = preset && resolveRange(preset, today) ? preset : "yesterday";
-  const range = resolveRange(key, today)!;
-  const name = ADS_MANAGER_PRESET_NAMES[key];
+  // Etapa 323: sem período (o padrão do Hub estratégico) abre nos últimos 2 dias + hoje (antes: Ontem).
+  const key = preset && resolveRange(preset, today) ? preset : null;
+  const range = key ? resolveRange(key, today)! : { since: addDaysYmd(today, -2), until: today };
+  const name = key ? ADS_MANAGER_PRESET_NAMES[key] : undefined;
   const label = name ? `,${name}` : "";
   // Etapa 132c: no `date=` do Gerenciador o dia final é EXCLUSIVO (Ontem = 16 → "16_17"; Ontem e hoje = "16_18"). Sem
   // somar 1 dia, os períodos que acabam hoje abriam sem o dia de hoje.
@@ -50,9 +51,8 @@ export function adsManagerUrl(accountId: string, preset?: string): string {
   // Etapa 194: abre na aba ANÚNCIOS (não Campanhas) com dois filtros juntos — nome da campanha não contém "vaga" e anúncio
   // ATIVO (`ADGROUP_DELIVERY_STATUS` é o status de veiculação do anúncio, no vocabulário interno da Meta; o separador entre
   // filtros é %1D). Filtrar pelo anúncio já deixa só os conjuntos e campanhas que têm anúncio ativo.
-  const filter =
-    "SEARCH_BY_CAMPAIGN_GROUP_NAME-STRING_SET%1ENOT_CONTAINS_ANY%1E[%22vaga%22]" +
-    "%1DADGROUP_DELIVERY_STATUS-STRING_SET%1EIN%1E[%22active%22]";
+  // Etapa 323: tirou o filtro de anúncio ativo (pedido do Anderson) — fica só "nome da campanha não contém vaga".
+  const filter = "SEARCH_BY_CAMPAIGN_GROUP_NAME-STRING_SET%1ENOT_CONTAINS_ANY%1E[%22vaga%22]";
   return (
     `https://adsmanager.facebook.com/adsmanager/manage/ads?act=${numericId}${business}` +
     `&date=${date}&comparison_date=&insights_date=${date}&insights_comparison_date=` +
