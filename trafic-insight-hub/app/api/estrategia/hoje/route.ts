@@ -20,10 +20,11 @@ type Row = {
   actions?: Array<{ action_type?: string; value?: string }>;
 };
 
-async function hojeDaConta(token: string, id: string): Promise<{ spend: number; results: number }> {
+// dia = undefined → hoje; "YYYY-MM-DD" → aquele dia (usado só quando o backup ainda não tem ontem)
+async function hojeDaConta(token: string, id: string, dia?: string): Promise<{ spend: number; results: number }> {
   const rows = await metaGetAll<Row>(token, `/act_${normAccountId(id)}/insights`, {
     fields: "campaign_name,objective,spend,results,actions",
-    date_preset: "today",
+    ...(dia ? { time_range: JSON.stringify({ since: dia, until: dia }) } : { date_preset: "today" }),
     // por conjunto: em CBO com otimizações diferentes o resultado da campanha vem misturado (Etapa 304)
     level: "adset",
     limit: "500",
@@ -57,12 +58,15 @@ export async function POST(request: Request) {
     const stored = since <= yesterday ? await readStoredDaysMany(ids, since, yesterday) : new Map();
     const hoje = new Map<string, { spend: number; results: number }>();
     const failed: string[] = [];
+    const ontemVivo = new Map<string, { spend: number; results: number }>();
     let next = 0;
     const worker = async () => {
       while (next < ids.length) {
         const id = ids[next++];
         try {
           hoje.set(id, await hojeDaConta(token, id));
+          // Etapa 317: backup ainda sem ontem (rotina da noite não terminou) → busca ontem na Meta também (1 pedido a mais)
+          if (since <= yesterday && !stored.get(id)?.has(yesterday)) ontemVivo.set(id, await hojeDaConta(token, id, yesterday));
         } catch (e) {
           failed.push(id);
           console.error("hoje err", id, (e as Error).message);
@@ -76,7 +80,7 @@ export async function POST(request: Request) {
       const guardados = stored.get(id);
       const pts: DailyCpaPoint[] = [];
       for (let d = since; d <= yesterday; d = addDaysYmd(d, 1)) {
-        const v = guardados?.get(d);
+        const v = guardados?.get(d) ?? (d === yesterday ? ontemVivo.get(id) : undefined);
         pts.push({ date: d, spend: v?.spend ?? 0, results: v?.results ?? 0, cpa: v && v.results > 0 && v.spend > 0 ? v.spend / v.results : null });
       }
       const h = hoje.get(id) ?? { spend: 0, results: 0 };

@@ -100,7 +100,8 @@ function Quadro() {
 
   const dias = useMemo(() => (board ? Array.from({ length: 7 }, (_, i) => addDays(board.from, i)) : []), [board]);
 
-  // tarefas por dia (filtradas), abertas pela ordem e concluídas no fim
+  const cliMap = useMemo(() => new Map((board?.clientes ?? []).map((c) => [String(c.id).replace(/^act_/, ""), c])), [board]);
+  // tarefas por dia (filtradas): abertas por categoria do cliente e concluídas no fim
   const porDia = useMemo(() => {
     const m = new Map<string, TarefaUI[]>();
     if (!board) return m;
@@ -118,13 +119,21 @@ function Quadro() {
       list.sort((a, b) => {
         if (a.status !== b.status) return a.status === "feita" ? 1 : -1;
         if (a.status === "feita") return (a.done_at ?? "").localeCompare(b.done_at ?? "");
-        const atrA = a.data < dias[0] ? 0 : 1;
+        // Etapa 318: por categoria do cliente — Inauguração, Sensíveis, Críticas, Altas, Médias, Baixas, sem cliente/prioridade
+        const cat = (x: TarefaUI) => {
+          const c = x.ad_account_id ? cliMap.get(String(x.ad_account_id).replace(/^act_/, "")) : undefined;
+          if (!c) return 6;
+          if (c.priority === "inauguracao") return 0;
+          if (c.sensivel) return 1;
+          return ({ critica: 2, alta: 3, media: 4, baixa: 5 } as Record<string, number>)[c.priority ?? ""] ?? 6;
+        };
+        const atrA = a.data < dias[0] ? 0 : 1; // dentro da categoria, atrasada primeiro
         const atrB = b.data < dias[0] ? 0 : 1;
-        return atrA - atrB || a.ordem - b.ordem || a.created_at.localeCompare(b.created_at);
+        return cat(a) - cat(b) || atrA - atrB || a.ordem - b.ordem || a.created_at.localeCompare(b.created_at);
       });
     }
     return m;
-  }, [board, dias, q, ui.resp, verFeitas]);
+  }, [board, dias, q, ui.resp, verFeitas, cliMap]);
 
   function patchLocal(id: string, patch: Partial<TarefaUI>) {
     setBoard((b) => (b ? { ...b, tarefas: b.tarefas.map((t) => (t.id === id ? { ...t, ...patch } : t)) } : b));

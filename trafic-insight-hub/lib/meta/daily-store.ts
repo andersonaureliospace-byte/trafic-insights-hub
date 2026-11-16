@@ -219,7 +219,11 @@ export async function syncAccounts(
   opts: { force?: boolean; deadlineMs?: number } = {},
 ): Promise<SyncReport> {
   const today = todayBrt();
-  const range: YmdRange = { since: oldestKeptDay(today), until: addDaysYmd(today, -1) };
+  // Etapa 317: a rotina da noite refaz só os últimos 7 dias (conversa atribuída depois cai nessa janela). Refazer os 37
+  // dias por conjunto não cabia no tempo da Vercel e várias contas ficavam sem o dia de ontem. O resto continua guardado
+  // (e o "Recalcular" / resync-days refaz os 37 quando precisar). Contas sem nada guardado ainda pegam os 37.
+  const range: YmdRange = { since: addDaysYmd(today, -7), until: addDaysYmd(today, -1) };
+  const fullRange: YmdRange = { since: oldestKeptDay(today), until: addDaysYmd(today, -1) };
   const report: SyncReport = { synced: [], skipped: [], failed: [], pending: [], pruned: false };
   const ids = [...new Set(accountIds.map(normAccountId))];
   const db = createServiceClient();
@@ -249,7 +253,8 @@ export async function syncAccounts(
       if (Date.now() > deadline) return;
       const id = queue[next++];
       try {
-        await syncAccountDays(token, id, range);
+        const { count } = await db.from(TABLE).select("day", { count: "exact", head: true }).eq("ad_account_id", id).lt("day", range.since);
+        await syncAccountDays(token, id, (count ?? 0) > 0 ? range : fullRange);
         if (Date.now() <= deadline) report.synced.push(id);
       } catch (e) {
         if (Date.now() <= deadline) report.failed.push({ account: id, error: (e as Error).message.slice(0, 200) });

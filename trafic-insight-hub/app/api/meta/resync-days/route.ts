@@ -14,10 +14,12 @@ export async function POST(request: Request) {
   try {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
-    const body = (await request.json()) as { accountIds?: string[] };
+    const body = (await request.json()) as { accountIds?: string[]; days?: number };
     const ids = (body.accountIds ?? []).map(String).filter(Boolean).slice(0, 5);
     if (!ids.length) throw new Error("Informe as contas.");
-    const range = { since: ymd(new Date(Date.now() - 37 * 86_400_000)), until: ymd(new Date(Date.now() - 86_400_000)) };
+    // Etapa 317: por padrão refaz os últimos 7 dias (37 por conjunto passava do tempo da Vercel); { days: 37 } refaz tudo.
+    const dias = Math.max(1, Math.min(37, Number(body.days) || 7));
+    const range = { since: ymd(new Date(Date.now() - dias * 86_400_000)), until: ymd(new Date(Date.now() - 86_400_000)) };
     const out: Array<{ id: string; days?: number; error?: string }> = [];
     for (const id of ids) {
       try {

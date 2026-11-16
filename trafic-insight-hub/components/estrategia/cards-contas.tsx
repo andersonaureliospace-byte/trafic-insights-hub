@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { NovoFeedbackPrint } from "./novo-feedback-print";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { calendarSP } from "@/lib/estrategia/calc";
 import type { Linha } from "@/components/estrategia/use-carteira";
@@ -65,6 +67,8 @@ function Num({ label, value, cls = "" }: { label: string; value: string; cls?: s
 export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSens: (id: string) => boolean; loading: boolean }) {
   const [busca, setBusca] = useState("");
   const cal = calendarSP();
+  const router = useRouter();
+  const [feedbackDe, setFeedbackDe] = useState<string | null>(null); // Etapa 317: feedback direto do card
   const [vistos, setVistos] = useState<{ periodo: string; ids: string[] }>({ periodo: "", ids: [] });
   const [periodo, setPeriodo] = useState(periodoAtual);
   useEffect(() => {
@@ -189,6 +193,15 @@ export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSe
                     {l.responsible ?? "Sem responsável"} · {ideal ? `CPA ideal ${brl(ideal)}` : "sem CPA ideal"}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setFeedbackDe(l.id)}
+                  title="Enviar feedback pro cliente"
+                  aria-label={`Enviar feedback de ${l.name}`}
+                  className="flex-none rounded-md border border-zinc-300 px-2 py-0.5 text-xs text-zinc-500 hover:border-blue-500 hover:text-blue-600 dark:border-white/15 dark:hover:text-blue-300"
+                >
+                  💬 Feedback
+                </button>
                 <a
                   href={adsManagerUrl(l.id)}
                   target="_blank"
@@ -245,6 +258,18 @@ export function CardsContas({ linhas, isSens, loading }: { linhas: Linha[]; isSe
       </section>
       ))}
       {cards.length === 0 ? <div className="py-8 text-center text-sm text-zinc-500">Nenhuma conta nesse filtro.</div> : null}
+      {feedbackDe ? (
+        <NovoFeedbackPrint
+          clienteId={feedbackDe}
+          enviarAqui
+          periodoInicial="oh"
+          onClose={() => setFeedbackDe(null)}
+          onCreated={() => {
+            setFeedbackDe(null);
+            router.push("/estrategia/clientes/feedbacks");
+          }}
+        />
+      ) : null}
     </div>
   );
 }
