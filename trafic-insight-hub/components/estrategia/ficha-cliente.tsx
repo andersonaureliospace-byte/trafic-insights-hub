@@ -27,6 +27,7 @@ interface Form {
   name: string;
   responsible: string;
   status: Status;
+  priority: string; // Etapa 319: prioridade editável na ficha ("" = sem prioridade)
   monthly: string;
   cpaTarget: string;
   payment: string;
@@ -88,6 +89,7 @@ function formOf(d: Dados): Form {
     name: c.name,
     responsible: c.responsible ?? "",
     status: statusOf(c),
+    priority: c.priority && c.priority !== "inauguracao" ? c.priority : "",
     monthly: c.monthly != null ? String(c.monthly) : "",
     cpaTarget: c.cpaTarget != null ? String(c.cpaTarget) : "",
     payment: d.pay ?? "",
@@ -162,8 +164,10 @@ export function FichaCliente({
       if (form.status !== before) {
         body.active = form.status !== "pausado";
         if (form.status === "inauguracao") body.priority = "inauguracao";
-        else if (cur.priority === "inauguracao") body.priority = null;
+        else if (cur.priority === "inauguracao") body.priority = form.priority || null;
       }
+      // Etapa 319: prioridade escolhida na mão (conta nova, por exemplo). Inauguração continua vindo do Status.
+      if (form.status !== "inauguracao" && cur.priority !== "inauguracao" && form.priority !== (cur.priority ?? "")) body.priority = form.priority || null;
       await patchBinding(cur, body);
       const f0 = dados.flags;
       if (!f0 || f0.exame !== form.exame || !!f0.promo !== form.promo) {
@@ -248,6 +252,23 @@ export function FichaCliente({
                 {(Object.keys(STATUS_LABEL) as Status[]).map((s) => (
                   <option key={s} value={s}>{STATUS_LABEL[s]}</option>
                 ))}
+              </select>
+            </Field>
+            <Field label="Prioridade" htmlFor={`f-prio-${cur.id}`}>
+              <select
+                id={`f-prio-${cur.id}`}
+                value={form.status === "inauguracao" ? "" : form.priority}
+                onChange={(e) => setForm({ ...form, priority: e.target.value })}
+                disabled={form.status === "inauguracao"}
+                title={form.status === "inauguracao" ? "Em inauguração (pelo Status)" : "A rotina de segunda e quinta recalcula pelo CPA quando a conta já tem gasto e CPA ideal"}
+                className={inputCls}
+              >
+                <option value="">{form.status === "inauguracao" ? "Inauguração" : "Sem prioridade"}</option>
+                {options
+                  .filter((o) => o.id !== "inauguracao")
+                  .map((o) => (
+                    <option key={o.id} value={o.id}>{o.label}</option>
+                  ))}
               </select>
             </Field>
           </div>
