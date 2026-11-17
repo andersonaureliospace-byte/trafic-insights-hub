@@ -281,7 +281,9 @@ export async function syncAccounts(
 
   // Poda: nada mais velho que a janela. Só quando não sobrou nada pendente (não apaga no meio do trabalho).
   if (!timedOut && report.pending.length === 0) {
-    const { error } = await db.from(TABLE).delete().lt("day", range.since);
+    // Etapa 326: apaga só o que passou de 37 dias (fullRange). Na Etapa 317 isso ficou com a janela de 7 dias e a rotina
+    // apagou o histórico mais velho que 7 dias — corrigido.
+    const { error } = await db.from(TABLE).delete().lt("day", fullRange.since);
     report.pruned = !error;
   }
   return report;

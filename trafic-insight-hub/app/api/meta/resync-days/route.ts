@@ -14,12 +14,18 @@ export async function POST(request: Request) {
   try {
     const { supabase, user } = await requireUser();
     const token = await getUserMetaToken(supabase, user.id);
-    const body = (await request.json()) as { accountIds?: string[]; days?: number };
+    const body = (await request.json()) as { accountIds?: string[]; days?: number; since?: string; until?: string };
     const ids = (body.accountIds ?? []).map(String).filter(Boolean).slice(0, 5);
     if (!ids.length) throw new Error("Informe as contas.");
     // Etapa 317: por padrão refaz os últimos 7 dias (37 por conjunto passava do tempo da Vercel); { days: 37 } refaz tudo.
     const dias = Math.max(1, Math.min(37, Number(body.days) || 7));
-    const range = { since: ymd(new Date(Date.now() - dias * 86_400_000)), until: ymd(new Date(Date.now() - 86_400_000)) };
+    const ontem = ymd(new Date(Date.now() - 86_400_000));
+    const isYmd = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+    // Etapa 326: { since, until } refaz um pedaço específico (pra recompor o histórico em partes, sem estourar o tempo)
+    const range =
+      isYmd(body.since) && isYmd(body.until) && (body.since as string) <= (body.until as string)
+        ? { since: body.since as string, until: (body.until as string) > ontem ? ontem : (body.until as string) }
+        : { since: ymd(new Date(Date.now() - dias * 86_400_000)), until: ontem };
     const out: Array<{ id: string; days?: number; error?: string }> = [];
     for (const id of ids) {
       try {
