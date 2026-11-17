@@ -25,10 +25,42 @@ export default function ClientesPage() {
   const [novoOpen, setNovoOpen] = useState(false); // Etapa 253
   const [q, setQ] = useState(""); // pesquisa pelo nome do cliente
   const [error, setError] = useState<string | null>(null);
+  // Etapa 330: marcar/desmarcar conta sensível direto na tabela (um clique, salva na hora)
+  const [sens, setSens] = useState<Record<string, boolean>>({});
+  const [salvandoSens, setSalvandoSens] = useState<string | null>(null);
+  async function alternarSens(id: string) {
+    setSalvandoSens(id);
+    try {
+      const atual = await fetch("/api/estrategia/prefs?key=contas_sensiveis", { cache: "no-store" }).then((r) => r.json());
+      const base: Record<string, boolean> = atual?.value && typeof atual.value === "object" ? { ...(atual.value as Record<string, boolean>) } : {};
+      const ligado = !!(base[id] || base[`act_${id}`]);
+      delete base[`act_${id}`];
+      if (ligado) delete base[id];
+      else base[id] = true;
+      const d = await fetch("/api/estrategia/prefs", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "contas_sensiveis", value: base }),
+      }).then((r) => r.json());
+      if (d.error) throw new Error(d.error);
+      setSens(base);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setSalvandoSens(null);
+    }
+  }
 
   const load = useCallback(async () => {
     try {
-      const [list, p] = await Promise.all([loadClientes(), fetch("/api/pix-accounts", { cache: "no-store" }).then((r) => r.json())]);
+      const [list, p, sv] = await Promise.all([
+        loadClientes(),
+        fetch("/api/pix-accounts", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/estrategia/prefs?key=contas_sensiveis", { cache: "no-store" })
+          .then((r) => r.json())
+          .catch(() => ({})),
+      ]);
+      setSens(sv?.value && typeof sv.value === "object" ? (sv.value as Record<string, boolean>) : {});
       setClientes(list.filter((c) => c.selected || c.archived));
       const map: Record<string, string | null> = {};
       for (const r of (p.pixAccounts ?? []) as Array<{ ad_account_id: string; payment_type: string | null }>) {
@@ -114,16 +146,17 @@ export default function ClientesPage() {
                     <th className="px-3 py-2.5 text-right font-semibold">Verba mensal</th>
                     <th className="px-3 py-2.5 text-right font-semibold">CPA ideal</th>
                     <th className="px-3 py-2.5 font-semibold">Pagamento</th>
+                    <th className="px-3 py-2.5 text-center font-semibold" title="Conta sensível: otimizar até as 09h. Clique pra marcar ou desmarcar.">Sensível</th>
                   </tr>
                 </thead>
                 <tbody>
                   {clientes == null ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">Carregando…</td>
+                      <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">Carregando…</td>
                     </tr>
                   ) : list.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-zinc-500">
+                      <td colSpan={7} className="px-4 py-8 text-center text-zinc-500">
                         {q.trim()
                           ? `Nenhum cliente com "${q.trim()}".`
                           : showArchived
@@ -170,6 +203,24 @@ export default function ClientesPage() {
                           <td className="px-3 py-3 text-right tabular-nums">{fmtBRL(c.monthly)}</td>
                           <td className="px-3 py-3 text-right tabular-nums">{fmtBRL(c.cpaTarget)}</td>
                           <td className="px-3 py-3 text-zinc-600 dark:text-zinc-400">{pay[c.id] ? PAY_LABEL[pay[c.id] as string] : "—"}</td>
+                          <td className="px-3 py-3 text-center" onClick={(e) => e.stopPropagation()}>
+                            {(() => {
+                              const on = !!(sens[c.id] || sens[`act_${c.id}`]);
+                              return (
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={on}
+                                  aria-label={`${on ? "Desmarcar" : "Marcar"} ${c.name} como sensível`}
+                                  disabled={salvandoSens === c.id}
+                                  onClick={() => void alternarSens(c.id)}
+                                  className={`relative inline-block h-6 w-11 rounded-full align-middle transition-colors disabled:opacity-50 ${on ? "bg-purple-600" : "bg-zinc-300 dark:bg-zinc-700"}`}
+                                >
+                                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${on ? "left-[22px]" : "left-0.5"}`} />
+                                </button>
+                              );
+                            })()}
+                          </td>
                         </tr>
                       );
                     })
