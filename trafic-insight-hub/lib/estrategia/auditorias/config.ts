@@ -111,7 +111,7 @@ export const CHECKS: CheckInfo[] = [
     id: "otimizacao",
     name: "Prazo de otimização",
     what: "Conta que não teve nenhuma otimização do gestor hoje até o prazo (orçamento, liga/desliga, criativo, público, lance — o que as automações do Hub fizeram não conta). Vai pro grupo escolhido aqui (ou o padrão), separado por gestor.",
-    when: "Seg a sex · Sensíveis 09h · Críticas 10h · Altas 12h · Médias e baixas 17h",
+    when: "Seg a sex · Inauguração e sensíveis 09h · Críticas 10h · Altas 12h · Médias 15h · Baixas 16h",
     calls: "1 por conta da faixa",
   },
 ];
@@ -120,11 +120,13 @@ export const CHECK_BY_ID: Record<CheckId, CheckInfo> = Object.fromEntries(CHECKS
 
 // ---------- Agenda (minutos desde 00h00 de Brasília, sempre múltiplo de 15) ----------
 
-export type OtimFaixa = "sensivel" | "critica" | "alta" | "mediabaixa";
+export type OtimFaixa = "sensivel" | "critica" | "alta" | "media" | "baixa" | "mediabaixa"; // mediabaixa: antigo, não agenda mais
 export const OTIM_PRAZO: Record<OtimFaixa, { label: string; hora: string }> = {
-  sensivel: { label: "Sensíveis", hora: "09h" },
+  sensivel: { label: "Inauguração e sensíveis", hora: "09h" },
   critica: { label: "Críticas", hora: "10h" },
   alta: { label: "Altas", hora: "12h" },
+  media: { label: "Médias", hora: "15h" }, // Etapa 328
+  baixa: { label: "Baixas", hora: "16h" },
   mediabaixa: { label: "Médias e baixas", hora: "17h" },
 };
 
@@ -170,9 +172,9 @@ const AGENDA: Array<[number, Job]> = [
   [hm(9), { check: "otimizacao", lot: 0, lots: 1, variant: "sensivel", days: [1, 2, 3, 4, 5] }],
   [hm(10), { check: "otimizacao", lot: 0, lots: 1, variant: "critica", days: [1, 2, 3, 4, 5] }],
   [hm(12), { check: "otimizacao", lot: 0, lots: 1, variant: "alta", days: [1, 2, 3, 4, 5] }],
-  // nov/2026: médias e baixas passaram de 19h pra 17h (aviso só até as 17h)
-  [hm(16, 45), { check: "otimizacao", lot: 0, lots: 2, variant: "mediabaixa", days: [1, 2, 3, 4, 5] }],
-  [hm(17), { check: "otimizacao", lot: 1, lots: 2, variant: "mediabaixa", days: [1, 2, 3, 4, 5] }],
+  // Etapa 328: médias até 15h e baixas até 16h (antes as duas juntas às 17h)
+  [hm(15), { check: "otimizacao", lot: 0, lots: 1, variant: "media", days: [1, 2, 3, 4, 5] }],
+  [hm(16), { check: "otimizacao", lot: 0, lots: 1, variant: "baixa", days: [1, 2, 3, 4, 5] }],
   // Etapa 284: erro de pagamento / falta de saldo é URGENTE — confere de hora em hora (07h15 às 21h15) e avisa NA HORA
   // (não espera o resumo), 1x por dia por conta. São só 2 pedidos pra carteira toda.
   ...Array.from({ length: 15 }, (_, i) => [hm(7 + i, 15), { check: "saldo", lot: 0, lots: 1, variant: "urgente" }] as [number, Job]),
@@ -220,7 +222,7 @@ export function estimatedCallsByHour(accounts: number, enabled: (c: CheckId) => 
   for (const [t, j] of AGENDA) {
     if (!enabled(j.check)) continue;
     const h = Math.floor(t / 60);
-    const share = j.check === "otimizacao" ? (j.variant === "mediabaixa" ? 0.5 : 0.2) : 1;
+    const share = j.check === "otimizacao" ? 0.25 : 1;
     out[h] += j.check === "saldo" ? 2 : Math.ceil((accounts * share) / j.lots) * CALLS_PER_ACCOUNT[j.check];
   }
   return out;

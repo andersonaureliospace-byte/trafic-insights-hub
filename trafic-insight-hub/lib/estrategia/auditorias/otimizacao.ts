@@ -3,7 +3,7 @@
 // público, criativo, lance — a mesma regra da coluna Otimização). O que foi feito pelo usuário dono do token
 // (as automações do Hub rodam com ele) não conta. A mensagem vai pro grupo escolhido na linha (ou o grupo padrão).
 //   Sensíveis (marcação na ficha) até 09h · Críticas até 10h · Altas até 12h · Médias e baixas até 17h.
-// Conta sensível só é cobrada às 09h (não entra de novo na faixa da prioridade). Inauguração fica de fora.
+// Conta sensível só é cobrada às 09h (não entra de novo na faixa da prioridade). Etapa 327: inauguração também às 09h.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { metaGet, metaGetAll } from "@/lib/meta/client";
@@ -40,10 +40,12 @@ export async function runOtimizacao(
 
   const alvo = accounts
     .filter((a) => {
-      if (faixa === "sensivel") return isSens(a);
+      if (faixa === "sensivel") return isSens(a) || a.priority === "inauguracao";
       if (isSens(a) || a.priority === "inauguracao") return false;
       if (faixa === "critica") return a.priority === "critica";
       if (faixa === "alta") return a.priority === "alta";
+      if (faixa === "media") return a.priority === "media";
+      if (faixa === "baixa") return a.priority === "baixa";
       return a.priority === "media" || a.priority === "baixa";
     })
     .filter((_, i) => lot.total <= 1 || i % lot.total === lot.index);
