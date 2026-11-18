@@ -188,15 +188,16 @@ export async function runExpansaoWhatsapp(
           }
         }
 
-        if (opts.whatsapp) {
+        // Etapa 331: campanha de VAGA usa outro número (do RH) — não confere o WhatsApp
+        if (opts.whatsapp && !isJobCampaign(r.campaign?.name) && !isJobCampaign(r.name)) {
           const num = r.promoted_object?.whatsapp_phone_number;
           // Etapa 295: ficha sem WhatsApp → avisa (antes pulava calado e nunca comparava)
           if (num && !a.whatsapp) {
             findings.push({
               check: "whatsapp",
               acc: a,
-              line: `Ficha do cliente sem WhatsApp — não deu pra conferir (anúncios usando ${num}). Cadastre o WhatsApp na ficha.`,
-              dedupe: `whatsapp-ficha:${a.id}:${day.slice(0, 7)}`, // 1x por mês por conta
+              line: `ficha sem WhatsApp (anúncios usando ${num})`,
+              dedupe: `whatsapp-ficha-eu:${a.id}:${day.slice(0, 7)}`, // 1x por mês por conta (Etapa 331: chave nova — agora vai pro seu WhatsApp)
             });
           }
           if (num && a.whatsapp && !sameWhatsapp(num, a.whatsapp)) {

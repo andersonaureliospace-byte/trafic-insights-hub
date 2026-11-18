@@ -222,6 +222,21 @@ export function AuditoriasConfig() {
             <span className="text-xs text-zinc-500">Grupo padrão</span>
             <GroupPicker value={cfg.defaultGroup} groups={groups} onLoad={loadGroups} onChange={(g) => void save({ ...cfg, defaultGroup: g })} />
           </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="aud-meu-wpp" className="text-xs text-zinc-500" title="Avisos só pra você (ex.: ficha de cliente sem WhatsApp) vão pra esse número">Seu WhatsApp</label>
+            <input
+              id="aud-meu-wpp"
+              key={cfg.myWhatsapp ?? ""}
+              defaultValue={cfg.myWhatsapp ?? ""}
+              placeholder="63 99999-9999"
+              inputMode="tel"
+              onBlur={(e) => {
+                const v = e.target.value.replace(/\D/g, "") || null;
+                if (v !== (cfg.myWhatsapp ?? null)) void save({ ...cfg, myWhatsapp: v });
+              }}
+              className="h-8 w-36 rounded-lg border border-zinc-300 bg-white px-2 text-xs dark:border-white/10 dark:bg-[#141924]"
+            />
+          </div>
         </div>
         {statusErr ? <div className="mx-4 mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{statusErr}</div> : null}
         {noGroup.length ? (

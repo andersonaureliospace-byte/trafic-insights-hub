@@ -28,7 +28,7 @@ import {
   type Acc,
   type CheckResult,
 } from "./checks";
-import { queueFindings, sendDigest, sendUrgent, type DigestResult } from "./digest";
+import { queueFichaSemWhatsapp, queueFindings, sendDigest, sendUrgent, type DigestResult } from "./digest";
 import { registrarErrosAutomacao } from "@/lib/estrategia/gestor-erros";
 import { runPlano } from "./plano";
 import { runOtimizacao } from "./otimizacao";
@@ -124,13 +124,17 @@ export async function runTick(db: SupabaseClient, userId: string, opts: { minute
             await registrarErrosAutomacao(db, userId, res.findings).catch(() => 0);
             {
               // Etapa 295: WhatsApp do anúncio diferente da ficha (ou ficha sem WhatsApp) é urgente — avisa NA HORA
-              const wpp = res.findings.filter((f) => f.check === "whatsapp");
+              // Etapa 331: ficha sem WhatsApp não é erro do gestor — vai pro SEU WhatsApp (sai no resumo desta batida, em horário comercial)
+              const fichas = res.findings.filter((f) => f.check === "whatsapp" && (f.dedupe ?? "").startsWith("whatsapp-ficha"));
+              if (fichas.length) await queueFichaSemWhatsapp(db, userId, fichas).catch(() => 0);
+              const wpp = res.findings.filter((f) => f.check === "whatsapp" && !(f.dedupe ?? "").startsWith("whatsapp-ficha"));
               if (wpp.length) {
                 const u = await sendUrgent(db, userId, cfg, wpp, "whatsapp", "🚨 *URGENTE — WhatsApp do anúncio*");
                 await tarefasDeAlertas(db, userId, wpp, calendarSP().today).catch(() => 0);
-                res = { ...res, findings: res.findings.filter((f) => f.check !== "whatsapp"), count: res.findings.length, errors: u.error ? [...res.errors, u.error] : res.errors };
                 entry.queued = u.sent;
+                if (u.error) res = { ...res, errors: [...res.errors, u.error] };
               }
+              if (fichas.length || wpp.length) res = { ...res, findings: res.findings.filter((f) => f.check !== "whatsapp"), count: res.findings.length };
             }
             break;
           case "custo":

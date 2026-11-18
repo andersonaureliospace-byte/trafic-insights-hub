@@ -39,7 +39,7 @@ export const CHECKS: CheckInfo[] = [
   {
     id: "whatsapp",
     name: "WhatsApp dos conjuntos novos",
-    what: "O número de WhatsApp do conjunto é diferente do WhatsApp da ficha do cliente. Só avisa.",
+    what: "O número de WhatsApp do conjunto é diferente do WhatsApp da ficha do cliente. Só avisa. Campanhas de VAGA ficam de fora.",
     when: "Junto da expansão (mesmo pedido, sem custo extra)",
     calls: "0 (vem junto)",
   },

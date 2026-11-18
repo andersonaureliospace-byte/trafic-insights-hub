@@ -148,6 +148,27 @@ export interface DigestResult {
 }
 
 // Manda tudo que está na fila (um resumo por grupo). Itens sem grupo configurado ficam na fila e aparecem na tela.
+// Etapa 331: ficha sem WhatsApp entra na fila marcada "whatsapp_ficha" (1x por mês por conta, pela dedupe) — o resumo
+// manda pro seu WhatsApp, só em horário comercial.
+export async function queueFichaSemWhatsapp(db: SupabaseClient, userId: string, findings: Finding[]): Promise<number> {
+  if (findings.length === 0) return 0;
+  const rows = findings.map((f) => ({
+    user_id: userId,
+    check_id: "whatsapp_ficha",
+    ad_account_id: f.acc.id,
+    client_name: f.acc.name,
+    responsible: f.acc.responsible,
+    line: f.line.slice(0, 500),
+    dedupe_key: f.dedupe ?? null,
+    group_id: null,
+    group_name: null,
+    sent_at: null,
+  }));
+  const { data, error } = await db.from("estr_digest_items").upsert(rows, { onConflict: "user_id,dedupe_key", ignoreDuplicates: true }).select("id");
+  if (error) throw error;
+  return data?.length ?? 0;
+}
+
 export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditConfig, _slot?: string): Promise<DigestResult> {
   if (!dentroDoHorario()) return { groups: 0, items: 0, noGroup: 0, error: null }; // fica na fila até as 08h
   const { data, error } = await db
@@ -161,8 +182,28 @@ export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditC
   const items = (data ?? []) as ItemRow[];
   if (items.length === 0) return { groups: 0, items: 0, noGroup: 0, error: null };
 
+  // Etapa 331: ficha sem WhatsApp vai pro SEU WhatsApp (Automações → Auditorias). Sem o seu número, vai pro grupo como antes.
+  const meu = cfg.myWhatsapp ? (cfg.myWhatsapp.startsWith("55") ? cfg.myWhatsapp : `55${cfg.myWhatsapp}`) : null;
+  const fichas = items.filter((i) => i.check_id === "whatsapp_ficha");
+  let fichaErro: string | null = null;
+  let fichaEnviadas = 0;
+  if (fichas.length && meu) {
+    try {
+      const inst0 = await requireWhatsappInstance(db as never, userId);
+      const txt = [`${ROBO} 📇 *Fichas sem WhatsApp*`, "Cadastre o WhatsApp na ficha pra o Hub conferir o número dos anúncios:", "", ...fichas.map((f) => `• ${f.client_name} — ${f.line}`)].join("\n");
+      for (const part of chunks(txt)) await sendText({ api_url: inst0.api_url, token: inst0.token }, meu, part);
+      const now = new Date().toISOString();
+      await db.from("estr_digest_items").update({ sent_at: now }).in("id", fichas.map((f) => f.id));
+      fichaEnviadas = fichas.length;
+    } catch (e) {
+      fichaErro = `seu WhatsApp: ${(e as Error).message.slice(0, 200)}`;
+    }
+  }
+  const pendentes = meu ? items.filter((i) => i.check_id !== "whatsapp_ficha") : items.map((i) => (i.check_id === "whatsapp_ficha" ? { ...i, check_id: "whatsapp" } : i));
+  if (pendentes.length === 0) return { groups: fichaEnviadas ? 1 : 0, items: fichaEnviadas, noGroup: 0, error: fichaErro };
+
   // Grupo atual da configuração vale mais que o gravado na hora (se você trocou o grupo depois).
-  const resolved = items.map((i) => {
+  const resolved = pendentes.map((i) => {
     const g = groupFor(cfg, (i.check_id === "custo_pausa" ? "custo" : i.check_id) as CheckId);
     return { ...i, group_id: g?.id ?? i.group_id, group_name: g?.name ?? i.group_name };
   });
