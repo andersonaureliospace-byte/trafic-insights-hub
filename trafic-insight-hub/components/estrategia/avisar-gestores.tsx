@@ -20,7 +20,7 @@ export interface LinhaAviso {
 // Etapa 308: só avisa investimento atrasado a partir de R$ 100 abaixo do ideal até ontem.
 const AVISO_INVEST_MIN = 100;
 
-type Metrica = "invest" | "cpa";
+type Metrica = "invest" | "acima" | "cpa";
 interface Group {
   id: string;
   name: string;
@@ -42,7 +42,7 @@ export function AvisarGestores({
 }) {
   const cal = useMemo(() => calendarSP(), []);
   const mes = useMemo(() => new Intl.DateTimeFormat("pt-BR", { month: "long", timeZone: "America/Sao_Paulo" }).format(new Date()), []);
-  const [metricas, setMetricas] = useState<Set<Metrica>>(new Set(["invest", "cpa"]));
+  const [metricas, setMetricas] = useState<Set<Metrica>>(new Set(["invest", "acima", "cpa"]));
   const gestoresDasContas = useMemo(
     () => [...new Set(linhas.map((x) => x.l.responsible).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, "pt-BR")),
     [linhas],
@@ -97,6 +97,33 @@ export function AvisarGestores({
     return { itens, fora };
   }, [linhas, cal]);
 
+  // Etapa 332: investimento ACIMA da meta do mês até ontem (mesma folga de R$ 100) — pra segurar o ritmo
+  const acima = useMemo(() => {
+    const passed = cal.day - 1;
+    const restam = cal.daysInMonth - cal.day + 1;
+    const itens: Array<{ l: Linha; linha: string }> = [];
+    const fora: string[] = [];
+    for (const { l } of linhas) {
+      if (!l.monthly || l.monthly <= 0 || !l.nums) {
+        fora.push(`${l.name} (sem meta)`);
+        continue;
+      }
+      const ideal = (l.monthly / cal.daysInMonth) * passed;
+      const gasto = l.nums.untilYesterday;
+      const excesso = gasto - ideal;
+      if (passed <= 0 || excesso < AVISO_INVEST_MIN) {
+        fora.push(`${l.name} (não está acima)`);
+        continue;
+      }
+      const porDia = Math.max(0, l.monthly - gasto) / restam;
+      itens.push({
+        l,
+        linha: `• ${l.name} — ${brl0(excesso)} acima · ${brl0(porDia)}/dia pra fechar o mês`,
+      });
+    }
+    return { itens, fora };
+  }, [linhas, cal]);
+
   const cpa = useMemo(() => {
     const itens: Array<{ l: Linha; linha: string }> = [];
     const fora: string[] = [];
@@ -122,12 +149,14 @@ export function AvisarGestores({
       const out: string[] = [];
       const de = (x: { l: Linha }) => (x.l.responsible ?? SEM) === g;
       const inv = metricas.has("invest") ? invest.itens.filter(de) : [];
+      const ac = metricas.has("acima") ? acima.itens.filter(de) : [];
       const cp = metricas.has("cpa") ? cpa.itens.filter(de) : [];
       if (inv.length) out.push(`${titulo(`Investimento abaixo da meta (${mes})`)}\n${inv.map((x) => x.linha).join("\n")}`);
+      if (ac.length) out.push(`${titulo(`Investimento acima da meta (${mes})`)}\n${ac.map((x) => x.linha).join("\n")}`);
       if (cp.length) out.push(`${titulo(`CPA alto (${periodLabel})`)}\n${cp.map((x) => x.linha).join("\n")}`);
       return out;
     },
-    [metricas, invest, cpa, mes, periodLabel],
+    [metricas, invest, acima, cpa, mes, periodLabel],
   );
   const msgs = useMemo(() => {
     const list: Array<{ key: string; para: string; text: string }> = [];
@@ -207,7 +236,7 @@ export function AvisarGestores({
       else n.add(g);
       return n;
     });
-  const foraTodos = [...(metricas.has("invest") ? invest.fora.map((f) => `Investimento: ${f}`) : []), ...(metricas.has("cpa") ? cpa.fora.map((f) => `CPA: ${f}`) : [])];
+  const foraTodos = [...(metricas.has("invest") ? invest.fora.map((f) => `Investimento: ${f}`) : []), ...(metricas.has("acima") ? acima.fora.map((f) => `Acima da meta: ${f}`) : []), ...(metricas.has("cpa") ? cpa.fora.map((f) => `CPA: ${f}`) : [])];
   const shownGroups = (groups ?? []).filter((g) => flat(g.name).includes(flat(gq))).slice(0, 60);
   const chip = (on: boolean) =>
     `rounded-full border px-3 py-1 text-xs font-medium ${on ? "border-blue-600 bg-blue-600 text-white" : "border-zinc-300 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"}`;
@@ -226,6 +255,9 @@ export function AvisarGestores({
             <div className="flex flex-wrap gap-2">
               <button className={chip(metricas.has("invest"))} aria-pressed={metricas.has("invest")} onClick={() => toggleM("invest")}>
                 Investimento abaixo da meta · {invest.itens.length}
+              </button>
+              <button className={chip(metricas.has("acima"))} aria-pressed={metricas.has("acima")} onClick={() => toggleM("acima")}>
+                Investimento acima da meta · {acima.itens.length}
               </button>
               <button className={chip(metricas.has("cpa"))} aria-pressed={metricas.has("cpa")} onClick={() => toggleM("cpa")}>
                 CPA alto ({periodLabel}) · {cpa.itens.length}
