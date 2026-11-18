@@ -1,7 +1,6 @@
 "use client";
 
 import { ConfigSaldo } from "./config-saldo";
-import Link from "next/link";
 import { useState } from "react";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { parseAdsetName } from "@/lib/offers/rule";
@@ -197,10 +196,7 @@ export function NamingDetails({
           <div>
             <div className="text-base font-semibold">{name}</div>
             <div className="text-xs text-zinc-500">
-              {items.length} {items.length === 1 ? "nome fora do padrão" : "nomes fora do padrão"} ·{" "}
-              <Link href="/estrategia/pop/nomenclatura" className="font-medium text-blue-600 hover:underline dark:text-blue-400">
-                ver o POP de nomenclatura
-              </Link>
+              {items.length} {items.length === 1 ? "nome fora do padrão" : "nomes fora do padrão"}
             </div>
           </div>
           <div className="flex shrink-0 gap-2">

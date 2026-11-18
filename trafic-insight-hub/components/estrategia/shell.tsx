@@ -11,8 +11,7 @@ import { GravadorProvider } from "@/components/estrategia/gravador";
 import { DisparoMonitor } from "@/components/estrategia/disparo-monitor";
 import { RecarregarApp } from "@/components/estrategia/recarregar-app";
 
-// Etapa 238: casca do Hub estratégico — menu lateral (Tráfego / Clientes, itens "em breve", Automações, link pro hub
-// operacional pausado), botão de Modo escuro/claro e o filtro de Responsável compartilhado entre as telas.
+// Etapa 238: casca do Hub estratégico — menu de cima (Acompanhamento, Demandas, Disparos e Configurações), botão de Modo escuro/claro e o filtro de Responsável compartilhado entre as telas.
 // Filtro e lista de responsáveis ficam no Supabase (valem em qualquer navegador); o tema fica no navegador.
 
 export interface EstrUi {
@@ -158,24 +157,10 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
             <nav className="flex items-center gap-0.5">
               <Item href="/estrategia/trafego">Acompanhamento</Item>
               <Item href="/estrategia/demandas">Demandas</Item>
-              <Item href="/estrategia/clientes">Clientes</Item>
-              <Item href="/estrategia/pop">POP</Item>
               <Item href="/estrategia/disparos">Disparos</Item>
-            </nav>
-            <span className="mx-1 h-4 w-px shrink-0 bg-zinc-200 dark:bg-white/10" />
-            <nav className="flex items-center gap-0.5">
-              <Item href="/estrategia/gestores" small>Gestores</Item>
-              <Item href="/estrategia/automacoes" small>Automações</Item>
+              <Item href="/estrategia/configuracoes">Configurações</Item>
             </nav>
             <div className="ml-auto flex shrink-0 items-center gap-1">
-              {/* Etapa 257: Hub operacional em standby — fica só o acesso às Configurações (token da Meta, WhatsApp). */}
-              <Link
-                href="/configuracoes"
-                title="Token da Meta e conexão do WhatsApp (o Hub operacional está em standby)"
-                className="rounded-md px-2 py-1 text-xs whitespace-nowrap text-zinc-500 hover:bg-zinc-100 hover:text-zinc-800 dark:hover:bg-white/5 dark:hover:text-zinc-200"
-              >
-                Conexões ↗
-              </Link>
               <RecarregarApp />
               <button
                 onClick={toggleTheme}

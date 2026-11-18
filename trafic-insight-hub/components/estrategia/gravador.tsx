@@ -533,7 +533,7 @@ export function GravadorProvider({ children }: { children: ReactNode }) {
                 A IA está montando o plano de ação. Revise e envie{final.grupo ? <> pro grupo <b>{final.grupo}</b></> : null} em Feedbacks.
               </p>
               <div className="flex gap-2">
-                <Link href="/estrategia/clientes/feedbacks" onClick={fechar} className="inline-flex h-7 items-center rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-700">
+                <Link href="/estrategia/configuracoes/clientes/feedbacks" onClick={fechar} className="inline-flex h-7 items-center rounded-lg bg-blue-600 px-2.5 text-xs font-semibold text-white hover:bg-blue-700">
                   Revisar agora →
                 </Link>
                 {resultado && !prefs.salvarLocal ? <Btn small onClick={() => baixar(resultado)}>⬇ Baixar cópia</Btn> : null}

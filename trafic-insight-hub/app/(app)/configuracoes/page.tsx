@@ -1,48 +1,6 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useState } from "react";
-import { MetaCredentialsForm } from "@/components/meta-credentials-form";
-import { WhatsappTab } from "@/components/configuracoes/whatsapp-tab";
-import { StatusTab } from "@/components/configuracoes/status-tab";
-import { ClientesSection } from "@/components/configuracoes/clientes-section";
-import { VideosGeraisTab } from "@/components/configuracoes/videos-gerais-tab";
-
-const TABS = [
-  { id: "meta", label: "Meta (Facebook)" },
-  { id: "whatsapp", label: "WhatsApp" },
-  { id: "status", label: "Prioridade" },
-  { id: "clientes", label: "Clientes" },
-  { id: "videos", label: "Vídeos gerais" },
-] as const;
-
+// As Conexões (Meta, WhatsApp, Prioridade) agora ficam dentro do Hub estratégico: Configurações → Conexões.
 export default function ConfiguracoesPage() {
-  const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("meta");
-
-  return (
-    <div className={`mx-auto px-4 py-8 md:px-8 ${tab === "clientes" ? "max-w-[1400px]" : "max-w-[900px]"}`}>
-      <h1 className="mb-4 text-2xl font-bold text-zinc-900 dark:text-zinc-50">Configurações</h1>
-
-      <div className="mb-6 flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-              tab === t.id
-                ? "border-zinc-900 text-zinc-900 dark:border-zinc-100 dark:text-zinc-50"
-                : "border-transparent text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {tab === "meta" ? <MetaCredentialsForm /> : null}
-      {tab === "whatsapp" ? <WhatsappTab /> : null}
-      {tab === "status" ? <StatusTab /> : null}
-      {tab === "clientes" ? <ClientesSection /> : null}
-      {tab === "videos" ? <VideosGeraisTab /> : null}
-    </div>
-  );
+  redirect("/estrategia/configuracoes/conexoes");
 }

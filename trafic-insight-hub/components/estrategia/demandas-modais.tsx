@@ -367,7 +367,7 @@ export function TarefaModal({
           </a>
         ) : null}
         {t.tipo === "feedback" ? (
-          <Link href="/estrategia/clientes/feedbacks" className="rounded-md border border-zinc-300 px-2 py-1 font-medium hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5">
+          <Link href="/estrategia/configuracoes/clientes/feedbacks" className="rounded-md border border-zinc-300 px-2 py-1 font-medium hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5">
             💬 Abrir Feedbacks
           </Link>
         ) : null}

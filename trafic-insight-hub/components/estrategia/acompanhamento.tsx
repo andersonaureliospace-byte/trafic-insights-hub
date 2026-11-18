@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { usePriorityOptions } from "@/lib/priority-context";
 import { FocoDescricao } from "@/components/foco/foco-descricao";
@@ -16,10 +16,9 @@ import {
   ritmoTone,
   type CpaPeriod,
 } from "@/lib/estrategia/calc";
-import { offerStatuses, type OfferKind, type OffersSummary, type OfferStatus } from "@/lib/offers/rule";
 import type { ActivityItem } from "@/lib/estrategia/activities";
 import { useEstr } from "./shell";
-import { Card, Pill, ago, fmtBRL, fmtCpa, fmtInt } from "./ui";
+import { Card, Pill, ago, fmtBRL, fmtCpa } from "./ui";
 import type { Linha } from "./use-carteira";
 import { AvisarGestores } from "./avisar-gestores";
 import { NovaTarefa } from "./demandas-modais";
@@ -29,122 +28,28 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 // Etapa 238/243: Tráfego → Acompanhamento. Uma linha por conta, sem rolagem lateral:
-// conta · prioridade (só leitura) · investimento no período (meta embaixo) · ritmo · CPA no período · ofertas · otimização · descrição.
+// conta · responsável · prioridade · investimento no período · orçamento diário (em dia / atrasado / adiantado) · leads · CPA · otimização · ações.
+// A coluna Ofertas saiu do quadro (não está sendo usada); os emojis viraram texto ou ícone simples.
 
 
-
-// Etapa 260: só as 3 ofertas (GERAL sempre; EXAME e PROMO nas contas que anunciam ou quando rodou no mês), cada uma com
-// Ativo / Inativo / Inexistente e o CPA dos 2 últimos dias. Sem o detalhe do nome da oferta.
-const STATUS_TXT: Record<OfferStatus, string> = { ATIVO: "Ativo", INATIVO: "Inativo", INEXISTENTE: "Inexistente" };
-function Ofertas({ s, label }: { s: OffersSummary | null; label: string }) {
-  // Etapa 285: as 3 ofertas sempre numa linha só — GERAL | PROMO | EXAME — cada uma um retângulo com a cor do status
-  // (verde ativa, amarela inativa, cinza não existe). O CPA dos 2 últimos dias abre ao clicar no retângulo.
-  const st = s ? offerStatuses(s) : null;
-  const rows: Array<{ kind: OfferKind; label: string; status: OfferStatus | null }> = [
-    { kind: "geral", label: "GERAL", status: st?.geral ?? null },
-    { kind: "promo", label: "PROMO", status: st?.promo ?? null },
-    { kind: "exame", label: "EXAME", status: st?.exame ?? null },
-  ];
-  return (
-    <div className="flex items-center gap-1">
-      {rows.map((r) => {
-        const cpa = s?.metrics ? cpaOf(s.metrics.last2d[r.kind]) : null;
-        const tone =
-          r.status === "ATIVO"
-            ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300"
-            : r.status === "INATIVO"
-              ? "border-amber-500/40 bg-amber-500/15 text-amber-800 dark:text-amber-300"
-              : "border-zinc-300 bg-zinc-100 text-zinc-400 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-500";
-        const chip = (
-          <span className={`inline-flex min-w-[52px] items-center justify-center rounded-md border px-1.5 py-1 text-[11px] font-bold tracking-wide ${tone}`}>
-            {r.label}
-          </span>
-        );
-        if (r.status == null || r.status === "INEXISTENTE") {
-          return (
-            <span key={r.kind} title={r.status == null ? "Sem retrato de ofertas pra essa conta" : `${r.label}: não existe`}>
-              {chip}
-            </span>
-          );
-        }
-        return (
-          <Detalhe
-            key={r.kind}
-            plain
-            align={r.kind === "exame" ? "right" : "left"}
-            label={`CPA da oferta ${r.label} de ${label}`}
-            linhas={[
-              [r.label, STATUS_TXT[r.status]],
-              ["CPA (2 últimos dias)", s?.metrics ? fmtCpa(cpa) : "sem dados"],
-            ]}
-          >
-            {chip}
-          </Detalhe>
-        );
-      })}
-    </div>
-  );
-}
-
-// Etapa 284: clicar no número abre uma caixinha com as metas (em vez das linhas cinzas embaixo, que poluíam).
-function Detalhe({
-  children,
-  linhas,
-  align = "right",
-  label,
-  plain = false,
-}: {
-  children: React.ReactNode;
-  linhas: Array<[string, string]>;
-  align?: "left" | "right";
-  label: string;
-  plain?: boolean; // sem o sublinhado pontilhado (o próprio filho já parece clicável)
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement | null>(null);
-  useEffect(() => {
-    if (!open) return;
-    const fora = (e: MouseEvent) => ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
-    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", fora);
-    document.addEventListener("keydown", esc);
-    return () => {
-      document.removeEventListener("mousedown", fora);
-      document.removeEventListener("keydown", esc);
-    };
-  }, [open]);
-  if (linhas.length === 0) return <>{children}</>;
-  return (
-    <span ref={ref} className="relative inline-block">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-label={label}
-        className={plain ? "cursor-pointer rounded" : "cursor-pointer rounded underline decoration-zinc-400/60 decoration-dotted underline-offset-4 hover:decoration-zinc-500"}
-      >
-        {children}
-      </button>
-      {open ? (
-        <span
-          role="dialog"
-          className={`absolute top-full z-30 mt-1.5 flex w-max min-w-[220px] flex-col gap-1.5 rounded-lg border border-zinc-200 bg-white p-3 text-left text-xs shadow-xl dark:border-white/10 dark:bg-[#161b26] ${
-            align === "right" ? "right-0" : "left-0"
-          }`}
-        >
-          {linhas.map(([k, v]) => (
-            <span key={k} className="flex items-baseline justify-between gap-4">
-              <span className="text-zinc-500">{k}</span>
-              <span className="font-semibold text-zinc-900 tabular-nums dark:text-zinc-100">{v}</span>
-            </span>
-          ))}
-        </span>
-      ) : null}
-    </span>
-  );
-}
 
 const OPT_STALE_DAYS = 3;
+
+function PinIcon({ on }: { on: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 17v5" />
+      <path d="M9 10.76V6h6v4.76a2 2 0 0 0 .59 1.42L17 13.6V16H7v-2.4l1.41-1.42A2 2 0 0 0 9 10.76Z" />
+      <path d="M8 3h8" />
+    </svg>
+  );
+}
+
+// Orçamento diário × meta: até R$ 10 de diferença = em dia; acima disso, atrasado (falta investir) ou adiantado.
+function ritmoTexto(gap: number): string {
+  if (Math.abs(gap) < 10) return "em dia com a meta";
+  return gap > 0 ? `${fmtBRL(gap)} atrasado` : `${fmtBRL(-gap)} adiantado`;
+}
 const PIN_KEY = "estr_pin";
 
 function Otimizacao({ acts, failed, now }: { acts: ActivityItem[] | undefined; failed: boolean; now: number }) {
@@ -161,8 +66,8 @@ function Otimizacao({ acts, failed, now }: { acts: ActivityItem[] | undefined; f
 }
 
 // Balão da descrição (o mesmo quadro do Foco), ao lado do botão.
-// Etapa 296: o 📝 abre a ficha do cliente num painel lateral à direita (como em Clientes), com a descrição do Asana
-// embaixo. O quadro continua visível e clicável; clicar no 📝 de outra linha troca o cliente do painel.
+// Etapa 296: o botão "Ficha" abre a ficha do cliente num painel lateral à direita (como em Clientes), com a descrição do Asana
+// embaixo. O quadro continua visível e clicável; clicar em "Ficha" de outra linha troca o cliente do painel.
 function FichaLateral({ l, onClose, onSaved }: { l: Linha; onClose: () => void; onSaved?: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -201,14 +106,21 @@ export function Acompanhamento({
   activitiesFailed,
   pagamento,
   onClienteSalvo,
+  soSensiveis = false,
+  onSoSensiveis,
+  nSensiveis = 0,
 }: {
   linhas: Linha[];
   activities: Record<string, ActivityItem[]> | null;
   activitiesFailed: string[];
   // Etapa 284: contas com erro de pagamento ou sem saldo → linha vermelha (id da conta → motivo)
   pagamento?: Record<string, string>;
-  // Etapa 296: depois de salvar a ficha pelo 📝, recarrega o quadro
+  // Etapa 296: depois de salvar a ficha, recarrega o quadro
   onClienteSalvo?: () => void;
+  // Filtro "Só sensíveis" (substituiu a aba "Sensíveis e críticas")
+  soSensiveis?: boolean;
+  onSoSensiveis?: (v: boolean) => void;
+  nSensiveis?: number;
 }) {
   const { ui, setUi } = useEstr();
   const { options } = usePriorityOptions();
@@ -340,6 +252,8 @@ export function Acompanhamento({
   const pinnedVisible = !!pinned && linhas.some((l) => l.id === pinned);
 
   const clip = closedDaysIn(period, cal);
+  // Com o filtro num gestor só, a coluna Responsável repetiria o mesmo nome em todas as linhas: some.
+  const showResp = !ui.resp || ui.resp === "__none";
   const selectCls = "h-8 rounded-lg border border-zinc-300 bg-white px-2 text-sm dark:border-white/10 dark:bg-[#141924]";
   const th = "px-2 py-2.5 font-semibold";
 
@@ -417,38 +331,62 @@ export function Acompanhamento({
               </button>
             ) : null}
           </div>
+          {onSoSensiveis ? (
+            <button
+              onClick={() => onSoSensiveis(!soSensiveis)}
+              aria-pressed={soSensiveis}
+              title="Contas marcadas como sensíveis na ficha do cliente"
+              className={`h-8 rounded-lg border px-3 text-xs font-medium ${
+                soSensiveis ? "border-orange-500 bg-orange-500 text-white" : "border-zinc-300 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
+              }`}
+            >
+              Só sensíveis · {nSensiveis}
+            </button>
+          ) : null}
           {pinnedVisible ? (
             <button
               onClick={() => togglePin(pinned as string)}
-              className="rounded-lg bg-blue-600/10 px-2 py-1 text-xs font-medium text-blue-700 dark:text-blue-300"
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600/10 px-2 text-xs font-medium text-blue-700 dark:text-blue-300"
               title="Tirar a conta fixada (volta a mostrar os números de todas)"
             >
-              📌 {linhas.find((l) => l.id === pinned)?.name} ✕
+              <PinIcon on /> {linhas.find((l) => l.id === pinned)?.name} ✕
             </button>
-          ) : null}
-          {marcadas.size > 0 ? (
-            <span className="flex items-center gap-2 rounded-lg bg-blue-600/10 px-2 py-1 text-xs">
-              <b className="text-blue-700 dark:text-blue-300">{marcadas.size} marcada{marcadas.size === 1 ? "" : "s"}</b>
-              <button onClick={() => setAvisar(true)} className="rounded-md bg-blue-600 px-2 py-0.5 font-medium text-white hover:bg-blue-700">📣 Avisar gestores</button>
-              <button onClick={() => setCriarTarefa(true)} className="rounded-md bg-violet-600 px-2 py-0.5 font-medium text-white hover:bg-violet-700">📋 Programar feedback</button>
-              <button onClick={() => setMarcadas(new Set())} className="text-zinc-500 hover:underline">limpar</button>
-            </span>
           ) : null}
           <span className="ml-auto text-xs text-zinc-500">{rows.length} contas</span>
         </div>
+        <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-zinc-50/70 px-4 py-2 text-xs dark:border-white/10 dark:bg-white/[0.02]">
+          <span className={marcadas.size ? "font-semibold text-blue-700 dark:text-blue-300" : "text-zinc-500"}>
+            {marcadas.size ? `${marcadas.size} conta${marcadas.size === 1 ? "" : "s"} marcada${marcadas.size === 1 ? "" : "s"}` : "Marque as contas na caixinha para:"}
+          </span>
+          <button
+            onClick={() => setAvisar(true)}
+            disabled={marcadas.size === 0}
+            className="h-7 rounded-md bg-blue-600 px-2.5 font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Avisar gestores
+          </button>
+          <button
+            onClick={() => setCriarTarefa(true)}
+            disabled={marcadas.size === 0}
+            className="h-7 rounded-md bg-violet-600 px-2.5 font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Programar feedback
+          </button>
+          {marcadas.size ? (
+            <button onClick={() => setMarcadas(new Set())} className="text-zinc-500 hover:underline">limpar</button>
+          ) : null}
+        </div>
         <table className="w-full table-fixed text-sm">
           <colgroup>
-            {/* Conta · Responsável · Prioridade · Investimento · Ritmo · Leads · CPA · Ofertas · Otimização · Descrição */}
-            <col className="w-[19%]" />
-            <col className="w-[8%]" />
-            <col className="w-[7%]" />
+            <col className={showResp ? "w-[24%]" : "w-[32%]"} />
+            {showResp ? <col className="w-[9%]" /> : null}
+            <col className="w-[9%]" />
             <col className="w-[11%]" />
-            <col className="w-[12%]" />
-            <col className="w-[5%]" />
-            <col className="w-[8%]" />
-            <col className="w-[18%]" />
+            <col className="w-[15%]" />
             <col className="w-[6%]" />
-            <col className="w-[6%]" />
+            <col className="w-[10%]" />
+            <col className="w-[7%]" />
+            <col className="w-[9%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-zinc-200 text-left text-[11px] tracking-wide text-zinc-500 uppercase dark:border-white/10">
@@ -457,23 +395,22 @@ export function Acompanhamento({
                   <input
                     type="checkbox"
                     aria-label="Marcar todas as contas da lista"
-                    title="Marcar todas da lista (pra Avisar gestores)"
+                    title="Marcar todas da lista"
                     checked={rows.length > 0 && rows.every((x) => marcadas.has(x.l.id))}
                     onChange={(e) => setMarcadas(e.target.checked ? new Set(rows.map((x) => x.l.id)) : new Set())}
                   />
                   Conta
                 </span>
               </th>
-              <th className={th}>Responsável</th>
+              {showResp ? <th className={th}>Responsável</th> : null}
               <th className={th}>Prioridade</th>
-              <th className={`${th} text-right`}>Investimento</th>
-              <th className={th} title="Investimento diário atual · quanto falta pra ficar em dia com a meta">Ritmo</th>
+              <th className={`${th} text-right`} title={`Quanto foi investido no período (${periodLabel})`}>Investimento</th>
+              <th className={th} title="Orçamento diário ligado agora e se a conta está em dia com a meta do mês (até ontem)">Orçamento diário</th>
               <th className={`${th} text-right`} title="Leads/conversas no período escolhido">Leads</th>
               <th className={`${th} text-right`}>CPA</th>
-              <th className={th}>Ofertas</th>
-              <th className={th} title="Há quanto tempo foi a última otimização relevante">Otimização</th>
+              <th className={th} title="Há quanto tempo foi a última otimização do gestor">Otimização</th>
               <th className={`${th} pr-4`}>
-                <span className="sr-only">Descrição</span>
+                <span className="sr-only">Ações</span>
               </th>
             </tr>
           </thead>
@@ -508,9 +445,9 @@ export function Acompanhamento({
                       onClick={() => togglePin(l.id)}
                       title={pinned === l.id ? "Tirar o fixar" : "Fixar esta conta (as outras ficam embaçadas)"}
                       aria-label={pinned === l.id ? `Tirar o fixar de ${l.name}` : `Fixar ${l.name}`}
-                      className={`mt-0.5 shrink-0 text-xs transition-opacity ${pinned === l.id ? "opacity-100" : "opacity-30 hover:opacity-100"}`}
+                      className={`mt-1 shrink-0 transition-opacity ${pinned === l.id ? "text-blue-600 opacity-100 dark:text-blue-400" : "text-zinc-500 opacity-40 hover:opacity-100"}`}
                     >
-                      📌
+                      <PinIcon on={pinned === l.id} />
                     </button>
                     <div className="min-w-0 flex-1">
                     <a
@@ -530,24 +467,26 @@ export function Acompanhamento({
                           tarefas[l.id].atrasadas ? "bg-amber-500/20 text-amber-800 dark:text-amber-300" : "bg-violet-500/15 text-violet-700 dark:text-violet-300"
                         }`}
                       >
-                        📋 {tarefas[l.id].abertas}
+                        {tarefas[l.id].abertas} feedback{tarefas[l.id].abertas === 1 ? "" : "s"}{tarefas[l.id].atrasadas ? " · atrasado" : ""}
                       </Link>
                     ) : null}
                     {pagamento?.[l.id] ? (
                       <span className="mt-1 inline-block max-w-full truncate rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold text-white" title={pagamento[l.id]}>
-                        💳 {pagamento[l.id]}
+                        {pagamento[l.id]}
                       </span>
                     ) : null}
                     </div>
                     </div>
                   </td>
-                  <td className="px-2 py-3">
-                    {l.responsible ? (
-                      <span className="block truncate text-sm font-medium" title={l.responsible}>{l.responsible}</span>
-                    ) : (
-                      <span className="text-xs text-zinc-400">sem responsável</span>
-                    )}
-                  </td>
+                  {showResp ? (
+                    <td className="px-2 py-3">
+                      {l.responsible ? (
+                        <span className="block truncate text-sm font-medium" title={l.responsible}>{l.responsible}</span>
+                      ) : (
+                        <span className="text-xs text-zinc-400">sem responsável</span>
+                      )}
+                    </td>
+                  ) : null}
                   <td className={`px-2 py-3 ${blur}`}>
                     {prio ? (
                       <span
@@ -562,64 +501,42 @@ export function Acompanhamento({
                     )}
                   </td>
                   <td className={`px-2 py-3 text-right tabular-nums ${blur}`}>
-                    <Detalhe
-                      label={`Metas de investimento de ${l.name}`}
-                      linhas={
-                        r.dailyTarget != null
-                          ? [
-                              ["Investimento ideal até ontem", fmtBRL(r.dailyTarget * (cal.day - 1))],
-                              ["Investimento ideal até hoje", fmtBRL(r.dailyTarget * cal.day)],
-                              ["Meta mensal", fmtBRL(l.monthly ?? 0)],
-                            ]
-                          : []
-                      }
-                    >
-                      {spend != null ? fmtBRL(spend) : "—"}
-                    </Detalhe>
+                    <div className="font-semibold">{spend != null ? fmtBRL(spend) : "—"}</div>
+                    {l.monthly ? <div className="mt-0.5 text-[11px] text-zinc-500">meta do mês {fmtBRL(l.monthly)}</div> : null}
                   </td>
                   <td className={`px-2 py-3 tabular-nums ${blur}`}>
-                    <div className="flex flex-wrap items-center gap-1">
-                      <Detalhe
-                        align="left"
-                        label={`Ritmo de ${l.name}`}
-                        linhas={
-                          r.dailyTarget != null
-                            ? [
-                                r.gap != null && r.gap < 0 ? ["Passou da meta até ontem", fmtBRL(-r.gap)] : ["Faltam (pra ficar em dia até ontem)", fmtBRL(Math.max(0, r.gap ?? 0))],
-                                ["Meta diária", fmtBRL(r.dailyTarget)],
-                              ]
-                            : []
-                        }
-                      >
-                        <span className="font-semibold" title="Investimento diário atual (orçamento do dia de tudo que está ligado)">
-                          {l.dailyBudget === undefined ? "…" : l.dailyBudget == null ? "—" : fmtBRL(l.dailyBudget)}
-                        </span>
-                      </Detalhe>
-                      {r.gap != null ? (
-                        <Pill
-                          tone={ritmoTone(r.gap)}
-                          title={r.gap >= 0 ? `Faltam ${fmtBRL(r.gap)} pra ficar em dia com a meta até ontem` : `Passou ${fmtBRL(-r.gap)} da meta até ontem`}
-                        >
-                          {r.gap >= 0 ? "+" : "−"}
-                          {fmtInt(Math.abs(r.gap))}
-                        </Pill>
-                      ) : null}
+                    <div
+                      className="font-semibold"
+                      title={r.dailyTarget != null ? `Meta diária: ${fmtBRL(r.dailyTarget)} · ideal até ontem: ${fmtBRL(r.dailyTarget * (cal.day - 1))}` : undefined}
+                    >
+                      {l.dailyBudget === undefined ? "…" : l.dailyBudget == null ? "—" : `${fmtBRL(l.dailyBudget)}/dia`}
                     </div>
+                    {r.gap != null ? (
+                      <div
+                        className={`mt-0.5 text-[11px] font-semibold ${
+                          ritmoTone(r.gap) === "ok"
+                            ? "text-emerald-600 dark:text-emerald-400"
+                            : ritmoTone(r.gap) === "warn"
+                              ? "text-amber-600 dark:text-amber-400"
+                              : "text-blue-600 dark:text-blue-400"
+                        }`}
+                      >
+                        {ritmoTexto(r.gap)}
+                      </div>
+                    ) : null}
                   </td>
                   <td className={`px-2 py-3 text-right text-sm font-semibold tabular-nums ${blur}`}>
                     {l.nums && leads != null ? new Intl.NumberFormat("pt-BR").format(Math.round(leads)) : <span className="text-xs font-normal text-zinc-400">—</span>}
                   </td>
                   <td className={`px-2 py-3 text-right ${blur}`}>
                     {l.nums ? (
-                      <Detalhe label={`Meta de CPA de ${l.name}`} linhas={l.cpaTarget != null ? [["Meta de CPA", fmtBRL(l.cpaTarget)]] : []}>
+                      <>
                         <Pill tone={cpa === Infinity ? "bad" : cpaTone(cpa, l.cpaTarget)}>{fmtCpa(cpa)}</Pill>
-                      </Detalhe>
+                        {l.cpaTarget != null ? <div className="mt-0.5 text-[11px] text-zinc-500">ideal {fmtBRL(l.cpaTarget)}</div> : null}
+                      </>
                     ) : (
                       <span className="text-xs text-zinc-400">—</span>
                     )}
-                  </td>
-                  <td className={`px-2 py-3 ${blur}`}>
-                    <Ofertas s={l.offers} label={l.name} />
                   </td>
                   <td className={`px-2 py-3 ${blur}`}>
                     <Otimizacao
@@ -635,19 +552,19 @@ export function Acompanhamento({
                       aria-label={`Enviar feedback de ${l.name}`}
                       className="mr-1 h-7 rounded-lg border border-zinc-300 px-2 text-xs font-medium transition-colors hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
                     >
-                      💬
+                      Feedback
                     </button>
                     <button
                       onClick={() => setDesc((cur) => (cur?.l.id === l.id ? null : { l }))}
                       title="Ficha do cliente + descrição do Asana"
-                      aria-label={`Descrição de ${l.name}`}
+                      aria-label={`Ficha de ${l.name}`}
                       className={`h-7 rounded-lg border px-2 text-xs font-medium transition-colors ${
                         desc?.l.id === l.id
                           ? "border-blue-500 bg-blue-600/10 text-blue-700 dark:text-blue-300"
                           : "border-zinc-300 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
                       }`}
                     >
-                      📝
+                      Ficha
                     </button>
                   </td>
                 </tr>
@@ -655,13 +572,19 @@ export function Acompanhamento({
             })}
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-10 text-center text-sm text-zinc-500">
+                <td colSpan={showResp ? 9 : 8} className="px-4 py-10 text-center text-sm text-zinc-500">
                   {q.trim() ? `Nenhuma conta com "${q.trim()}".` : "Nenhuma conta pra esse responsável."}
                 </td>
               </tr>
             ) : null}
           </tbody>
         </table>
+        <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-zinc-200 px-4 py-2.5 text-[11px] text-zinc-500 dark:border-white/10">
+          <span><b className="text-zinc-600 dark:text-zinc-300">CPA:</b> <span className="text-emerald-600 dark:text-emerald-400">verde</span> no ideal ou abaixo · <span className="text-amber-600 dark:text-amber-400">laranja</span> até R$ 2 acima · <span className="text-red-600 dark:text-red-400">vermelho</span> mais de R$ 2 acima</span>
+          <span><b className="text-zinc-600 dark:text-zinc-300">Orçamento:</b> <span className="text-amber-600 dark:text-amber-400">atrasado</span> = falta investir pra bater a meta até ontem · <span className="text-blue-600 dark:text-blue-400">adiantado</span> = passou do ritmo</span>
+          <span><b className="text-zinc-600 dark:text-zinc-300">Otimização:</b> tempo desde a última mexida do gestor (vermelho = 3 dias ou mais)</span>
+          <span><b className="text-zinc-600 dark:text-zinc-300">Linha vermelha:</b> saldo baixo ou erro de pagamento</span>
+        </div>
       </Card>
 
 
@@ -688,7 +611,7 @@ export function Acompanhamento({
           }}
           onCreated={() => {
             setFeedbackDe(null);
-            router.push("/estrategia/clientes/feedbacks");
+            router.push("/estrategia/configuracoes/clientes/feedbacks");
           }}
         />
       ) : null}

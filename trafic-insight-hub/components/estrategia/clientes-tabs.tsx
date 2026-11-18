@@ -5,8 +5,8 @@ import { usePathname } from "next/navigation";
 
 // Etapa 249: abas dentro de Clientes — Ficha (lista + ficha do cliente) e Feedbacks (vídeos do Gravador de Tela).
 const TABS = [
-  { href: "/estrategia/clientes", label: "Ficha" },
-  { href: "/estrategia/clientes/feedbacks", label: "Feedbacks" },
+  { href: "/estrategia/configuracoes/clientes", label: "Ficha" },
+  { href: "/estrategia/configuracoes/clientes/feedbacks", label: "Feedbacks" },
 ];
 
 export function ClientesTabs() {

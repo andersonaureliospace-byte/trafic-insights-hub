@@ -231,7 +231,7 @@ export default function ClientesPage() {
           </Card>
           <p className="text-xs text-zinc-500">
             Pra cadastrar gestores e atribuir várias contas de uma vez, use{" "}
-            <Link href="/estrategia/gestores" className="font-medium text-blue-600 hover:underline dark:text-blue-400">Configurações → Gestores</Link>.
+            <Link href="/estrategia/configuracoes/gestores" className="font-medium text-blue-600 hover:underline dark:text-blue-400">Configurações → Gestores</Link>.
           </p>
         </div>
 
