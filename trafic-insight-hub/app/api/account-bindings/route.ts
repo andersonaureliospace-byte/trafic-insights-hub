@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { registrarPrioridades } from "@/lib/estrategia/prioridade-hist";
 import { requireUser } from "@/lib/current-user";
 import { spDate } from "@/lib/meta/client";
 
@@ -97,6 +98,14 @@ export async function PATCH(request: Request) {
       patch.tab_optimized_date = tabOptimized ? spDate(new Date()) : null;
     }
 
+    // Etapa 330: guarda a mudança de prioridade (o feedback com IA ajusta o tom: subiu = urgência, desceu = mais calmo)
+    let prioAntes: string | null | undefined;
+    if ("priority" in body) {
+      const bare = ad_account_id.replace(/^act_/, "");
+      const { data: cur } = await supabase.from("account_bindings").select("priority").eq("user_id", user.id).in("ad_account_id", [bare, `act_${bare}`]).limit(1).maybeSingle();
+      prioAntes = (cur?.priority as string | null | undefined) ?? null;
+    }
+
     const { error } = await supabase.from("account_bindings").upsert(patch, { onConflict: "user_id,ad_account_id" });
     if (error) {
       if (/responsible|client_since|archived/.test(error.message)) {
@@ -106,6 +115,9 @@ export async function PATCH(request: Request) {
         throw new Error("Rode o SQL supabase/migrations/0040_to_optimize.sql no Supabase pra ativar o \"Otimizar\".");
       }
       throw error;
+    }
+    if (prioAntes !== undefined) {
+      await registrarPrioridades(supabase, user.id, [{ conta: ad_account_id, de: prioAntes, para: (body.priority as string | null) ?? null }], "manual");
     }
     return NextResponse.json({ ok: true });
   } catch (e) {

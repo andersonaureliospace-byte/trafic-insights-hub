@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Btn } from "@/components/estrategia/ui";
 import { CACHE_KEY, loadClientes, readCache, type Cliente, type Linha } from "@/components/estrategia/use-carteira";
 import { NotasCliente } from "./notas-cliente";
+import { FeedbackAutomatico } from "./feedback-automatico";
 import { useGravador } from "@/components/estrategia/gravador";
 import { ClienteWhatsapp } from "@/components/estrategia/whatsapp-panel";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -104,6 +105,14 @@ export function NovoFeedbackPrint({
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
+  const [notasKey, setNotasKey] = useState(0); // Etapa 330: recarrega o Plano de ação depois de salvar o plano gerado
+  // Etapa 330: hoje até agora (última atualização do Acompanhamento) pro feedback automático
+  const hojeNums = useMemo(() => {
+    const pts = cliente ? cacheLinhas?.find((l) => l.id === cliente.id)?.ult4 : undefined;
+    const hojeYmd = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
+    const p = pts?.find((x) => x.date === hojeYmd);
+    return p ? { spend: p.spend, results: p.results } : null;
+  }, [cliente, cacheLinhas]);
   const comparacao = useMemo(() => {
     const n = cliente ? cacheLinhas?.find((l) => l.id === cliente.id)?.nums : null;
     const a = n?.periods?.[periodo];
@@ -293,7 +302,7 @@ export function NovoFeedbackPrint({
   }
 
   const [semIaRun, setSemIaRun] = useState(false);
-  async function gerar(semIa = false) {
+  async function gerar(semIa = false, texto?: string) {
     if (!cliente) return;
     setSemIaRun(semIa);
     setGerando(true);
@@ -303,9 +312,10 @@ export function NovoFeedbackPrint({
         action: "criar",
         ad_account_id: cliente.id,
         prints: prontos.map((a) => ({ path: a.path, mime: a.mime })),
-        pontos,
-        audio: audio?.path ? { path: audio.path, mime: audio.mime } : null,
-        semIa,
+        pontos: texto ?? pontos,
+        audio: texto != null ? null : audio?.path ? { path: audio.path, mime: audio.mime } : null,
+        semIa: texto != null ? true : semIa,
+        ...(texto != null ? { titulo: "Feedback automático" } : {}),
       });
       anexos.forEach((a) => URL.revokeObjectURL(a.preview));
       if (enviarAqui) await abrirRevisao(r.id);
@@ -351,6 +361,11 @@ export function NovoFeedbackPrint({
           <div className="flex flex-col gap-3 overflow-y-auto p-5">
             <div className="rounded-lg bg-[#efeae2] p-3 dark:bg-[#0b141a]">
               <p className="mb-2 text-center text-[11px] text-zinc-500">{rev.grupo ? `Vai pro grupo “${rev.grupo}”` : "Sem grupo de WhatsApp vinculado a esse cliente"}</p>
+              {rev.prints.length === 0 && rev.resumo.trim() ? (
+                <div className="ml-auto mb-1.5 w-[85%] rounded-lg rounded-tr-none bg-[#d9fdd3] px-3 py-2 shadow-sm dark:bg-[#005c4b]">
+                  <p className="text-sm whitespace-pre-wrap text-zinc-900 dark:text-zinc-100">{rev.resumo.trim()}</p>
+                </div>
+              ) : null}
               {rev.prints.map((u, i) => (
                 <div key={u} className="ml-auto mb-1.5 w-[85%] rounded-lg rounded-tr-none bg-[#d9fdd3] p-1.5 shadow-sm dark:bg-[#005c4b]">
                   {/* eslint-disable-next-line @next/next/no-img-element -- prévia do print */}
@@ -362,7 +377,7 @@ export function NovoFeedbackPrint({
               ))}
             </div>
             {rev.aiErro ? <p className="text-xs text-amber-600">A IA não conseguiu escrever ({rev.aiErro}). Escreva o texto abaixo.</p> : null}
-            <label className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase" htmlFor="fp-rev">Texto (vai de legenda no print)</label>
+            <label className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase" htmlFor="fp-rev">{rev.prints.length ? "Texto (vai de legenda no print)" : "Mensagem"}</label>
             <textarea
               id="fp-rev"
               value={rev.resumo}
@@ -540,9 +555,21 @@ export function NovoFeedbackPrint({
             )}
           </div>
 
+          {cliente ? (
+            <FeedbackAutomatico
+              key={cliente.id}
+              clienteId={cliente.id}
+              pontos={pontos}
+              hoje={hojeNums}
+              ocupado={gerando || subindo || gravando}
+              onUsar={(t) => void gerar(true, t)}
+              onPlanoSalvo={() => setNotasKey((k) => k + 1)}
+            />
+          ) : null}
+
           {/* prints */}
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">2. Print do resultado</span>
+            <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">2. Print do resultado <span className="font-normal normal-case">(opcional no feedback automático: se anexar, vai junto)</span></span>
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
@@ -611,7 +638,7 @@ export function NovoFeedbackPrint({
             </div>
           </div>
 
-          {cliente ? <NotasCliente key={cliente.id} clienteId={cliente.id} /> : null}
+          {cliente ? <NotasCliente key={`${cliente.id}-${notasKey}`} clienteId={cliente.id} /> : null}
 
           <details className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
             <summary className="cursor-pointer text-xs font-semibold text-zinc-500">Meu jeito de escrever (exemplos pra IA copiar o tom)</summary>

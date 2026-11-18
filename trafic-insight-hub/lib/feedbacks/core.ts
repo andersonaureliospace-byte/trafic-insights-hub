@@ -130,7 +130,13 @@ export async function sendFeedback(supabase: SupabaseClient, creds: WhatsappCred
   // Etapa 271: feedback por print → os prints (em ordem) e, logo depois, a mensagem.
   if (row.tipo === "print") {
     const prints = row.prints ?? [];
-    if (prints.length === 0) throw new Error("Esse feedback não tem print.");
+    // Etapa 330: feedback automático pelos números pode ir sem print — só a mensagem.
+    if (prints.length === 0) {
+      const t = (row.resumo ?? "").trim();
+      if (!t) throw new Error("Esse feedback não tem print nem texto.");
+      await sendText(creds, row.wa_group_id, t);
+      return;
+    }
     // Como ele já manda: o texto vai de legenda no print (no último, se forem vários). Texto muito longo pra legenda
     // (WhatsApp corta ~1.000 caracteres) vai numa mensagem separada logo depois.
     const texto = (row.resumo ?? "").trim();

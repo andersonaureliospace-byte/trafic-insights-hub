@@ -26,6 +26,7 @@
 import type { createClient } from "@/lib/supabase/server";
 import { getAccountsDailyCpa } from "@/lib/meta/daily-cpa";
 import { getPriorityOptions } from "@/lib/priority-labels";
+import { registrarPrioridades } from "@/lib/estrategia/prioridade-hist";
 import { isInauguracao } from "@/lib/format";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { describeAsanaSync, syncAsanaPriorities, type AsanaSyncSummary } from "@/lib/asana/priority-sync";
@@ -215,6 +216,8 @@ export async function checkAndUpdateBulkStatus(
 
   const results = entries.map((e) => e.result);
   const updated = results.filter((r) => r.outcome === "updated");
+  // Etapa 330: histórico das mudanças de prioridade (tom do feedback com IA)
+  await registrarPrioridades(db as never, userId, updated.map((r) => ({ conta: r.accountId, de: r.from ?? null, para: r.to ?? null })), "automatica");
   // Etapa 55 (ajuste): a mensagem agora leva o status de TODO cliente
   // classificado nessa rodada — mudou ou não —, sempre "cliente: status",
   // sem dizer se mudou ou se manteve (isso só aparece na tabela da tela

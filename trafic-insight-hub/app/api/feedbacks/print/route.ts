@@ -44,7 +44,8 @@ export async function POST(request: Request) {
         .map((p) => ({ path: String(p.path ?? ""), mime: String(p.mime ?? "image/png").split(";")[0] }))
         .filter((p) => own(p.path))
         .slice(0, 8);
-      if (prints.length === 0) throw new Error("Anexe pelo menos um print do resultado.");
+      // Etapa 330: sem print só vale com o texto pronto (feedback automático pelos números / sem IA)
+      if (prints.length === 0 && !(body.semIa === true && String(body.pontos ?? "").trim())) throw new Error("Anexe pelo menos um print do resultado.");
       const audio = body.audio as { path?: string; mime?: string } | null | undefined;
       const audioPath = audio?.path && own(String(audio.path)) ? String(audio.path) : null;
 

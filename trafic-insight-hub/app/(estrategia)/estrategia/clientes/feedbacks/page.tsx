@@ -238,7 +238,7 @@ export default function FeedbacksPage() {
                           <td className="px-3 py-3 font-semibold">{f.client_name}</td>
                           <td className="max-w-[16rem] truncate px-3 py-3 text-zinc-600 dark:text-zinc-400">{f.titulo || "—"}</td>
                           <td className="px-3 py-3 text-right whitespace-nowrap tabular-nums">
-                            {f.tipo === "print" ? `📸 ${f.print_urls?.length ?? 0} print${(f.print_urls?.length ?? 0) === 1 ? "" : "s"}` : `🎥 ${fmtDur(f.duracao_seg)}`}
+                            {f.tipo === "print" ? (f.print_urls?.length ? `📸 ${f.print_urls.length} print${f.print_urls.length === 1 ? "" : "s"}` : "💬 texto") : `🎥 ${fmtDur(f.duracao_seg)}`}
                           </td>
                           <td className="px-3 py-3">
                             <Pill tone={st.tone}>{st.label}</Pill>
