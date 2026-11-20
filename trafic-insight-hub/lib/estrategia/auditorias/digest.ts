@@ -119,7 +119,9 @@ export function buildDigest(
         }
         continue;
       }
-      for (const i of sec.sort((a, b) => a.client_name.localeCompare(b.client_name, "pt-BR"))) out.push(`• ${i.client_name} — ${i.line}`);
+      // Etapa 333: na prioridade, primeiro quem mudou; quem manteve vem depois
+      const manteve = (i: ItemRow) => (s.id === "prioridade" && i.line.includes("(manteve)") ? 1 : 0);
+      for (const i of sec.sort((a, b) => manteve(a) - manteve(b) || a.client_name.localeCompare(b.client_name, "pt-BR"))) out.push(`• ${i.client_name} — ${i.line}`);
     }
   }
   return { text: out.join("\n"), mentions };

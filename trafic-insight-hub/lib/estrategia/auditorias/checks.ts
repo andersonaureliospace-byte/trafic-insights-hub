@@ -681,14 +681,18 @@ export async function runPrioridade(db: SupabaseClient, userId: string, token: s
   const label = (id?: string | null) => (id ? (opts.find((o) => o.id === id)?.label ?? id) : "sem prioridade");
   const byId = new Map(accounts.map((a) => [a.id, a]));
   const byName = new Map(accounts.map((a) => [normName(a.name), a]));
+  const mantidas: Finding[] = [];
   for (const r of results) {
     const a = byId.get(String(r.accountId).replace(/^act_/, ""));
     if (!a) continue;
     if (r.outcome === "updated") findings.push({ check: "prioridade", acc: a, line: `Prioridade: ${label(r.from)} → ${label(r.to)}`, dedupe: `prioridade:${a.id}:${day}` });
+    // Etapa 333: quem não mudou também aparece (no fim da lista), pra ver a carteira toda
+    else if (r.outcome === "unchanged") mantidas.push({ check: "prioridade", acc: a, line: `Prioridade: ${label(r.to)} (manteve)`, dedupe: `prioridade-mantida:${a.id}:${day}` });
     // Etapa 289: conta que ficou sem prioridade calculada diz o porquê (ex.: sem meta de CPA, sem gasto)
     else if (r.outcome === "skipped" && r.reason !== "Em inauguração")
       findings.push({ check: "prioridade", acc: a, line: `Prioridade não calculada: ${r.reason ?? "motivo desconhecido"}`, dedupe: `prioridade-skip:${a.id}:${day}` });
   }
+  findings.push(...mantidas);
   const asanaIssue = (names: string[], txt: string) => {
     for (const n of names) {
       const a = byName.get(normName(n));
