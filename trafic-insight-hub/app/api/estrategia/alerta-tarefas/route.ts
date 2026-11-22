@@ -3,33 +3,61 @@ import { requireUser } from "@/lib/current-user";
 import { calendarSP } from "@/lib/estrategia/calc";
 import { llmJson } from "@/lib/ai/llm";
 import { ORIGEM_PREFIX, origemKey } from "@/lib/estrategia/alerta-tarefas";
+import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
+import { sendText } from "@/lib/whatsapp/client";
+import { CEREBRO_KEY, CEREBRO_PADRAO, ORDEM_PREFIX } from "@/lib/estrategia/cerebro";
 
 // Etapa 341: tarefas do quadro Alertas (Acompanhamento → Alertas).
 //   GET                                  → tarefas abertas + as finalizadas hoje
 //   POST { action: "narrar", ... }       → a IA transforma a sua narração em tarefa(s) do cliente
 //   POST { action: "sugerir", ... }      → a IA sugere 1 ou mais tarefas pra cada alerta (não grava; você escolhe)
 //   POST { action: "criar", tarefas }    → grava as tarefas escolhidas (sugeridas pela IA)
+//   POST { action: "ordem_gerar", ... }  → Etapa 344: a IA escreve a "ordem" pro gestor (usa o Cérebro e as ordens anteriores)
+//   POST { action: "ordem_enviar", ... } → manda a ordem no WhatsApp do gestor (ou só salva) e ela fica pendente até o seu ✓
 //   POST { action: "concluir", id, nota? } · { action: "reabrir", id } · { action: "excluir", id }
 export const maxDuration = 60;
 
 const COLS = "id, titulo, descricao, ad_account_id, client_name, responsavel, status, done_at, origem_key, created_at";
 const norm = (id: string) => String(id ?? "").replace(/^act_/, "").trim();
 const semTabela = (m: string) => /estr_tarefas/.test(m);
+const flat = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+const toWhats = (s: string) => {
+  const d = s.replace(/\D/g, "");
+  return d && !d.startsWith("55") && d.length <= 11 ? `55${d}` : d;
+};
+type Db = Awaited<ReturnType<typeof requireUser>>["supabase"];
+async function lerCerebro(supabase: Db, userId: string): Promise<string> {
+  const { data } = await supabase.from("user_ui_prefs").select("pref_value").eq("user_id", userId).eq("pref_key", CEREBRO_KEY).maybeSingle();
+  const v = data?.pref_value;
+  return typeof v === "string" && v.trim() ? v.trim() : CEREBRO_PADRAO;
+}
+const fmtData = (iso: string) =>
+  new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 
 export async function GET() {
   try {
     const { supabase, user } = await requireUser();
     const hoje = calendarSP().today;
     const desde = `${hoje}T03:00:00.000Z`; // 00h de hoje em Brasília
-    const [abertas, feitas] = await Promise.all([
+    const [abertas, feitas, ordens] = await Promise.all([
       supabase.from("estr_tarefas").select(COLS).eq("user_id", user.id).eq("tipo", "alerta").eq("status", "aberta").like("origem_key", `${ORIGEM_PREFIX}%`).limit(1000),
       supabase.from("estr_tarefas").select(COLS).eq("user_id", user.id).eq("tipo", "alerta").eq("status", "feita").like("origem_key", `${ORIGEM_PREFIX}%`).gte("done_at", desde).limit(1000),
+      // ordens pro gestor: as pendentes (sem o ✓) e as que você deu ✓ hoje
+      supabase
+        .from("estr_tarefas")
+        .select(COLS)
+        .eq("user_id", user.id)
+        .eq("tipo", "alerta")
+        .like("origem_key", `${ORDEM_PREFIX}%`)
+        .or(`status.eq.aberta,and(status.eq.feita,done_at.gte.${desde})`)
+        .order("created_at", { ascending: false })
+        .limit(500),
     ]);
     if (abertas.error) {
       if (semTabela(abertas.error.message)) return NextResponse.json({ tarefas: [], semTabela: true });
       throw abertas.error;
     }
-    return NextResponse.json({ tarefas: [...(abertas.data ?? []), ...(feitas.data ?? [])] });
+    return NextResponse.json({ tarefas: [...(abertas.data ?? []), ...(feitas.data ?? [])], ordens: ordens.data ?? [] });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }
@@ -72,7 +100,11 @@ export async function POST(request: Request) {
         "Alertas:",
         ...alertas.map((a) => `- key=${a.key} · ${a.titulo}: ${a.detalhe}`),
       ].join("\n");
-      const r = await llmJson<{ tarefas?: Array<{ titulo?: string; alerta?: string }> }>(system, userMsg, { temperature: 0.4, maxTokens: 1200 });
+      const cerebro = await lerCerebro(supabase, user.id);
+      const r = await llmJson<{ tarefas?: Array<{ titulo?: string; alerta?: string }> }>(`${system}\n\nO QUE VOCÊ SABE DESSES CLIENTES (cérebro):\n${cerebro}`, `${userMsg}\n${String(body.extras ?? "")}`, {
+        temperature: 0.4,
+        maxTokens: 1200,
+      });
       const tarefas = (r.tarefas ?? [])
         .map((t) => ({ titulo: String(t.titulo ?? "").trim().slice(0, 200), alerta: chaves.has(String(t.alerta ?? "")) ? String(t.alerta) : "" }))
         .filter((t) => t.titulo)
@@ -103,6 +135,111 @@ export async function POST(request: Request) {
       const { data, error } = await supabase.from("estr_tarefas").insert(rows).select(COLS);
       if (error) throw new Error(semTabela(error.message) ? "Rode o SQL supabase/migrations/0047_demandas.sql no Supabase." : error.message);
       return NextResponse.json({ ok: true, tarefas: data ?? [] });
+    }
+
+    if (action === "ordem_gerar") {
+      const conta = norm(String(body.ad_account_id ?? ""));
+      if (!conta) throw new Error("Cliente não informado.");
+      const cliente = String(body.client_name ?? "").slice(0, 200);
+      const responsavel = String(body.responsavel ?? "").trim() || null;
+      const alertas = (Array.isArray(body.alertas) ? body.alertas : []) as AlertaIn[];
+      const ctx = (body.contexto && typeof body.contexto === "object" ? body.contexto : {}) as Record<string, unknown>;
+      const [cerebro, anteriores] = await Promise.all([
+        lerCerebro(supabase, user.id),
+        supabase
+          .from("estr_tarefas")
+          .select("descricao, status, created_at, done_at")
+          .eq("user_id", user.id)
+          .eq("tipo", "alerta")
+          .like("origem_key", `${ORDEM_PREFIX}%`)
+          .in("ad_account_id", [conta, `act_${conta}`])
+          .neq("status", "excluida")
+          .gte("created_at", new Date(Date.now() - 14 * 86_400_000).toISOString())
+          .order("created_at", { ascending: false })
+          .limit(5),
+      ]);
+      const hist = (anteriores.data ?? []).map(
+        (o) => `--- solicitação de ${fmtData(o.created_at as string)} (${o.status === "feita" ? "gestor já deu OK" : "ainda sem OK do gestor"}):\n${String(o.descricao ?? "").slice(0, 900)}`,
+      );
+      const system = [
+        "Você escreve, em nome de um ESTRATEGISTA de tráfego pago, uma SOLICITAÇÃO curta pro gestor de tráfego responsável pela conta, pra ser enviada no WhatsApp.",
+        "Formato EXATO (texto puro, sem markdown além do * no começo de cada item):",
+        "CONTA: <nome curto da conta, em maiúsculas, sem o nome da franquia se for redundante>",
+        "",
+        "* <o que precisa fazer + o porquê com o número que mostra o problema>",
+        "* <...>",
+        "",
+        "Quando fizer essas alterações, me dá o OK aqui.",
+        "",
+        "Regras:",
+        "- Português do Brasil, tom direto e de chefe parceiro, frases curtas, sem termos difíceis. Valores arredondados (R$ 36, R$ 1.200).",
+        "- Um item por problema; junte alertas parecidos (CPA de 3 dias, 2 dias e ontem viram um item só). No máximo 5 itens.",
+        "- Diga O QUE fazer (ex.: otimizar urgente, subir criativos novos, pausar conjuntos caros, aumentar orçamento pra X/dia, trocar o criativo do EXAME), usando as ofertas e o histórico de otimizações quando ajudarem a apontar a provável otimização.",
+        "- Se um problema JÁ estava numa solicitação anterior (histórico), escreva como REFORÇO, ex.: \"O investimento do mês ainda está baixo, precisa colocar mais.\" — e se a solicitação anterior ainda está sem OK, cobre isso com educação.",
+        "- Não invente números nem fatos que não estão nos dados.",
+        'Responda só JSON: {"mensagem":"..."}',
+        "",
+        "O QUE VOCÊ SABE DESSES CLIENTES (cérebro):",
+        cerebro,
+      ].join("\n");
+      const userMsg = [
+        `Conta: ${cliente}${responsavel ? ` · gestor: ${responsavel}` : ""}`,
+        `Números: ${
+          Object.entries(ctx)
+            .filter(([, v]) => v != null && v !== "")
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(" · ") || "—"
+        }`,
+        `Ofertas: ${String(body.ofertas ?? "") || "sem dados"}`,
+        `Últimas otimizações na conta: ${String(body.otimizacoes ?? "") || "sem dados"}`,
+        "Alertas de agora:",
+        ...(alertas.length ? alertas.map((a) => `- ${a.titulo}: ${a.detalhe}`) : ["- (nenhum)"]),
+        "",
+        hist.length ? `Solicitações anteriores pra essa conta (mais nova primeiro):\n${hist.join("\n")}` : "Nenhuma solicitação anterior nos últimos 14 dias.",
+      ].join("\n");
+      const r = await llmJson<{ mensagem?: string }>(system, userMsg, { temperature: 0.4, maxTokens: 1200 });
+      const mensagem = String(r.mensagem ?? "").trim();
+      if (!mensagem) throw new Error("A IA não escreveu a solicitação. Tente de novo.");
+      return NextResponse.json({ mensagem, reforco: hist.length > 0 });
+    }
+
+    if (action === "ordem_enviar") {
+      const conta = norm(String(body.ad_account_id ?? ""));
+      const mensagem = String(body.mensagem ?? "").trim().slice(0, 4000);
+      if (!conta || !mensagem) throw new Error("Escreva a solicitação.");
+      const responsavel = String(body.responsavel ?? "").trim() || null;
+      let enviadoPara: string | null = null;
+      if (body.enviar !== false) {
+        if (!responsavel) throw new Error("Essa conta não tem gestor responsável. Defina na ficha do cliente.");
+        const { data: gRow } = await supabase.from("user_ui_prefs").select("pref_value").eq("user_id", user.id).eq("pref_key", "gestores").maybeSingle();
+        const cad = (Array.isArray(gRow?.pref_value) ? gRow.pref_value : []) as Array<{ name?: string; whatsapp?: string }>;
+        const hit = cad.find((g) => g?.name && flat(g.name) === flat(responsavel));
+        const to = toWhats(String(hit?.whatsapp ?? ""));
+        if (to.length < 12) throw new Error(`O gestor ${responsavel} não tem WhatsApp cadastrado em Configurações → Gestores.`);
+        const inst = await requireWhatsappInstance(supabase, user.id);
+        await sendText({ api_url: inst.api_url, token: inst.token }, to, mensagem);
+        enviadoPara = responsavel;
+      }
+      const keys = (Array.isArray(body.alertas) ? body.alertas : []).map((k) => String(k).replace(/[|,]/g, "")).filter(Boolean);
+      const rand = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+      const { data, error } = await supabase
+        .from("estr_tarefas")
+        .insert({
+          user_id: user.id,
+          titulo: enviadoPara ? `Solicitação enviada pro ${enviadoPara}` : "Solicitação pro gestor (salva sem enviar)",
+          descricao: mensagem,
+          tipo: "alerta",
+          ad_account_id: conta,
+          client_name: String(body.client_name ?? "").slice(0, 200) || conta,
+          responsavel,
+          data: calendarSP().today,
+          ordem: Date.now() / 1e6,
+          origem_key: `${ORDEM_PREFIX}${rand}|${keys.join(",")}`,
+        })
+        .select(COLS)
+        .single();
+      if (error) throw new Error(semTabela(error.message) ? "Rode o SQL supabase/migrations/0047_demandas.sql no Supabase." : error.message);
+      return NextResponse.json({ ok: true, ordem: data, enviadoPara });
     }
 
     if (action === "narrar") {
