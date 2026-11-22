@@ -37,6 +37,8 @@ async function gravarPref(key: string, value: unknown) {
 export function FeedbackAutomatico({
   clienteId,
   pontos,
+  prints = [],
+  audio = null,
   hoje,
   onUsar,
   onPlanoSalvo,
@@ -44,6 +46,8 @@ export function FeedbackAutomatico({
 }: {
   clienteId: string;
   pontos: string;
+  prints?: Array<{ path: string; mime: string }>; // Etapa 334: prints já enviados — a IA lê os 2 primeiros
+  audio?: { path: string; mime: string } | null; // pontos de atenção falados (a IA transcreve)
   hoje: { spend: number; results: number } | null;
   onUsar: (texto: string) => void; // revisar e enviar esse texto
   onPlanoSalvo: () => void;
@@ -59,6 +63,22 @@ export function FeedbackAutomatico({
   const [plano, setPlano] = useState("");
   const [dados, setDados] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  // Etapa 334: personalização livre (ex.: "última semana do mês") — fica lembrada neste navegador até você apagar
+  const [perso, setPerso] = useState(() => {
+    try {
+      return localStorage.getItem("fa_personalizacao") ?? "";
+    } catch {
+      return "";
+    }
+  });
+  const mudarPerso = (v: string) => {
+    setPerso(v);
+    try {
+      localStorage.setItem("fa_personalizacao", v);
+    } catch {
+      /* sem armazenamento: só nesta tela */
+    }
+  };
 
   useEffect(() => {
     lerPref<Record<string, Ctx>>(KEY)
@@ -87,7 +107,7 @@ export function FeedbackAutomatico({
       const r = await fetch("/api/feedbacks/gerar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ad_account_id: id, dias, pontos, hoje }),
+        body: JSON.stringify({ ad_account_id: id, dias, pontos, personalizacao: perso, prints, audio, hoje }),
       });
       const txt = await r.text();
       let d: { error?: string; feedback?: string; plano?: string; resumoDados?: string };
@@ -135,7 +155,9 @@ export function FeedbackAutomatico({
 
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/5">
-      <span className="text-[11px] font-semibold tracking-wide text-blue-700 uppercase dark:text-blue-300">✨ Feedback automático (pelos números, sem print)</span>
+      <span className="text-[11px] font-semibold tracking-wide text-blue-700 uppercase dark:text-blue-300">
+        ✨ Feedback com IA {prints.length ? `· lendo ${Math.min(prints.length, 2)} print${prints.length > 1 ? "s" : ""}` : "· pelos números do Hub"}
+      </span>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs text-zinc-500">Período:</span>
         {([2, 3, 7] as const).map((n) => (
@@ -152,6 +174,15 @@ export function FeedbackAutomatico({
           </button>
         ))}
       </div>
+      <label className="flex flex-col gap-1 text-xs">
+        <span className="text-zinc-500">Personalização (a IA segue isso):</span>
+        <input
+          value={perso}
+          onChange={(e) => mudarPerso(e.target.value)}
+          placeholder='Ex.: "última semana do mês", "Black Friday na sexta", "falar da promoção nova de multifocal"'
+          className={`${inputCls} h-8`}
+        />
+      </label>
       <details className="text-xs">
         <summary className="cursor-pointer text-zinc-500">Informações fixas do cliente (ficam salvas){ctx.retorno || ctx.obs ? " ✓" : ""}</summary>
         <div className="mt-2 flex flex-col gap-2">
@@ -181,7 +212,7 @@ export function FeedbackAutomatico({
         <Btn small primary onClick={() => void gerar()} disabled={gerando || ocupado}>
           {gerando ? "Gerando…" : feedback ? "↻ Gerar de novo" : "✨ Gerar feedback e plano"}
         </Btn>
-        <span className="text-[11px] text-zinc-500">Usa também os pontos de atenção abaixo, se você escrever.</span>
+        <span className="text-[11px] text-zinc-500">Usa também os prints e os pontos de atenção (escritos ou falados).</span>
       </div>
       {erro ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{erro}</div> : null}
 

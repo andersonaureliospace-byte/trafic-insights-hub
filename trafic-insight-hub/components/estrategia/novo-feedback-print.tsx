@@ -555,21 +555,9 @@ export function NovoFeedbackPrint({
             )}
           </div>
 
-          {cliente ? (
-            <FeedbackAutomatico
-              key={cliente.id}
-              clienteId={cliente.id}
-              pontos={pontos}
-              hoje={hojeNums}
-              ocupado={gerando || subindo || gravando}
-              onUsar={(t) => void gerar(true, t)}
-              onPlanoSalvo={() => setNotasKey((k) => k + 1)}
-            />
-          ) : null}
-
           {/* prints */}
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">2. Print do resultado <span className="font-normal normal-case">(opcional no feedback automático: se anexar, vai junto)</span></span>
+            <span className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">2. Print do resultado <span className="font-normal normal-case">(opcional: a IA lê e o print vai junto no envio)</span></span>
             <div
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
@@ -638,6 +626,20 @@ export function NovoFeedbackPrint({
             </div>
           </div>
 
+          {cliente ? (
+            <FeedbackAutomatico
+              key={cliente.id}
+              clienteId={cliente.id}
+              pontos={pontos}
+              prints={prontos.map((a) => ({ path: a.path as string, mime: a.mime }))}
+              audio={audio?.path ? { path: audio.path, mime: audio.mime } : null}
+              hoje={hojeNums}
+              ocupado={gerando || subindo || gravando}
+              onUsar={(t) => void gerar(true, t)}
+              onPlanoSalvo={() => setNotasKey((k) => k + 1)}
+            />
+          ) : null}
+
           {cliente ? <NotasCliente key={`${cliente.id}-${notasKey}`} clienteId={cliente.id} /> : null}
 
           <details className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
@@ -672,7 +674,6 @@ export function NovoFeedbackPrint({
           <Btn onClick={() => void gerar(true)} disabled={!pode} title="Usa o texto dos pontos de atenção como está (sem passar pela IA). Você ainda revisa antes de enviar.">
             📤 Enviar sem IA
           </Btn>
-          <Btn primary onClick={() => void gerar()} disabled={!pode}>{gerando && !semIaRun ? "Gerando…" : "✨ Gerar feedback com IA"}</Btn>
         </div>
       </div>
       {cliente ? (

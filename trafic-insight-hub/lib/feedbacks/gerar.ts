@@ -24,6 +24,8 @@ export interface GerarInput {
   adAccountId: string;
   dias: 2 | 3 | 7;
   pontos?: string;
+  personalizacao?: string; // Etapa 334: instrução livre só desta vez (ex.: "última semana do mês")
+  prints?: string[]; // Etapa 334: prints do resultado (data URLs) — a IA lê os números deles
   hoje?: { spend: number; results: number } | null; // vem do Acompanhamento (última atualização)
   token?: string | null; // Meta, pra ver se já otimizou hoje
 }
@@ -66,25 +68,54 @@ function momento(hoje: string, daysInMonth: number): string {
   return linhas.join("\n");
 }
 
-const SYSTEM = `Você é o estrategista de tráfego pago de uma agência, escrevendo para o dono de uma loja (cliente) pelo WhatsApp.
-Você responde SOMENTE em JSON: {"feedback": "...", "plano": "..."}.
+const SYSTEM = `Você é o estrategista de tráfego pago de uma agência e escreve para o grupo de WhatsApp do cliente (dono de loja).
+Responda SOMENTE em JSON: {"feedback": "...", "plano": "..."}.
 
-FEEDBACK (o texto que vai pro cliente):
-- Objetivo: mostrar serviço e que estamos acompanhando de perto. Gerar empatia, senso de cuidado e, quando a conta está mal, urgência.
-- Português do Brasil, conversa de WhatsApp, frases curtas. NO MÁXIMO 130 palavras (cabe em 60 segundos falado). Pode começar com "Bom dia"/"Boa tarde" conforme o horário informado.
-- NADA técnico, nenhum termo de marketing: proibido CPL, CPA, CPM, CTR, ROAS escrito assim, "lead", "criativo", "conjunto", "campanha", "público", "segmentação", "algoritmo", "Advantage", "pixel", "otimização de lance". Use: "pessoas chamando no WhatsApp", "contatos", "anúncios", "vídeos", "região", "investimento".
-- Foque no VOLUME (quantas pessoas chamaram e a tendência). NÃO fale de custo por contato.
-- Só nas contas BOAS pode falar de retorno: se o cliente informou retorno/vendas, use em linguagem simples ("cada R$ 1 investido está voltando X"); se não informou, fale do volume constante e de aproveitar o bom momento. Nunca invente número de retorno.
-- Conta ruim: reconheça com empatia, sem esconder, e diga o que já estamos fazendo e o próximo passo (por alto, 1–2 ações).
-- Siga o MOMENTO (dia da semana, feriado, mês) e o TOM pedido.
-- Não repita frases nem promessas dos últimos feedbacks. Não invente número: use só os números dados. Números de contatos sem casas decimais.
-- Sem títulos, sem listas, sem negrito, no máximo 1 emoji (ou nenhum), sem despedida formal.
+FEEDBACK — o texto que vai pro grupo do cliente
+Objetivo: mostrar que estamos acompanhando de perto, com cuidado e carinho pelo resultado dele. Tem que soar HUMANO, caloroso,
+próximo, como um parceiro conversando — nunca seco, frio, robótico ou de relatório. Quando a conta está mal: empatia + senso de
+urgência + mostrar que já estamos agindo. Quando está bem: animação e confiança.
 
-PLANO (plano de ação objetivo, pra anotar e talvez mandar pro cliente):
+Como escrever (siga à risca):
+- Abra com uma saudação calorosa pro grupo, de acordo com o horário e o dia ("Bom dia turma, excelente semana para todos.",
+  "Boa tarde pessoal, tudo certo por aí?"). Pode situar o momento ("Estamos entrando na reta final do mês.").
+- Conte o que você viu de um jeito qualitativo, como gente fala: "tivemos uma queda considerável na semana passada",
+  "o movimento deu uma boa melhorada", "a semana começou mais devagar". NÃO despeje números: nada de "caiu de 147 para 67",
+  nada de "hoje só 6 até agora", nada de porcentagem. No máximo UM número, e só se for notícia boa (ex.: "já são 40 pessoas chamando essa semana").
+- Diga o que já fizemos, de forma humana e sem contar ajustes: "subimos mais testes no sábado", "hoje cedo o gestor de conta já deu
+  uma boa otimizada". NUNCA diga quantos ajustes foram feitos.
+- Diga o próximo passo em 1 frase simples, por exemplo: "Vamos focar em recuperar o volume rápido, reforçando o que ainda traz conversas e
+  pausando o que não tem resultado."
+- Feche com uma frase de compromisso e cuidado, por exemplo: "Estamos empenhados em agir rápido agora para melhorar o fluxo de mensagens."
+- Português do Brasil, frases curtas, de conversa. NO MÁXIMO 110 palavras (cabe em 60 segundos). Pode quebrar em 3–5 linhas curtas.
+- NADA técnico nem de marketing: proibido CPL, CPA, CPM, CTR, ROAS, "lead", "criativo", "conjunto", "campanha", "público",
+  "segmentação", "algoritmo", "métricas", "otimização de lance". Use "pessoas chamando no WhatsApp", "conversas", "mensagens",
+  "anúncios", "vídeos", "região", "investimento".
+- Foco no VOLUME de conversas. Nunca fale de custo por contato. Só em conta BOA pode falar de retorno, em linguagem simples, e só se o
+  cliente informou o retorno — nunca invente.
+- Siga o MOMENTO (dia da semana, feriado, mês), o TOM e, acima de tudo, a PERSONALIZAÇÃO e os PONTOS DE ATENÇÃO do estrategista.
+- Não repita frases dos últimos feedbacks. Não invente fatos: só o que está nos dados, nos prints ou no que o estrategista disse.
+- Sem títulos, sem listas, sem negrito; no máximo 1 emoji (ou nenhum).
+
+Exemplo do jeito certo (estilo, não copie o conteúdo):
+"""
+Bom dia turma, excelente semana para todos.
+Estamos entrando na reta final do mês.
+Dei uma olhada aqui nos seus anúncios, e tivemos uma queda considerável na semana passada. Mas subimos mais testes no sábado, e hoje cedo o gestor de conta já deu uma boa otimizada.
+Vamos focar em recuperar o volume rápido, reforçando o que ainda traz conversas e pausando o que não tem resultado.
+Estamos empenhados em agir rápido agora para melhorar o fluxo de mensagens.
+"""
+Exemplo do jeito ERRADO (seco e técnico — nunca escreva assim):
+"""
+Vi que os contatos caíram para 67 nos últimos 7 dias, bem abaixo dos 147 anteriores, e hoje só 6 até agora. Já fizemos 11 ajustes nos anúncios hoje.
+"""
+
+PLANO — plano de ação objetivo (pra anotar e, se precisar, mandar pro cliente)
 - Primeira linha exatamente: "*Plano de ação* 📋"
-- Depois 3 a 5 itens numerados ("1. ", "2. "…), um por linha, cada um começando com verbo no infinitivo, curto e concreto ("Pausar os anúncios que estão trazendo poucos contatos", "Colocar mais investimento nos 2 anúncios que mais trazem contatos", "Subir 3 vídeos novos da promoção do mês até quinta").
-- Pode indicar quem faz no começo ("Cliente: enviar fotos novas da loja"). Linguagem simples, sem jargão.
-- Priorize os pontos de atenção do estrategista e o plano de ação já anotado. Complete com ações padrão que fazem sentido pros números: reforçar o que traz mais contatos, pausar o que está fraco, subir testes novos (vídeos/ofertas), revisar a região dos anúncios, pedir material novo ao cliente. Nunca prometa resultado nem número.`;
+- Depois 3 a 5 itens numerados ("1. ", "2. "…), um por linha, começando com verbo no infinitivo, curtos e concretos
+  ("Pausar os anúncios que estão trazendo poucas conversas", "Subir 2 vídeos novos da promoção até terça").
+- Pode indicar quem faz ("Cliente: enviar fotos novas da loja"). Linguagem simples, sem jargão. Nunca prometa resultado nem número.
+- Priorize os pontos de atenção do estrategista e o plano já anotado; complete com ações que fazem sentido pros números.`;
 
 export async function gerarFeedbackIA(db: SupabaseClient, userId: string, input: GerarInput): Promise<GerarResult> {
   const acc = norm(input.adAccountId);
@@ -167,7 +198,7 @@ export async function gerarFeedbackIA(db: SupabaseClient, userId: string, input:
       const { byAccount } = await activitiesForAccounts(input.token, [acc]);
       const hojeAt = (byAccount[acc] ?? []).filter((a) => a.relevant && calendarSP(new Date(a.time)).today === hoje);
       otimHoje = hojeAt.length
-        ? `SIM, ${hojeAt.length} ajuste(s) hoje: ${[...new Set(hojeAt.map((a) => a.what))].slice(0, 4).join("; ")}`
+        ? `SIM, o gestor de conta já mexeu na conta hoje (não diga quantos ajustes): ${[...new Set(hojeAt.map((a) => a.what))].slice(0, 4).join("; ")}`
         : "ainda não teve ajuste hoje";
     } catch {
       /* segue sem */
@@ -196,7 +227,7 @@ export async function gerarFeedbackIA(db: SupabaseClient, userId: string, input:
   const dados = [
     `Cliente: ${cliente}`,
     `Período analisado: últimos ${n} dias fechados (${ddmm(iniAtual)} a ${ddmm(ontem)})${atual.got < n ? ` — só ${atual.got} dia(s) com dado` : ""}.`,
-    `Contatos no período: ${Math.round(atual.results)} | ${n} dias anteriores: ${Math.round(ant.results)}${varVol != null ? ` (${varVol > 0 ? "+" : ""}${varVol.toFixed(0)}%)` : ""}.`,
+    `(USO INTERNO — não cite esses números no feedback) Contatos no período: ${Math.round(atual.results)} | ${n} dias anteriores: ${Math.round(ant.results)}${varVol != null ? ` (${varVol > 0 ? "+" : ""}${varVol.toFixed(0)}%)` : ""}.`,
     `Dia a dia: ${porDia.join(" · ")}.`,
     input.hoje ? `Hoje até agora: ${Math.round(input.hoje.results)} contatos.` : "",
     `Situação da conta (USO INTERNO, não citar custo): ${situacao}${cpaAtual != null && ideal != null ? ` — custo ${brl(cpaAtual)} x meta ${brl(ideal)}` : ""}.`,
@@ -218,7 +249,11 @@ export async function gerarFeedbackIA(db: SupabaseClient, userId: string, input:
     "DADOS:",
     dados.join("\n"),
     "",
+    input.personalizacao?.trim() ? `PERSONALIZAÇÃO DESTE FEEDBACK (siga com prioridade máxima):\n"""${input.personalizacao.trim().slice(0, 800)}"""\n` : "",
     input.pontos?.trim() ? `PONTOS DE ATENÇÃO DO ESTRATEGISTA (prioridade máxima):\n"""${input.pontos.trim().slice(0, 1500)}"""\n` : "",
+    input.prints?.length
+      ? "PRINTS ANEXOS: são do Gerenciador de Anúncios. Leia neles como está o movimento (pra entender se melhorou ou piorou). Eles valem mais que os DADOS acima se houver diferença. Continue sem citar números técnicos.\n"
+      : "",
     notas.length ? `PLANO DE AÇÃO JÁ ANOTADO (mais recente primeiro):\n${notas.map((x) => `- ${ddmm(calendarSP(new Date(x.at)).today)}: ${x.texto.slice(0, 500)}`).join("\n")}\n` : "",
     (fbs ?? []).length
       ? `ÚLTIMOS FEEDBACKS JÁ MANDADOS (não repita):\n${(fbs ?? []).map((f) => `- ${ddmm(String(f.sent_at ?? f.created_at).slice(0, 10))}: ${String(f.resumo).slice(0, 400)}`).join("\n")}\n`
@@ -228,8 +263,8 @@ export async function gerarFeedbackIA(db: SupabaseClient, userId: string, input:
     .filter((x) => x !== "")
     .join("\n");
 
-  const r = await llmJson<{ feedback?: string; plano?: string }>(SYSTEM, userMsg, { temperature: 0.7 });
+  const r = await llmJson<{ feedback?: string; plano?: string }>(SYSTEM, userMsg, { temperature: 0.8, images: input.prints });
   const feedback = String(r.feedback ?? "").trim();
   if (!feedback) throw new Error("A IA não escreveu o feedback. Tente de novo.");
-  return { feedback, plano: String(r.plano ?? "").trim(), resumoDados: [...dados, ...tom].join("\n") };
+  return { feedback, plano: String(r.plano ?? "").trim(), resumoDados: [...dados, ...tom, input.personalizacao?.trim() ? `Personalização: ${input.personalizacao.trim()}` : "", input.prints?.length ? `${input.prints.length} print(s) lido(s) pela IA` : ""].filter(Boolean).join("\n") };
 }
