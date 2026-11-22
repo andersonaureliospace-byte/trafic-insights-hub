@@ -11,7 +11,7 @@ import { usePriorityOptions } from "@/lib/priority-context";
 //   Pendentes   → clientes que precisam de feedback agora
 //   Enviados    → já receberam o feedback desta vez
 //   Programados → têm um feedback com envio agendado
-// Regra da semana (segunda a domingo): cliente normal = 1 feedback; cliente sensível ou com prioridade Crítica = 3
+// Regra da semana (segunda 00h a domingo 23h59, Brasília): cliente normal = 1 feedback; sensível, Crítica ou Inauguração = 3
 // feedbacks (segunda, quarta e sexta — depois de enviar, ele volta pra Pendentes na quarta e na sexta). A meta da semana
 // muda sozinha conforme a prioridade/sensível de agora: se o cliente sai de crítico/sensível, volta a contar 1.
 
@@ -45,7 +45,7 @@ const fmtQuando = (iso: string) => {
 };
 
 // quantos feedbacks o cliente precisa na semana
-export const metaSemana = (c: Pick<Cli, "priority" | "sensivel">) => (c.sensivel || c.priority === "critica" ? 3 : 1);
+export const metaSemana = (c: Pick<Cli, "priority" | "sensivel">) => (c.sensivel || c.priority === "critica" || c.priority === "inauguracao" ? 3 : 1);
 // quantos já deviam ter saído até hoje (3x: seg = 1, qua = 2, sex = 3)
 function liberados(meta: number, diaDaSemana: number) {
   if (meta < 3) return meta;
@@ -162,7 +162,7 @@ export default function FeedbackPage() {
               <div>
                 <b className="text-amber-600 dark:text-amber-400">{pendentesHoje}</b> pendente{pendentesHoje === 1 ? "" : "s"} agora
               </div>
-              <div>Sensível ou crítico = 3 por semana (seg, qua e sex) · os outros = 1</div>
+              <div>Sensível, crítico ou inauguração = 3 por semana (seg, qua e sex) · os outros = 1 · zera toda segunda à meia-noite</div>
             </div>
           </div>
           <div className="mt-3 h-3 w-full overflow-hidden rounded-full bg-zinc-200 dark:bg-white/10" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>

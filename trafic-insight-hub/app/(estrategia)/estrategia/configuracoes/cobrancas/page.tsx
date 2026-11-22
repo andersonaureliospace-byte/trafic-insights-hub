@@ -4,16 +4,18 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { Alertas, type AlertasServer } from "@/components/estrategia/alertas";
 import { matchesResp, readCache, useCarteira, writeCache } from "@/components/estrategia/use-carteira";
-import { Btn, hhmm } from "@/components/estrategia/ui";
+import { Btn, Card, hhmm } from "@/components/estrategia/ui";
+import { ConfigSaldoPainel } from "@/components/estrategia/config-saldo";
 
-// Etapa 340: Configurações → Cobranças (antes "Alertas"). Ficou só o saldo das contas e a configuração de pagamento
-// (⚙ Configurar). Usa os mesmos dados guardados do dia que o Acompanhamento; buscar de novo só pelo "Atualizar".
+// Etapa 340/341: Configurações → Cobranças (antes "Alertas"). Saldo das contas à esquerda e, à direita, o painel com a
+// configuração de saldo da conta clicada. Usa os mesmos dados guardados do dia que o Acompanhamento; buscar de novo só pelo "Atualizar".
 export default function CobrancasPage() {
   const { ui } = useEstr();
   const { linhas } = useCarteira();
   const [srv, setSrv] = useState<AlertasServer | null>(null);
   const [srvLoading, setSrvLoading] = useState(false);
   const [srvError, setSrvError] = useState<string | null>(null);
+  const [conta, setConta] = useState<string | null>(null); // conta aberta no painel da direita
   const visible = useMemo(() => (linhas ?? []).filter((l) => matchesResp(ui.resp, l.responsible)), [linhas, ui.resp]);
   const ids = useMemo(() => (linhas ?? []).map((l) => l.id).join(","), [linhas]);
 
@@ -57,14 +59,21 @@ export default function CobrancasPage() {
         {linhas == null ? (
           <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-white/10">Carregando as contas…</div>
         ) : (
-          <Alertas
-            linhas={visible}
-            srv={srv}
-            naming={{ items: [], loading: false, error: null }}
-            loading={srvLoading}
-            soSaldo
-            onSaldoChanged={() => void loadAlertas(ids.split(","))}
-          />
+          <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
+            <Alertas
+              linhas={visible}
+              srv={srv}
+              naming={{ items: [], loading: false, error: null }}
+              loading={srvLoading}
+              soSaldo
+              onPick={setConta}
+              pickedId={conta}
+              onSaldoChanged={() => void loadAlertas(ids.split(","))}
+            />
+            <Card className="p-5 xl:sticky xl:top-16">
+              <ConfigSaldoPainel linhas={visible} selectedId={conta ?? visible[0]?.id ?? null} onSelect={setConta} />
+            </Card>
+          </div>
         )}
       </div>
     </div>

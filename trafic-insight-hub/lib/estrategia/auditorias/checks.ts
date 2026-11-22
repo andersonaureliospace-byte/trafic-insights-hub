@@ -552,6 +552,7 @@ export async function runVerbaDiaria(token: string, accounts: Acc[], deadline: n
         if (String(c.effective_status ?? "ACTIVE").toUpperCase() !== "ACTIVE") continue;
         if (ended(c.stop_time) || ended(s.end_time)) continue;
         if (isJobCampaign(c.name)) continue;
+        if (/aquecimento/i.test(c.name ?? "")) continue; // Etapa 341: aquecimento fora do orçamento diário
         if (Number(c.daily_budget) > 0 || Number(c.lifetime_budget) > 0) {
           if (!c.id || cboDone.has(c.id)) continue;
           cboDone.add(c.id);

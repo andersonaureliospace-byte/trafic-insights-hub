@@ -165,6 +165,15 @@ export function ritmoOf(monthly: number | null, untilYesterday: number, cal = ca
   return { avg, gap: passed > 0 ? dailyTarget * passed - untilYesterday : null, dailyTarget };
 }
 
+// Etapa 341: investimento diário baixo = orçamento diário ligado agora abaixo de 60% do ritmo médio.
+// Ritmo médio = verba do mês ÷ dias do mês (meta diária).
+export const INVEST_BAIXO_PCT = 0.6;
+export function investimentoBaixo(dailyBudget: number | null | undefined, r: Ritmo): { baixo: boolean; base: number | null } {
+  const base = r.dailyTarget;
+  if (dailyBudget == null || base == null || base <= 0) return { baixo: false, base };
+  return { baixo: dailyBudget < base * INVEST_BAIXO_PCT, base };
+}
+
 // Diferença mínima (R$) pra considerar a conta fora do ritmo — a mesma faixa de R$ 10 do hub antigo.
 export const RITMO_BAND = 10;
 

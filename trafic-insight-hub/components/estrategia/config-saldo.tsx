@@ -286,3 +286,192 @@ function emptyRow(adId: string): PixRow {
     funds_balance_updated_at: null,
   };
 }
+
+// Etapa 341: Cobranças → painel lateral com a configuração de saldo de UMA conta (a escolhida na lista ou no seletor).
+// Mesmos campos e mesma tabela (pix_accounts) da janela "Configurações de saldo"; salva sozinho ao sair do campo.
+export function ConfigSaldoPainel({
+  linhas,
+  selectedId,
+  onSelect,
+  onChanged,
+}: {
+  linhas: Linha[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+  onChanged?: () => void;
+}) {
+  const [rows, setRows] = useState<Record<string, PixRow> | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/pix-accounts", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.error) throw new Error(d.error);
+        const m: Record<string, PixRow> = {};
+        for (const p of (d.pixAccounts ?? []) as PixRow[]) m[norm(p.ad_account_id)] = p;
+        setRows(m);
+      })
+      .catch((e) => setErro((e as Error).message));
+  }, []);
+  const ordenadas = useMemo(() => [...linhas].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")), [linhas]);
+  const l = ordenadas.find((x) => x.id === selectedId) ?? null;
+
+  async function patch(campos: Partial<PixRow> & { funds_balance_watermark?: string }) {
+    if (!l) return;
+    const cur = rows?.[l.id];
+    const adId = cur?.ad_account_id ?? l.rawId;
+    setSalvando(true);
+    setErro(null);
+    setOk(null);
+    try {
+      const d = await fetch("/api/pix-accounts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ad_account_id: adId, ...campos }),
+      }).then((r) => r.json());
+      if (d.error) throw new Error(d.error);
+      setRows((m) => ({ ...(m ?? {}), [l.id]: { ...(m?.[l.id] ?? emptyRow(adId)), ...campos } as PixRow }));
+      setOk("Salvo ✓");
+      onChanged?.();
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    setSalvando(false);
+  }
+
+  const p = l ? rows?.[l.id] : undefined;
+  const temSaldo = p?.payment_type === "pix" || p?.payment_type === "hybrid" || p?.payment_type === "boleto";
+  const limitePadrao = p?.base_amount != null ? p.base_amount * 0.2 : null;
+  const lbl = "text-[11px] font-semibold tracking-wide text-zinc-500 uppercase";
+  const inp = "h-9 w-full rounded-lg border border-zinc-300 bg-white px-2.5 text-sm tabular-nums disabled:opacity-40 dark:border-white/10 dark:bg-[#141924]";
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <h3 className="text-sm font-semibold">⚙ Configuração de saldo</h3>
+        <p className="text-xs text-zinc-500">Clique numa conta da lista ou escolha aqui. Salva sozinho ao sair do campo.</p>
+      </div>
+      <div className="flex flex-col gap-1">
+        <label htmlFor="cs-conta" className={lbl}>Conta</label>
+        <select id="cs-conta" value={l?.id ?? ""} onChange={(e) => onSelect(e.target.value)} className={inp}>
+          <option value="" disabled>Escolha a conta…</option>
+          {ordenadas.map((x) => (
+            <option key={x.id} value={x.id}>{x.name}</option>
+          ))}
+        </select>
+      </div>
+      {!l ? null : rows == null ? (
+        <p className="text-sm text-zinc-500">{erro ?? "Carregando…"}</p>
+      ) : (
+        <div key={l.id} className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="cs-tipo" className={lbl}>Tipo de conta</label>
+            <select id="cs-tipo" value={p?.payment_type ?? ""} onChange={(e) => void patch({ payment_type: e.target.value || null })} className={inp}>
+              <option value="">—</option>
+              {PAYMENT_TYPES.map((t) => (
+                <option key={t.id} value={t.id}>{t.label}</option>
+              ))}
+            </select>
+            {!temSaldo && p?.payment_type ? <p className="text-[11px] text-zinc-500">Cartão não tem saldo (não entra no alerta).</p> : null}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label htmlFor="cs-base" className={lbl} title="Quanto o cliente costuma adicionar de saldo (Pix/boleto)">Saldo adicionado</label>
+              <input
+                id="cs-base"
+                key={`b-${p?.base_amount ?? ""}`}
+                defaultValue={show(p?.base_amount)}
+                placeholder="R$"
+                inputMode="decimal"
+                disabled={!temSaldo}
+                onBlur={(e) => {
+                  const v = num(e.target.value);
+                  if (v !== (p?.base_amount ?? null)) void patch({ base_amount: v });
+                }}
+                className={`${inp} text-right`}
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label htmlFor="cs-lim" className={lbl} title="Avisa quando o saldo ficar abaixo disso. Em branco = 20% do saldo adicionado">Limite (avisa abaixo)</label>
+              <input
+                id="cs-lim"
+                key={`t-${p?.alert_threshold ?? ""}`}
+                defaultValue={show(p?.alert_threshold)}
+                placeholder={limitePadrao != null ? `${brl(limitePadrao)} (20%)` : "R$"}
+                inputMode="decimal"
+                disabled={!temSaldo}
+                onBlur={(e) => {
+                  const v = num(e.target.value);
+                  if (v !== (p?.alert_threshold ?? null)) void patch({ alert_threshold: v });
+                }}
+                className={`${inp} text-right`}
+              />
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="cs-sexta" className={lbl} title="Na sexta, avisa se o saldo for menor que X vezes o limite (pra aguentar o fim de semana)">Sexta (× limite)</label>
+            <input
+              id="cs-sexta"
+              key={`f-${p?.friday_multiplier ?? ""}`}
+              defaultValue={show(p?.friday_multiplier)}
+              placeholder="ex.: 2"
+              inputMode="decimal"
+              disabled={!temSaldo}
+              onBlur={(e) => {
+                const v = num(e.target.value);
+                if (v !== (p?.friday_multiplier ?? null)) void patch({ friday_multiplier: v });
+              }}
+              className={`${inp} w-28`}
+            />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className={lbl} title="Pra contas em que o saldo da Meta não bate (ex.: híbrida): você informa o saldo real e o Hub soma pagamentos e desconta gastos a partir daí">Saldo por fundos</span>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={!!p?.funds_balance_enabled} onChange={(e) => void patch({ funds_balance_enabled: e.target.checked })} />
+              Ligado
+            </label>
+            {p?.funds_balance_enabled ? (
+              <>
+                <input
+                  key={`s-${p?.funds_balance_amount ?? ""}`}
+                  defaultValue={show(p?.funds_balance_amount)}
+                  placeholder="Saldo real hoje (R$)"
+                  inputMode="decimal"
+                  aria-label="Saldo real hoje"
+                  onBlur={(e) => {
+                    const v = num(e.target.value);
+                    if (v !== (p?.funds_balance_amount ?? null)) void patch({ funds_balance_amount: v, funds_balance_watermark: new Date().toISOString() });
+                  }}
+                  className={`${inp} text-right`}
+                />
+                {p.funds_balance_updated_at ? (
+                  <span className="text-[11px] text-zinc-500">
+                    atualizado {new Date(p.funds_balance_updated_at).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                ) : null}
+              </>
+            ) : null}
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="cs-obs" className={lbl}>Observação</label>
+            <input
+              id="cs-obs"
+              key={`n-${p?.notes ?? ""}`}
+              defaultValue={p?.notes ?? ""}
+              onBlur={(e) => {
+                const v = e.target.value.trim() || null;
+                if (v !== (p?.notes ?? null)) void patch({ notes: v });
+              }}
+              className={inp}
+            />
+          </div>
+          <div className="min-h-5 text-xs">
+            {salvando ? <span className="text-zinc-500">Salvando…</span> : erro ? <span className="text-red-600">{erro}</span> : ok ? <span className="text-emerald-600 dark:text-emerald-400">{ok}</span> : null}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

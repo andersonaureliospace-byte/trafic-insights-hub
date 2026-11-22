@@ -229,6 +229,8 @@ export async function getAccountInsight(
       // Etapa 84: objetivo "fora do CPA" não pula mais a conta de orçamento
       // diário — o investimento delas conta (só o resultado/CPA não).
       if (c.id && c.objective && EXCLUDED_OBJECTIVES.has(c.objective)) excludedIds.add(c.id);
+      // Etapa 341: campanha de AQUECIMENTO não entra no orçamento diário (Ritmo / investimento diário baixo)
+      if (/aquecimento/i.test(c.name ?? "")) continue;
       const isActive = c.effective_status === "ACTIVE" || c.status === "ACTIVE";
       if (!isActive) continue;
       // Etapa 88: campanha com data de término já passada = "Concluída" no

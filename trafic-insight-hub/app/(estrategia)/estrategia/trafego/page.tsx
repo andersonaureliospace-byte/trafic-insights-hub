@@ -1,21 +1,22 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { Acompanhamento } from "@/components/estrategia/acompanhamento";
 import { CardsContas } from "@/components/estrategia/cards-contas";
+import { AlertasQuadro, alertasDe } from "@/components/estrategia/alertas-quadro";
 import type { AlertasServer } from "@/components/estrategia/alertas";
 import { matchesResp, readCache, useCarteira, writeCache } from "@/components/estrategia/use-carteira";
 import { Btn, hhmm } from "@/components/estrategia/ui";
 
-// Etapa 238: Hub estratégico → Acompanhamento. Duas abas: Contas (o quadro) e Ontem × hoje.
+// Etapa 238: Hub estratégico → Acompanhamento. Abas: Contas (o quadro), Ontem × hoje e Alertas (Etapa 341).
 // Os Alertas saíram daqui e foram pra Configurações → Alertas; a aba "Sensíveis e críticas" virou o filtro "Só sensíveis".
 const SENS_KEY = "estr_so_sensiveis";
 
 export default function TrafegoPage() {
   const { ui } = useEstr();
   const { linhas, loading, error, at, reload, refreshFicha } = useCarteira();
-  const [tab, setTab] = useState<"acomp" | "graficos">("acomp");
+  const [tab, setTab] = useState<"acomp" | "graficos" | "alertas">("acomp");
   // Contas sensíveis (marcadas na ficha do cliente) e o filtro "Só sensíveis", lembrado neste navegador.
   const [sens, setSens] = useState<Record<string, boolean>>({});
   const [soSens, setSoSens] = useState(false);
@@ -105,7 +106,27 @@ export default function TrafegoPage() {
   function refresh() {
     void reload();
     if (ids) void loadOtim(ids.split(","));
+    // Etapa 341: na aba Alertas, o saldo/pagamento/erros também entram no Atualizar
+    if (tab === "alertas" && ids) void loadAlertas(ids.split(","));
   }
+
+  // Etapa 341: aba Alertas aberta = atualiza sozinha a cada 30 min, das 08h às 18h (Brasília)
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  });
+  useEffect(() => {
+    if (tab !== "alertas") return;
+    const check = () => {
+      const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(new Date())) % 24;
+      if (h < 8 || h >= 18 || loading) return;
+      if (at == null || Date.now() - at >= 30 * 60_000) refreshRef.current();
+    };
+    check();
+    const t = setInterval(check, 60_000);
+    return () => clearInterval(t);
+  }, [tab, at, loading]);
+  const nAlertas = useMemo(() => visible.filter((l) => alertasDe(l, srv, undefined, at ?? 0).length > 0).length, [visible, srv, at]);
   const atLabel = at
     ? new Date(at).toDateString() === new Date().toDateString()
       ? `atualizado às ${hhmm(at)}`
@@ -126,6 +147,7 @@ export default function TrafegoPage() {
             [
               ["acomp", "Contas"],
               ["graficos", "Ontem × hoje"],
+              ["alertas", "Alertas"],
             ] as const
           ).map(([k, label]) => (
             <button
@@ -145,6 +167,9 @@ export default function TrafegoPage() {
               }`}
             >
               {label}
+              {k === "alertas" && nAlertas > 0 ? (
+                <span className="ml-1.5 rounded-full bg-red-500/15 px-1.5 text-[11px] font-bold text-red-700 tabular-nums dark:text-red-300">{nAlertas}</span>
+              ) : null}
             </button>
           ))}
         </div>
@@ -167,8 +192,10 @@ export default function TrafegoPage() {
             onSoSensiveis={trocarSoSens}
             nSensiveis={nSens}
           />
-        ) : (
+        ) : tab === "graficos" ? (
           <CardsContas linhas={visible} isSens={isSens} loading={loading} activities={srv?.activities ?? null} />
+        ) : (
+          <AlertasQuadro linhas={visible} srv={srv} at={at} isSens={isSens} />
         )}
       </div>
     </div>

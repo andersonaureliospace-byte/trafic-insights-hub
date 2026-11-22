@@ -498,6 +498,8 @@ export function Alertas({
   loading,
   onSaldoChanged,
   soSaldo = false,
+  onPick,
+  pickedId,
 }: {
   linhas: Linha[];
   srv: AlertasServer | null;
@@ -505,6 +507,9 @@ export function Alertas({
   loading: boolean;
   // Etapa 340: tela Cobranças — só o quadro "Saldo das contas", sem o resumo de atenção
   soSaldo?: boolean;
+  // Etapa 341: Cobranças — clicar na conta abre a configuração dela no painel da direita
+  onPick?: (id: string) => void;
+  pickedId?: string | null;
   onNamingFixed?: (ids: string[]) => void;
   onSaldoChanged?: () => void;
 }) {
@@ -551,7 +556,7 @@ export function Alertas({
       {srv?.warnings?.length ? (
         <div className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{srv.warnings.join(" · ")}</div>
       ) : null}
-      <div className={soSaldo ? "grid max-w-3xl gap-3" : "grid gap-3 md:grid-cols-2 xl:grid-cols-3"}>
+      <div className={soSaldo ? "grid gap-3" : "grid gap-3 md:grid-cols-2 xl:grid-cols-3"}>
         {groups.map((g) => {
           const n = g.items.filter((i) => isAlertSev(i.sev)).length;
           // Etapa 250: pesquisa só nos quadros marcados (Saldo das contas). Sem acento e sem maiúscula.
@@ -565,7 +570,7 @@ export function Alertas({
                   <span aria-hidden>{g.icon}</span>
                   {g.title}
                 </h3>
-                {g.key === "saldo" ? (
+                {g.key === "saldo" && !soSaldo ? (
                   <button
                     onClick={() => setConfigSaldo(true)}
                     title="Tipo de conta, saldo adicionado, limite e mais — de cada conta"
@@ -603,13 +608,17 @@ export function Alertas({
                   shown.map((it, i) => (
                     <li
                       key={`${it.id}-${i}`}
-                      className={`flex items-start justify-between gap-3 px-4 py-2.5 ${it.highlight ? "bg-red-500/10 shadow-[inset_3px_0_0_0] shadow-red-500" : ""}`}
+                      onClick={onPick ? () => onPick(it.id) : undefined}
+                      className={`flex items-start justify-between gap-3 px-4 py-2.5 ${onPick ? "cursor-pointer hover:bg-zinc-50 dark:hover:bg-white/[0.03]" : ""} ${
+                        pickedId === it.id ? "ring-2 ring-blue-500/60 ring-inset" : ""
+                      } ${it.highlight ? "bg-red-500/10 shadow-[inset_3px_0_0_0] shadow-red-500" : ""}`}
                     >
                       <div className="min-w-0">
                         <a
                           href={adsManagerUrl(it.id)}
                           target="_blank"
                           rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
                           className="text-sm font-semibold hover:text-blue-600 hover:underline dark:hover:text-blue-400"
                         >
                           {it.name}

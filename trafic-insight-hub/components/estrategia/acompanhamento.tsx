@@ -12,6 +12,8 @@ import {
   cpaSortKey,
   cpaTone,
   ritmoOf,
+  ritmoTone,
+  investimentoBaixo,
   type CpaPeriod,
 } from "@/lib/estrategia/calc";
 import type { ActivityItem } from "@/lib/estrategia/activities";
@@ -39,11 +41,11 @@ function PinIcon({ on }: { on: boolean }) {
   );
 }
 
-// Etapa 340: Ritmo = orçamento diário ligado agora × quanto precisa investir por dia (de hoje até o fim do mês) pra bater a
-// meta. Orçamento abaixo do necessário (mais de R$ 1) = vermelho.
+// Etapa 341: Ritmo = orçamento diário ligado agora + se a conta está atrasada/adiantada com a verba até ontem (faixa de R$ 10).
+// O orçamento só fica vermelho quando está abaixo de 60% do ritmo médio (verba ÷ dias do mês).
 function ritmoTexto(gap: number): string {
-  if (Math.abs(gap) < 10) return "em dia com a meta até ontem";
-  return gap > 0 ? `${fmtBRL(gap)} atrasado até ontem` : `${fmtBRL(-gap)} adiantado até ontem`;
+  if (Math.abs(gap) < 10) return "em dia";
+  return gap > 0 ? `${fmtBRL(gap)} atrasado` : `${fmtBRL(-gap)} adiantado`;
 }
 const PIN_KEY = "estr_pin";
 const PRIO_KEY = "estr_prio_filtro";
@@ -429,7 +431,7 @@ export function Acompanhamento({
               {showResp ? <th className={th}>Responsável</th> : null}
               <th className={th}>Prioridade</th>
               <th className={th} title={`Quanto a conta gastou no período escolhido (${periodLabel}) e, embaixo, quanto já gastou no mês × a verba do mês`}>Investimento</th>
-              <th className={th} title="Orçamento diário ligado agora × quanto precisa investir por dia, até o fim do mês, pra bater a verba. Vermelho = orçamento baixo">Ritmo</th>
+              <th className={th} title="Orçamento diário ligado agora e se a conta está atrasada ou adiantada com a verba até ontem. Vermelho = orçamento abaixo de 60% do ritmo médio">Ritmo</th>
               <th className={`${th} text-right`} title="Leads/conversas no período escolhido">Leads</th>
               <th className={`${th} text-right`}>CPA</th>
               <th className={th} title="Há quanto tempo foi a última otimização do gestor">Otimização</th>
@@ -538,24 +540,26 @@ export function Acompanhamento({
                   </td>
                   <td className={`px-2 py-3 tabular-nums ${blur}`}>
                     {(() => {
-                      // quanto precisa investir por dia, de hoje até o fim do mês, pra bater a verba
-                      const restantes = cal.daysInMonth - cal.day + 1;
-                      const precisa = l.monthly && l.nums ? Math.max(0, l.monthly - l.nums.untilYesterday) / restantes : null;
-                      const baixo = l.dailyBudget != null && precisa != null && l.dailyBudget < precisa - 1;
+                      const { baixo, base } = investimentoBaixo(l.dailyBudget, r);
                       const dica = [
-                        precisa != null ? `Precisa ${fmtBRL(precisa)}/dia até o fim do mês pra bater ${fmtBRL(l.monthly)}` : null,
-                        r.gap != null ? ritmoTexto(r.gap) : null,
+                        base != null ? `Ritmo médio: ${fmtBRL(base)}/dia (verba ÷ dias do mês)` : null,
+                        baixo ? "Vermelho: orçamento de hoje abaixo de 60% do ritmo médio" : null,
                       ]
                         .filter(Boolean)
                         .join(" · ");
+                      const tone = ritmoTone(r.gap);
                       return (
                         <div title={dica || undefined}>
                           <div className={`font-semibold ${baixo ? "text-red-600 dark:text-red-400" : ""}`}>
                             {l.dailyBudget === undefined ? "…" : l.dailyBudget == null ? "—" : `${fmtBRL(l.dailyBudget)}/dia`}
                           </div>
-                          {precisa != null ? (
-                            <div className={`mt-0.5 text-[11px] ${baixo ? "font-semibold text-red-600 dark:text-red-400" : "text-zinc-500"}`}>
-                              {baixo ? "baixo · " : ""}precisa {fmtBRL(precisa)}/dia
+                          {r.gap != null ? (
+                            <div
+                              className={`mt-0.5 text-[11px] font-semibold ${
+                                tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : tone === "warn" ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"
+                              }`}
+                            >
+                              {ritmoTexto(r.gap)}
                             </div>
                           ) : null}
                         </div>
@@ -619,7 +623,7 @@ export function Acompanhamento({
         <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-zinc-200 px-4 py-2.5 text-[11px] text-zinc-500 dark:border-white/10">
           <span><b className="text-zinc-600 dark:text-zinc-300">CPA:</b> <span className="text-emerald-600 dark:text-emerald-400">verde</span> no ideal ou abaixo · <span className="text-amber-600 dark:text-amber-400">laranja</span> até R$ 2 acima · <span className="text-red-600 dark:text-red-400">vermelho</span> mais de R$ 2 acima</span>
           <span><b className="text-zinc-600 dark:text-zinc-300">Investimento:</b> gasto no período escolhido · embaixo, o gasto do mês × a verba</span>
-          <span><b className="text-zinc-600 dark:text-zinc-300">Ritmo:</b> orçamento diário ligado agora · <span className="text-red-600 dark:text-red-400">vermelho</span> = abaixo do que precisa por dia pra bater a verba</span>
+          <span><b className="text-zinc-600 dark:text-zinc-300">Ritmo:</b> orçamento diário ligado agora (sem AQUECIMENTO) · <span className="text-amber-600 dark:text-amber-400">atrasado</span> / <span className="text-blue-600 dark:text-blue-400">adiantado</span> = com a verba até ontem · orçamento <span className="text-red-600 dark:text-red-400">vermelho</span> = abaixo de 60% do ritmo médio (verba ÷ dias do mês)</span>
           <span><b className="text-zinc-600 dark:text-zinc-300">Ficha</b> <span className="text-red-600 dark:text-red-400">vermelha</span> = falta preencher algo</span>
           <span><b className="text-zinc-600 dark:text-zinc-300">Otimização:</b> tempo desde a última mexida do gestor (vermelho = 3 dias ou mais)</span>
           <span><b className="text-zinc-600 dark:text-zinc-300">Linha vermelha:</b> saldo baixo ou erro de pagamento</span>
