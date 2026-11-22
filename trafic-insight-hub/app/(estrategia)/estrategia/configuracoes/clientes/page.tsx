@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { loadClientes, matchesResp, type Cliente } from "@/components/estrategia/use-carteira";
 import { Btn, Card, Pill, fmtBRL } from "@/components/estrategia/ui";
-import { ClientesTabs } from "@/components/estrategia/clientes-tabs";
 import { NovoClienteDialog } from "@/components/estrategia/novo-cliente-dialog";
 import { FichaCliente, PAY_LABEL, statusOf } from "@/components/estrategia/ficha-cliente";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
@@ -114,7 +113,6 @@ export default function ClientesPage() {
           }}
         />
       ) : null}
-      <ClientesTabs />
       <div className="grid gap-4 p-4 lg:p-6 xl:grid-cols-[minmax(0,1fr)_22rem]">
         <div className="flex min-w-0 flex-col gap-4">
           {error ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div> : null}

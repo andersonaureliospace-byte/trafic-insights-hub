@@ -6,14 +6,12 @@ import { usePriorityOptions } from "@/lib/priority-context";
 import { FocoDescricao } from "@/components/foco/foco-descricao";
 import {
   CPA_PERIODS,
-  PREV_LABEL,
   calendarSP,
   closedDaysIn,
   cpaOf,
   cpaSortKey,
   cpaTone,
   ritmoOf,
-  ritmoTone,
   type CpaPeriod,
 } from "@/lib/estrategia/calc";
 import type { ActivityItem } from "@/lib/estrategia/activities";
@@ -21,10 +19,7 @@ import { useEstr } from "./shell";
 import { Card, Pill, ago, fmtBRL, fmtCpa } from "./ui";
 import type { Linha } from "./use-carteira";
 import { AvisarGestores } from "./avisar-gestores";
-import { NovaTarefa } from "./demandas-modais";
-import { NovoFeedbackPrint } from "./novo-feedback-print";
-import { FichaCliente } from "./ficha-cliente";
-import { useRouter } from "next/navigation";
+import { FichaCliente, pendenciasFicha } from "./ficha-cliente";
 
 // Etapa 238/243: Tráfego → Acompanhamento. Uma linha por conta, sem rolagem lateral:
 // conta · responsável · prioridade · investimento no período · orçamento diário (em dia / atrasado / adiantado) · leads · CPA · otimização · ações.
@@ -44,12 +39,14 @@ function PinIcon({ on }: { on: boolean }) {
   );
 }
 
-// Orçamento diário × meta: até R$ 10 de diferença = em dia; acima disso, atrasado (falta investir) ou adiantado.
+// Etapa 340: Ritmo = orçamento diário ligado agora × quanto precisa investir por dia (de hoje até o fim do mês) pra bater a
+// meta. Orçamento abaixo do necessário (mais de R$ 1) = vermelho.
 function ritmoTexto(gap: number): string {
-  if (Math.abs(gap) < 10) return "em dia com a meta";
-  return gap > 0 ? `${fmtBRL(gap)} atrasado` : `${fmtBRL(-gap)} adiantado`;
+  if (Math.abs(gap) < 10) return "em dia com a meta até ontem";
+  return gap > 0 ? `${fmtBRL(gap)} atrasado até ontem` : `${fmtBRL(-gap)} adiantado até ontem`;
 }
 const PIN_KEY = "estr_pin";
+const PRIO_KEY = "estr_prio_filtro";
 
 function Otimizacao({ acts, failed, now }: { acts: ActivityItem[] | undefined; failed: boolean; now: number }) {
   if (failed) return <span className="text-xs text-zinc-400">—</span>;
@@ -130,11 +127,38 @@ export function Acompanhamento({
   // Etapa 272: contas marcadas pro "Avisar gestores"
   const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
   const [avisar, setAvisar] = useState(false);
-  // Etapa 286: criar tarefa (Demandas) pras contas marcadas
-  const [criarTarefa, setCriarTarefa] = useState(false);
-  // Etapa 291: atalho de feedback por conta
-  const [feedbackDe, setFeedbackDe] = useState<string | null>(null);
-  const router = useRouter();
+  // Etapa 340: filtro por prioridade ("" = todas, "__none" = sem prioridade), lembrado neste navegador
+  const [prioFiltro, setPrioFiltro] = useState("");
+  // tipo de pagamento de cada conta (pra saber se a ficha tem pendência)
+  const [pay, setPay] = useState<Record<string, string | null> | null>(null);
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- filtro lembrado neste navegador
+      setPrioFiltro(localStorage.getItem(PRIO_KEY) ?? "");
+    } catch {
+      /* sem armazenamento */
+    }
+  }, []);
+  const carregarPay = () =>
+    fetch("/api/pix-accounts", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        const m: Record<string, string | null> = {};
+        for (const r of (d.pixAccounts ?? []) as Array<{ ad_account_id: string; payment_type: string | null }>) m[r.ad_account_id.replace(/^act_/, "")] = r.payment_type;
+        setPay(m);
+      })
+      .catch(() => {});
+  useEffect(() => {
+    void carregarPay();
+  }, []);
+  function trocarPrio(v: string) {
+    setPrioFiltro(v);
+    try {
+      localStorage.setItem(PRIO_KEY, v);
+    } catch {
+      /* só nesta sessão */
+    }
+  }
   const marcar = (id: string) =>
     setMarcadas((s) => {
       const n = new Set(s);
@@ -196,12 +220,13 @@ export function Acompanhamento({
   const rows = useMemo(() => {
     const flat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const terms = flat(q).split(/\s+/).filter(Boolean);
+    const porPrio = prioFiltro ? linhas.filter((l) => (prioFiltro === "__none" ? !l.priority : l.priority === prioFiltro)) : linhas;
     const found = terms.length
-      ? linhas.filter((l) => {
+      ? porPrio.filter((l) => {
           const hay = flat(`${l.name} ${l.responsible ?? ""} ${l.waGroup ?? ""} ${l.id}`);
           return terms.every((t) => hay.includes(t));
         })
-      : linhas;
+      : porPrio;
     const list = found.map((l) => {
       const r = ritmoOf(l.monthly, l.nums?.untilYesterday ?? 0, cal);
       const sum = custom
@@ -238,7 +263,8 @@ export function Acompanhamento({
       if (i > 0) list.unshift(...list.splice(i, 1));
     }
     return list;
-  }, [linhas, period, custom, ini, fim, ui.sort, cal, activities, q, pinned]);
+  }, [linhas, period, custom, ini, fim, ui.sort, cal, activities, q, pinned, prioFiltro]);
+  const nPrio = (id: string) => linhas.filter((l) => (id === "__none" ? !l.priority : l.priority === id)).length;
   const pinnedVisible = !!pinned && linhas.some((l) => l.id === pinned);
 
   const clip = closedDaysIn(period, cal);
@@ -307,6 +333,21 @@ export function Acompanhamento({
             <option value="nome">Nome</option>
             <option value="responsavel">Responsável</option>
           </select>
+          <label htmlFor="estr-prio" className="text-xs text-zinc-500">Prioridade</label>
+          <select
+            id="estr-prio"
+            value={prioFiltro}
+            onChange={(e) => trocarPrio(e.target.value)}
+            className={`${selectCls} ${prioFiltro ? "border-blue-500 ring-1 ring-blue-500/40" : ""}`}
+          >
+            <option value="">Todas ({linhas.length})</option>
+            {options.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.label} ({nPrio(o.id)})
+              </option>
+            ))}
+            <option value="__none">Sem prioridade ({nPrio("__none")})</option>
+          </select>
           <div className="relative">
             <input
               value={q}
@@ -355,28 +396,21 @@ export function Acompanhamento({
           >
             Avisar gestores
           </button>
-          <button
-            onClick={() => setCriarTarefa(true)}
-            disabled={marcadas.size === 0}
-            className="h-7 rounded-md bg-violet-600 px-2.5 font-medium text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Programar feedback
-          </button>
           {marcadas.size ? (
             <button onClick={() => setMarcadas(new Set())} className="text-zinc-500 hover:underline">limpar</button>
           ) : null}
         </div>
         <table className="w-full table-fixed text-sm">
           <colgroup>
-            <col className={showResp ? "w-[24%]" : "w-[32%]"} />
+            <col className={showResp ? "w-[23%]" : "w-[31%]"} />
             {showResp ? <col className="w-[9%]" /> : null}
             <col className="w-[9%]" />
-            <col className="w-[11%]" />
-            <col className="w-[15%]" />
+            <col className="w-[16%]" />
+            <col className="w-[14%]" />
             <col className="w-[6%]" />
             <col className="w-[10%]" />
             <col className="w-[7%]" />
-            <col className="w-[9%]" />
+            <col className="w-[6%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-zinc-200 text-left text-[11px] tracking-wide text-zinc-500 uppercase dark:border-white/10">
@@ -394,8 +428,8 @@ export function Acompanhamento({
               </th>
               {showResp ? <th className={th}>Responsável</th> : null}
               <th className={th}>Prioridade</th>
-              <th className={`${th} text-right`} title={`Quanto foi investido no período (${periodLabel})`}>Investimento</th>
-              <th className={th} title="Orçamento diário ligado agora e se a conta está em dia com a meta do mês (até ontem)">Orçamento diário</th>
+              <th className={th} title={`Quanto a conta gastou no período escolhido (${periodLabel}) e, embaixo, quanto já gastou no mês × a verba do mês`}>Investimento</th>
+              <th className={th} title="Orçamento diário ligado agora × quanto precisa investir por dia, até o fim do mês, pra bater a verba. Vermelho = orçamento baixo">Ritmo</th>
               <th className={`${th} text-right`} title="Leads/conversas no período escolhido">Leads</th>
               <th className={`${th} text-right`}>CPA</th>
               <th className={th} title="Há quanto tempo foi a última otimização do gestor">Otimização</th>
@@ -479,30 +513,54 @@ export function Acompanhamento({
                       <span className="text-xs text-zinc-400">—</span>
                     )}
                   </td>
-                  <td className={`px-2 py-3 text-right tabular-nums ${blur}`}>
-                    <div className="font-semibold">{spend != null ? fmtBRL(spend) : "—"}</div>
-                    {l.monthly ? <div className="mt-0.5 text-[11px] text-zinc-500">meta do mês {fmtBRL(l.monthly)}</div> : null}
+                  <td className={`px-2 py-3 text-left tabular-nums ${blur}`}>
+                    <div>
+                      <span className="font-semibold">{spend != null ? fmtBRL(spend) : "—"}</span>
+                      <span className="ml-1 text-[11px] text-zinc-500">{periodLabel}</span>
+                    </div>
+                    {l.monthly && l.nums ? (
+                      (() => {
+                        const pctMes = Math.min(1, l.nums.monthSpend / l.monthly);
+                        return (
+                          <div className="mt-1" title={`Gasto no mês (com hoje): ${fmtBRL(l.nums.monthSpend)} de ${fmtBRL(l.monthly)}`}>
+                            <div className="text-[11px] text-zinc-500">
+                              mês: {fmtBRL(l.nums.monthSpend)} de {fmtBRL(l.monthly)}
+                            </div>
+                            <div className="mt-0.5 h-1 w-full max-w-[9rem] overflow-hidden rounded-full bg-zinc-200 dark:bg-white/10">
+                              <div className="h-full rounded-full bg-blue-500" style={{ width: `${Math.round(pctMes * 100)}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : l.monthly ? (
+                      <div className="mt-0.5 text-[11px] text-zinc-500">verba do mês {fmtBRL(l.monthly)}</div>
+                    ) : null}
                   </td>
                   <td className={`px-2 py-3 tabular-nums ${blur}`}>
-                    <div
-                      className="font-semibold"
-                      title={r.dailyTarget != null ? `Meta diária: ${fmtBRL(r.dailyTarget)} · ideal até ontem: ${fmtBRL(r.dailyTarget * (cal.day - 1))}` : undefined}
-                    >
-                      {l.dailyBudget === undefined ? "…" : l.dailyBudget == null ? "—" : `${fmtBRL(l.dailyBudget)}/dia`}
-                    </div>
-                    {r.gap != null ? (
-                      <div
-                        className={`mt-0.5 text-[11px] font-semibold ${
-                          ritmoTone(r.gap) === "ok"
-                            ? "text-emerald-600 dark:text-emerald-400"
-                            : ritmoTone(r.gap) === "warn"
-                              ? "text-amber-600 dark:text-amber-400"
-                              : "text-blue-600 dark:text-blue-400"
-                        }`}
-                      >
-                        {ritmoTexto(r.gap)}
-                      </div>
-                    ) : null}
+                    {(() => {
+                      // quanto precisa investir por dia, de hoje até o fim do mês, pra bater a verba
+                      const restantes = cal.daysInMonth - cal.day + 1;
+                      const precisa = l.monthly && l.nums ? Math.max(0, l.monthly - l.nums.untilYesterday) / restantes : null;
+                      const baixo = l.dailyBudget != null && precisa != null && l.dailyBudget < precisa - 1;
+                      const dica = [
+                        precisa != null ? `Precisa ${fmtBRL(precisa)}/dia até o fim do mês pra bater ${fmtBRL(l.monthly)}` : null,
+                        r.gap != null ? ritmoTexto(r.gap) : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ");
+                      return (
+                        <div title={dica || undefined}>
+                          <div className={`font-semibold ${baixo ? "text-red-600 dark:text-red-400" : ""}`}>
+                            {l.dailyBudget === undefined ? "…" : l.dailyBudget == null ? "—" : `${fmtBRL(l.dailyBudget)}/dia`}
+                          </div>
+                          {precisa != null ? (
+                            <div className={`mt-0.5 text-[11px] ${baixo ? "font-semibold text-red-600 dark:text-red-400" : "text-zinc-500"}`}>
+                              {baixo ? "baixo · " : ""}precisa {fmtBRL(precisa)}/dia
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </td>
                   <td className={`px-2 py-3 text-right text-sm font-semibold tabular-nums ${blur}`}>
                     {l.nums && leads != null ? new Intl.NumberFormat("pt-BR").format(Math.round(leads)) : <span className="text-xs font-normal text-zinc-400">—</span>}
@@ -525,26 +583,26 @@ export function Acompanhamento({
                     />
                   </td>
                   <td className="py-3 pr-4 pl-2 text-right whitespace-nowrap">
-                    <button
-                      onClick={() => setFeedbackDe(l.id)}
-                      title="Enviar feedback (print + pontos de atenção → IA escreve → você envia)"
-                      aria-label={`Enviar feedback de ${l.name}`}
-                      className="mr-1 h-7 rounded-lg border border-zinc-300 px-2 text-xs font-medium transition-colors hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
-                    >
-                      Feedback
-                    </button>
-                    <button
-                      onClick={() => setDesc((cur) => (cur?.l.id === l.id ? null : { l }))}
-                      title="Ficha do cliente + descrição do Asana"
-                      aria-label={`Ficha de ${l.name}`}
-                      className={`h-7 rounded-lg border px-2 text-xs font-medium transition-colors ${
-                        desc?.l.id === l.id
-                          ? "border-blue-500 bg-blue-600/10 text-blue-700 dark:text-blue-300"
-                          : "border-zinc-300 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
-                      }`}
-                    >
-                      Ficha
-                    </button>
+                    {(() => {
+                      const falta = pay ? pendenciasFicha(l, pay[l.id] ?? null) : [];
+                      const aberto = desc?.l.id === l.id;
+                      return (
+                        <button
+                          onClick={() => setDesc((cur) => (cur?.l.id === l.id ? null : { l }))}
+                          title={falta.length ? `Falta preencher: ${falta.join(", ")}` : "Ficha do cliente + descrição do Asana"}
+                          aria-label={`Ficha de ${l.name}${falta.length ? " (com pendências)" : ""}`}
+                          className={`h-7 rounded-lg border px-2 text-xs font-medium transition-colors ${
+                            falta.length
+                              ? "border-red-500 bg-red-500/15 text-red-700 hover:bg-red-500/25 dark:text-red-300"
+                              : aberto
+                                ? "border-blue-500 bg-blue-600/10 text-blue-700 dark:text-blue-300"
+                                : "border-zinc-300 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
+                          } ${aberto ? "ring-2 ring-blue-500/50" : ""}`}
+                        >
+                          Ficha{falta.length ? ` · ${falta.length}` : ""}
+                        </button>
+                      );
+                    })()}
                   </td>
                 </tr>
               );
@@ -560,51 +618,15 @@ export function Acompanhamento({
         </table>
         <div className="flex flex-wrap gap-x-5 gap-y-1 border-t border-zinc-200 px-4 py-2.5 text-[11px] text-zinc-500 dark:border-white/10">
           <span><b className="text-zinc-600 dark:text-zinc-300">CPA:</b> <span className="text-emerald-600 dark:text-emerald-400">verde</span> no ideal ou abaixo · <span className="text-amber-600 dark:text-amber-400">laranja</span> até R$ 2 acima · <span className="text-red-600 dark:text-red-400">vermelho</span> mais de R$ 2 acima</span>
-          <span><b className="text-zinc-600 dark:text-zinc-300">Orçamento:</b> <span className="text-amber-600 dark:text-amber-400">atrasado</span> = falta investir pra bater a meta até ontem · <span className="text-blue-600 dark:text-blue-400">adiantado</span> = passou do ritmo</span>
+          <span><b className="text-zinc-600 dark:text-zinc-300">Investimento:</b> gasto no período escolhido · embaixo, o gasto do mês × a verba</span>
+          <span><b className="text-zinc-600 dark:text-zinc-300">Ritmo:</b> orçamento diário ligado agora · <span className="text-red-600 dark:text-red-400">vermelho</span> = abaixo do que precisa por dia pra bater a verba</span>
+          <span><b className="text-zinc-600 dark:text-zinc-300">Ficha</b> <span className="text-red-600 dark:text-red-400">vermelha</span> = falta preencher algo</span>
           <span><b className="text-zinc-600 dark:text-zinc-300">Otimização:</b> tempo desde a última mexida do gestor (vermelho = 3 dias ou mais)</span>
           <span><b className="text-zinc-600 dark:text-zinc-300">Linha vermelha:</b> saldo baixo ou erro de pagamento</span>
         </div>
       </Card>
 
 
-      {feedbackDe ? (
-        <NovoFeedbackPrint
-          clienteId={feedbackDe}
-          enviarAqui
-          periodoInicial={period}
-          comparacao={(() => {
-            // período escolhido no quadro × a mesma fatia logo antes (cópia antiga pode não ter: some até Atualizar)
-            const n = linhas.find((x) => x.id === feedbackDe)?.nums;
-            if (custom) return undefined;
-            const a = n?.periods?.[period];
-            const b = n?.prev?.[period];
-            if (!a || !b) return undefined;
-            return {
-              atual: { label: (CPA_PERIODS.find((p) => p.id === period)?.label ?? period).toLowerCase(), leads: a.results, spend: a.spend },
-              anterior: { label: PREV_LABEL[period], leads: b.results, spend: b.spend },
-            };
-          })()}
-          onClose={() => {
-            setFeedbackDe(null);
-          }}
-          onCreated={() => {
-            setFeedbackDe(null);
-            router.push("/estrategia/configuracoes/clientes/feedbacks");
-          }}
-        />
-      ) : null}
-      {criarTarefa ? (
-        <NovaTarefa
-          clientes={linhas.map((x) => ({ id: x.id, name: x.name, responsible: x.responsible }))}
-          gestores={[...new Set(linhas.map((x) => x.responsible).filter((x): x is string => !!x))].sort((a, b) => a.localeCompare(b, "pt-BR"))}
-          hoje={cal.today}
-          inicial={{ contas: [...marcadas] }}
-          onClose={() => setCriarTarefa(false)}
-          onSaved={() => {
-            setCriarTarefa(false);
-          }}
-        />
-      ) : null}
       {avisar ? (
         <AvisarGestores
           linhas={rows.filter((x) => marcadas.has(x.l.id)).map((x) => ({ l: x.l, cpa: x.cpa, spend: x.spend, leads: x.leads }))}
@@ -612,7 +634,16 @@ export function Acompanhamento({
           onClose={() => setAvisar(false)}
         />
       ) : null}
-      {desc ? <FichaLateral l={desc.l} onClose={() => setDesc(null)} onSaved={onClienteSalvo} /> : null}
+      {desc ? (
+        <FichaLateral
+          l={desc.l}
+          onClose={() => setDesc(null)}
+          onSaved={() => {
+            void carregarPay();
+            onClienteSalvo?.();
+          }}
+        />
+      ) : null}
     </div>
   );
 }

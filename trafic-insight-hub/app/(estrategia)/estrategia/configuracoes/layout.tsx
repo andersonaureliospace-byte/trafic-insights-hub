@@ -4,9 +4,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
-// Configurações do Hub estratégico: Alertas, Clientes, Gestores, Automações e Conexões numa aba só (menu de cima).
+// Configurações do Hub estratégico: Cobranças (antes Alertas), Clientes, Gestores, Automações e Conexões numa aba só (menu de cima).
 const TABS = [
-  { href: "/estrategia/configuracoes/alertas", label: "Alertas" },
+  { href: "/estrategia/configuracoes/cobrancas", label: "Cobranças" },
   { href: "/estrategia/configuracoes/clientes", label: "Clientes" },
   { href: "/estrategia/configuracoes/gestores", label: "Gestores" },
   { href: "/estrategia/configuracoes/automacoes", label: "Automações" },

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
 
 export default function ConfiguracoesIndex() {
-  redirect("/estrategia/configuracoes/alertas");
+  redirect("/estrategia/configuracoes/cobrancas");
 }

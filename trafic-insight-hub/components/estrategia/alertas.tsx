@@ -497,17 +497,21 @@ export function Alertas({
   naming,
   loading,
   onSaldoChanged,
+  soSaldo = false,
 }: {
   linhas: Linha[];
   srv: AlertasServer | null;
   naming: NamingData;
   loading: boolean;
+  // Etapa 340: tela Cobranças — só o quadro "Saldo das contas", sem o resumo de atenção
+  soSaldo?: boolean;
   onNamingFixed?: (ids: string[]) => void;
   onSaldoChanged?: () => void;
 }) {
   // Etapa 273: ⚙ Configurar no quadro Saldo das contas
   const [configSaldo, setConfigSaldo] = useState(false);
-  const groups = buildGroups(linhas, srv, naming);
+  const allGroups = buildGroups(linhas, srv, naming);
+  const groups = soSaldo ? allGroups.filter((g) => g.key === "saldo") : allGroups;
   const [namingOpen, setNamingOpen] = useState<string | null>(null);
   const [search, setSearch] = useState<Record<string, string>>({});
 
@@ -547,7 +551,7 @@ export function Alertas({
       {srv?.warnings?.length ? (
         <div className="rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">{srv.warnings.join(" · ")}</div>
       ) : null}
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <div className={soSaldo ? "grid max-w-3xl gap-3" : "grid gap-3 md:grid-cols-2 xl:grid-cols-3"}>
         {groups.map((g) => {
           const n = g.items.filter((i) => isAlertSev(i.sev)).length;
           // Etapa 250: pesquisa só nos quadros marcados (Saldo das contas). Sem acento e sem maiúscula.
@@ -590,7 +594,7 @@ export function Alertas({
                   />
                 </div>
               ) : null}
-              <ul className="max-h-72 flex-1 divide-y divide-zinc-100 overflow-y-auto dark:divide-white/5">
+              <ul className={`${soSaldo ? "max-h-[65vh]" : "max-h-72"} flex-1 divide-y divide-zinc-100 overflow-y-auto dark:divide-white/5`}>
                 {shown.length === 0 ? (
                   <li className="px-4 py-3 text-xs text-zinc-500">
                     {term ? "Nenhuma conta com esse nome" : loading && !srv ? "Carregando…" : (g.emptyText ?? "Nada pra ver agora")}
@@ -631,6 +635,7 @@ export function Alertas({
         })}
       </div>
 
+      {soSaldo ? null : (
       <div className="rounded-xl bg-blue-600 p-5 text-white shadow-lg shadow-blue-900/20">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
@@ -672,6 +677,7 @@ export function Alertas({
           <p className="mt-3 text-sm text-blue-100">Nenhuma conta com alerta crítico ou acumulado.</p>
         )}
       </div>
+      )}
       {namingOpen ? (
         <SemTipoDetails
           name={byId.get(namingOpen)?.name ?? namingOpen}

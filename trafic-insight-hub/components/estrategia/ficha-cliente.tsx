@@ -46,12 +46,31 @@ const num = (s: string): number | null => {
 };
 
 const inputCls = "h-9 w-full rounded-lg border border-zinc-300 bg-white px-2.5 text-sm dark:border-white/10 dark:bg-[#141924]";
+// Campo obrigatório sem preencher: borda vermelha
+const pendCls = "h-9 w-full rounded-lg border border-red-500 bg-red-500/5 px-2.5 text-sm ring-1 ring-red-500/30 dark:bg-red-500/10";
 
-function Field({ label, htmlFor, children }: { label: string; htmlFor?: string; children: React.ReactNode }) {
+// Etapa 340: o que precisa estar preenchido na ficha. O botão "Ficha" do Acompanhamento fica vermelho quando falta algo,
+// e aqui dentro os campos vazios ficam com a borda vermelha.
+export function pendenciasFicha(
+  c: { responsible: string | null; priority: string | null; monthly: number | null; cpaTarget: number | null; whatsapp: string | null },
+  pay: string | null | undefined,
+): string[] {
+  const out: string[] = [];
+  if (!c.responsible) out.push("Responsável");
+  if (!c.priority) out.push("Prioridade");
+  if (c.monthly == null || c.monthly <= 0) out.push("Verba mensal");
+  if (c.cpaTarget == null || c.cpaTarget <= 0) out.push("CPA ideal");
+  if (!pay) out.push("Pagamento");
+  if (!c.whatsapp?.trim()) out.push("WhatsApp do cliente");
+  return out;
+}
+
+function Field({ label, htmlFor, children, pend }: { label: string; htmlFor?: string; children: React.ReactNode; pend?: boolean }) {
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={htmlFor} className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+      <label htmlFor={htmlFor} className={`text-[11px] font-semibold tracking-wide uppercase ${pend ? "text-red-600 dark:text-red-400" : "text-zinc-500"}`}>
         {label}
+        {pend ? " · falta preencher" : ""}
       </label>
       {children}
     </div>
@@ -220,6 +239,20 @@ export function FichaCliente({
   if (!dados || !form) return <p className="text-sm text-zinc-500">{msg?.text ?? "Cliente não encontrado."}</p>;
   const cur = dados.c;
   const prioLabel = cur.priority ? (options.find((o) => o.id === cur.priority)?.label ?? cur.priority) : "—";
+  // pendências pelo que está no formulário agora (some na hora que você preenche)
+  const pend = new Set(
+    pendenciasFicha(
+      {
+        responsible: form.responsible || null,
+        priority: form.status === "inauguracao" ? "inauguracao" : form.priority || null,
+        monthly: num(form.monthly),
+        cpaTarget: num(form.cpaTarget),
+        whatsapp: form.whatsapp,
+      },
+      form.payment || null,
+    ),
+  );
+  const cls = (k: string) => (pend.has(k) ? pendCls : inputCls);
 
   return (
     <div className="flex flex-col gap-4">
@@ -236,12 +269,17 @@ export function FichaCliente({
         </div>
       ) : (
         <>
+          {pend.size > 0 ? (
+            <div className="rounded-lg border border-red-500/50 bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">
+              <b>Falta preencher:</b> {[...pend].join(", ")}
+            </div>
+          ) : null}
           <Field label="Nome do cliente" htmlFor={`f-nome-${cur.id}`}>
             <input id={`f-nome-${cur.id}`} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className={inputCls} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Responsável" htmlFor={`f-resp-${cur.id}`}>
-              <select id={`f-resp-${cur.id}`} value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} className={inputCls}>
+            <Field label="Responsável" htmlFor={`f-resp-${cur.id}`} pend={pend.has("Responsável")}>
+              <select id={`f-resp-${cur.id}`} value={form.responsible} onChange={(e) => setForm({ ...form, responsible: e.target.value })} className={cls("Responsável")}>
                 <option value="">Sem responsável</option>
                 {[...new Set([...gestores, ...(form.responsible ? [form.responsible] : [])])].map((g) => (
                   <option key={g} value={g}>{g}</option>
@@ -255,7 +293,7 @@ export function FichaCliente({
                 ))}
               </select>
             </Field>
-            <Field label="Prioridade" htmlFor={`f-prio-${cur.id}`}>
+            <Field label="Prioridade" htmlFor={`f-prio-${cur.id}`} pend={pend.has("Prioridade")}>
               <select
                 id={`f-prio-${cur.id}`}
                 value={form.status === "inauguracao" ? "inauguracao" : form.priority}
@@ -266,7 +304,7 @@ export function FichaCliente({
                   else setForm({ ...form, priority: v, status: form.status === "inauguracao" ? "ativo" : form.status });
                 }}
                 title="A rotina de segunda e quinta recalcula pelo CPA quando a conta já tem gasto e CPA ideal (menos Inauguração)"
-                className={inputCls}
+                className={cls("Prioridade")}
               >
                 <option value="">Sem prioridade</option>
                 <option value="inauguracao">Inauguração</option>
@@ -279,33 +317,33 @@ export function FichaCliente({
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Verba mensal (R$)" htmlFor={`f-verba-${cur.id}`}>
-              <input id={`f-verba-${cur.id}`} inputMode="decimal" value={form.monthly} onChange={(e) => setForm({ ...form, monthly: e.target.value })} className={inputCls} />
+            <Field label="Verba mensal (R$)" htmlFor={`f-verba-${cur.id}`} pend={pend.has("Verba mensal")}>
+              <input id={`f-verba-${cur.id}`} inputMode="decimal" value={form.monthly} onChange={(e) => setForm({ ...form, monthly: e.target.value })} className={cls("Verba mensal")} />
             </Field>
-            <Field label="CPA ideal (R$)" htmlFor={`f-cpa-${cur.id}`}>
-              <input id={`f-cpa-${cur.id}`} inputMode="decimal" value={form.cpaTarget} onChange={(e) => setForm({ ...form, cpaTarget: e.target.value })} className={inputCls} />
+            <Field label="CPA ideal (R$)" htmlFor={`f-cpa-${cur.id}`} pend={pend.has("CPA ideal")}>
+              <input id={`f-cpa-${cur.id}`} inputMode="decimal" value={form.cpaTarget} onChange={(e) => setForm({ ...form, cpaTarget: e.target.value })} className={cls("CPA ideal")} />
             </Field>
           </div>
           {num(form.monthly) ? (
             <div className="-mt-2 text-xs text-zinc-500">≈ {fmtBRL((num(form.monthly) as number) / calendarSP().daysInMonth)} por dia neste mês</div>
           ) : null}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Pagamento" htmlFor={`f-pay-${cur.id}`}>
-              <select id={`f-pay-${cur.id}`} value={form.payment} onChange={(e) => setForm({ ...form, payment: e.target.value })} className={inputCls}>
+            <Field label="Pagamento" htmlFor={`f-pay-${cur.id}`} pend={pend.has("Pagamento")}>
+              <select id={`f-pay-${cur.id}`} value={form.payment} onChange={(e) => setForm({ ...form, payment: e.target.value })} className={cls("Pagamento")}>
                 <option value="">Não definido</option>
                 {Object.entries(PAY_LABEL).map(([k, v]) => (
                   <option key={k} value={k}>{v}</option>
                 ))}
               </select>
             </Field>
-            <Field label="WhatsApp do cliente" htmlFor={`f-wa-${cur.id}`}>
+            <Field label="WhatsApp do cliente" htmlFor={`f-wa-${cur.id}`} pend={pend.has("WhatsApp do cliente")}>
               <input
                 id={`f-wa-${cur.id}`}
                 inputMode="tel"
                 placeholder="(00) 00000-0000"
                 value={form.whatsapp}
                 onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
-                className={inputCls}
+                className={cls("WhatsApp do cliente")}
               />
             </Field>
           </div>
@@ -327,7 +365,7 @@ export function FichaCliente({
                 PROMO
               </label>
             </div>
-            {!dados.flags ? <p className="text-xs text-amber-600 dark:text-amber-400">Ainda não definido. Marque e salve.</p> : null}
+            {!dados.flags ? <p className="text-xs font-semibold text-red-600 dark:text-red-400">Ainda não definido. Marque e salve.</p> : null}
           </Field>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
             <dt className="text-zinc-500">Conta de anúncio</dt>
@@ -339,7 +377,7 @@ export function FichaCliente({
             <dt className="text-zinc-500">Prioridade Asana</dt>
             <dd className="font-medium">{prioLabel}</dd>
             <dt className="text-zinc-500">Grupo WhatsApp</dt>
-            <dd>{dados.grupo ?? <span className="text-zinc-500 italic">sem grupo ligado</span>}</dd>
+            <dd>{dados.grupo ?? <span className="font-semibold text-red-600 dark:text-red-400">sem grupo ligado</span>}</dd>
           </dl>
           <NotasCliente clienteId={cur.id} />
           {msg ? <div className={`text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{msg.text}</div> : null}

@@ -298,7 +298,7 @@ export function CardsContas({
           onClose={() => setFeedbackDe(null)}
           onCreated={() => {
             setFeedbackDe(null);
-            router.push("/estrategia/configuracoes/clientes/feedbacks");
+            router.push("/estrategia/feedback");
           }}
         />
       ) : null}

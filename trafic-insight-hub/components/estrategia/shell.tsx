@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { SignOutButton } from "@/components/sign-out-button";
-import { WhatsappPanel, useWaOpen } from "@/components/estrategia/whatsapp-panel";
 // Etapa 256: o botão "Gravar" fica só em Clientes → Feedbacks; o gravador continua aqui na casca pra a gravação
 // seguir (e a barrinha flutuante aparecer) mesmo navegando entre as telas do Hub.
 import { GravadorProvider } from "@/components/estrategia/gravador";
@@ -84,9 +83,6 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [ui, setUiState] = useState<EstrUi>(DEFAULT_UI);
   const [gestoresFull, setGestores] = useState<Gestor[]>([]);
-  // Etapa 244: espelho do WhatsApp (esquerda, 1/3).
-  const [waOpen, setWaOpen] = useWaOpen();
-  const [waUnread, setWaUnread] = useState(0);
 
   useEffect(() => {
     try {
@@ -156,7 +152,7 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
             <span className="mr-2 text-sm font-bold tracking-tight whitespace-nowrap text-blue-700 dark:text-blue-400">Trafic Insight Hub</span>
             <nav className="flex items-center gap-0.5">
               <Item href="/estrategia/trafego">Acompanhamento</Item>
-              <Item href="/estrategia/demandas">Demandas</Item>
+              <Item href="/estrategia/feedback">Feedback</Item>
               <Item href="/estrategia/disparos">Disparos</Item>
               <Item href="/estrategia/configuracoes">Configurações</Item>
             </nav>
@@ -177,26 +173,8 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
             </div>
           </div>
         </header>
-        {/* Etapa 244: WhatsApp à esquerda (1/3) e o quadro à direita (2/3). No celular/tablet em pé o WhatsApp abre por cima. */}
-        <div className="flex min-h-0 flex-1">
-          {waOpen ? (
-            <aside className="fixed inset-y-0 left-0 z-40 w-[min(92vw,26rem)] border-r border-zinc-200 shadow-2xl lg:sticky lg:top-12 lg:z-10 lg:h-[calc(100vh-3rem)] lg:w-1/3 lg:shadow-none dark:border-white/10">
-              <WhatsappPanel onClose={() => setWaOpen(false)} onUnread={setWaUnread} />
-            </aside>
-          ) : (
-            <button
-              onClick={() => setWaOpen(true)}
-              title="Abrir o WhatsApp"
-              className="fixed bottom-4 left-4 z-40 flex items-center gap-1.5 rounded-full bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-lg lg:sticky lg:top-12 lg:bottom-auto lg:left-auto lg:h-[calc(100vh-3rem)] lg:flex-col lg:justify-start lg:rounded-none lg:px-1.5 lg:py-3 lg:shadow-none"
-            >
-              <span>💬</span>
-              <span className="lg:[writing-mode:vertical-rl]">WhatsApp</span>
-              {waUnread ? <span className="rounded-full bg-white px-1.5 text-[11px] font-bold text-emerald-700">{waUnread}</span> : null}
-            </button>
-          )}
-          {waOpen ? <button aria-label="Fechar o WhatsApp" onClick={() => setWaOpen(false)} className="fixed inset-0 z-30 bg-black/40 lg:hidden" /> : null}
-          <main className="min-w-0 flex-1">{children}</main>
-        </div>
+        {/* Etapa 340: o WhatsApp lateral saiu (não era usado). */}
+        <main className="min-w-0 flex-1">{children}</main>
       </div>
       </GravadorProvider>
     </EstrCtx.Provider>

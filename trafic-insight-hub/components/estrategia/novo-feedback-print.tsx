@@ -5,8 +5,6 @@ import { Btn } from "@/components/estrategia/ui";
 import { CACHE_KEY, loadClientes, readCache, type Cliente, type Linha } from "@/components/estrategia/use-carteira";
 import { NotasCliente } from "./notas-cliente";
 import { FeedbackAutomatico } from "./feedback-automatico";
-import { useGravador } from "@/components/estrategia/gravador";
-import { ClienteWhatsapp } from "@/components/estrategia/whatsapp-panel";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
 import { CPA_PERIODS, PREV_LABEL, type CpaPeriod } from "@/lib/estrategia/calc";
 
@@ -93,7 +91,6 @@ export function NovoFeedbackPrint({
   // Etapa 300: período das métricas (dá pra trocar aqui dentro); os números vêm da última carga do Acompanhamento
   periodoInicial?: CpaPeriod;
 }) {
-  const { abrir: abrirGravador, fase: faseGravador } = useGravador();
   const [periodo, setPeriodo] = useState<CpaPeriod>(periodoInicial ?? "u7");
   const [cacheLinhas] = useState<Linha[] | null>(() => readCache<Linha[]>(CACHE_KEY)?.data ?? null);
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -239,8 +236,9 @@ export function NovoFeedbackPrint({
     const [y, m, d] = hojeSP.split("-").map(Number);
     return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
   };
-  const [proximo, setProximo] = useState(mais(7));
-  const [programar, setProgramar] = useState(true);
+  // Etapa 340: o "próximo feedback" saiu — a aba Feedback calcula sozinha quando o cliente volta pra Pendentes
+  const proximo = mais(7);
+  const programar = false;
   const [enviando, setEnviando] = useState(false);
   // Etapa 315: programar o envio (dia e hora) — sai pelo estr-tick, que roda a cada 15 min
   const [agendarAberto, setAgendarAberto] = useState(false);
@@ -386,24 +384,6 @@ export function NovoFeedbackPrint({
               disabled={!!enviado}
               className={`${inputCls} py-2`}
             />
-            <label className="flex flex-wrap items-center gap-2 text-xs text-zinc-600 dark:text-zinc-400">
-              <input type="checkbox" checked={programar} onChange={(e) => setProgramar(e.target.checked)} disabled={!!enviado} />
-              Próximo feedback em
-              <input
-                type="date"
-                value={proximo}
-                onChange={(e) => setProximo(e.target.value)}
-                disabled={!programar || !!enviado}
-                aria-label="Data do próximo feedback"
-                className="h-8 rounded-md border border-zinc-300 bg-white px-2 text-xs disabled:opacity-50 dark:border-white/10 dark:bg-[#141924]"
-              />
-              {[7, 15, 30].map((n) => (
-                <button key={n} type="button" disabled={!programar || !!enviado} onClick={() => setProximo(mais(n))} className="rounded border border-zinc-300 px-1.5 py-0.5 hover:bg-zinc-100 disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/5">
-                  +{n}d
-                </button>
-              ))}
-            </label>
-            <p className="text-[11px] text-zinc-500">Ao enviar, a tarefa de feedback de hoje desse cliente (Demandas) já fica concluída.</p>
             {agendarAberto && !enviado ? (
               <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 p-2 text-xs dark:border-white/10">
                 <label htmlFor="fp-quando" className="text-zinc-600 dark:text-zinc-400">Enviar em</label>
@@ -428,18 +408,12 @@ export function NovoFeedbackPrint({
               <Btn primary onClick={onClose}>Fechar</Btn>
             ) : (
               <>
-                <Btn onClick={() => onCreated(rev.id)} disabled={enviando}>Revisar depois (Feedbacks)</Btn>
                 <Btn onClick={() => setAgendarAberto((v) => !v)} disabled={enviando || !rev.grupo}>🕒 Programar envio</Btn>
                 <Btn primary onClick={() => void enviar()} disabled={enviando || !rev.grupo}>{enviando ? "Enviando…" : "📤 Enviar pro grupo"}</Btn>
               </>
             )}
           </div>
         </div>
-        {cliente ? (
-          <aside className="hidden h-[94vh] w-[26rem] shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl lg:flex dark:bg-[#121722]" aria-label="WhatsApp do cliente">
-            <ClienteWhatsapp key={cliente.id} clienteId={cliente.id} clienteNome={cliente.name} />
-          </aside>
-        ) : null}
       </div>
     );
   }
@@ -661,26 +635,11 @@ export function NovoFeedbackPrint({
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-white/10">
           <span className="mr-auto text-xs text-zinc-500">{subindo ? "Subindo arquivos…" : gerando ? (semIaRun ? "Preparando a revisão…" : "A IA está escrevendo… (uns segundos)") : ""}</span>
           <Btn onClick={onClose} disabled={gerando}>Cancelar</Btn>
-          <Btn
-            onClick={() => {
-              abrirGravador(cliente?.id);
-              onClose();
-            }}
-            disabled={gerando || faseGravador === "gravando" || faseGravador === "pausado" || faseGravador === "enviando"}
-            title="Gravar a tela com a sua voz (feedback em vídeo) pra esse cliente"
-          >
-            🎥 Feedback por vídeo
-          </Btn>
           <Btn onClick={() => void gerar(true)} disabled={!pode} title="Usa o texto dos pontos de atenção como está (sem passar pela IA). Você ainda revisa antes de enviar.">
             📤 Enviar sem IA
           </Btn>
         </div>
       </div>
-      {cliente ? (
-          <aside className="hidden h-[94vh] w-[26rem] shrink-0 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl lg:flex dark:bg-[#121722]" aria-label="WhatsApp do cliente">
-            <ClienteWhatsapp key={cliente.id} clienteId={cliente.id} clienteNome={cliente.name} />
-          </aside>
-        ) : null}
     </div>
   );
 }
