@@ -10,7 +10,7 @@ import type { Linha } from "./use-carteira";
 import { Card, ago, fmtBRL, fmtCpa } from "./ui";
 
 // Etapa 341: Acompanhamento → Alertas. Só os clientes que precisam de atenção, pra antecipar problemas.
-// Cada linha: card do cliente | alertas | tarefas. As tarefas você narra (ou escreve) e a IA anota.
+// Cada cliente fica fechado (só o nome); duplo clique abre: um alerta por linha, com as tarefas daquele alerta do lado. As tarefas você narra (ou escreve) e a IA anota.
 // Tarefa fecha sozinha quando: CPA de hoje caiu (tarefa de CPA — a automação confere a cada 30 min em horário comercial)
 // ou o alerta que ela resolvia sumiu; ou você marca como feita. Feita sai do quadro. Cliente cujas tarefas foram todas
 // feitas hoje sai do quadro (fica em "Resolvidos hoje").
@@ -428,6 +428,15 @@ export function AlertasQuadro({
   const [erro, setErro] = useState<string | null>(null);
   const [narrando, setNarrando] = useState<string | null>(null);
   const [sugerindo, setSugerindo] = useState<string | null>(null);
+  // Etapa 343: cada cliente fica fechado (só o nome); duplo clique abre os alertas e as tarefas
+  const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  const alternar = (id: string) =>
+    setExpandidos((cur) => {
+      const n = new Set(cur);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
   const [gelMenu, setGelMenu] = useState<string | null>(null); // "<conta>|<alerta>" com o menu da geladeira aberto
   const [lote, setLote] = useState<{ feitos: number; total: number; erros: number } | null>(null);
   const [verResolvidos, setVerResolvidos] = useState(false);
@@ -590,6 +599,12 @@ export function AlertasQuadro({
           {lote ? `✨ Gerando ${lote.feitos}/${lote.total}…` : `✨ Gerar tarefas com IA · ${semTarefa.length} sem tarefa`}
         </button>
         <button
+          onClick={() => setExpandidos((cur) => (cur.size ? new Set() : new Set(mostrar.map((x) => x.l.id))))}
+          className="h-8 rounded-lg border border-zinc-300 px-3 text-xs font-medium hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"
+        >
+          {expandidos.size ? "Fechar todos" : "Abrir todos"}
+        </button>
+        <button
           onClick={() => setVerResolvidos((v) => !v)}
           aria-pressed={verResolvidos}
           className={`h-8 rounded-lg border px-3 text-xs font-medium ${verResolvidos ? "border-emerald-600 bg-emerald-600 text-white" : "border-zinc-300 hover:bg-zinc-100 dark:border-white/10 dark:hover:bg-white/5"}`}
@@ -602,12 +617,6 @@ export function AlertasQuadro({
         {erro ? <span className="w-full text-xs text-red-600">{erro}</span> : null}
       </Card>
 
-      <div className="hidden grid-cols-[17rem_minmax(0,1fr)_minmax(0,1.15fr)] gap-3 px-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase lg:grid">
-        <span>Cliente</span>
-        <span>Alertas</span>
-        <span>Tarefas</span>
-      </div>
-
       {mostrar.length === 0 ? (
         <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-white/10">
           {verResolvidos ? "Nenhum cliente resolvido hoje ainda." : linhas.length ? "Nenhum cliente em alerta agora 🎉" : "Carregando…"}
@@ -617,170 +626,209 @@ export function AlertasQuadro({
       {mostrar.map(({ l, alertas, abertas, feitasHoje }) => {
         const prio = l.priority ? options.find((o) => o.id === l.priority) : undefined;
         const pior = alertas.some((a) => a.sev === "critico") ? "critico" : alertas.some((a) => a.sev === "alta") ? "alta" : alertas.length ? "media" : null;
+        const aberto = expandidos.has(l.id);
+        const gelados = (alertasPor.get(l.id) ?? []).filter((a) => naGeladeira(geladeira.gel, l.id, a.key, cal.today));
+        // tarefas agrupadas pelo alerta que elas resolvem; as sem alerta (ou de alerta que sumiu) vão em "Outras tarefas"
+        const chaves = new Set([...alertas, ...gelados].map((a) => a.key));
+        const porAlerta = new Map<string, Tarefa[]>();
+        const soltas: Tarefa[] = [];
+        for (const t of abertas) {
+          const k = parseOrigem(t.origem_key)?.alerta ?? "";
+          if (k && chaves.has(k)) porAlerta.set(k, [...(porAlerta.get(k) ?? []), t]);
+          else soltas.push(t);
+        }
+        const tarefaItem = (t: Tarefa) => (
+          <div key={t.id} className="group flex items-start gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1.5 dark:border-white/10 dark:bg-[#141924]">
+            <input type="checkbox" checked={false} onChange={() => void concluir(t)} aria-label={`Finalizar ${t.titulo}`} className="mt-0.5 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm leading-snug" title={t.descricao && t.descricao !== t.titulo ? t.descricao : undefined}>
+                {t.titulo}
+              </div>
+              <div className="text-[11px] text-zinc-500">
+                {ago(t.created_at)}
+                {CPA_KEYS.has(parseOrigem(t.origem_key)?.alerta ?? "") ? " · fecha sozinha quando o CPA de hoje cair" : ""}
+              </div>
+            </div>
+            <button onClick={() => void excluir(t)} title="Excluir a tarefa" aria-label={`Excluir ${t.titulo}`} className="text-xs text-zinc-400 opacity-0 group-hover:opacity-100 hover:text-red-600">
+              ✕
+            </button>
+          </div>
+        );
+        const linhaGrid = "grid gap-2 border-t border-zinc-100 py-2 first:border-t-0 lg:grid-cols-[minmax(0,19rem)_minmax(0,1fr)] dark:border-white/5";
         return (
           <Card
             key={l.id}
-            className={`grid gap-3 p-3 lg:grid-cols-[17rem_minmax(0,1fr)_minmax(0,1.15fr)] ${
-              pior === "critico" ? "shadow-[inset_3px_0_0_0_rgb(239_68_68)]" : pior === "alta" ? "shadow-[inset_3px_0_0_0_rgb(249_115_22)]" : ""
-            }`}
+            className={`overflow-hidden ${pior === "critico" ? "shadow-[inset_3px_0_0_0_rgb(239_68_68)]" : pior === "alta" ? "shadow-[inset_3px_0_0_0_rgb(249_115_22)]" : ""}`}
           >
-            {/* cliente */}
-            <div className="min-w-0 pl-1">
-              <a
-                href={adsManagerUrl(l.id)}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={`${l.name} — abrir no Gerenciador`}
-                className="block truncate text-sm font-semibold hover:text-blue-600 hover:underline dark:hover:text-blue-400"
-              >
-                {l.name}
-              </a>
-              <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px]">
-                {prio ? (
-                  <span className="rounded px-1.5 py-0.5 font-semibold" style={{ color: prio.color, backgroundColor: `${prio.color}22` }}>
-                    ● {prio.label}
+            <div
+              role="button"
+              tabIndex={0}
+              aria-expanded={aberto}
+              onDoubleClick={() => alternar(l.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") alternar(l.id);
+              }}
+              title="Duplo clique pra abrir ou fechar"
+              className="flex cursor-pointer items-center gap-3 px-4 py-2.5 select-none hover:bg-zinc-50 dark:hover:bg-white/[0.03]"
+            >
+              <span className="w-3 text-xs text-zinc-400">{aberto ? "▾" : "▸"}</span>
+              <span className="min-w-0 flex-1 truncate text-sm font-semibold">{l.name}</span>
+              <span className="flex shrink-0 items-center gap-2 text-[11px] text-zinc-500 tabular-nums">
+                {alertas.length ? (
+                  <span className={`rounded-full px-2 py-0.5 font-semibold ${pior ? SEV_CLS[pior] : ""}`}>
+                    {alertas.length} {alertas.length === 1 ? "alerta" : "alertas"}
                   </span>
                 ) : null}
-                {isSens(l.id) ? <span className="rounded bg-fuchsia-500/20 px-1.5 py-0.5 font-bold text-fuchsia-700 dark:text-fuchsia-300">⚠ Sensível</span> : null}
-                {l.responsible ? <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium dark:bg-white/10">👤 {l.responsible}</span> : null}
-              </div>
-              <div className="mt-1.5 text-[11px] text-zinc-500 tabular-nums">
-                CPA ideal {fmtBRL(l.cpaTarget)} · hoje {l.nums ? fmtCpa(cpaOf(l.nums.periods.h)) : "—"}
-              </div>
+                <span className="rounded-full bg-zinc-100 px-2 py-0.5 font-medium dark:bg-white/10">
+                  {abertas.length} {abertas.length === 1 ? "tarefa" : "tarefas"}
+                </span>
+              </span>
             </div>
 
-            {/* alertas */}
-            <div className="flex min-w-0 flex-wrap content-start gap-1.5">
-              {alertas.length === 0 ? <span className="text-xs text-zinc-400">Sem alerta agora</span> : null}
-              {alertas.map((a) => {
-                const k = `${l.id}|${a.key}`;
-                return (
-                  <span key={a.key} title={a.detalhe} className={`group relative max-w-full rounded-md border px-2 py-1 pr-6 text-xs ${SEV_CLS[a.sev]}`}>
-                    <b>{a.titulo}</b>
-                    <span className="block truncate text-[11px] opacity-80">{a.detalhe}</span>
-                    <button
-                      onClick={() => setGelMenu((cur) => (cur === k ? null : k))}
-                      title="Mandar pra geladeira (esconde esse alerta por um tempo)"
-                      aria-label={`Mandar ${a.titulo} pra geladeira`}
-                      className="absolute top-1 right-1 rounded px-0.5 text-[11px] opacity-50 group-hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10"
-                    >
-                      ❄
-                    </button>
-                    {gelMenu === k ? (
-                      <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
-                        <span className="opacity-80">Geladeira:</span>
-                        {[
-                          ["3 dias", addDias(cal.today, 2)],
-                          ["7 dias", addDias(cal.today, 6)],
-                          ["até o fim do mês", `${cal.today.slice(0, 8)}${String(cal.daysInMonth).padStart(2, "0")}`],
-                        ].map(([label, ate]) => (
-                          <button
-                            key={label}
-                            onClick={() => {
-                              setGelMenu(null);
-                              void geladeira.congelar(l.id, a.key, ate);
-                            }}
-                            className="rounded border border-current/30 bg-white/60 px-1.5 py-0.5 font-semibold hover:bg-white dark:bg-black/20 dark:hover:bg-black/40"
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </span>
-                    ) : null}
-                  </span>
-                );
-              })}
-              {(alertasPor.get(l.id) ?? [])
-                .filter((a) => naGeladeira(geladeira.gel, l.id, a.key, cal.today))
-                .map((a) => (
-                  <span key={`gel-${a.key}`} title={a.detalhe} className="max-w-full rounded-md border border-dashed border-sky-500/50 bg-sky-500/5 px-2 py-1 text-xs text-sky-700 opacity-80 dark:text-sky-300">
-                    ❄ <b>{a.titulo}</b>
-                    <span className="block text-[11px]">
-                      na geladeira até {fmtDia(geladeira.gel[`${l.id}|${a.key}`])} ·{" "}
-                      <button onClick={() => void geladeira.congelar(l.id, a.key, null)} className="underline hover:no-underline">
-                        tirar
-                      </button>
+            {aberto ? (
+              <div className="border-t border-zinc-200 px-4 pt-2 pb-3 dark:border-white/10">
+                <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                  {prio ? (
+                    <span className="rounded px-1.5 py-0.5 font-semibold" style={{ color: prio.color, backgroundColor: `${prio.color}22` }}>
+                      ● {prio.label}
                     </span>
-                  </span>
-                ))}
-            </div>
-
-            {/* tarefas */}
-            <div className="flex min-w-0 flex-col gap-1.5">
-              {abertas.map((t) => (
-                <div key={t.id} className="group flex items-start gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1.5 dark:border-white/10 dark:bg-[#141924]">
-                  <input type="checkbox" checked={false} onChange={() => void concluir(t)} aria-label={`Finalizar ${t.titulo}`} className="mt-0.5 shrink-0" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm leading-snug" title={t.descricao && t.descricao !== t.titulo ? `Você narrou: ${t.descricao}` : undefined}>
-                      {t.titulo}
-                    </div>
-                    <div className="text-[11px] text-zinc-500">
-                      {ago(t.created_at)}
-                      {(() => {
-                        const m = parseOrigem(t.origem_key);
-                        const a = m?.alerta ? alertas.find((x) => x.key === m.alerta) : undefined;
-                        return m?.alerta ? ` · ${a?.titulo ?? m.alerta}${CPA_KEYS.has(m.alerta) ? " (fecha quando o CPA de hoje cair)" : ""}` : "";
-                      })()}
-                    </div>
-                  </div>
-                  <button onClick={() => void excluir(t)} title="Excluir a tarefa" aria-label={`Excluir ${t.titulo}`} className="text-xs text-zinc-400 opacity-0 group-hover:opacity-100 hover:text-red-600">
-                    ✕
-                  </button>
-                </div>
-              ))}
-              {feitasHoje.length && verResolvidos
-                ? feitasHoje.map((t) => (
-                    <div key={t.id} className="flex items-start gap-2 px-2 text-xs text-zinc-500">
-                      <span>✓</span>
-                      <span className="line-through">{t.titulo}</span>
-                    </div>
-                  ))
-                : null}
-              {sugerindo === l.id ? (
-                <Sugerir
-                  l={l}
-                  alertas={alertas}
-                  onCancel={() => setSugerindo(null)}
-                  onCriadas={() => {
-                    setSugerindo(null);
-                    void carregar();
-                  }}
-                />
-              ) : narrando === l.id ? (
-                <Narrar
-                  l={l}
-                  alertas={alertas}
-                  onCancel={() => setNarrando(null)}
-                  onCriadas={() => {
-                    setNarrando(null);
-                    void carregar();
-                  }}
-                />
-              ) : (
-                <div className="flex flex-wrap gap-1.5">
-                  {alertas.length ? (
-                    <button
-                      onClick={() => {
-                        setNarrando(null);
-                        setSugerindo(l.id);
-                      }}
-                      className="rounded-md border border-violet-500/50 bg-violet-600/10 px-2 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-600/20 dark:text-violet-300"
-                    >
-                      ✨ Sugerir tarefas (IA)
-                    </button>
                   ) : null}
-                  <button
-                    onClick={() => {
-                      setSugerindo(null);
-                      setNarrando(l.id);
-                    }}
-                    className="rounded-md border border-dashed border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-600 hover:border-blue-500 hover:text-blue-700 dark:border-white/15 dark:text-zinc-400 dark:hover:text-blue-300"
-                  >
-                    🎙 + Nova tarefa
-                  </button>
+                  {isSens(l.id) ? <span className="rounded bg-fuchsia-500/20 px-1.5 py-0.5 font-bold text-fuchsia-700 dark:text-fuchsia-300">⚠ Sensível</span> : null}
+                  {l.responsible ? <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium dark:bg-white/10">👤 {l.responsible}</span> : null}
+                  <span className="text-zinc-500 tabular-nums">
+                    CPA ideal {fmtBRL(l.cpaTarget)} · hoje {l.nums ? fmtCpa(cpaOf(l.nums.periods.h)) : "—"}
+                  </span>
+                  <a href={adsManagerUrl(l.id)} target="_blank" rel="noopener noreferrer" className="font-medium text-blue-600 hover:underline dark:text-blue-400">
+                    ↗ Gerenciador
+                  </a>
                 </div>
-              )}
-            </div>
+                <div className="hidden grid-cols-[minmax(0,19rem)_minmax(0,1fr)] gap-2 pt-1 text-[10px] font-semibold tracking-wide text-zinc-500 uppercase lg:grid">
+                  <span>Alerta</span>
+                  <span>Tarefas</span>
+                </div>
+
+                {alertas.map((a) => {
+                  const k = `${l.id}|${a.key}`;
+                  const ts = porAlerta.get(a.key) ?? [];
+                  return (
+                    <div key={a.key} className={linhaGrid}>
+                      <div title={a.detalhe} className={`group relative self-start rounded-md border px-2 py-1 pr-6 text-xs ${SEV_CLS[a.sev]}`}>
+                        <b>{a.titulo}</b>
+                        <span className="block text-[11px] opacity-80">{a.detalhe}</span>
+                        <button
+                          onClick={() => setGelMenu((cur) => (cur === k ? null : k))}
+                          title="Mandar pra geladeira"
+                          aria-label={`Mandar ${a.titulo} pra geladeira`}
+                          className="absolute top-1 right-1 rounded px-0.5 text-[11px] opacity-50 group-hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10"
+                        >
+                          ❄
+                        </button>
+                        {gelMenu === k ? (
+                          <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
+                            <span className="opacity-80">Geladeira:</span>
+                            {[
+                              ["3 dias", addDias(cal.today, 2)],
+                              ["7 dias", addDias(cal.today, 6)],
+                              ["até o fim do mês", `${cal.today.slice(0, 8)}${String(cal.daysInMonth).padStart(2, "0")}`],
+                            ].map(([label, ate]) => (
+                              <button
+                                key={label}
+                                onClick={() => {
+                                  setGelMenu(null);
+                                  void geladeira.congelar(l.id, a.key, ate);
+                                }}
+                                className="rounded border border-current/30 bg-white/60 px-1.5 py-0.5 font-semibold hover:bg-white dark:bg-black/20 dark:hover:bg-black/40"
+                              >
+                                {label}
+                              </button>
+                            ))}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex min-w-0 flex-col gap-1.5">
+                        {ts.length ? ts.map(tarefaItem) : <span className="py-1 text-xs text-zinc-400">Sem tarefa pra esse alerta</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {gelados.map((a) => (
+                  <div key={`gel-${a.key}`} className={`${linhaGrid} opacity-70`}>
+                    <div title={a.detalhe} className="self-start rounded-md border border-dashed border-sky-500/50 bg-sky-500/5 px-2 py-1 text-xs text-sky-700 dark:text-sky-300">
+                      ❄ <b>{a.titulo}</b>
+                      <span className="block text-[11px]">
+                        na geladeira até {fmtDia(geladeira.gel[`${l.id}|${a.key}`])} ·{" "}
+                        <button onClick={() => void geladeira.congelar(l.id, a.key, null)} className="underline hover:no-underline">
+                          tirar
+                        </button>
+                      </span>
+                    </div>
+                    <div className="flex min-w-0 flex-col gap-1.5">{(porAlerta.get(a.key) ?? []).map(tarefaItem)}</div>
+                  </div>
+                ))}
+
+                {soltas.length ? (
+                  <div className={linhaGrid}>
+                    <div className="self-start rounded-md border border-zinc-200 px-2 py-1 text-xs text-zinc-500 dark:border-white/10">
+                      <b>Outras tarefas</b>
+                      <span className="block text-[11px]">sem alerta ligado</span>
+                    </div>
+                    <div className="flex min-w-0 flex-col gap-1.5">{soltas.map(tarefaItem)}</div>
+                  </div>
+                ) : null}
+
+                {verResolvidos && feitasHoje.length ? (
+                  <div className="border-t border-zinc-100 py-2 text-xs text-zinc-500 dark:border-white/5">
+                    {feitasHoje.map((t) => (
+                      <div key={t.id}>
+                        ✓ <span className="line-through">{t.titulo}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+
+                <div className="border-t border-zinc-100 pt-2 dark:border-white/5">
+                  {sugerindo === l.id ? (
+                    <Sugerir
+                      l={l}
+                      alertas={alertas}
+                      onCancel={() => setSugerindo(null)}
+                      onCriadas={() => {
+                        setSugerindo(null);
+                        void carregar();
+                      }}
+                    />
+                  ) : narrando === l.id ? (
+                    <Narrar
+                      l={l}
+                      alertas={alertas}
+                      onCancel={() => setNarrando(null)}
+                      onCriadas={() => {
+                        setNarrando(null);
+                        void carregar();
+                      }}
+                    />
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {alertas.length ? (
+                        <button
+                          onClick={() => setSugerindo(l.id)}
+                          className="rounded-md border border-violet-500/50 bg-violet-600/10 px-2 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-600/20 dark:text-violet-300"
+                        >
+                          ✨ Sugerir tarefas (IA)
+                        </button>
+                      ) : null}
+                      <button
+                        onClick={() => setNarrando(l.id)}
+                        className="rounded-md border border-dashed border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-600 hover:border-blue-500 hover:text-blue-700 dark:border-white/15 dark:text-zinc-400 dark:hover:text-blue-300"
+                      >
+                        🎙 + Nova tarefa
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : null}
           </Card>
         );
       })}

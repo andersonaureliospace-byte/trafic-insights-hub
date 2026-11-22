@@ -62,7 +62,14 @@ export async function GET(request: Request) {
     try {
       await Promise.all([
         supabase.from("estr_rotinas").update({ ativa: false }).eq("user_id", user.id).eq("ativa", true),
-        supabase.from("estr_tarefas").update({ status: "excluida", updated_at: new Date().toISOString() }).eq("user_id", user.id).neq("tipo", "feedback").neq("status", "excluida"),
+        // Etapa 343: NÃO apaga as tarefas do quadro Alertas (origem_key "at|…") — só as tarefas antigas de outro tipo
+        supabase
+          .from("estr_tarefas")
+          .update({ status: "excluida", updated_at: new Date().toISOString() })
+          .eq("user_id", user.id)
+          .neq("tipo", "feedback")
+          .neq("status", "excluida")
+          .or("origem_key.is.null,origem_key.not.like.at|*"),
       ]);
     } catch {
       /* sem tabela ainda: o select abaixo avisa */
