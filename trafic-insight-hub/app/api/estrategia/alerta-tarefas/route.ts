@@ -7,6 +7,8 @@ import { ORIGEM_PREFIX, origemKey } from "@/lib/estrategia/alerta-tarefas";
 // Etapa 341: tarefas do quadro Alertas (Acompanhamento → Alertas).
 //   GET                                  → tarefas abertas + as finalizadas hoje
 //   POST { action: "narrar", ... }       → a IA transforma a sua narração em tarefa(s) do cliente
+//   POST { action: "sugerir", ... }      → a IA sugere 1 ou mais tarefas pra cada alerta (não grava; você escolhe)
+//   POST { action: "criar", tarefas }    → grava as tarefas escolhidas (sugeridas pela IA)
 //   POST { action: "concluir", id, nota? } · { action: "reabrir", id } · { action: "excluir", id }
 export const maxDuration = 60;
 
@@ -45,6 +47,63 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const action = String(body.action ?? "");
     const now = new Date().toISOString();
+
+    if (action === "sugerir") {
+      const cliente = String(body.client_name ?? "").slice(0, 200);
+      const responsavel = String(body.responsavel ?? "").trim() || null;
+      const alertas = (Array.isArray(body.alertas) ? body.alertas : []) as AlertaIn[];
+      if (alertas.length === 0) return NextResponse.json({ tarefas: [] });
+      const chaves = new Set(alertas.map((a) => a.key));
+      const ctx = (body.contexto && typeof body.contexto === "object" ? body.contexto : {}) as Record<string, unknown>;
+      const system = [
+        "Você ajuda um ESTRATEGISTA de tráfego pago (Meta Ads) que coordena gestores de tráfego. Ele não mexe nas contas: ele cobra, orienta e confere o trabalho dos gestores e fala com o cliente quando precisa.",
+        "Para CADA alerta da lista, sugira 1 ou 2 tarefas práticas pro estrategista fazer hoje.",
+        "Regras: português do Brasil, título no imperativo, até 90 caracteres, específico pro alerta (cite o gestor pelo nome quando fizer sentido e os valores do alerta), nada genérico, nada que ele não consiga fazer hoje.",
+        "Exemplos de tom: \"Cobrar o João pra pausar os conjuntos com CPA acima de R$ 12\", \"Pedir pro João subir o orçamento pra perto de R$ 90/dia\", \"Avisar o cliente pra colocar saldo na conta (R$ 40 restantes)\", \"Conferir com o João por que a conta está sem otimização há 3 dias\".",
+        'Em "alerta", use a key do alerta que a tarefa resolve. No máximo 10 tarefas no total.',
+        'Responda só JSON: {"tarefas":[{"titulo":"...","alerta":"..."}]}',
+      ].join("\n");
+      const userMsg = [
+        `Cliente: ${cliente}${responsavel ? ` · gestor responsável: ${responsavel}` : " · sem gestor definido"}`,
+        `Números: ${Object.entries(ctx)
+          .filter(([, v]) => v != null && v !== "")
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(" · ") || "—"}`,
+        "Alertas:",
+        ...alertas.map((a) => `- key=${a.key} · ${a.titulo}: ${a.detalhe}`),
+      ].join("\n");
+      const r = await llmJson<{ tarefas?: Array<{ titulo?: string; alerta?: string }> }>(system, userMsg, { temperature: 0.4, maxTokens: 1200 });
+      const tarefas = (r.tarefas ?? [])
+        .map((t) => ({ titulo: String(t.titulo ?? "").trim().slice(0, 200), alerta: chaves.has(String(t.alerta ?? "")) ? String(t.alerta) : "" }))
+        .filter((t) => t.titulo)
+        .slice(0, 10);
+      return NextResponse.json({ tarefas });
+    }
+
+    if (action === "criar") {
+      const conta = norm(String(body.ad_account_id ?? ""));
+      if (!conta) throw new Error("Cliente não informado.");
+      const lista = (Array.isArray(body.tarefas) ? body.tarefas : []) as Array<{ titulo?: string; alerta?: string }>;
+      const tarefas = lista.map((t) => ({ titulo: String(t.titulo ?? "").trim().slice(0, 200), alerta: String(t.alerta ?? "") })).filter((t) => t.titulo).slice(0, 15);
+      if (tarefas.length === 0) throw new Error("Escolha pelo menos uma tarefa.");
+      const cpaHoje = body.cpaHoje === "inf" ? Infinity : typeof body.cpaHoje === "number" ? body.cpaHoje : null;
+      const hoje = calendarSP().today;
+      const rows = tarefas.map((t, i) => ({
+        user_id: user.id,
+        titulo: t.titulo,
+        descricao: "Sugerida pela IA a partir do alerta.",
+        tipo: "alerta",
+        ad_account_id: conta,
+        client_name: String(body.client_name ?? "").slice(0, 200) || conta,
+        responsavel: String(body.responsavel ?? "").trim() || null,
+        data: hoje,
+        ordem: Date.now() / 1e6 + i,
+        origem_key: origemKey(t.alerta, cpaHoje),
+      }));
+      const { data, error } = await supabase.from("estr_tarefas").insert(rows).select(COLS);
+      if (error) throw new Error(semTabela(error.message) ? "Rode o SQL supabase/migrations/0047_demandas.sql no Supabase." : error.message);
+      return NextResponse.json({ ok: true, tarefas: data ?? [] });
+    }
 
     if (action === "narrar") {
       const texto = String(body.texto ?? "").trim().slice(0, 3000);

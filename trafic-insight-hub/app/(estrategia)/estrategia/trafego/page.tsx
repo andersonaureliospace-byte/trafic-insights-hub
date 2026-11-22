@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { Acompanhamento } from "@/components/estrategia/acompanhamento";
 import { CardsContas } from "@/components/estrategia/cards-contas";
-import { AlertasQuadro, alertasDe } from "@/components/estrategia/alertas-quadro";
+import { AlertasQuadro, alertasDe, naGeladeira, useGeladeira } from "@/components/estrategia/alertas-quadro";
 import type { AlertasServer } from "@/components/estrategia/alertas";
 import { matchesResp, readCache, useCarteira, writeCache } from "@/components/estrategia/use-carteira";
 import { Btn, hhmm } from "@/components/estrategia/ui";
@@ -126,7 +126,11 @@ export default function TrafegoPage() {
     const t = setInterval(check, 60_000);
     return () => clearInterval(t);
   }, [tab, at, loading]);
-  const nAlertas = useMemo(() => visible.filter((l) => alertasDe(l, srv, undefined, at ?? 0).length > 0).length, [visible, srv, at]);
+  const geladeira = useGeladeira();
+  const nAlertas = useMemo(
+    () => visible.filter((l) => alertasDe(l, srv, undefined, at ?? 0).some((a) => !naGeladeira(geladeira.gel, l.id, a.key))).length,
+    [visible, srv, at, geladeira.gel],
+  );
   const atLabel = at
     ? new Date(at).toDateString() === new Date().toDateString()
       ? `atualizado às ${hhmm(at)}`
@@ -195,7 +199,7 @@ export default function TrafegoPage() {
         ) : tab === "graficos" ? (
           <CardsContas linhas={visible} isSens={isSens} loading={loading} activities={srv?.activities ?? null} />
         ) : (
-          <AlertasQuadro linhas={visible} srv={srv} at={at} isSens={isSens} />
+          <AlertasQuadro linhas={visible} srv={srv} at={at} isSens={isSens} geladeira={geladeira} />
         )}
       </div>
     </div>

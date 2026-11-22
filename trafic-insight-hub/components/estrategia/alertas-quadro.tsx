@@ -48,6 +48,11 @@ const INV_MES_FAIXA = 100; // R$ de diferença até ontem pra avisar investiment
 const SEM_OTIM_H = 48;
 const NAO_ERRO = /em an[aá]lise|pending_review|in_process|pr[eé]-?aprovad|preapproved/i;
 const norm = (id: string | null | undefined) => String(id ?? "").replace(/^act_/, "");
+const addDias = (ymd: string, n: number) => {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+};
+const fmtDia = (ymd: string | undefined) => (ymd ? `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}` : "");
 const horaSP = () => Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(new Date())) % 24;
 
 export function alertasDe(l: Linha, srv: AlertasServer | null, cal = calendarSP(), now = Date.now()): Alerta[] {
@@ -133,6 +138,148 @@ export function alertasDe(l: Linha, srv: AlertasServer | null, cal = calendarSP(
 }
 
 const pontos = (a: Alerta[]) => a.reduce((s, x) => s + SEV_W[x.sev], 0);
+
+// Etapa 342: geladeira — um alerta de um cliente fica escondido até a data escolhida (ex.: algo que não dá pra reverter
+// de imediato). Fica no Supabase (user_ui_prefs "alertas_geladeira"), vale em qualquer navegador.
+export type Geladeira = Record<string, string>; // "<conta>|<alerta>" → até (YYYY-MM-DD, inclusive)
+const GEL_KEY = "alertas_geladeira";
+export const naGeladeira = (gel: Geladeira, conta: string, key: string, hoje = calendarSP().today) => (gel[`${conta}|${key}`] ?? "") >= hoje;
+export function useGeladeira() {
+  const [gel, setGel] = useState<Geladeira>({});
+  const gelRef = useRef<Geladeira>({});
+  useEffect(() => {
+    fetch(`/api/estrategia/prefs?key=${GEL_KEY}`, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d) => {
+        const v = d?.value && typeof d.value === "object" ? (d.value as Geladeira) : {};
+        gelRef.current = v;
+        setGel(v);
+      })
+      .catch(() => {});
+  }, []);
+  const congelar = useCallback(async (conta: string, key: string, ate: string | null) => {
+    const hoje = calendarSP().today;
+    const next: Geladeira = Object.fromEntries(Object.entries(gelRef.current).filter(([, v]) => v >= hoje)); // limpa as vencidas
+    if (ate) next[`${conta}|${key}`] = ate;
+    else delete next[`${conta}|${key}`];
+    gelRef.current = next;
+    setGel(next);
+    await fetch("/api/estrategia/prefs", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key: GEL_KEY, value: next }) }).catch(() => {});
+  }, []);
+  return { gel, congelar };
+}
+
+// contexto numérico pra IA sugerir tarefas
+function contextoIa(l: Linha, cal = calendarSP()) {
+  const n = l.nums;
+  const f = (v: number | null | undefined) => (v == null ? null : fmtBRL(v));
+  const r = ritmoOf(l.monthly, n?.untilYesterday ?? 0, cal);
+  return {
+    "CPA ideal": f(l.cpaTarget),
+    "CPA hoje": n ? fmtCpa(cpaOf(n.periods.h)) : null,
+    "CPA ontem": n ? fmtCpa(cpaOf(n.periods.o)) : null,
+    "CPA últimos 3 dias": n ? fmtCpa(cpaOf(n.periods.u3)) : null,
+    "verba do mês": f(l.monthly),
+    "orçamento diário agora": l.dailyBudget != null ? `${fmtBRL(l.dailyBudget)}/dia` : null,
+    "ritmo médio (verba ÷ dias)": r.dailyTarget != null ? `${fmtBRL(r.dailyTarget)}/dia` : null,
+  };
+}
+async function sugerirPara(l: Linha, alertas: Alerta[]): Promise<Array<{ titulo: string; alerta: string }>> {
+  const d = await fetch("/api/estrategia/alerta-tarefas", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action: "sugerir",
+      client_name: l.name,
+      responsavel: l.responsible,
+      alertas: alertas.map((a) => ({ key: a.key, titulo: a.titulo, detalhe: a.detalhe })),
+      contexto: contextoIa(l),
+    }),
+  }).then((r) => r.json());
+  if (d.error) throw new Error(d.error);
+  return (d.tarefas ?? []) as Array<{ titulo: string; alerta: string }>;
+}
+async function criarPara(l: Linha, tarefas: Array<{ titulo: string; alerta: string }>) {
+  const h = l.nums?.periods.h;
+  const cpaH = h ? cpaOf(h) : null;
+  const d = await fetch("/api/estrategia/alerta-tarefas", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "criar", ad_account_id: l.id, client_name: l.name, responsavel: l.responsible, tarefas, cpaHoje: cpaH === Infinity ? "inf" : cpaH }),
+  }).then((r) => r.json());
+  if (d.error) throw new Error(d.error);
+}
+
+// Etapa 342: a IA sugere 1 ou mais tarefas por alerta; você desmarca/edita e cria as que quiser.
+function Sugerir({ l, alertas, onCriadas, onCancel }: { l: Linha; alertas: Alerta[]; onCriadas: () => void; onCancel: () => void }) {
+  const [lista, setLista] = useState<Array<{ titulo: string; alerta: string; on: boolean }> | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [criando, setCriando] = useState(false);
+  const pedir = useCallback(() => {
+    setLista(null);
+    setErro(null);
+    sugerirPara(l, alertas)
+      .then((t) => setLista(t.map((x) => ({ ...x, on: true }))))
+      .catch((e) => setErro((e as Error).message));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- pede uma vez por cliente
+  }, [l.id]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- pede as sugestões ao abrir
+    pedir();
+  }, [pedir]);
+  async function criar() {
+    if (!lista) return;
+    setCriando(true);
+    setErro(null);
+    try {
+      await criarPara(
+        l,
+        lista.filter((x) => x.on && x.titulo.trim()).map(({ titulo, alerta }) => ({ titulo, alerta })),
+      );
+      onCriadas();
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    setCriando(false);
+  }
+  const titulo = (k: string) => alertas.find((a) => a.key === k)?.titulo ?? "";
+  return (
+    <div className="flex flex-col gap-1.5 rounded-lg border border-violet-500/40 bg-violet-600/5 p-2.5 dark:bg-violet-500/10">
+      {lista == null && !erro ? <p className="text-xs text-zinc-500">✨ A IA está pensando nas tarefas…</p> : null}
+      {lista?.length === 0 ? <p className="text-xs text-zinc-500">A IA não sugeriu nada. Tente de novo ou narre a tarefa.</p> : null}
+      {lista?.map((x, i) => (
+        <label key={i} className="flex items-start gap-2">
+          <input type="checkbox" checked={x.on} onChange={(e) => setLista((cur) => (cur ?? []).map((y, j) => (j === i ? { ...y, on: e.target.checked } : y)))} className="mt-1.5 shrink-0" />
+          <span className="min-w-0 flex-1">
+            <input
+              value={x.titulo}
+              onChange={(e) => setLista((cur) => (cur ?? []).map((y, j) => (j === i ? { ...y, titulo: e.target.value } : y)))}
+              aria-label="Título da tarefa"
+              className="h-7 w-full rounded-md border border-zinc-300 bg-white px-2 text-sm dark:border-white/10 dark:bg-[#141924]"
+            />
+            {x.alerta ? <span className="text-[11px] text-zinc-500">{titulo(x.alerta)}</span> : null}
+          </span>
+        </label>
+      ))}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button
+          onClick={() => void criar()}
+          disabled={criando || !lista?.some((x) => x.on && x.titulo.trim())}
+          className="h-7 rounded-md bg-violet-600 px-2.5 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
+        >
+          {criando ? "Criando…" : `Criar ${lista?.filter((x) => x.on).length ?? 0} tarefa(s)`}
+        </button>
+        <button onClick={pedir} disabled={criando || (lista == null && !erro)} className="h-7 rounded-md border border-zinc-300 px-2 text-xs font-medium hover:bg-zinc-100 disabled:opacity-40 dark:border-white/10 dark:hover:bg-white/5">
+          ↻ Sugerir de novo
+        </button>
+        <button onClick={onCancel} disabled={criando} className="ml-auto text-xs text-zinc-500 hover:underline">
+          cancelar
+        </button>
+      </div>
+      {erro ? <p className="text-xs text-red-600">{erro}</p> : null}
+    </div>
+  );
+}
 
 // Reconhecimento de voz do Chrome (sem upload): vai escrevendo enquanto você fala.
 type Reconhecedor = {
@@ -268,16 +415,21 @@ export function AlertasQuadro({
   srv,
   at,
   isSens,
+  geladeira,
 }: {
   linhas: Linha[];
   srv: AlertasServer | null;
   at: number | null; // quando as métricas foram atualizadas
   isSens: (id: string) => boolean;
+  geladeira: ReturnType<typeof useGeladeira>;
 }) {
   const { options } = usePriorityOptions();
   const [tarefas, setTarefas] = useState<Tarefa[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [narrando, setNarrando] = useState<string | null>(null);
+  const [sugerindo, setSugerindo] = useState<string | null>(null);
+  const [gelMenu, setGelMenu] = useState<string | null>(null); // "<conta>|<alerta>" com o menu da geladeira aberto
+  const [lote, setLote] = useState<{ feitos: number; total: number; erros: number } | null>(null);
   const [verResolvidos, setVerResolvidos] = useState(false);
   const [filtro, setFiltro] = useState("");
   const tentadas = useRef(new Set<string>());
@@ -362,7 +514,7 @@ export function AlertasQuadro({
   const linhasQuadro = useMemo(() => {
     const out: Array<{ l: Linha; alertas: Alerta[]; abertas: Tarefa[]; feitasHoje: Tarefa[]; resolvido: boolean }> = [];
     for (const l of linhas) {
-      const alertas = alertasPor.get(l.id) ?? [];
+      const alertas = (alertasPor.get(l.id) ?? []).filter((a) => !naGeladeira(geladeira.gel, l.id, a.key, cal.today));
       const minhas = (tarefas ?? []).filter((t) => norm(t.ad_account_id) === l.id);
       const abertas = minhas.filter((t) => t.status === "aberta");
       const feitasHoje = minhas.filter((t) => t.status === "feita" && t.done_at && Date.parse(t.done_at) >= hojeIni);
@@ -373,7 +525,7 @@ export function AlertasQuadro({
     const rank: Record<string, number> = { inauguracao: 0, critica: 1, alta: 2, media: 3, baixa: 4 };
     out.sort((a, b) => pontos(b.alertas) - pontos(a.alertas) || (rank[a.l.priority ?? ""] ?? 5) - (rank[b.l.priority ?? ""] ?? 5) || a.l.name.localeCompare(b.l.name, "pt-BR"));
     return out;
-  }, [linhas, alertasPor, tarefas, hojeIni]);
+  }, [linhas, alertasPor, tarefas, hojeIni, geladeira.gel, cal]);
 
   const ativos = linhasQuadro.filter((x) => !x.resolvido);
   const resolvidos = linhasQuadro.filter((x) => x.resolvido);
@@ -389,6 +541,25 @@ export function AlertasQuadro({
   }, [ativos]);
   const mostrar = (verResolvidos ? resolvidos : ativos).filter((x) => !filtro || x.alertas.some((a) => a.key === filtro));
   const nTarefas = ativos.reduce((s, x) => s + x.abertas.length, 0);
+  const semTarefa = ativos.filter((x) => x.abertas.length === 0 && x.alertas.length > 0);
+  // Etapa 342: a IA cria as tarefas de todos os clientes sem tarefa, um de cada vez (respeita o limite da IA grátis)
+  async function gerarTodos() {
+    const fila = [...semTarefa];
+    setLote({ feitos: 0, total: fila.length, erros: 0 });
+    let erros = 0;
+    for (let i = 0; i < fila.length; i++) {
+      try {
+        const t = await sugerirPara(fila[i].l, fila[i].alertas);
+        if (t.length) await criarPara(fila[i].l, t);
+      } catch (e) {
+        erros++;
+        setErro(`${fila[i].l.name}: ${(e as Error).message}`);
+      }
+      setLote({ feitos: i + 1, total: fila.length, erros });
+    }
+    setLote(null);
+    void carregar();
+  }
 
   return (
     <div className="flex flex-col gap-3">
@@ -410,6 +581,14 @@ export function AlertasQuadro({
             </option>
           ))}
         </select>
+        <button
+          onClick={() => void gerarTodos()}
+          disabled={!!lote || semTarefa.length === 0}
+          title="A IA cria tarefas pra cada alerta dos clientes que ainda não têm nenhuma tarefa aberta"
+          className="h-8 rounded-lg bg-violet-600 px-3 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
+        >
+          {lote ? `✨ Gerando ${lote.feitos}/${lote.total}…` : `✨ Gerar tarefas com IA · ${semTarefa.length} sem tarefa`}
+        </button>
         <button
           onClick={() => setVerResolvidos((v) => !v)}
           aria-pressed={verResolvidos}
@@ -473,12 +652,57 @@ export function AlertasQuadro({
             {/* alertas */}
             <div className="flex min-w-0 flex-wrap content-start gap-1.5">
               {alertas.length === 0 ? <span className="text-xs text-zinc-400">Sem alerta agora</span> : null}
-              {alertas.map((a) => (
-                <span key={a.key} title={a.detalhe} className={`max-w-full rounded-md border px-2 py-1 text-xs ${SEV_CLS[a.sev]}`}>
-                  <b>{a.titulo}</b>
-                  <span className="block truncate text-[11px] opacity-80">{a.detalhe}</span>
-                </span>
-              ))}
+              {alertas.map((a) => {
+                const k = `${l.id}|${a.key}`;
+                return (
+                  <span key={a.key} title={a.detalhe} className={`group relative max-w-full rounded-md border px-2 py-1 pr-6 text-xs ${SEV_CLS[a.sev]}`}>
+                    <b>{a.titulo}</b>
+                    <span className="block truncate text-[11px] opacity-80">{a.detalhe}</span>
+                    <button
+                      onClick={() => setGelMenu((cur) => (cur === k ? null : k))}
+                      title="Mandar pra geladeira (esconde esse alerta por um tempo)"
+                      aria-label={`Mandar ${a.titulo} pra geladeira`}
+                      className="absolute top-1 right-1 rounded px-0.5 text-[11px] opacity-50 group-hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10"
+                    >
+                      ❄
+                    </button>
+                    {gelMenu === k ? (
+                      <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
+                        <span className="opacity-80">Geladeira:</span>
+                        {[
+                          ["3 dias", addDias(cal.today, 2)],
+                          ["7 dias", addDias(cal.today, 6)],
+                          ["até o fim do mês", `${cal.today.slice(0, 8)}${String(cal.daysInMonth).padStart(2, "0")}`],
+                        ].map(([label, ate]) => (
+                          <button
+                            key={label}
+                            onClick={() => {
+                              setGelMenu(null);
+                              void geladeira.congelar(l.id, a.key, ate);
+                            }}
+                            className="rounded border border-current/30 bg-white/60 px-1.5 py-0.5 font-semibold hover:bg-white dark:bg-black/20 dark:hover:bg-black/40"
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </span>
+                    ) : null}
+                  </span>
+                );
+              })}
+              {(alertasPor.get(l.id) ?? [])
+                .filter((a) => naGeladeira(geladeira.gel, l.id, a.key, cal.today))
+                .map((a) => (
+                  <span key={`gel-${a.key}`} title={a.detalhe} className="max-w-full rounded-md border border-dashed border-sky-500/50 bg-sky-500/5 px-2 py-1 text-xs text-sky-700 opacity-80 dark:text-sky-300">
+                    ❄ <b>{a.titulo}</b>
+                    <span className="block text-[11px]">
+                      na geladeira até {fmtDia(geladeira.gel[`${l.id}|${a.key}`])} ·{" "}
+                      <button onClick={() => void geladeira.congelar(l.id, a.key, null)} className="underline hover:no-underline">
+                        tirar
+                      </button>
+                    </span>
+                  </span>
+                ))}
             </div>
 
             {/* tarefas */}
@@ -512,7 +736,17 @@ export function AlertasQuadro({
                     </div>
                   ))
                 : null}
-              {narrando === l.id ? (
+              {sugerindo === l.id ? (
+                <Sugerir
+                  l={l}
+                  alertas={alertas}
+                  onCancel={() => setSugerindo(null)}
+                  onCriadas={() => {
+                    setSugerindo(null);
+                    void carregar();
+                  }}
+                />
+              ) : narrando === l.id ? (
                 <Narrar
                   l={l}
                   alertas={alertas}
@@ -523,12 +757,28 @@ export function AlertasQuadro({
                   }}
                 />
               ) : (
-                <button
-                  onClick={() => setNarrando(l.id)}
-                  className="self-start rounded-md border border-dashed border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-600 hover:border-blue-500 hover:text-blue-700 dark:border-white/15 dark:text-zinc-400 dark:hover:text-blue-300"
-                >
-                  🎙 + Nova tarefa
-                </button>
+                <div className="flex flex-wrap gap-1.5">
+                  {alertas.length ? (
+                    <button
+                      onClick={() => {
+                        setNarrando(null);
+                        setSugerindo(l.id);
+                      }}
+                      className="rounded-md border border-violet-500/50 bg-violet-600/10 px-2 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-600/20 dark:text-violet-300"
+                    >
+                      ✨ Sugerir tarefas (IA)
+                    </button>
+                  ) : null}
+                  <button
+                    onClick={() => {
+                      setSugerindo(null);
+                      setNarrando(l.id);
+                    }}
+                    className="rounded-md border border-dashed border-zinc-300 px-2 py-1 text-xs font-medium text-zinc-600 hover:border-blue-500 hover:text-blue-700 dark:border-white/15 dark:text-zinc-400 dark:hover:text-blue-300"
+                  >
+                    🎙 + Nova tarefa
+                  </button>
+                </div>
               )}
             </div>
           </Card>
@@ -538,7 +788,7 @@ export function AlertasQuadro({
       <p className="px-1 text-[11px] text-zinc-500">
         Alertas: CPA mais de {fmtBRL(CPA_ACIMA)} acima do ideal (3 dias, 2 dias, ontem) · acima de {fmtBRL(MUITO_ALTO)} fica vermelho (CPA muito alto) · gastando sem lead hoje · investimento do mês ±{fmtBRL(INV_MES_FAIXA)} ·
         investimento diário abaixo de 60% do ritmo médio (verba ÷ dias do mês) · não gastou hoje (após 11h) · falha de pagamento · saldo baixo · erro na conta · sem otimização há +48h.
-        Inauguração fica fora dos alertas de CPA e de investimento do mês. Tarefa feita sai do quadro; cliente com todas as tarefas feitas vai pra &quot;Resolvidos hoje&quot;.
+        ❄ manda um alerta pra geladeira (3 dias, 7 dias ou até o fim do mês): ele continua visível, mas apagado, e não conta — cliente só com alertas na geladeira sai do quadro. Inauguração fica fora dos alertas de CPA e de investimento do mês. Tarefa feita sai do quadro; cliente com todas as tarefas feitas vai pra &quot;Resolvidos hoje&quot;.
       </p>
     </div>
   );
