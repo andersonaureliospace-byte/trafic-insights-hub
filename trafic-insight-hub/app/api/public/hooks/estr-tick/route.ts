@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { runTick } from "@/lib/estrategia/auditorias/run";
 import { jobsOfCheck, type CheckId } from "@/lib/estrategia/auditorias/config";
 import { chainDisparos, hasStalledDisparo } from "@/lib/estrategia/disparos";
+import { liberarDisparosAgendados } from "@/lib/estrategia/disparos-agendados";
 import { enviarAgendados } from "@/lib/feedbacks/agendados";
 
 // Etapa 257: batida das Auditorias do Hub estratégico. O n8n chama a cada 15 min (fluxo "Auditorias — Hub estratégico");
@@ -28,7 +29,9 @@ export async function POST(request: Request) {
     // Etapa 270: se um Disparo em segundo plano parou no meio (corrente quebrou), reacende.
     const origin = new URL(request.url).origin;
     after(async () => {
-      if (await hasStalledDisparo(db, userId as string).catch(() => false)) await chainDisparos(origin);
+      // Etapa 346: disparos agendados que chegaram na hora
+      const liberados = await liberarDisparosAgendados(db as never, userId as string).catch(() => 0);
+      if (liberados > 0 || (await hasStalledDisparo(db, userId as string).catch(() => false))) await chainDisparos(origin);
       // Etapa 315: feedbacks com envio programado que já passaram do horário
       await enviarAgendados(db as never, userId as string).catch((e) => console.error("feedbacks agendados", (e as Error).message));
     });

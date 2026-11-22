@@ -54,7 +54,7 @@ export function cleanParts(raw: unknown): DisparoPart[] {
 export async function createDisparo(
   db: SupabaseClient,
   userId: string,
-  input: { parts: DisparoPart[]; alvos: DisparoAlvo[]; intervalMin: number; intervalMax: number },
+  input: { parts: DisparoPart[]; alvos: DisparoAlvo[]; intervalMin: number; intervalMax: number; agendado?: boolean },
 ): Promise<string> {
   const alvos = input.alvos.filter((a) => String(a.id).endsWith("@g.us"));
   if (alvos.length === 0) throw new Error("Escolha ao menos um grupo.");
@@ -65,7 +65,8 @@ export async function createDisparo(
   const resumo = `${midias ? `📎${midias} ` : ""}${primeiroTexto.replace(/\s+/g, " ").trim()}`.slice(0, 140);
   const { data, error } = await db
     .from("estr_disparos")
-    .insert({ user_id: userId, parts: input.parts, resumo, interval_min: min, interval_max: max, total: alvos.length })
+    // Etapa 346: agendado nasce "pausado" (a data fica em disparos_agendados) e só vira "rodando" na hora
+    .insert({ user_id: userId, parts: input.parts, resumo, interval_min: min, interval_max: max, total: alvos.length, ...(input.agendado ? { status: "pausado" } : {}) })
     .select("id")
     .single();
   if (error) {

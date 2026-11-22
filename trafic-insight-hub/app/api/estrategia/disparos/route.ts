@@ -6,6 +6,7 @@ import { listGroups } from "@/lib/whatsapp/client";
 import { FEEDBACK_BUCKET } from "@/lib/feedbacks/core";
 import { chainDisparos, cleanParts, createDisparo, hasStalledDisparo, runDisparos, type DisparoAlvo } from "@/lib/estrategia/disparos";
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
+import { gravarDisparosAgendados, lerDisparosAgendados, liberarDisparosAgendados, tirarAgendamento } from "@/lib/estrategia/disparos-agendados";
 import { normName } from "@/lib/asana/priority-sync";
 
 // Etapa 266: Disparos em massa (Hub estratégico).
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
         if (/estr_disparo/.test(error.message)) return NextResponse.json({ disparos: [], itens: [], semTabela: true });
         throw error;
       }
+      const agendados = new Map((await lerDisparosAgendados(supabase as never, user.id)).map((a) => [a.id, a.quando]));
       const alvo = qs.get("id") || list?.[0]?.id || null;
       let itens: unknown[] = [];
       if (alvo && qs.get("itens") !== "0") {
@@ -57,12 +59,13 @@ export async function GET(request: Request) {
       // contagem ao vivo do disparo rodando (a linha do disparo só é recontada no fim de cada rodada)
       const disparos = await Promise.all(
         (list ?? []).map(async (d) => {
+          const agendado_para = d.status === "pausado" ? (agendados.get(d.id as string) ?? null) : null;
           if (d.status !== "rodando" && d.status !== "pausado") return d;
           const [{ count: ok }, { count: erro }] = await Promise.all([
             supabase.from("estr_disparo_itens").select("id", { count: "exact", head: true }).eq("disparo_id", d.id).eq("status", "ok"),
             supabase.from("estr_disparo_itens").select("id", { count: "exact", head: true }).eq("disparo_id", d.id).eq("status", "erro"),
           ]);
-          return { ...d, ok: ok ?? d.ok, erro: erro ?? d.erro };
+          return { ...d, ok: ok ?? d.ok, erro: erro ?? d.erro, agendado_para };
         }),
       );
       return NextResponse.json({ disparos, itens, itensDe: alvo });
@@ -179,12 +182,23 @@ export async function POST(request: Request) {
     if (body.action === "create") {
       const parts = cleanParts(body.parts);
       const alvos = (Array.isArray(body.alvos) ? body.alvos : []) as DisparoAlvo[];
+      // Etapa 346: agendar pra um dia/hora
+      const quando = body.agendarPara ? new Date(String(body.agendarPara)) : null;
+      if (quando && Number.isNaN(quando.getTime())) throw new Error("Data do agendamento inválida.");
+      if (quando && quando.getTime() < Date.now() + 60_000) throw new Error("Escolha um horário pelo menos 1 minuto pra frente.");
       const id = await createDisparo(supabase, user.id, {
         parts,
         alvos,
         intervalMin: Number(body.intervalMin ?? 10),
         intervalMax: Number(body.intervalMax ?? 20),
+        agendado: !!quando,
       });
+      if (quando) {
+        const list = (await lerDisparosAgendados(supabase as never, user.id)).filter((a) => a.id !== id);
+        list.push({ id, quando: quando.toISOString() });
+        await gravarDisparosAgendados(supabase as never, user.id, list);
+        return NextResponse.json({ ok: true, id, agendadoPara: quando.toISOString() });
+      }
       rodar();
       return NextResponse.json({ ok: true, id });
     }
@@ -193,6 +207,8 @@ export async function POST(request: Request) {
       const id = String(body.id ?? "");
       const op = String(body.op ?? "");
       const now = new Date().toISOString();
+      // Etapa 346: qualquer comando no disparo tira ele da agenda (Continuar = "enviar agora"; Parar = cancelar o agendamento)
+      await tirarAgendamento(supabase as never, user.id, id).catch(() => {});
       if (op === "pausar") await supabase.from("estr_disparos").update({ status: "pausado", updated_at: now }).eq("id", id).eq("status", "rodando");
       else if (op === "parar") await supabase.from("estr_disparos").update({ status: "parado", updated_at: now, finished_at: now }).eq("id", id).in("status", ["rodando", "pausado"]);
       else if (op === "continuar") {
@@ -208,7 +224,8 @@ export async function POST(request: Request) {
 
     // O Hub aberto (em qualquer tela) chama de tempos em tempos: se a corrente parou, reacende.
     if (body.action === "kick") {
-      if (await hasStalledDisparo(supabase, user.id)) rodar();
+      const liberados = await liberarDisparosAgendados(supabase as never, user.id).catch(() => 0);
+      if (liberados > 0 || (await hasStalledDisparo(supabase, user.id))) rodar();
       return NextResponse.json({ ok: true });
     }
 

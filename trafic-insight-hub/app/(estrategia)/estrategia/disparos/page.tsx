@@ -45,6 +45,7 @@ interface DisparoRow {
   next_at: string;
   last_error: string | null;
   created_at: string;
+  agendado_para?: string | null; // Etapa 346
 }
 interface ItemRow {
   group_id: string;
@@ -328,6 +329,16 @@ export default function DisparosPage() {
 
   const [confirmando, setConfirmando] = useState(false);
   const [criando, setCriando] = useState(false);
+  // Etapa 346: agendar o disparo (dia e hora)
+  const [agendar, setAgendar] = useState(false);
+  const [quando, setQuando] = useState(() => {
+    const d = new Date(Date.now() + 60 * 60_000);
+    d.setMinutes(0, 0, 0);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  });
+  const quandoOk = !agendar || !!quando; // horário no passado o servidor recusa com aviso
+  const fmtQuando = (iso: string) => new Date(iso).toLocaleString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   const [criarErr, setCriarErr] = useState<string | null>(null);
   // Etapa 270: o disparo roda no servidor — a tela só acompanha (dá pra sair e voltar).
   const [disparos, setDisparos] = useState<DisparoRow[]>([]);
@@ -536,6 +547,7 @@ export default function DisparosPage() {
     try {
       const r = await postJson<{ id: string }>({
         action: "create",
+        ...(agendar ? { agendarPara: new Date(quando).toISOString() } : {}),
         intervalMin: intv.min,
         intervalMax: intv.max,
         alvos: alvo.map((g) => ({ id: g.id, name: g.name, cliente: nomeCliente(g) })),
@@ -546,6 +558,7 @@ export default function DisparosPage() {
         ),
       });
       setAcompanhar(r.id);
+      if (agendar) setAgendar(false);
       await carregarDisparos(r.id);
     } catch (e) {
       setCriarErr((e as Error).message);
@@ -782,26 +795,46 @@ export default function DisparosPage() {
                 <span className="text-xs text-zinc-500">≈ {estimativaMin} min no total</span>
               ) : null}
             </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={agendar} onChange={(e) => setAgendar(e.target.checked)} disabled={rodando} />
+                🕒 Agendar pra depois
+              </label>
+              {agendar ? (
+                <>
+                  <input
+                    type="datetime-local"
+                    value={quando}
+                    onChange={(e) => setQuando(e.target.value)}
+                    aria-label="Dia e hora do disparo"
+                    className={`${inputCls} ${quandoOk ? "" : "border-red-500"}`}
+                  />
+                </>
+              ) : null}
+            </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {confirmando ? (
                 <>
-                  <Btn primary disabled={criando} onClick={() => void disparar(selecionados)}>
-                    Confirmar: enviar pra {selecionados.length} grupo{selecionados.length === 1 ? "" : "s"}
+                  <Btn primary disabled={criando || !quandoOk} onClick={() => void disparar(selecionados)}>
+                    {agendar
+                      ? `Confirmar: agendar pra ${selecionados.length} grupo${selecionados.length === 1 ? "" : "s"} · ${quando ? fmtQuando(new Date(quando).toISOString()) : ""}`
+                      : `Confirmar: enviar pra ${selecionados.length} grupo${selecionados.length === 1 ? "" : "s"}`}
                   </Btn>
                   <Btn onClick={() => setConfirmando(false)}>Voltar</Btn>
                 </>
               ) : (
                 <>
-                  <Btn primary disabled={!podeEnviar || semTabela} onClick={() => setConfirmando(true)}>
-                    {criando ? "Iniciando…" : `Enviar pra ${selecionados.length} grupo${selecionados.length === 1 ? "" : "s"}`}
+                  <Btn primary disabled={!podeEnviar || semTabela || !quandoOk} onClick={() => setConfirmando(true)}>
+                    {criando ? "Iniciando…" : `${agendar ? "Agendar" : "Enviar"} pra ${selecionados.length} grupo${selecionados.length === 1 ? "" : "s"}`}
                   </Btn>
                   <Btn onClick={novoDisparo}>Limpar mensagem</Btn>
                 </>
               )}
             </div>
             <p className="mt-2 text-xs text-zinc-500">
-              O disparo roda no servidor: pode trocar de tela, abrir outra aba ou fechar o Hub que ele continua sozinho.
+              O disparo roda no servidor: pode trocar de tela, abrir outra aba ou fechar o Hub que ele continua sozinho. Agendado: com o Hub aberto sai
+              na hora marcada; com o Hub fechado, sai em até 15 min depois do horário.
             </p>
             {semTabela ? <p className="mt-2 text-xs text-red-600">Rode o SQL supabase/migrations/0045_disparos.sql no Supabase pra liberar os disparos.</p> : null}
             {subindo ? <p className="mt-2 text-xs text-zinc-500">Esperando os arquivos terminarem de subir…</p> : null}
@@ -829,19 +862,32 @@ export default function DisparosPage() {
                             {on ? " · mostrando na lista de grupos" : " · clique pra ver nos grupos"}
                           </span>
                         </button>
-                        <Pill tone={d.status === "concluido" ? "ok" : d.status === "rodando" ? "info" : d.status === "pausado" ? "warn" : "off"}>
-                          {STATUS_LABEL[d.status]}
-                        </Pill>
+                        {d.agendado_para ? (
+                          <Pill tone="info">🕒 Agendado · {fmtQuando(d.agendado_para)}</Pill>
+                        ) : (
+                          <Pill tone={d.status === "concluido" ? "ok" : d.status === "rodando" ? "info" : d.status === "pausado" ? "warn" : "off"}>
+                            {STATUS_LABEL[d.status]}
+                          </Pill>
+                        )}
                       </div>
                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-200 dark:bg-white/10">
                         <div className={`h-full ${d.erro ? "bg-amber-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
                       </div>
                       <div className="mt-2 flex flex-wrap gap-2">
                         {d.status === "rodando" ? <Btn small onClick={() => void controlar(d.id, "pausar")}>⏸ Pausar</Btn> : null}
-                        {d.status === "pausado" || d.status === "parado" ? (
-                          feito < d.total ? <Btn small onClick={() => void controlar(d.id, "continuar")}>▶ Continuar</Btn> : null
-                        ) : null}
-                        {d.status === "rodando" || d.status === "pausado" ? <Btn small onClick={() => void controlar(d.id, "parar")}>■ Parar</Btn> : null}
+                        {d.agendado_para ? (
+                          <>
+                            <Btn small onClick={() => void controlar(d.id, "continuar")}>▶ Enviar agora</Btn>
+                            <Btn small onClick={() => void controlar(d.id, "parar")}>✕ Cancelar agendamento</Btn>
+                          </>
+                        ) : (
+                          <>
+                            {d.status === "pausado" || d.status === "parado" ? (
+                              feito < d.total ? <Btn small onClick={() => void controlar(d.id, "continuar")}>▶ Continuar</Btn> : null
+                            ) : null}
+                            {d.status === "rodando" || d.status === "pausado" ? <Btn small onClick={() => void controlar(d.id, "parar")}>■ Parar</Btn> : null}
+                          </>
+                        )}
                         {d.erro > 0 && d.status !== "rodando" ? <Btn small onClick={() => void controlar(d.id, "reenviar")}>Reenviar as {d.erro} falhas</Btn> : null}
                       </div>
                       {d.last_error ? <p className="mt-1 text-xs text-red-600">{d.last_error}</p> : null}

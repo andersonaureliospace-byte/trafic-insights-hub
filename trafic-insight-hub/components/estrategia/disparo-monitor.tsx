@@ -13,6 +13,7 @@ interface Ativo {
   total: number;
   ok: number;
   erro: number;
+  agendado_para?: string | null;
 }
 
 export function DisparoMonitor() {
@@ -29,7 +30,8 @@ export function DisparoMonitor() {
         const list = ((d.disparos ?? []) as Ativo[]).filter((x) => x.status === "rodando" || x.status === "pausado");
         if (!parado) setAtivos(list);
         vivo = list.length > 0;
-        if (list.some((x) => x.status === "rodando")) {
+        // rodando (reacende se parou) ou agendado que já chegou na hora (libera)
+        if (list.some((x) => x.status === "rodando" || (x.agendado_para && Date.parse(x.agendado_para) <= Date.now()))) {
           void fetch("/api/estrategia/disparos", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -49,15 +51,19 @@ export function DisparoMonitor() {
   }, []);
 
   if (ativos.length === 0 || pathname.startsWith("/estrategia/disparos")) return null;
-  const a = ativos[0];
+  const a = ativos.find((x) => !x.agendado_para) ?? ativos[0];
   const feito = a.ok + a.erro;
   return (
     <Link
       href="/estrategia/disparos"
       className="fixed bottom-4 left-4 z-40 flex items-center gap-2 rounded-full border border-zinc-200 bg-white px-3 py-2 text-xs font-medium shadow-lg hover:bg-zinc-50 dark:border-white/10 dark:bg-[#121722] dark:hover:bg-white/5"
     >
-      <span className={`h-2 w-2 rounded-full ${a.status === "rodando" ? "animate-pulse bg-emerald-500" : "bg-amber-500"}`} />
-      {a.status === "rodando" ? "Disparando" : "Disparo pausado"} · {feito} de {a.total}
+      <span className={`h-2 w-2 rounded-full ${a.status === "rodando" ? "animate-pulse bg-emerald-500" : a.agendado_para ? "bg-blue-500" : "bg-amber-500"}`} />
+      {a.status === "rodando"
+        ? `Disparando · ${feito} de ${a.total}`
+        : a.agendado_para
+          ? `Disparo agendado · ${new Date(a.agendado_para).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}`
+          : `Disparo pausado · ${feito} de ${a.total}`}
       {a.erro ? <span className="text-red-600"> · {a.erro} erro{a.erro === 1 ? "" : "s"}</span> : null}
       {ativos.length > 1 ? <span className="text-zinc-500"> · +{ativos.length - 1}</span> : null}
     </Link>
