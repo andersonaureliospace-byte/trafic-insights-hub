@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
 import { Btn, Card } from "@/components/estrategia/ui";
 import { NovoFeedbackPrint } from "@/components/estrategia/novo-feedback-print";
-import { matchesResp } from "@/components/estrategia/use-carteira";
+import { matchesResp, readCache } from "@/components/estrategia/use-carteira";
+import { Otimizacao } from "@/components/estrategia/acompanhamento";
+import type { AlertasServer } from "@/components/estrategia/alertas";
 import { usePriorityOptions } from "@/lib/priority-context";
 
 // Etapa 340: aba Feedback (antes "Demandas", que era um calendário). Três colunas:
@@ -64,6 +66,10 @@ export default function FeedbackPage() {
   const [board, setBoard] = useState<Board | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null); // Etapa 347: quando o quadro foi atualizado
+  // Etapa 348: há quanto tempo foi a última otimização de cada conta — a mesma do Acompanhamento (guardada neste
+  // navegador pelo Atualizar do Acompanhamento; nenhuma busca nova na Meta)
+  const [otim, setOtim] = useState<{ acts: AlertasServer["activities"]; failed: string[] } | null>(null);
+  const [agora, setAgora] = useState(0);
   const [q, setQ] = useState("");
   const [abrir, setAbrir] = useState<string | null>(null);
   const [cancelando, setCancelando] = useState<string | null>(null);
@@ -74,6 +80,9 @@ export default function FeedbackPage() {
       if (d.error) throw new Error(d.error);
       setBoard(d as Board);
       setAtualizadoEm(new Date());
+      setAgora(Date.now());
+      const c = readCache<AlertasServer>("estr_alertas_v1");
+      setOtim(c?.data?.activities ? { acts: c.data.activities, failed: c.data.activitiesFailed ?? [] } : null);
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
@@ -245,6 +254,12 @@ export default function FeedbackPage() {
                             </span>
                           ) : null}
                           {x.c.responsible ? <span className="rounded bg-zinc-100 px-1.5 py-0.5 font-medium dark:bg-white/10">👤 {x.c.responsible}</span> : null}
+                          {otim ? (
+                            <span className="ml-auto inline-flex items-center gap-1 text-zinc-500" title="Última otimização do gestor (a mesma do Acompanhamento)">
+                              otimização
+                              <Otimizacao acts={otim.acts[x.c.id] ?? (otim.failed.includes(x.c.id) ? undefined : [])} failed={otim.failed.includes(x.c.id)} now={agora} />
+                            </span>
+                          ) : null}
                         </div>
                         {col.k === "enviado" && x.ultimo ? (
                           <div className="mt-1.5 text-[11px] text-zinc-500">

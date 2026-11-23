@@ -50,7 +50,7 @@ function ritmoTexto(gap: number): string {
 const PIN_KEY = "estr_pin";
 const PRIO_KEY = "estr_prio_filtro";
 
-function Otimizacao({ acts, failed, now }: { acts: ActivityItem[] | undefined; failed: boolean; now: number }) {
+export function Otimizacao({ acts, failed, now }: { acts: ActivityItem[] | undefined; failed: boolean; now: number }) {
   if (failed) return <span className="text-xs text-zinc-400">—</span>;
   if (!acts) return <span className="text-xs text-zinc-400">…</span>;
   const last = acts.find((a) => a.relevant);
@@ -61,6 +61,7 @@ function Otimizacao({ acts, failed, now }: { acts: ActivityItem[] | undefined; f
       <Pill tone={days >= OPT_STALE_DAYS ? "bad" : days >= 1 ? "warn" : "ok"}>{ago(last.time).replace(/^há /, "")}</Pill>
     </span>
   );
+
 }
 
 // Balão da descrição (o mesmo quadro do Foco), ao lado do botão.
