@@ -63,6 +63,7 @@ export default function FeedbackPage() {
   const { options } = usePriorityOptions();
   const [board, setBoard] = useState<Board | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [atualizadoEm, setAtualizadoEm] = useState<Date | null>(null); // Etapa 347: quando o quadro foi atualizado
   const [q, setQ] = useState("");
   const [abrir, setAbrir] = useState<string | null>(null);
   const [cancelando, setCancelando] = useState<string | null>(null);
@@ -72,6 +73,7 @@ export default function FeedbackPage() {
       const d = await fetch("/api/estrategia/feedback-board", { cache: "no-store" }).then((r) => r.json());
       if (d.error) throw new Error(d.error);
       setBoard(d as Board);
+      setAtualizadoEm(new Date());
       setErro(null);
     } catch (e) {
       setErro((e as Error).message);
@@ -144,7 +146,16 @@ export default function FeedbackPage() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PageHeader title="Feedback" sub="Feedbacks dos clientes nesta semana · clique no cliente pra gerar e enviar">
+      <PageHeader
+        title="Feedback"
+        sub={`Feedbacks dos clientes nesta semana${
+          board ? ` (${board.segunda.slice(8, 10)}/${board.segunda.slice(5, 7)} a ${(() => {
+            const [y, m, d] = board.segunda.split("-").map(Number);
+            const dom = new Date(Date.UTC(y, m - 1, d + 6));
+            return `${String(dom.getUTCDate()).padStart(2, "0")}/${String(dom.getUTCMonth() + 1).padStart(2, "0")}`;
+          })()})` : ""
+        } · ${atualizadoEm ? `atualizado às ${atualizadoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}` : "carregando…"} · clique no cliente pra gerar e enviar`}
+      >
         <Btn onClick={() => void carregar()}>↻ Atualizar</Btn>
       </PageHeader>
 
@@ -153,7 +164,10 @@ export default function FeedbackPage() {
         <Card className="p-4">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <div className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Feedbacks da semana</div>
+              <div className="text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+                Feedbacks da semana
+                {atualizadoEm ? <span className="ml-2 font-normal normal-case">· atualizado às {atualizadoEm.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</span> : null}
+              </div>
               <div className="mt-0.5 text-2xl font-bold tabular-nums">
                 {pct}% <span className="text-sm font-medium text-zinc-500">· {feitos} de {total} feitos · faltam {Math.max(0, total - feitos)}</span>
               </div>
