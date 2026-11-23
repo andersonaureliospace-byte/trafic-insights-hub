@@ -156,7 +156,7 @@ export function FeedbackAutomatico({
   return (
     <div className="flex flex-col gap-2 rounded-lg border border-blue-200 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/5">
       <span className="text-[11px] font-semibold tracking-wide text-blue-700 uppercase dark:text-blue-300">
-        ✨ Feedback com IA {prints.length ? `· lendo ${Math.min(prints.length, 2)} print${prints.length > 1 ? "s" : ""}` : "· pelos números do Hub"}
+        💬 Mensagem pro cliente — escreva na mão ou gere com a IA {prints.length ? `· lendo ${Math.min(prints.length, 2)} print${prints.length > 1 ? "s" : ""}` : "· pelos números do Hub"}
       </span>
       <div className="flex flex-wrap items-center gap-1.5">
         <span className="text-xs text-zinc-500">Período:</span>
@@ -216,21 +216,35 @@ export function FeedbackAutomatico({
       </div>
       {erro ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{erro}</div> : null}
 
-      {feedback ? (
+      {/* Etapa 350: a mensagem fica sempre aberta — dá pra escrever na mão (sem IA) ou editar o que a IA escreveu */}
+      <label htmlFor="fa-feedback" className="mt-1 flex items-center justify-between text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
+        <span>Mensagem pro cliente {feedback ? "· pode editar à vontade" : "· escreva aqui ou gere com a IA"}</span>
+        {palavras ? (
+          <span className={`font-normal normal-case ${segundos > 60 ? "text-amber-600" : ""}`}>
+            {palavras} palavras · ~{segundos}s
+          </span>
+        ) : null}
+      </label>
+      <textarea
+        id="fa-feedback"
+        value={feedback}
+        onChange={(e) => setFeedback(e.target.value)}
+        rows={Math.min(16, Math.max(6, feedback.split("\n").length + 1))}
+        placeholder={"Escreva a mensagem do seu jeito (sem IA) ou clique em ✨ Gerar acima.\n\nDica: deixe uma linha em branco entre os blocos pra ficar organizado no WhatsApp."}
+        className={`${inputCls} py-2 leading-relaxed`}
+      />
+      <div className="flex flex-wrap gap-2">
+        <Btn small primary onClick={() => onUsar(feedback.trim())} disabled={ocupado || !feedback.trim()}>
+          📤 Revisar e enviar pro grupo
+        </Btn>
+        <Btn small onClick={() => void copiar(feedback.trim(), "Mensagem")} disabled={!feedback.trim()}>Copiar</Btn>
+        {feedback ? (
+          <Btn small onClick={() => setFeedback("")}>Limpar</Btn>
+        ) : null}
+      </div>
+
+      {plano || dados ? (
         <>
-          <label htmlFor="fa-feedback" className="mt-1 flex items-center justify-between text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">
-            <span>Feedback pro cliente</span>
-            <span className={`font-normal normal-case ${segundos > 60 ? "text-amber-600" : ""}`}>
-              {palavras} palavras · ~{segundos}s
-            </span>
-          </label>
-          <textarea id="fa-feedback" value={feedback} onChange={(e) => setFeedback(e.target.value)} rows={6} className={`${inputCls} py-2`} />
-          <div className="flex flex-wrap gap-2">
-            <Btn small primary onClick={() => onUsar(feedback.trim())} disabled={ocupado || !feedback.trim()}>
-              📤 Revisar e enviar pro grupo
-            </Btn>
-            <Btn small onClick={() => void copiar(feedback.trim(), "Feedback")}>Copiar</Btn>
-          </div>
           <label htmlFor="fa-plano" className="mt-1 text-[11px] font-semibold tracking-wide text-zinc-500 uppercase">Plano de ação (objetivo)</label>
           <textarea id="fa-plano" value={plano} onChange={(e) => setPlano(e.target.value)} rows={6} className={`${inputCls} py-2`} />
           <div className="flex flex-wrap items-center gap-2">

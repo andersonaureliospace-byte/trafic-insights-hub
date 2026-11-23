@@ -87,7 +87,10 @@ Como escrever (siga à risca):
 - Diga o próximo passo em 1 frase simples, por exemplo: "Vamos focar em recuperar o volume rápido, reforçando o que ainda traz conversas e
   pausando o que não tem resultado."
 - Feche com uma frase de compromisso e cuidado, por exemplo: "Estamos empenhados em agir rápido agora para melhorar o fluxo de mensagens."
-- Português do Brasil, frases curtas, de conversa. NO MÁXIMO 110 palavras (cabe em 60 segundos). Pode quebrar em 3–5 linhas curtas.
+- Português do Brasil, frases curtas, de conversa. NO MÁXIMO 110 palavras (cabe em 60 segundos).
+- FORMATAÇÃO (obrigatória): separe em blocos curtos com UMA LINHA EM BRANCO entre eles (use "\\n\\n" no JSON), nesta ordem:
+  1) a saudação; 2) o que você viu; 3) o que já fizemos; 4) o próximo passo; 5) o fechamento de compromisso.
+  Cada bloco com 1 ou 2 frases. Nunca mande tudo num parágrafo só.
 - NADA técnico nem de marketing: proibido CPL, CPA, CPM, CTR, ROAS, "lead", "criativo", "conjunto", "campanha", "público",
   "segmentação", "algoritmo", "métricas", "otimização de lance". Use "pessoas chamando no WhatsApp", "conversas", "mensagens",
   "anúncios", "vídeos", "região", "investimento".
@@ -99,10 +102,14 @@ Como escrever (siga à risca):
 
 Exemplo do jeito certo (estilo, não copie o conteúdo):
 """
-Bom dia turma, excelente semana para todos.
-Estamos entrando na reta final do mês.
-Dei uma olhada aqui nos seus anúncios, e tivemos uma queda considerável na semana passada. Mas subimos mais testes no sábado, e hoje cedo o gestor de conta já deu uma boa otimizada.
+Bom dia turma, excelente semana para todos! Estamos entrando na reta final do mês.
+
+Dei uma olhada aqui nos seus anúncios, e tivemos uma queda considerável na semana passada.
+
+Mas subimos mais testes no sábado, e hoje cedo o gestor de conta já deu uma boa otimizada.
+
 Vamos focar em recuperar o volume rápido, reforçando o que ainda traz conversas e pausando o que não tem resultado.
+
 Estamos empenhados em agir rápido agora para melhorar o fluxo de mensagens.
 """
 Exemplo do jeito ERRADO (seco e técnico — nunca escreva assim):
@@ -264,7 +271,26 @@ export async function gerarFeedbackIA(db: SupabaseClient, userId: string, input:
     .join("\n");
 
   const r = await llmJson<{ feedback?: string; plano?: string }>(SYSTEM, userMsg, { temperature: 0.8, images: input.prints });
-  const feedback = String(r.feedback ?? "").trim();
+  const feedback = espacar(String(r.feedback ?? ""));
   if (!feedback) throw new Error("A IA não escreveu o feedback. Tente de novo.");
   return { feedback, plano: String(r.plano ?? "").trim(), resumoDados: [...dados, ...tom, input.personalizacao?.trim() ? `Personalização: ${input.personalizacao.trim()}` : "", input.prints?.length ? `${input.prints.length} print(s) lido(s) pela IA` : ""].filter(Boolean).join("\n") };
+}
+
+// Etapa 349: garante o texto organizado em blocos com uma linha em branco entre eles (mesmo se a IA mandar tudo junto).
+export function espacar(texto: string): string {
+  const t = texto.replace(/\r/g, "").trim();
+  if (!t) return "";
+  let blocos = t
+    .split(/\n+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (blocos.length === 1) {
+    // veio num parágrafo só: a saudação sozinha e o resto de 2 em 2 frases
+    const frases = blocos[0].match(/[^.!?]+[.!?]+(\s|$)|[^.!?]+$/g)?.map((x) => x.trim()).filter(Boolean) ?? [blocos[0]];
+    if (frases.length > 2) {
+      blocos = [frases[0]];
+      for (let i = 1; i < frases.length; i += 2) blocos.push(frases.slice(i, i + 2).join(" "));
+    }
+  }
+  return blocos.join("\n\n");
 }

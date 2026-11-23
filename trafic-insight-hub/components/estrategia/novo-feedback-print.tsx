@@ -227,7 +227,6 @@ export function NovoFeedbackPrint({
 
   const subindo = anexos.some((a) => !a.path && !a.error) || (!!audio && !audio.path && !audio.error);
   const prontos = anexos.filter((a) => a.path);
-  const pode = !!cliente && prontos.length > 0 && !subindo && !gravando && !gerando;
 
   // ---- Etapa 291: revisar e enviar aqui mesmo ----
   const [rev, setRev] = useState<{ id: string; resumo: string; prints: string[]; grupo: string | null; aiErro: string | null } | null>(null);
@@ -635,9 +634,6 @@ export function NovoFeedbackPrint({
         <div className="flex flex-wrap items-center justify-end gap-2 border-t border-zinc-200 p-3 dark:border-white/10">
           <span className="mr-auto text-xs text-zinc-500">{subindo ? "Subindo arquivos…" : gerando ? (semIaRun ? "Preparando a revisão…" : "A IA está escrevendo… (uns segundos)") : ""}</span>
           <Btn onClick={onClose} disabled={gerando}>Cancelar</Btn>
-          <Btn onClick={() => void gerar(true)} disabled={!pode} title="Usa o texto dos pontos de atenção como está (sem passar pela IA). Você ainda revisa antes de enviar.">
-            📤 Enviar sem IA
-          </Btn>
         </div>
       </div>
     </div>
