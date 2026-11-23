@@ -6,7 +6,7 @@ import { CACHE_KEY, loadClientes, readCache, type Cliente, type Linha } from "@/
 import { NotasCliente } from "./notas-cliente";
 import { FeedbackAutomatico } from "./feedback-automatico";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
-import { CPA_PERIODS, PREV_LABEL, type CpaPeriod } from "@/lib/estrategia/calc";
+import { CPA_PERIODS, PREV_LABEL, investimentoBaixo, ritmoOf, type CpaPeriod } from "@/lib/estrategia/calc";
 
 // Etapa 271: Feedback por print — escolhe o cliente, cola/arrasta o(s) print(s) do resultado, escreve ou fala os pontos
 // de atenção e a IA escreve o feedback no seu jeito. Depois você revisa na lista e envia (o texto vai de legenda no print).
@@ -31,8 +31,6 @@ export interface Fatia {
 }
 const cpaFatia = (f: Fatia) => (f.spend == null || f.spend <= 0 ? null : !f.leads ? Infinity : f.spend / f.leads);
 const fmtCpaF = (v: number | null) => (v == null ? "sem gasto" : v === Infinity ? "sem lead" : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v));
-const pct = (a: number | null, b: number | null) => (a == null || b == null || !Number.isFinite(a) || !Number.isFinite(b) || b === 0 ? null : ((a - b) / b) * 100);
-const fmtPct = (v: number | null) => (v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(0)}%`);
 const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
 function put(url: string, file: Blob, mime: string, apikey: string | null, onProgress: (p: number) => void) {
@@ -471,39 +469,45 @@ export function NovoFeedbackPrint({
                   </select>
                   {!comparacao ? <span className="text-[11px] text-zinc-500">sem números (clique em Atualizar no Acompanhamento)</span> : null}
                 </div>
-                {comparacao ? (
-                  (() => {
-                    const { atual, anterior } = comparacao;
-                    const cA = cpaFatia(atual);
-                    const cB = cpaFatia(anterior);
-                    const dL = pct(atual.leads, anterior.leads);
-                    const dC = pct(cA, cB);
-                    const fmtN = (v: number | null) => (v == null ? "—" : new Intl.NumberFormat("pt-BR").format(Math.round(v)));
-                    return (
-                      <div className="grid grid-cols-3 gap-2">
-                        <div className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
-                          <div className="truncate text-[11px] text-zinc-500">Leads · {atual.label}</div>
-                          <div className="text-base font-semibold tabular-nums">{fmtN(atual.leads)}</div>
-                          <div className="text-[11px] text-zinc-500 tabular-nums">CPA {fmtCpaF(cA)}</div>
+                {(() => {
+                  // Etapa 351: leads do período + investimento do mês (atrasado/adiantado) + investimento diário real.
+                  // A comparação com o período anterior saiu da tela (a IA continua recebendo).
+                  const l = cacheLinhas?.find((x) => x.id === cliente.id);
+                  const fmtN = (v: number | null) => (v == null ? "—" : new Intl.NumberFormat("pt-BR").format(Math.round(v)));
+                  const atual = comparacao?.atual;
+                  const r = ritmoOf(cliente.monthly, l?.nums?.untilYesterday ?? 0);
+                  const ib = investimentoBaixo(l?.dailyBudget, r);
+                  const gap = l?.nums ? r.gap : null;
+                  return (
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
+                        <div className="truncate text-[11px] text-zinc-500">Leads · {atual?.label ?? "período"}</div>
+                        <div className="text-base font-semibold tabular-nums">{fmtN(atual?.leads ?? null)}</div>
+                        <div className="text-[11px] text-zinc-500 tabular-nums">CPA {atual ? fmtCpaF(cpaFatia(atual)) : "—"}</div>
+                      </div>
+                      <div className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10" title="Gasto do dia 01 até ontem × o que devia ter gasto (verba ÷ dias do mês × dias que passaram)">
+                        <div className="text-[11px] text-zinc-500">Investimento do mês</div>
+                        <div
+                          className={`text-base font-semibold tabular-nums ${
+                            gap == null ? "" : Math.abs(gap) < 10 ? "text-emerald-600 dark:text-emerald-400" : gap > 0 ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400"
+                          }`}
+                        >
+                          {gap == null ? "—" : Math.abs(gap) < 10 ? "Em dia" : gap > 0 ? `${brl(gap)} atrasado` : `${brl(-gap)} adiantado`}
                         </div>
-                        <div className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
-                          <div className="truncate text-[11px] text-zinc-500">Leads · {anterior.label}</div>
-                          <div className="text-base font-semibold tabular-nums">{fmtN(anterior.leads)}</div>
-                          <div className="text-[11px] text-zinc-500 tabular-nums">CPA {fmtCpaF(cB)}</div>
+                        <div className="text-[11px] text-zinc-500 tabular-nums">{l?.nums ? `gasto até ontem ${brl(l.nums.untilYesterday)}` : "clique em Atualizar no Acompanhamento"}</div>
+                      </div>
+                      <div className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10" title="Orçamento diário ligado agora (sem campanhas de AQUECIMENTO). Vermelho = abaixo de 60% do ritmo médio">
+                        <div className="text-[11px] text-zinc-500">Investimento diário</div>
+                        <div className={`text-base font-semibold tabular-nums ${ib.baixo ? "text-red-600 dark:text-red-400" : ""}`}>
+                          {l?.dailyBudget != null ? `${brl(l.dailyBudget)}/dia` : "—"}
                         </div>
-                        <div className="rounded-lg border border-zinc-200 px-3 py-2 dark:border-white/10">
-                          <div className="text-[11px] text-zinc-500">Comparação</div>
-                          <div className={`text-base font-semibold tabular-nums ${dL == null ? "" : dL >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                            {fmtPct(dL)} <span className="text-[11px] font-normal text-zinc-500">leads</span>
-                          </div>
-                          <div className={`text-[11px] tabular-nums ${dC == null ? "text-zinc-500" : dC <= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
-                            {fmtPct(dC)} CPA
-                          </div>
+                        <div className={`text-[11px] tabular-nums ${ib.baixo ? "font-semibold text-red-600 dark:text-red-400" : "text-zinc-500"}`}>
+                          {ib.base != null ? `${ib.baixo ? "baixo · " : ""}ritmo médio ${brl(ib.base)}/dia` : "—"}
                         </div>
                       </div>
-                    );
-                  })()
-                ) : null}
+                    </div>
+                  );
+                })()}
               </div>
             ) : (
               <div className="rounded-lg border border-zinc-200 p-2 dark:border-white/10">
