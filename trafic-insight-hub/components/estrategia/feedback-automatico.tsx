@@ -63,6 +63,33 @@ export function FeedbackAutomatico({
   const [plano, setPlano] = useState("");
   const [dados, setDados] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
+  // Etapa 352: "Melhorar meu texto" — guarda o seu texto original pra poder voltar
+  const [melhorando, setMelhorando] = useState(false);
+  const [original, setOriginal] = useState<string | null>(null);
+  async function melhorar() {
+    const t = feedback.trim();
+    if (!t) return;
+    setMelhorando(true);
+    setErro(null);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/feedbacks/melhorar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ texto: t }) });
+      const txt = await r.text();
+      let d: { error?: string; texto?: string };
+      try {
+        d = JSON.parse(txt);
+      } catch {
+        throw new Error(r.status === 504 ? "A IA demorou demais. Tente de novo." : `O servidor respondeu um erro (${r.status}).`);
+      }
+      if (d.error) throw new Error(d.error);
+      setOriginal(t);
+      setFeedback(d.texto ?? t);
+      setMsg("Texto melhorado ✓ — confira e ajuste se quiser");
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    setMelhorando(false);
+  }
   // Etapa 334: personalização livre (ex.: "última semana do mês") — fica lembrada neste navegador até você apagar
   const [perso, setPerso] = useState(() => {
     try {
@@ -237,11 +264,25 @@ export function FeedbackAutomatico({
         <Btn small primary onClick={() => onUsar(feedback.trim())} disabled={ocupado || !feedback.trim()}>
           📤 Revisar e enviar pro grupo
         </Btn>
+        <Btn
+          small
+          onClick={() => void melhorar()}
+          disabled={melhorando || gerando || !feedback.trim()}
+          title="A IA corrige o português e deixa seu texto mais claro, simpático e empático (técnica do sanduíche) — sem escrever outro"
+        >
+          {melhorando ? "Melhorando…" : "✨ Melhorar meu texto"}
+        </Btn>
+        {original != null && original !== feedback.trim() ? (
+          <Btn small onClick={() => { setFeedback(original); setOriginal(null); setMsg(null); }} title="Volta pro texto do jeito que você escreveu">
+            ↩ Voltar ao meu texto
+          </Btn>
+        ) : null}
         <Btn small onClick={() => void copiar(feedback.trim(), "Mensagem")} disabled={!feedback.trim()}>Copiar</Btn>
         {feedback ? (
-          <Btn small onClick={() => setFeedback("")}>Limpar</Btn>
+          <Btn small onClick={() => { setFeedback(""); setOriginal(null); }}>Limpar</Btn>
         ) : null}
       </div>
+      {msg && !plano ? <span className="text-xs text-emerald-600 dark:text-emerald-400">{msg}</span> : null}
 
       {plano || dados ? (
         <>
