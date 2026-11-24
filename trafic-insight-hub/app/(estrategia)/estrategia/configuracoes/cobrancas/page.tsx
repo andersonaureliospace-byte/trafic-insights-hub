@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { PageHeader, useEstr } from "@/components/estrategia/shell";
-import { Alertas, type AlertasServer } from "@/components/estrategia/alertas";
+import type { AlertasServer } from "@/components/estrategia/alertas";
+import { CobrancasLista, type PixInfo } from "@/components/estrategia/cobrancas-lista";
 import { matchesResp, readCache, useCarteira, writeCache } from "@/components/estrategia/use-carteira";
 import { Btn, Card, hhmm } from "@/components/estrategia/ui";
 import { ConfigSaldoPainel } from "@/components/estrategia/config-saldo";
@@ -16,6 +17,24 @@ export default function CobrancasPage() {
   const [srvLoading, setSrvLoading] = useState(false);
   const [srvError, setSrvError] = useState<string | null>(null);
   const [conta, setConta] = useState<string | null>(null); // conta aberta no painel da direita
+  // Etapa 353: tipo de conta e "saldo por fundos" de cada conta (pra agrupar a lista)
+  const [pix, setPix] = useState<Record<string, PixInfo> | null>(null);
+  const loadPix = useCallback(async () => {
+    try {
+      const d = await fetch("/api/pix-accounts", { cache: "no-store" }).then((r) => r.json());
+      if (d.error) throw new Error(d.error);
+      const m: Record<string, PixInfo> = {};
+      for (const p of (d.pixAccounts ?? []) as Array<PixInfo & { ad_account_id: string }>) m[p.ad_account_id.replace(/^act_/, "")] = p;
+      setPix(m);
+    } catch (e) {
+      setSrvError((e as Error).message);
+      setPix({});
+    }
+  }, []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- carrega os tipos de conta ao abrir
+    void loadPix();
+  }, [loadPix]);
   const visible = useMemo(() => (linhas ?? []).filter((l) => matchesResp(ui.resp, l.responsible)), [linhas, ui.resp]);
   const ids = useMemo(() => (linhas ?? []).map((l) => l.id).join(","), [linhas]);
 
@@ -60,18 +79,9 @@ export default function CobrancasPage() {
           <div className="rounded-xl border border-dashed border-zinc-300 p-10 text-center text-sm text-zinc-500 dark:border-white/10">Carregando as contas…</div>
         ) : (
           <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_24rem]">
-            <Alertas
-              linhas={visible}
-              srv={srv}
-              naming={{ items: [], loading: false, error: null }}
-              loading={srvLoading}
-              soSaldo
-              onPick={setConta}
-              pickedId={conta}
-              onSaldoChanged={() => void loadAlertas(ids.split(","))}
-            />
+            <CobrancasLista linhas={visible} srv={srv} pix={pix} loading={srvLoading} pickedId={conta} onPick={setConta} />
             <Card className="p-5 xl:sticky xl:top-16">
-              <ConfigSaldoPainel linhas={visible} selectedId={conta ?? visible[0]?.id ?? null} onSelect={setConta} />
+              <ConfigSaldoPainel linhas={visible} selectedId={conta ?? visible[0]?.id ?? null} onSelect={setConta} onChanged={() => void loadPix()} />
             </Card>
           </div>
         )}
