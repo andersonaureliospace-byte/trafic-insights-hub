@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
+import { getHubCtx, canSee } from "@/lib/hub-context";
 
 export async function GET() {
   try {
-    const { supabase, user } = await requireUser();
-    const { data, error } = await supabase
+    // Etapa 352: gestor → contas exibidas da carteira do estrategista, só as dele
+    const ctx = await getHubCtx();
+    const { data, error } = await ctx.db
       .from("user_selected_accounts")
       .select("ad_account_id, sort_order")
-      .eq("user_id", user.id)
+      .eq("user_id", ctx.ownerId)
       .order("sort_order", { ascending: true });
     if (error) throw error;
-    return NextResponse.json({ accountIds: (data ?? []).map((r) => r.ad_account_id) });
+    return NextResponse.json({ accountIds: (data ?? []).filter((r) => canSee(ctx, r.ad_account_id as string)).map((r) => r.ad_account_id) });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

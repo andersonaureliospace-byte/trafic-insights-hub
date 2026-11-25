@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, getUserMetaToken } from "@/lib/current-user";
+import { getHubCtx, allowedIds } from "@/lib/hub-context";
 import { getAccountsInsights } from "@/lib/meta/insights";
 import { withLiveCache, liveMaxAge, toObj } from "@/lib/meta/live-cache";
 
@@ -10,14 +10,11 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
-    const { supabase, user } = await requireUser();
-    const token = await getUserMetaToken(supabase, user.id);
+    const ctx = await getHubCtx(); // Etapa 352: gestor → só as contas dele
+    const token = await ctx.token();
     const body = (await request.json().catch(() => ({}))) as { accountIds?: unknown; force?: unknown };
-    const ids = (Array.isArray(body.accountIds) ? body.accountIds : [])
-      .map((x) => String(x).replace(/^act_/, ""))
-      .filter(Boolean)
-      .slice(0, 15);
-    const live = await withLiveCache<number>(supabase, user.id, "orc", ids, liveMaxAge(body.force), async (miss) => {
+    const ids = allowedIds(ctx, (Array.isArray(body.accountIds) ? body.accountIds : []).map((x) => String(x))).slice(0, 15);
+    const live = await withLiveCache<number>(ctx.db, ctx.ownerId, "orc", ids, liveMaxAge(body.force), async (miss) => {
       const ins = await getAccountsInsights(token, miss.map((id) => `act_${id}`), "today");
       const data = new Map<string, number>();
       const failed: string[] = [];

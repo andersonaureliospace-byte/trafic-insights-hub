@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, getUserMetaToken } from "@/lib/current-user";
+import { getHubCtx, allowedIds } from "@/lib/hub-context";
 import { hojeDaConta } from "@/lib/estrategia/hoje-conta";
 import { readStoredDaysMany, normAccountId } from "@/lib/meta/daily-store";
 import { addDaysYmd, todayBrt } from "@/lib/meta/daily-range";
@@ -14,10 +14,11 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
-    const { supabase, user } = await requireUser();
-    const token = await getUserMetaToken(supabase, user.id);
+    // Etapa 352: gestor → só as contas dele, com o token da carteira do estrategista
+    const ctx = await getHubCtx();
+    const token = await ctx.token();
     const body = (await request.json().catch(() => ({}))) as { accountIds?: unknown; days?: unknown; force?: unknown };
-    const ids = (Array.isArray(body.accountIds) ? body.accountIds : []).map((x) => normAccountId(String(x))).filter(Boolean).slice(0, 15);
+    const ids = allowedIds(ctx, (Array.isArray(body.accountIds) ? body.accountIds : []).map((x) => normAccountId(String(x)))).slice(0, 15);
     const days = Math.max(1, Math.min(62, Number(body.days) || 1));
     const today = todayBrt();
     const since = addDaysYmd(today, -(days - 1));
@@ -45,13 +46,13 @@ export async function POST(request: Request) {
       await Promise.all(Array.from({ length: Math.min(5, list.length) }, worker));
       return { data: out, failed };
     };
-    const live = await withLiveCache<Dia>(supabase, user.id, "hoje", ids, maxAge, (miss) => runPool(miss, (id) => hojeDaConta(token, id)));
+    const live = await withLiveCache<Dia>(ctx.db, ctx.ownerId, "hoje", ids, maxAge, (miss) => runPool(miss, (id) => hojeDaConta(token, id)));
     const hoje = live.data;
     const failed: string[] = [...live.failed];
     // Etapa 317: backup ainda sem ontem (rotina da noite não terminou) → busca ontem na Meta também (também guardado)
     const semOntem = since <= yesterday ? ids.filter((id) => !stored.get(id)?.has(yesterday)) : [];
     const ontemLive = semOntem.length
-      ? await withLiveCache<Dia>(supabase, user.id, "ontem", semOntem, maxAge, (miss) =>
+      ? await withLiveCache<Dia>(ctx.db, ctx.ownerId, "ontem", semOntem, maxAge, (miss) =>
           runPool(miss, (id) => hojeDaConta(token, id, yesterday)),
         )
       : null;

@@ -27,6 +27,7 @@ export interface Gestor {
 }
 
 interface Ctx {
+  role: "master" | "estrategista" | "gestor"; // Etapa 352
   ui: EstrUi;
   setUi: (patch: Partial<EstrUi>) => void;
   gestores: string[]; // só os nomes (filtro e ficha do cliente)
@@ -51,7 +52,7 @@ export function parseGestores(v: unknown): Gestor[] {
 }
 
 const DEFAULT_UI: EstrUi = { resp: "", period: "u3", sort: "cpa" };
-const EstrCtx = createContext<Ctx>({ ui: DEFAULT_UI, setUi: () => {}, gestores: [], gestoresFull: [], saveGestores: async () => {} });
+const EstrCtx = createContext<Ctx>({ role: "estrategista", ui: DEFAULT_UI, setUi: () => {}, gestores: [], gestoresFull: [], saveGestores: async () => {} });
 export const useEstr = () => useContext(EstrCtx);
 
 const THEME_KEY = "estrategia_theme";
@@ -79,7 +80,16 @@ function Item({ href, children, small }: { href: string; children: ReactNode; sm
   );
 }
 
-export function EstrategiaShell({ email, children }: { email: string | null; children: ReactNode }) {
+export function EstrategiaShell({
+  email,
+  role = "estrategista",
+  children,
+}: {
+  email: string | null;
+  role?: Ctx["role"];
+  children: ReactNode;
+}) {
+  const isGestor = role === "gestor";
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [ui, setUiState] = useState<EstrUi>(DEFAULT_UI);
   const [gestoresFull, setGestores] = useState<Gestor[]>([]);
@@ -139,12 +149,12 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
     }
   }
 
-  const value = useMemo(() => ({ ui, setUi, gestores, gestoresFull, saveGestores }), [ui, setUi, gestores, gestoresFull, saveGestores]);
+  const value = useMemo(() => ({ role, ui, setUi, gestores, gestoresFull, saveGestores }), [role, ui, setUi, gestores, gestoresFull, saveGestores]);
 
   return (
     <EstrCtx.Provider value={value}>
       <GravadorProvider>
-      <DisparoMonitor />
+      {isGestor ? null : <DisparoMonitor />}
       <div className={`${theme} flex min-h-screen flex-1 flex-col bg-zinc-50 text-zinc-900 dark:bg-[#0b0e14] dark:text-zinc-100`}>
         {/* Etapa 243: um menu só, fino, no topo (o menu antigo do hub operacional e a barra lateral saíram). */}
         <header className="sticky top-0 z-30 border-b border-zinc-200 bg-white/85 backdrop-blur-xl dark:border-white/10 dark:bg-[#0b0e14]/85">
@@ -152,9 +162,13 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
             <span className="mr-2 text-sm font-bold tracking-tight whitespace-nowrap text-blue-700 dark:text-blue-400">Trafic Insight Hub</span>
             <nav className="flex items-center gap-0.5">
               <Item href="/estrategia/trafego">Acompanhamento</Item>
-              <Item href="/estrategia/feedback">Feedback</Item>
-              <Item href="/estrategia/disparos">Disparos</Item>
-              <Item href="/estrategia/configuracoes">Configurações</Item>
+              {isGestor ? null : (
+                <>
+                  <Item href="/estrategia/feedback">Feedback</Item>
+                  <Item href="/estrategia/disparos">Disparos</Item>
+                  <Item href="/estrategia/configuracoes">Configurações</Item>
+                </>
+              )}
             </nav>
             <div className="ml-auto flex shrink-0 items-center gap-1">
               <RecarregarApp />
@@ -183,7 +197,8 @@ export function EstrategiaShell({ email, children }: { email: string | null; chi
 
 // Cabeçalho das telas: título, subtítulo e, à direita, o filtro de Responsável + ações da tela.
 export function PageHeader({ title, sub, children, noFilter }: { title: string; sub?: string; children?: ReactNode; noFilter?: boolean }) {
-  const { ui, setUi, gestores } = useEstr();
+  const { ui, setUi, gestores, role } = useEstr();
+  const semFiltro = noFilter || role === "gestor"; // Etapa 352: gestor só vê as contas dele — sem filtro de Responsável
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-4 lg:px-6 dark:border-white/10">
       <div className="min-w-0">
@@ -191,7 +206,7 @@ export function PageHeader({ title, sub, children, noFilter }: { title: string; 
         {sub ? <p className="text-xs text-zinc-500">{sub}</p> : null}
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {noFilter ? null : (
+        {semFiltro ? null : (
           <>
         <label htmlFor="estr-resp" className="text-xs text-zinc-500">Responsável</label>
         <select

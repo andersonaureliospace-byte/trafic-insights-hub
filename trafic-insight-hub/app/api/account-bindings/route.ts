@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import { registrarPrioridades } from "@/lib/estrategia/prioridade-hist";
 import { requireUser } from "@/lib/current-user";
+import { getHubCtx, canSee } from "@/lib/hub-context";
 import { spDate } from "@/lib/meta/client";
 
 export async function GET() {
   try {
-    const { supabase, user } = await requireUser();
-    const { data, error } = await supabase
+    // Etapa 352: gestor → só as contas em que ele é o Responsável (da carteira do estrategista)
+    const ctx = await getHubCtx();
+    const { data: all, error } = await ctx.db
       .from("account_bindings")
       .select("*")
-      .eq("user_id", user.id);
+      .eq("user_id", ctx.ownerId);
     if (error) throw error;
+    const data = (all ?? []).filter((b) => canSee(ctx, b.ad_account_id as string));
 
     // Coluna "Otimizado" de Acompanhamento reseta sozinha à meia-noite (BRT):
     // uma marcação só vale "hoje" se optimized_date bater com o dia de hoje

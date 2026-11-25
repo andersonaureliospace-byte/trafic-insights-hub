@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { getAccess, type HubRole } from "@/lib/access";
 import { EstrategiaShell } from "@/components/estrategia/shell";
 import { PriorityLabelsProvider } from "@/lib/priority-context";
 
@@ -9,8 +10,15 @@ export default async function EstrategiaLayout({ children }: { children: ReactNo
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  // Etapa 352: papel de quem está logado (gestor vê o menu enxuto)
+  let role: HubRole = "estrategista";
+  try {
+    role = (await getAccess()).role;
+  } catch {
+    /* sem login: o proxy já manda pro /login */
+  }
   return (
-    <EstrategiaShell email={user?.email ?? null}>
+    <EstrategiaShell email={user?.email ?? null} role={role}>
       <PriorityLabelsProvider>{children}</PriorityLabelsProvider>
     </EstrategiaShell>
   );

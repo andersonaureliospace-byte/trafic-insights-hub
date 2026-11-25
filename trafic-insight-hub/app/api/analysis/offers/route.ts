@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser, getUserMetaToken } from "@/lib/current-user";
+import { getHubCtx, canSee } from "@/lib/hub-context";
 import { namingAccounts } from "@/lib/naming/scan";
 import { offersForAccounts } from "@/lib/offers/scan";
 import { readOffersSnapshot, saveOffersSnapshot } from "@/lib/offers/snapshot";
@@ -10,9 +11,15 @@ export const maxDuration = 60;
 
 export async function GET() {
   try {
-    const { supabase, user } = await requireUser();
-    const [snap, ivs] = await Promise.all([readOffersSnapshot(supabase, user.id), namingAccounts(supabase, user.id)]);
-    return NextResponse.json({ accounts: snap.accounts, ivsIds: ivs.map((a) => a.ad_account_id.replace(/^act_/, "")) });
+    // Etapa 352: gestor → retrato das ofertas só das contas dele
+    const ctx = await getHubCtx();
+    const db = ctx.db as never;
+    const [snap, ivs] = await Promise.all([readOffersSnapshot(db, ctx.ownerId), namingAccounts(db, ctx.ownerId)]);
+    const accounts = Object.fromEntries(Object.entries(snap.accounts ?? {}).filter(([id]) => canSee(ctx, id)));
+    return NextResponse.json({
+      accounts,
+      ivsIds: ivs.map((a) => a.ad_account_id.replace(/^act_/, "")).filter((id) => canSee(ctx, id)),
+    });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

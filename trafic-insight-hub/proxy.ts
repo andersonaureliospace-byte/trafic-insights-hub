@@ -60,6 +60,27 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Etapa 352: GESTOR — só a tela de Acompanhamento (abas Contas e Ontem × hoje) e as rotas que ela usa.
+  // Tudo o mais (Feedback, Disparos, Configurações, Alertas, ficha do cliente, Hub operacional, app /m) fica fechado,
+  // na tela E na API (não adianta digitar o endereço). As rotas liberadas ainda filtram só as contas dele.
+  if (user && user.app_metadata?.hub_role === "gestor" && !isPublicPath) {
+    const method = request.method.toUpperCase();
+    const okApi =
+      (method === "GET" && ["/api/selected-accounts", "/api/account-bindings", "/api/analysis/offers"].includes(pathname)) ||
+      ((method === "GET" || method === "PUT") && pathname === "/api/estrategia/prefs") ||
+      (method === "POST" &&
+        ["/api/estrategia/hoje", "/api/estrategia/orcamento", "/api/estrategia/otimizacoes", "/api/acessos/trocar-senha"].includes(pathname));
+    const okPage = pathname === "/estrategia/trafego" || pathname === "/trocar-senha";
+    if (pathname.startsWith("/api/")) {
+      if (!okApi) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+    } else if (!okPage) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/estrategia/trafego";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+  }
+
   if (user && OPERATIONAL_STANDBY && STANDBY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     const url = request.nextUrl.clone();
     url.pathname = "/estrategia/trafego";

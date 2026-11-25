@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
+import { getHubCtx, canSee } from "@/lib/hub-context";
 import { SWITCHES_PREF_KEY } from "@/lib/automation-switches";
 import { AUDIT_PREF_KEY } from "@/lib/estrategia/auditorias/config";
 import { GESTOR_ERROS_KEY } from "@/lib/estrategia/gestor-erros";
@@ -17,11 +18,39 @@ import { GESTOR_ERROS_KEY } from "@/lib/estrategia/gestor-erros";
 //   feedback_modelos    = texto: feedbacks reais do usuário, modelo de tom pra IA do Feedback por print (Etapa 271)
 const KEYS = new Set(["estrategia_ui", "gestores", "offer_flags", SWITCHES_PREF_KEY, AUDIT_PREF_KEY, "contas_sensiveis", "feedback_modelos", GESTOR_ERROS_KEY, "cards_vistos", "notas_clientes", "feedback_contexto", "prioridade_hist"]);
 
+// Etapa 352: gestor — preferências dele mesmo (filtros/cards vistos) ficam no login dele; da carteira do estrategista
+// só lê (nunca grava) a lista de gestores (só ele), as contas sensíveis e as ofertas — sempre só das contas dele.
+const GESTOR_PROPRIAS = new Set(["estrategia_ui", "cards_vistos"]);
+const GESTOR_DA_CARTEIRA = new Set(["gestores", "contas_sensiveis", "offer_flags"]);
+
+async function gestorGet(key: string) {
+  const ctx = await getHubCtx();
+  if (!ctx.isGestor) return null;
+  if (GESTOR_PROPRIAS.has(key)) {
+    const { data } = await ctx.db.from("user_ui_prefs").select("pref_value").eq("user_id", ctx.access.user.id).eq("pref_key", key).maybeSingle();
+    return { value: data?.pref_value ?? null };
+  }
+  if (!GESTOR_DA_CARTEIRA.has(key)) return { error: "Sem permissão." };
+  const { data } = await ctx.db.from("user_ui_prefs").select("pref_value").eq("user_id", ctx.ownerId).eq("pref_key", key).maybeSingle();
+  const v = data?.pref_value as unknown;
+  if (key === "gestores") {
+    const nome = (ctx.access.gestorName ?? "").trim().toLowerCase();
+    const list = Array.isArray(v) ? v : [];
+    return { value: list.filter((g) => String(typeof g === "string" ? g : (g as { name?: string })?.name ?? "").trim().toLowerCase() === nome) };
+  }
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return { value: Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([id]) => canSee(ctx, id))) };
+  }
+  return { value: v ?? null };
+}
+
 export async function GET(request: Request) {
   try {
-    const { supabase, user } = await requireUser();
     const key = new URL(request.url).searchParams.get("key") ?? "";
     if (!KEYS.has(key)) throw new Error("Preferência desconhecida.");
+    const g = await gestorGet(key);
+    if (g) return NextResponse.json(g, { status: "error" in g ? 403 : 200 });
+    const { supabase, user } = await requireUser();
     const { data, error } = await supabase
       .from("user_ui_prefs")
       .select("pref_value")
@@ -41,6 +70,9 @@ export async function PUT(request: Request) {
     const body = (await request.json()) as { key?: string; value?: unknown };
     const key = body.key ?? "";
     if (!KEYS.has(key)) throw new Error("Preferência desconhecida.");
+    // Etapa 352: gestor só grava as preferências dele mesmo (no login dele)
+    const ctx = await getHubCtx();
+    if (ctx.isGestor && !GESTOR_PROPRIAS.has(key)) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
     const { error } = await supabase
       .from("user_ui_prefs")
       .upsert({ user_id: user.id, pref_key: key, pref_value: body.value ?? null }, { onConflict: "user_id,pref_key" });

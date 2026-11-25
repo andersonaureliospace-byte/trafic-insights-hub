@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, getUserMetaToken } from "@/lib/current-user";
+import { getHubCtx, allowedIds } from "@/lib/hub-context";
 import { activitiesForAccounts, type ActivityItem } from "@/lib/estrategia/activities";
 import { withLiveCache, liveMaxAge, toObj } from "@/lib/meta/live-cache";
 
@@ -10,12 +10,12 @@ export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
-    const { supabase, user } = await requireUser();
-    const token = await getUserMetaToken(supabase, user.id);
+    const ctx = await getHubCtx(); // Etapa 352: gestor → só as contas dele
+    const token = await ctx.token();
     const body = (await request.json().catch(() => ({}))) as { accountIds?: unknown; force?: unknown };
     const norm = (id: string) => id.replace(/^act_/, "");
-    const ids = (Array.isArray(body.accountIds) ? body.accountIds : []).map((x) => norm(String(x))).filter(Boolean).slice(0, 60);
-    const live = await withLiveCache<ActivityItem[]>(supabase, user.id, "otim", ids, liveMaxAge(body.force), async (miss) => {
+    const ids = allowedIds(ctx, (Array.isArray(body.accountIds) ? body.accountIds : []).map((x) => norm(String(x)))).slice(0, 60);
+    const live = await withLiveCache<ActivityItem[]>(ctx.db, ctx.ownerId, "otim", ids, liveMaxAge(body.force), async (miss) => {
       const acts = await activitiesForAccounts(token, miss);
       return { data: new Map(Object.entries(acts.byAccount).map(([k, v]) => [norm(k), v])), failed: acts.failed.map(norm) };
     });

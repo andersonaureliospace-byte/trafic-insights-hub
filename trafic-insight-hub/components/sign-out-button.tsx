@@ -9,6 +9,13 @@ export function SignOutButton() {
   async function handleSignOut() {
     const supabase = createClient();
     await supabase.auth.signOut();
+    // Etapa 352: vários acessos no mesmo navegador — apaga os números guardados de quem saiu
+    // (senão quem entrar depois veria, por um instante, a carteira do anterior)
+    try {
+      for (const k of Object.keys(localStorage)) if (k.startsWith("estr_")) localStorage.removeItem(k);
+    } catch {
+      /* sem armazenamento */
+    }
     router.push("/login");
     router.refresh();
   }

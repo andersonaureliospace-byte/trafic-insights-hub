@@ -26,7 +26,8 @@ function fmtIdade(ms: number): string {
 }
 
 export default function TrafegoPage() {
-  const { ui } = useEstr();
+  const { ui, role } = useEstr();
+  const isGestor = role === "gestor"; // Etapa 352: gestor — sem a aba Alertas (nem a busca de saldo/pagamento)
   const { linhas, loading, error, at, reload, refreshFicha } = useCarteira();
   const [tab, setTab] = useState<"acomp" | "graficos" | "alertas">("acomp");
   // Contas sensíveis (marcadas na ficha do cliente) e o filtro "Só sensíveis", lembrado neste navegador.
@@ -84,7 +85,7 @@ export default function TrafegoPage() {
   }, []);
   // Etapa 247/309: usa o que foi guardado hoje; buscar de novo só pelo "Atualizar alertas" (Configurações → Alertas).
   useEffect(() => {
-    if (!ids) return;
+    if (!ids || isGestor) return;
     const c = readCache<AlertasServer>("estr_alertas_v1");
     if (c && new Date(c.at).toDateString() === new Date().toDateString()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- alertas guardados neste navegador
@@ -92,7 +93,7 @@ export default function TrafegoPage() {
       return;
     }
     void loadAlertas(ids.split(","));
-  }, [ids, loadAlertas]);
+  }, [ids, loadAlertas, isGestor]);
 
   // Etapa 324: otimizações (quem mexeu na conta e quando) — junto do Atualizar e ao abrir Ontem × hoje.
   const loadOtim = useCallback(async (accountIds: string[], force = false) => {
@@ -104,7 +105,10 @@ export default function TrafegoPage() {
         body: JSON.stringify({ accountIds, force }),
       }).then((r) => r.json());
       if (d.error) return;
-      setSrv((cur) => {
+      setSrv((cur0) => {
+        // Etapa 352: gestor não busca os Alertas — a coluna Otimização nasce de um retrato vazio
+        const cur: AlertasServer | null =
+          cur0 ?? (isGestor ? { balance: [], payment: [], errors: [], location: [], activities: {}, activitiesFailed: [], warnings: [], at: new Date().toISOString() } : null);
         if (!cur) return cur;
         const next = { ...cur, activities: { ...cur.activities, ...(d.activities ?? {}) }, activitiesFailed: d.failed ?? [] };
         writeCache("estr_alertas_v1", next);
@@ -113,14 +117,14 @@ export default function TrafegoPage() {
     } catch {
       /* fica com o que já tinha */
     }
-  }, []);
+  }, [isGestor]);
 
   // Etapa 350: force = clique no botão (número guardado de até 3 min); automático aceita até 15 min.
   function refresh(force = false) {
     void reload(force);
     if (ids) void loadOtim(ids.split(","), force);
     // Etapa 341: na aba Alertas, o saldo/pagamento/erros também entram no Atualizar
-    if (tab === "alertas" && ids) void loadAlertas(ids.split(","));
+    if (tab === "alertas" && ids && !isGestor) void loadAlertas(ids.split(","));
   }
 
   // Etapa 341 → nov/2026: com a tela aberta e visível (qualquer aba), atualiza sozinha a cada 30 min, das 07h às 20h (Brasília).
@@ -196,7 +200,7 @@ export default function TrafegoPage() {
               ["graficos", "Ontem × hoje"],
               ["alertas", "Alertas"],
             ] as const
-          ).map(([k, label]) => (
+          ).filter(([k]) => !(isGestor && k === "alertas")).map(([k, label]) => (
             <button
               key={k}
               role="tab"

@@ -124,7 +124,8 @@ export function Acompanhamento({
   // Quando os números da carteira foram buscados na Meta (o cache do navegador pode ser de outro dia).
   dataAt?: number | null;
 }) {
-  const { ui, setUi } = useEstr();
+  const { ui, setUi, role } = useEstr();
+  const isGestor = role === "gestor"; // Etapa 352: gestor — sem ficha, sem "Avisar gestores", sem coluna Responsável
   const { options } = usePriorityOptions();
   const [desc, setDesc] = useState<{ l: Linha } | null>(null);
   // Etapa 248: pesquisa (nome, responsável, grupo do WhatsApp, ID) e conta fixada (as outras ficam com os números embaçados).
@@ -155,8 +156,8 @@ export function Acompanhamento({
       })
       .catch(() => {});
   useEffect(() => {
-    void carregarPay();
-  }, []);
+    if (!isGestor) void carregarPay();
+  }, [isGestor]);
   function trocarPrio(v: string) {
     setPrioFiltro(v);
     try {
@@ -278,7 +279,7 @@ export function Acompanhamento({
 
   const clip = closedDaysIn(period, cal);
   // Com o filtro num gestor só, a coluna Responsável repetiria o mesmo nome em todas as linhas: some.
-  const showResp = !ui.resp || ui.resp === "__none";
+  const showResp = !isGestor && (!ui.resp || ui.resp === "__none");
   const selectCls = "h-8 rounded-lg border border-zinc-300 bg-white px-2 text-sm dark:border-white/10 dark:bg-[#141924]";
   const th = "px-2 py-2.5 font-semibold";
 
@@ -394,6 +395,7 @@ export function Acompanhamento({
           ) : null}
           <span className="ml-auto text-xs text-zinc-500">{rows.length} contas</span>
         </div>
+        {isGestor ? null : (
         <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 bg-zinc-50/70 px-4 py-2 text-xs dark:border-white/10 dark:bg-white/[0.02]">
           <span className={marcadas.size ? "font-semibold text-blue-700 dark:text-blue-300" : "text-zinc-500"}>
             {marcadas.size ? `${marcadas.size} conta${marcadas.size === 1 ? "" : "s"} marcada${marcadas.size === 1 ? "" : "s"}` : "Marque as contas na caixinha para:"}
@@ -409,6 +411,7 @@ export function Acompanhamento({
             <button onClick={() => setMarcadas(new Set())} className="text-zinc-500 hover:underline">limpar</button>
           ) : null}
         </div>
+        )}
         <table className="w-full table-fixed text-sm">
           <colgroup>
             <col className={showResp ? "w-[23%]" : "w-[31%]"} />
@@ -425,13 +428,13 @@ export function Acompanhamento({
             <tr className="border-b border-zinc-200 text-left text-[11px] tracking-wide text-zinc-500 uppercase dark:border-white/10">
               <th className="py-2.5 pr-2 pl-4 font-semibold">
                 <span className="flex items-center gap-2">
-                  <input
+                  {isGestor ? null : <input
                     type="checkbox"
                     aria-label="Marcar todas as contas da lista"
                     title="Marcar todas da lista"
                     checked={rows.length > 0 && rows.every((x) => marcadas.has(x.l.id))}
                     onChange={(e) => setMarcadas(e.target.checked ? new Set(rows.map((x) => x.l.id)) : new Set())}
-                  />
+                  />}
                   Conta
                 </span>
               </th>
@@ -467,13 +470,13 @@ export function Acompanhamento({
                 >
                   <td className="py-3 pr-2 pl-4">
                     <div className="flex items-start gap-1">
-                    <input
+                    {isGestor ? null : <input
                       type="checkbox"
                       checked={marcadas.has(l.id)}
                       onChange={() => marcar(l.id)}
                       aria-label={`Marcar ${l.name}`}
                       className="mt-1 mr-1 shrink-0"
-                    />
+                    />}
                     <button
                       onClick={() => togglePin(l.id)}
                       title={pinned === l.id ? "Tirar o fixar" : "Fixar esta conta (as outras ficam embaçadas)"}
@@ -594,7 +597,7 @@ export function Acompanhamento({
                     />
                   </td>
                   <td className="py-3 pr-4 pl-2 text-right whitespace-nowrap">
-                    {(() => {
+                    {isGestor ? null : (() => {
                       const falta = pay ? pendenciasFicha(l, pay[l.id] ?? null) : [];
                       const aberto = desc?.l.id === l.id;
                       return (
@@ -646,7 +649,7 @@ export function Acompanhamento({
           onClose={() => setAvisar(false)}
         />
       ) : null}
-      {desc ? (
+      {desc && !isGestor ? (
         <FichaLateral
           l={desc.l}
           onClose={() => setDesc(null)}
