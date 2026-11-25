@@ -120,7 +120,8 @@ export async function saveOfferFlags(all: Record<string, OfferFlags>): Promise<v
 }
 
 // Investimento diário atual: mesma conta do hub antigo (orçamento diário de campanhas/conjuntos ligados), em lotes.
-async function budgetsFor(ids: string[]): Promise<Record<string, number | null>> {
+// Etapa 350: via /api/estrategia/orcamento (guardado compartilhado — só vai à Meta a conta com orçamento velho).
+async function budgetsFor(ids: string[], force = false): Promise<Record<string, number | null>> {
   const out: Record<string, number | null> = {};
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
@@ -129,16 +130,16 @@ async function budgetsFor(ids: string[]): Promise<Record<string, number | null>>
     while (next < chunks.length) {
       const c = chunks[next++];
       try {
-        const d = await fetch("/api/meta/insights", {
+        const d = await fetch("/api/estrategia/orcamento", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: AbortSignal.timeout(120_000),
-          body: JSON.stringify({ accountIds: c, datePreset: "today" }),
+          body: JSON.stringify({ accountIds: c, force }),
         }).then((r) => r.json());
-        const ins = (d.insights ?? {}) as Record<string, { daily_budget?: number; budget_failed?: boolean }>;
+        const b = (d.budgets ?? {}) as Record<string, number>;
         for (const id of c) {
-          const x = ins[id];
-          out[normId(id)] = x && !x.budget_failed && typeof x.daily_budget === "number" ? x.daily_budget : null;
+          const x = b[normId(id)];
+          out[normId(id)] = typeof x === "number" ? x : null;
         }
       } catch {
         for (const id of c) out[normId(id)] = null;
@@ -153,9 +154,14 @@ async function budgetsFor(ids: string[]): Promise<Record<string, number | null>>
 const CHUNK = 10;
 
 // Etapa 309: dias fechados do backup + hoje da Meta (1 pedido por conta). `failed` = contas em que a Meta não respondeu hoje.
-async function dailyFor(ids: string[], days: number): Promise<{ out: Record<string, DailyCpaPoint[]>; failed: Set<string> }> {
+async function dailyFor(
+  ids: string[],
+  days: number,
+  force = false,
+): Promise<{ out: Record<string, DailyCpaPoint[]>; failed: Set<string>; oldestAt: number | null }> {
   const out: Record<string, DailyCpaPoint[]> = {};
   const failed = new Set<string>();
+  let oldestAt: number | null = null;
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
   let next = 0;
@@ -167,9 +173,10 @@ async function dailyFor(ids: string[], days: number): Promise<{ out: Record<stri
           method: "POST",
           headers: { "Content-Type": "application/json" },
           signal: AbortSignal.timeout(120_000),
-          body: JSON.stringify({ accountIds: c, days }),
+          body: JSON.stringify({ accountIds: c, days, force }),
         }).then((r) => r.json());
         if (d.error) throw new Error(d.error);
+        if (typeof d.oldestAt === "number") oldestAt = oldestAt == null ? d.oldestAt : Math.min(oldestAt, d.oldestAt);
         for (const [k, v] of Object.entries((d.daily ?? {}) as Record<string, DailyCpaPoint[]>)) out[normId(k)] = v;
         for (const k of (d.failed ?? []) as string[]) failed.add(normId(k));
       } catch (e) {
@@ -180,7 +187,7 @@ async function dailyFor(ids: string[], days: number): Promise<{ out: Record<stri
     }
   };
   await Promise.all([worker(), worker()]);
-  return { out, failed };
+  return { out, failed, oldestAt };
 }
 
 // Etapa 247: números travados — a carteira carregada fica guardada neste navegador e é o que aparece ao abrir, trocar de
@@ -220,7 +227,9 @@ export function useCarteira() {
     linhasRef.current = linhas;
   }, [linhas]);
 
-  const load = useCallback(async () => {
+  // Etapa 350: force = botão Atualizar (aceita número guardado de até 3 min); sem force = automático (até 15 min).
+  const load = useCallback(async (force?: boolean) => {
+    const f = force === true;
     const my = ++run.current;
     setLoading(true);
     setError(null);
@@ -230,10 +239,11 @@ export function useCarteira() {
       // Etapa 294: busca o mês atual + o mês passado inteiro (até 62 dias), pra comparar cada período com a mesma fatia
       // anterior (este mês × mesmos dias do mês passado; últimos 7 × 7 antes; semana passada × retrasada).
       const days = Math.min(62, cal.day + 31);
-      const [{ out: daily, failed }, offers, flagsSaved] = await Promise.all([
+      const [{ out: daily, failed, oldestAt }, offers, flagsSaved] = await Promise.all([
         dailyFor(
           clientes.map((c) => c.rawId),
           days,
+          f,
         ),
         fetch("/api/analysis/offers", { cache: "no-store" })
           .then((r) => r.json())
@@ -274,11 +284,12 @@ export function useCarteira() {
         };
       });
       setLinhas(novas);
-      const now = Date.now();
+      // Etapa 350: "atualizado às" = o número mais antigo que veio (pode ter vindo do guardado de outra pessoa)
+      const now = oldestAt != null ? Math.min(Date.now(), oldestAt) : Date.now();
       setAt(now);
       atRef.current = now;
       // Investimento diário atual: busca de novo em TODO Atualizar (pedido do Anderson); chega depois, sem segurar a tabela.
-      void budgetsFor(clientes.map((c) => c.rawId)).then((b) => {
+      void budgetsFor(clientes.map((c) => c.rawId), f).then((b) => {
         if (my !== run.current) return;
         setLinhas((cur) => {
           const next = (cur ?? []).map((l) => ({ ...l, dailyBudget: l.id in b ? b[l.id] : (l.dailyBudget ?? null) }));

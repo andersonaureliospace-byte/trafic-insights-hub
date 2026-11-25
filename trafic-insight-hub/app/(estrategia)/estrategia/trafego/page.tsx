@@ -95,13 +95,13 @@ export default function TrafegoPage() {
   }, [ids, loadAlertas]);
 
   // Etapa 324: otimizações (quem mexeu na conta e quando) — junto do Atualizar e ao abrir Ontem × hoje.
-  const loadOtim = useCallback(async (accountIds: string[]) => {
+  const loadOtim = useCallback(async (accountIds: string[], force = false) => {
     if (accountIds.length === 0) return;
     try {
       const d = await fetch("/api/estrategia/otimizacoes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accountIds }),
+        body: JSON.stringify({ accountIds, force }),
       }).then((r) => r.json());
       if (d.error) return;
       setSrv((cur) => {
@@ -115,9 +115,10 @@ export default function TrafegoPage() {
     }
   }, []);
 
-  function refresh() {
-    void reload();
-    if (ids) void loadOtim(ids.split(","));
+  // Etapa 350: force = clique no botão (número guardado de até 3 min); automático aceita até 15 min.
+  function refresh(force = false) {
+    void reload(force);
+    if (ids) void loadOtim(ids.split(","), force);
     // Etapa 341: na aba Alertas, o saldo/pagamento/erros também entram no Atualizar
     if (tab === "alertas" && ids) void loadAlertas(ids.split(","));
   }
@@ -170,7 +171,7 @@ export default function TrafegoPage() {
   return (
     <div className="flex flex-col">
       <PageHeader title="Acompanhamento" sub={`Visão das contas da carteira${atLabel ? ` · ${atLabel}` : ""}`}>
-        <Btn primary onClick={refresh} disabled={loading}>
+        <Btn primary onClick={() => refresh(true)} disabled={loading}>
           {loading ? "Atualizando…" : "Atualizar"}
         </Btn>
       </PageHeader>
@@ -181,7 +182,7 @@ export default function TrafegoPage() {
             <b>Números desatualizados</b> — última atualização {new Date(at).toDateString() === new Date(agora).toDateString() ? `às ${hhmm(at)}` : `em ${new Date(at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} às ${hhmm(at)}`}
             {" "}(há {fmtIdade(agora - at)}). O atrasado/adiantado e o CPA podem não bater com a Meta.
           </span>
-          <Btn primary onClick={refresh} disabled={loading}>
+          <Btn primary onClick={() => refresh(true)} disabled={loading}>
             {loading ? "Atualizando…" : "Atualizar agora"}
           </Btn>
         </div>

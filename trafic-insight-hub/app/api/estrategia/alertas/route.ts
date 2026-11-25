@@ -3,7 +3,8 @@ import { requireUser, getUserMetaToken } from "@/lib/current-user";
 import { checkLowBalances, effectiveBalance } from "@/lib/alerts/balance";
 import { getAdAccounts } from "@/lib/meta/insights";
 import { checkPaymentErrors } from "@/lib/alerts/payment";
-import { activitiesForAccounts } from "@/lib/estrategia/activities";
+import { activitiesForAccounts, type ActivityItem } from "@/lib/estrategia/activities";
+import { withLiveCache, LIVE_MAX_AGE_AUTO_MS } from "@/lib/meta/live-cache";
 
 // Etapa 238 (Hub estratégico → Tráfego → Alertas): junta numa chamada os alertas que vêm do servidor.
 //   saldo baixo e erro de pagamento: mesma checagem dos avisos automáticos, só que SEM mandar nada no WhatsApp;
@@ -33,7 +34,11 @@ export async function POST(request: Request) {
         .from("audit_location_status")
         .select("ad_account_id, adset_name, detail, checked_at")
         .eq("user_id", user.id),
-      activitiesForAccounts(token, ids),
+      // Etapa 350: otimizações do guardado compartilhado (o mesmo da coluna Otimização), Meta só pra conta com histórico velho
+      withLiveCache<ActivityItem[]>(supabase, user.id, "otim", ids, LIVE_MAX_AGE_AUTO_MS, async (miss) => {
+        const a = await activitiesForAccounts(token, miss);
+        return { data: new Map(Object.entries(a.byAccount).map(([k, v]) => [norm(k), v])), failed: a.failed.map(norm) };
+      }).then((r) => ({ byAccount: Object.fromEntries(r.data), failed: r.failed })),
     ]);
 
     // Etapa 249: saldo de TODAS as contas com limite configurado (pré-paga/híbrida); quem está abaixo vem com low = true.
