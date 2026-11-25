@@ -73,6 +73,9 @@ export async function PUT(request: Request) {
     // Etapa 352: gestor só grava as preferências dele mesmo (no login dele)
     const ctx = await getHubCtx();
     if (ctx.isGestor && !GESTOR_PROPRIAS.has(key)) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
+    // Etapa 353: liga/pausa e regras das automações são só do master (estrategista configura os destinos em Conexões → Avisos)
+    if (user.app_metadata?.hub_role === "estrategista" && (key === SWITCHES_PREF_KEY || key === AUDIT_PREF_KEY))
+      return NextResponse.json({ error: "Só o master mexe nas Automações." }, { status: 403 });
     const { error } = await supabase
       .from("user_ui_prefs")
       .upsert({ user_id: user.id, pref_key: key, pref_value: body.value ?? null }, { onConflict: "user_id,pref_key" });

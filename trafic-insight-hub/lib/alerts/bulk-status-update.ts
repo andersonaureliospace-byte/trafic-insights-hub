@@ -30,6 +30,7 @@ import { registrarPrioridades } from "@/lib/estrategia/prioridade-hist";
 import { isInauguracao } from "@/lib/format";
 import { publishAlert } from "@/lib/alerts/notifications";
 import { describeAsanaSync, syncAsanaPriorities, type AsanaSyncSummary } from "@/lib/asana/priority-sync";
+import { withAsanaFor } from "@/lib/asana/scope";
 
 import { inactiveAccountIds } from "@/lib/accounts/inactive";
 type Db = Awaited<ReturnType<typeof createClient>>;
@@ -232,9 +233,9 @@ export async function checkAndUpdateBulkStatus(
   let asana: AsanaSyncSummary | undefined;
   if (opts.send && reportable.length > 0) {
     try {
-      asana = await syncAsanaPriorities(
-        reportable.filter((r) => r.to).map((r) => ({ clientName: r.clientName, priority: r.to as string })),
-      );
+      // Etapa 353: Asana (token + seções) do estrategista dono dessa carteira
+      const itens = reportable.filter((r) => r.to).map((r) => ({ clientName: r.clientName, priority: r.to as string }));
+      asana = await withAsanaFor(db as never, userId, () => syncAsanaPriorities(itens));
     } catch (e) {
       asana = { configured: true, updated: [], unchanged: 0, notFound: [], ambiguous: [], errors: [(e as Error).message] };
     }

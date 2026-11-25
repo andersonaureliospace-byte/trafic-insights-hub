@@ -81,6 +81,18 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // Etapa 353: ESTRATEGISTA (criado pelo master) — tudo do Hub, menos as Automações (só o master configura).
+  if (user && user.app_metadata?.hub_role === "estrategista") {
+    const soMaster = ["/estrategia/configuracoes/automacoes", "/api/estrategia/auditorias", "/api/automation-runs", "/api/standby"];
+    if (soMaster.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
+      if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Só o master mexe nas Automações." }, { status: 403 });
+      const url = request.nextUrl.clone();
+      url.pathname = "/estrategia/configuracoes";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+  }
+
   if (user && OPERATIONAL_STANDBY && STANDBY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     const url = request.nextUrl.clone();
     url.pathname = "/estrategia/trafego";

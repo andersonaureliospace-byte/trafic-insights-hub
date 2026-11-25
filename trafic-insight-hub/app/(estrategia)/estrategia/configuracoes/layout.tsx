@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
+import { useEstr } from "@/components/estrategia/shell";
 
 // Configurações do Hub estratégico: Cobranças (antes Alertas), Clientes, Gestores, Automações e Conexões numa aba só (menu de cima).
 const TABS = [
@@ -16,11 +17,14 @@ const TABS = [
 
 export default function ConfiguracoesLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { role } = useEstr();
+  // Etapa 353: Automações é só do master
+  const tabs = TABS.filter((t) => !(role === "estrategista" && t.href.endsWith("/automacoes")));
   return (
     <div className="flex flex-col">
       <div className="border-b border-zinc-200 bg-white/60 px-4 lg:px-6 dark:border-white/10 dark:bg-white/[0.02]">
         <nav aria-label="Configurações" className="flex gap-1 overflow-x-auto">
-          {TABS.map((t) => {
+          {tabs.map((t) => {
             const on = pathname === t.href || pathname.startsWith(`${t.href}/`);
             return (
               <Link

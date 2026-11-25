@@ -1,5 +1,6 @@
 // Etapa 238: leitura do liga/pausa das automações pelos hooks do n8n (servidor). Regras em automation-switches-shared.ts.
 import { createServiceClient } from "@/lib/supabase/server";
+import { getMasterId } from "@/lib/master";
 import { isEnabled, SWITCHES_PREF_KEY, type Switches } from "@/lib/automation-switches-shared";
 
 export { DEFAULT_PAUSED, isEnabled, SWITCHES_PREF_KEY, type Switches } from "@/lib/automation-switches-shared";
@@ -9,7 +10,11 @@ export { DEFAULT_PAUSED, isEnabled, SWITCHES_PREF_KEY, type Switches } from "@/l
 export async function readSwitchesService(): Promise<Switches> {
   try {
     const db = createServiceClient();
-    const { data, error } = await db.from("user_ui_prefs").select("pref_value").eq("pref_key", SWITCHES_PREF_KEY).limit(1);
+    // Etapa 353: vale o liga/pausa do master (com vários logins, "a primeira linha" podia ser de outro)
+    const master = await getMasterId(db);
+    let q = db.from("user_ui_prefs").select("pref_value").eq("pref_key", SWITCHES_PREF_KEY);
+    if (master) q = q.eq("user_id", master);
+    const { data, error } = await q.limit(1);
     if (error) throw error;
     const v = data?.[0]?.pref_value;
     return v && typeof v === "object" ? (v as Switches) : {};

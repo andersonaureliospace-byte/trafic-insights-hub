@@ -5,6 +5,8 @@ import { jobsOfCheck, type CheckId } from "@/lib/estrategia/auditorias/config";
 import { chainDisparos, hasStalledDisparo } from "@/lib/estrategia/disparos";
 import { liberarDisparosAgendados } from "@/lib/estrategia/disparos-agendados";
 import { enviarAgendados } from "@/lib/feedbacks/agendados";
+import { listOwners } from "@/lib/master";
+import { withAsanaFor } from "@/lib/asana/scope";
 
 // Etapa 257: batida das Auditorias do Hub estratégico. O n8n chama a cada 15 min (fluxo "Auditorias — Hub estratégico");
 // o Hub decide o que rodar pelo horário de Brasília (agenda em lib/estrategia/auditorias/config.ts). Protegido pelo
@@ -17,11 +19,36 @@ export async function POST(request: Request) {
   if (request.headers.get("x-webhook-secret") !== secret) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const db = createServiceClient();
-  const { data: inst } = await db.from("whatsapp_instances").select("user_id").limit(1);
-  let userId = (inst?.[0]?.user_id as string | undefined) ?? null;
-  if (!userId) {
-    const { data: b } = await db.from("account_bindings").select("user_id").limit(1);
-    userId = (b?.[0]?.user_id as string | undefined) ?? null;
+  // Etapa 353: uma batida por estrategista (cada um com a carteira, o WhatsApp e os gestores dele).
+  // O n8n chama sem corpo → roda o master aqui e dispara uma chamada separada pra cada outro estrategista
+  // ({ userId }), pra cada um ter o próprio tempo de execução.
+  const body = (await request.json().catch(() => ({}))) as { only?: string; userId?: string };
+  const owners = await listOwners(db);
+  let userId: string | null = null;
+  if (typeof body.userId === "string") {
+    if (!owners.includes(body.userId)) return NextResponse.json({ error: "Estrategista não encontrado." }, { status: 404 });
+    userId = body.userId;
+  } else {
+    userId = owners[0] ?? null;
+    if (!userId) {
+      // antes de cadastrar o token da Meta: como era (dono da instância de WhatsApp)
+      const { data: inst } = await db.from("whatsapp_instances").select("user_id").limit(1);
+      userId = (inst?.[0]?.user_id as string | undefined) ?? null;
+    }
+    const outros = owners.slice(1);
+    if (outros.length > 0) {
+      const origin = new URL(request.url).origin;
+      after(async () => {
+        for (const id of outros) {
+          await fetch(`${origin}/api/public/hooks/estr-tick`, {
+            method: "POST",
+            headers: { "x-webhook-secret": secret, "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: id, ...(body.only ? { only: body.only } : {}) }),
+            signal: AbortSignal.timeout(4000),
+          }).catch(() => {});
+        }
+      });
+    }
   }
   if (!userId) return NextResponse.json({ error: "Nenhum usuário no Hub." }, { status: 500 });
 
@@ -37,9 +64,9 @@ export async function POST(request: Request) {
     });
     // Corpo opcional { "only": "prioridade" } roda só essa conferência agora, fora da agenda (refazer manual).
     // Sem corpo (o n8n a cada 15 min) continua igual: o Hub decide pelo horário.
-    const body = (await request.json().catch(() => ({}))) as { only?: string };
     const only = typeof body.only === "string" && jobsOfCheck(body.only).length > 0 ? (body.only as CheckId) : undefined;
-    const report = await runTick(db, userId, only ? { only } : {});
+    const uid = userId;
+    const report = await withAsanaFor(db, uid, () => runTick(db, uid, only ? { only } : {}));
     return NextResponse.json({ ok: true, ...report });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

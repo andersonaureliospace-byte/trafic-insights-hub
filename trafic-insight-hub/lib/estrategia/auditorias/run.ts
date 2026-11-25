@@ -34,11 +34,20 @@ import { runPlano } from "./plano";
 import { runOtimizacao } from "./otimizacao";
 import { tarefasDeAlertas } from "@/lib/estrategia/demandas";
 import { calendarSP } from "@/lib/estrategia/calc";
+import { getMasterId } from "@/lib/master";
 import type { OtimFaixa } from "./config";
 
+// Etapa 353: as regras (liga/desliga, privado/grupo, horários dos resumos) são as do master e valem pra todos;
+// de cada estrategista vêm só os destinos dele — grupo padrão e WhatsApp (Configurações → Conexões → Avisos).
 export async function loadConfig(db: SupabaseClient, userId: string): Promise<AuditConfig> {
-  const { data } = await db.from("user_ui_prefs").select("pref_value").eq("user_id", userId).eq("pref_key", AUDIT_PREF_KEY).maybeSingle();
-  return normalizeConfig(data?.pref_value);
+  const master = await getMasterId(db);
+  const read = async (id: string) =>
+    normalizeConfig((await db.from("user_ui_prefs").select("pref_value").eq("user_id", id).eq("pref_key", AUDIT_PREF_KEY).maybeSingle()).data?.pref_value);
+  if (!master || master === userId) return read(userId);
+  const [regras, meu] = await Promise.all([read(master), read(userId)]);
+  const checks: AuditConfig["checks"] = {};
+  for (const [id, c] of Object.entries(regras.checks)) checks[id as keyof AuditConfig["checks"]] = { on: c?.on, direto: c?.direto }; // sem os grupos do master
+  return { checks, defaultGroup: meu.defaultGroup, digestTimes: regras.digestTimes, myWhatsapp: meu.myWhatsapp };
 }
 
 // Carteira do Hub estratégico: contas exibidas, sem as desativadas/arquivadas. Ordem fixa (pelo id) = lotes estáveis.

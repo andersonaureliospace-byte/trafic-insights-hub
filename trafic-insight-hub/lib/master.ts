@@ -7,8 +7,11 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 let cache: { id: string | null; at: number } | null = null;
 
-export async function getMasterId(db: SupabaseClient = createServiceClient()): Promise<string | null> {
+// Sempre pela chave do servidor (o login de um estrategista não enxerga a linha do master e envenenaria o cache).
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export async function getMasterId(_ignored?: SupabaseClient): Promise<string | null> {
   if (cache && Date.now() - cache.at < 5 * 60_000) return cache.id;
+  const db = createServiceClient();
   let id: string | null = null;
   const { data } = await db.from("hub_members").select("user_id").eq("role", "master").limit(1);
   id = (data?.[0]?.user_id as string | undefined) ?? null;

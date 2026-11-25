@@ -44,7 +44,7 @@ const flat = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
 const SLOTS = Array.from({ length: 96 }, (_, i) => minuteToHHMM(i * 15));
 const nameOf = (id: string) => (id === "resumo" ? "Resumo enviado" : id === "custo_pausa" ? "Pausados (custo 3x)" : (CHECKS.find((c) => c.id === id)?.name ?? id));
 
-function GroupPicker({
+export function GroupPicker({
   value,
   groups,
   onLoad,
