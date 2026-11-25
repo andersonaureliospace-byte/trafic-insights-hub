@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
-import { requireUser } from "@/lib/current-user";
+import { getHubCtx, canSee } from "@/lib/hub-context";
 
 export async function GET() {
   try {
-    const { supabase, user } = await requireUser();
-    const { data, error } = await supabase.from("pix_accounts").select("*").eq("user_id", user.id);
+    // Etapa 354: gestor vê a configuração de saldo só das contas dele (da carteira do estrategista)
+    const ctx = await getHubCtx();
+    const { data, error } = await ctx.db.from("pix_accounts").select("*").eq("user_id", ctx.ownerId);
     if (error) throw error;
-    return NextResponse.json({ pixAccounts: data ?? [] });
+    return NextResponse.json({ pixAccounts: (data ?? []).filter((r) => canSee(ctx, r.ad_account_id as string)) });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }
@@ -14,12 +15,15 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const { supabase, user } = await requireUser();
+    // Etapa 354: gestor configura o saldo só das contas dele (grava na carteira do estrategista)
+    const ctx = await getHubCtx();
+    const supabase = ctx.db;
     const body = await request.json();
     const ad_account_id = String(body.ad_account_id ?? "").trim();
     if (!ad_account_id) throw new Error("ad_account_id é obrigatório.");
+    if (!canSee(ctx, ad_account_id)) return NextResponse.json({ error: "Sem permissão pra essa conta." }, { status: 403 });
 
-    const patch: Record<string, unknown> = { user_id: user.id, ad_account_id, updated_at: new Date().toISOString() };
+    const patch: Record<string, unknown> = { user_id: ctx.ownerId, ad_account_id, updated_at: new Date().toISOString() };
     const WHITELIST = [
       "payment_type",
       "base_amount",

@@ -67,10 +67,13 @@ export async function proxy(request: NextRequest) {
     const method = request.method.toUpperCase();
     const okApi =
       (method === "GET" && ["/api/selected-accounts", "/api/account-bindings", "/api/analysis/offers"].includes(pathname)) ||
+      // Etapa 354: Cobranças (saldo) das contas dele — ver e configurar
+      ((method === "GET" || method === "PATCH") && pathname === "/api/pix-accounts") ||
+      (method === "POST" && pathname === "/api/estrategia/alertas") ||
       ((method === "GET" || method === "PUT") && pathname === "/api/estrategia/prefs") ||
       (method === "POST" &&
         ["/api/estrategia/hoje", "/api/estrategia/orcamento", "/api/estrategia/otimizacoes", "/api/acessos/trocar-senha"].includes(pathname));
-    const okPage = pathname === "/estrategia/trafego" || pathname === "/trocar-senha";
+    const okPage = pathname === "/estrategia/trafego" || pathname === "/estrategia/configuracoes/cobrancas" || pathname === "/trocar-senha";
     if (pathname.startsWith("/api/")) {
       if (!okApi) return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
     } else if (!okPage) {

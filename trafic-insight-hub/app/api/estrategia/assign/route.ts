@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
+import { createServiceClient } from "@/lib/supabase/server";
 
 // Etapa 239 (Hub estratégico → Configurações → Gestores): responsável em massa.
 //   { accountIds: [...], responsible: "Nome" | null } → coloca (ou tira) o responsável dessas contas;
@@ -21,6 +22,23 @@ export async function POST(request: Request) {
         .eq("responsible", body.renameFrom.trim())
         .select("ad_account_id");
       if (error) throw error;
+      // Etapa 354: o acesso do gestor acompanha — renomeou: o login passa a valer pro nome novo;
+      // excluiu o gestor: o login dele é apagado (não entra mais).
+      try {
+        const db = createServiceClient();
+        const { data: logins } = await db
+          .from("hub_members")
+          .select("user_id")
+          .eq("owner_id", user.id)
+          .eq("role", "gestor")
+          .ilike("display_name", body.renameFrom.trim());
+        for (const l of logins ?? []) {
+          if (responsible) await db.from("hub_members").update({ display_name: responsible }).eq("user_id", l.user_id);
+          else await db.auth.admin.deleteUser(l.user_id as string);
+        }
+      } catch (e) {
+        console.error("assign: acesso do gestor", (e as Error).message);
+      }
       return NextResponse.json({ updated: (data ?? []).length });
     }
 

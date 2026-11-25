@@ -101,6 +101,84 @@ export async function POST(request: Request) {
     if (acc.role !== "master" && !(t.role === "gestor" && t.owner_id === acc.ownerId))
       return NextResponse.json({ error: "Sem permissão." }, { status: 403 });
 
+    // Etapa 354: TROCAR O GESTOR — outra pessoa assume a carteira desse gestor.
+    //   novo nome + novo e-mail → cria o login novo (senha provisória, troca no 1º acesso), passa TODAS as contas do
+    //   nome antigo pro novo, troca o nome na lista de Gestores e apaga o login antigo (o e-mail antigo não entra mais).
+    //   Mesmo e-mail → só troca o nome (contas, lista de Gestores e acesso acompanham).
+    if (body.action === "substituir") {
+      if (t.role !== "gestor") return NextResponse.json({ error: "Só dá pra trocar gestor." }, { status: 400 });
+      const novoNome = String(body.name ?? "").trim();
+      const novoEmail = String(body.email ?? "").trim().toLowerCase();
+      const novoWa = String((body as { whatsapp?: string }).whatsapp ?? "").replace(/\D/g, "");
+      const antigo = (t.display_name ?? "").trim();
+      if (!novoNome) return NextResponse.json({ error: "Informe o nome do novo gestor." }, { status: 400 });
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(novoEmail)) return NextResponse.json({ error: "E-mail inválido." }, { status: 400 });
+      const owner = t.owner_id;
+
+      // lista de Gestores do dono da carteira
+      const { data: pref } = await db.from("user_ui_prefs").select("pref_value").eq("user_id", owner).eq("pref_key", "gestores").maybeSingle();
+      const lista = (Array.isArray(pref?.pref_value) ? pref?.pref_value : []) as Array<string | { name?: string; whatsapp?: string; tag?: string }>;
+      const nomeDe = (g: (typeof lista)[number]) => String(typeof g === "string" ? g : (g?.name ?? "")).trim();
+      if (novoNome.toLowerCase() !== antigo.toLowerCase() && lista.some((g) => nomeDe(g).toLowerCase() === novoNome.toLowerCase()))
+        return NextResponse.json({ error: `Já existe um gestor chamado ${novoNome}.` }, { status: 400 });
+
+      const mesmoEmail = novoEmail === t.email.toLowerCase();
+      let password: string | null = null;
+      let novoId = t.user_id;
+      if (!mesmoEmail) {
+        password = tempPassword();
+        const { data: created, error } = await db.auth.admin.createUser({
+          email: novoEmail,
+          password,
+          email_confirm: true,
+          app_metadata: { must_change_password: true, hub_role: "gestor" },
+        });
+        if (error || !created.user) {
+          const msg = /already|registered|exists/i.test(error?.message ?? "") ? "Esse e-mail já tem login no Hub." : (error?.message ?? "Falha ao criar.");
+          return NextResponse.json({ error: msg }, { status: 400 });
+        }
+        novoId = created.user.id;
+        const { error: insErr } = await db.from("hub_members").insert({
+          user_id: novoId,
+          owner_id: owner,
+          role: "gestor",
+          email: novoEmail,
+          display_name: novoNome,
+          must_change_password: true,
+          created_by: acc.user.id,
+        });
+        if (insErr) {
+          await db.auth.admin.deleteUser(novoId).catch(() => {});
+          throw new Error(insErr.message);
+        }
+      } else {
+        await db.from("hub_members").update({ display_name: novoNome }).eq("user_id", t.user_id);
+      }
+
+      // contas: tudo que era do nome antigo vai pro novo
+      let contas = 0;
+      if (antigo && antigo.toLowerCase() !== novoNome.toLowerCase()) {
+        const { data: up } = await db
+          .from("account_bindings")
+          .update({ responsible: novoNome, updated_at: new Date().toISOString() })
+          .eq("user_id", owner)
+          .ilike("responsible", antigo)
+          .select("ad_account_id");
+        contas = (up ?? []).length;
+      }
+      // lista de Gestores: troca o nome (WhatsApp novo, se informado; a identificação da nomenclatura continua)
+      const novaLista = lista.map((g) => {
+        if (nomeDe(g).toLowerCase() !== antigo.toLowerCase()) return g;
+        const base = typeof g === "string" ? { name: g, whatsapp: "", tag: "" } : g;
+        return { ...base, name: novoNome, whatsapp: mesmoEmail ? (novoWa || base.whatsapp || "") : novoWa };
+      });
+      await db.from("user_ui_prefs").upsert({ user_id: owner, pref_key: "gestores", pref_value: novaLista }, { onConflict: "user_id,pref_key" });
+
+      // login antigo apagado (o e-mail antigo não entra mais)
+      if (!mesmoEmail) await db.auth.admin.deleteUser(t.user_id).catch((e: Error) => console.error("apagar login antigo", e.message));
+      return NextResponse.json({ ok: true, email: novoEmail, ...(password ? { password } : {}), contas });
+    }
+
     if (body.action === "nova-senha") {
       const password = tempPassword();
       const { error } = await db.auth.admin.updateUserById(userId, {

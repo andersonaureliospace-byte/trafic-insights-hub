@@ -19,7 +19,10 @@ export default function ConfiguracoesLayout({ children }: { children: ReactNode 
   const pathname = usePathname();
   const { role } = useEstr();
   // Etapa 353: Automações é só do master
-  const tabs = TABS.filter((t) => !(role === "estrategista" && t.href.endsWith("/automacoes")));
+  // Etapa 354: gestor só tem Cobranças (das contas dele)
+  const tabs = TABS.filter((t) =>
+    role === "gestor" ? t.href.endsWith("/cobrancas") : !(role === "estrategista" && t.href.endsWith("/automacoes")),
+  );
   return (
     <div className="flex flex-col">
       <div className="border-b border-zinc-200 bg-white/60 px-4 lg:px-6 dark:border-white/10 dark:bg-white/[0.02]">

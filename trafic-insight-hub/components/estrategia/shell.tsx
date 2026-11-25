@@ -162,7 +162,9 @@ export function EstrategiaShell({
             <span className="mr-2 text-sm font-bold tracking-tight whitespace-nowrap text-blue-700 dark:text-blue-400">Trafic Insight Hub</span>
             <nav className="flex items-center gap-0.5">
               <Item href="/estrategia/trafego">Acompanhamento</Item>
-              {isGestor ? null : (
+              {isGestor ? (
+                <Item href="/estrategia/configuracoes/cobrancas">Cobranças</Item>
+              ) : (
                 <>
                   <Item href="/estrategia/feedback">Feedback</Item>
                   <Item href="/estrategia/disparos">Disparos</Item>

@@ -85,7 +85,7 @@ export default function TrafegoPage() {
   }, []);
   // Etapa 247/309: usa o que foi guardado hoje; buscar de novo só pelo "Atualizar alertas" (Configurações → Alertas).
   useEffect(() => {
-    if (!ids || isGestor) return;
+    if (!ids) return; // Etapa 354: gestor também busca (linha vermelha de saldo/pagamento das contas dele)
     const c = readCache<AlertasServer>("estr_alertas_v1");
     if (c && new Date(c.at).toDateString() === new Date().toDateString()) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- alertas guardados neste navegador
@@ -93,7 +93,7 @@ export default function TrafegoPage() {
       return;
     }
     void loadAlertas(ids.split(","));
-  }, [ids, loadAlertas, isGestor]);
+  }, [ids, loadAlertas]);
 
   // Etapa 324: otimizações (quem mexeu na conta e quando) — junto do Atualizar e ao abrir Ontem × hoje.
   const loadOtim = useCallback(async (accountIds: string[], force = false) => {

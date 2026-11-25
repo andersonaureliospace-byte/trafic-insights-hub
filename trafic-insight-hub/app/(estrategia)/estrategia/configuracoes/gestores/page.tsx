@@ -112,7 +112,7 @@ function GestorRow({
       {confirm ? (
         <>
           <span className="w-full text-xs text-zinc-500 sm:w-auto">
-            {count > 0 ? `As ${count} contas ficam sem responsável.` : "Excluir este gestor?"}
+            {count > 0 ? `As ${count} contas ficam sem responsável e o acesso dele é apagado.` : "Excluir este gestor? O acesso dele também é apagado."}
           </span>
           <Btn small onClick={() => setConfirm(false)}>Cancelar</Btn>
           <button
@@ -233,7 +233,8 @@ export default function GestoresPage() {
   async function deleteGestor(g: Gestor) {
     setBusy(true);
     try {
-      if ((countBy.get(g.name) ?? 0) > 0) await assign({ renameFrom: g.name, responsible: null });
+      // Etapa 354: sempre chama (mesmo sem contas) — também apaga o login do gestor excluído
+      await assign({ renameFrom: g.name, responsible: null });
       await saveGestores(gestoresFull.filter((x) => x.name !== g.name));
       if (filter === g.name) setFilter("");
       if (target === g.name) setTarget("");

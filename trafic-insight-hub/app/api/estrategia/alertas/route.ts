@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireUser, getUserMetaToken } from "@/lib/current-user";
+import { getHubCtx, allowedIds } from "@/lib/hub-context";
 import { checkLowBalances, effectiveBalance } from "@/lib/alerts/balance";
 import { getAdAccounts } from "@/lib/meta/insights";
 import { checkPaymentErrors } from "@/lib/alerts/payment";
@@ -17,10 +17,13 @@ const norm = (id: string) => id.replace(/^act_/, "");
 
 export async function POST(request: Request) {
   try {
-    const { supabase, user } = await requireUser();
-    const token = await getUserMetaToken(supabase, user.id);
+    // Etapa 354: gestor também usa (Cobranças e a linha vermelha do Acompanhamento) — só as contas dele
+    const ctx = await getHubCtx();
+    const supabase = ctx.db as never as Awaited<ReturnType<typeof import("@/lib/supabase/server").createClient>>;
+    const user = { id: ctx.ownerId };
+    const token = await ctx.token();
     const body = (await request.json().catch(() => ({}))) as { accountIds?: unknown };
-    const ids = Array.isArray(body.accountIds) ? body.accountIds.filter((x): x is string => typeof x === "string").map(norm) : [];
+    const ids = allowedIds(ctx, Array.isArray(body.accountIds) ? body.accountIds.filter((x): x is string => typeof x === "string").map(norm) : []);
     const wanted = new Set(ids);
 
     const [bal, pay, errRows, locRows, acts] = await Promise.all([
@@ -35,7 +38,7 @@ export async function POST(request: Request) {
         .select("ad_account_id, adset_name, detail, checked_at")
         .eq("user_id", user.id),
       // Etapa 350: otimizações do guardado compartilhado (o mesmo da coluna Otimização), Meta só pra conta com histórico velho
-      withLiveCache<ActivityItem[]>(supabase, user.id, "otim", ids, LIVE_MAX_AGE_AUTO_MS, async (miss) => {
+      withLiveCache<ActivityItem[]>(ctx.db, ctx.ownerId, "otim", ids, LIVE_MAX_AGE_AUTO_MS, async (miss) => {
         const a = await activitiesForAccounts(token, miss);
         return { data: new Map(Object.entries(a.byAccount).map(([k, v]) => [norm(k), v])), failed: a.failed.map(norm) };
       }).then((r) => ({ byAccount: Object.fromEntries(r.data), failed: r.failed })),

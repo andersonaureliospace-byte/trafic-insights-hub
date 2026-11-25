@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PageHeader, useEstr } from "@/components/estrategia/shell";
+import { PageHeader, parseGestores, type Gestor } from "@/components/estrategia/shell";
 import { Btn, Card, Pill } from "@/components/estrategia/ui";
 
 // Etapa 351: Configurações → Acessos. Cada pessoa entra com o próprio e-mail e uma senha provisória;
@@ -28,7 +28,7 @@ async function call(body: Record<string, unknown>) {
     body: JSON.stringify(body),
   }).then((r) => r.json());
   if (d.error) throw new Error(d.error);
-  return d as { ok: true; email?: string; password?: string };
+  return d as { ok: true; email?: string; password?: string; contas?: number };
 }
 
 function Senha({ email, password, onClose }: { email: string; password: string; onClose: () => void }) {
@@ -68,10 +68,47 @@ function Status({ m }: { m: Member }) {
   return <Pill tone="ok">Ativo</Pill>;
 }
 
+// Etapa 354: outra pessoa assume esse gestor — novo nome + novo e-mail. As contas vão todas pro novo,
+// o login antigo é apagado e o novo entra com senha provisória.
+function TrocarGestor({ m, busy, run, onClose }: { m: Member; busy: boolean; run: (body: Record<string, unknown>) => void; onClose: () => void }) {
+  const [name, setName] = useState(m.display_name ?? "");
+  const [email, setEmail] = useState("");
+  const [wa, setWa] = useState("");
+  return (
+    <div className="flex w-full flex-col gap-2 rounded-lg border border-blue-400/40 bg-blue-500/5 p-3">
+      <div className="text-sm font-semibold">Trocar o gestor de {m.display_name}</div>
+      <p className="text-xs text-zinc-500">
+        Todas as contas de {m.display_name} passam pro novo gestor. O e-mail antigo ({m.email}) deixa de entrar. O novo entra com senha provisória
+        e cria a dele no primeiro acesso.
+      </p>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <input aria-label="Nome do novo gestor" placeholder="Nome do novo gestor" value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+        <input type="email" aria-label="E-mail do novo gestor" placeholder="E-mail do novo gestor" value={email} onChange={(e) => setEmail(e.target.value)} className={inputCls} />
+        <input inputMode="tel" aria-label="WhatsApp do novo gestor" placeholder="WhatsApp (opcional)" value={wa} onChange={(e) => setWa(e.target.value)} className={inputCls} />
+      </div>
+      <div className="flex gap-2">
+        <Btn small primary disabled={busy || !name.trim() || !email.trim()} onClick={() => run({ action: "substituir", userId: m.user_id, name, email, whatsapp: wa })}>
+          Trocar gestor
+        </Btn>
+        <Btn small onClick={onClose}>
+          Cancelar
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
 function Acoes({ m, busy, run }: { m: Member; busy: boolean; run: (body: Record<string, unknown>, confirmMsg?: string) => void }) {
   const [confirm, setConfirm] = useState(false);
+  const [trocar, setTrocar] = useState(false);
+  if (trocar) return <TrocarGestor m={m} busy={busy} run={(b) => { run(b); setTrocar(false); }} onClose={() => setTrocar(false)} />;
   return (
     <div className="flex flex-wrap items-center gap-2">
+      {m.role === "gestor" ? (
+        <Btn small disabled={busy} onClick={() => setTrocar(true)}>
+          Trocar gestor
+        </Btn>
+      ) : null}
       <Btn small disabled={busy} onClick={() => run({ action: "nova-senha", userId: m.user_id })}>
         Nova senha provisória
       </Btn>
@@ -104,7 +141,8 @@ function Acoes({ m, busy, run }: { m: Member; busy: boolean; run: (body: Record<
 }
 
 export default function AcessosPage() {
-  const { gestoresFull } = useEstr();
+  // lista de Gestores lida aqui mesmo (depois de "Trocar gestor" o nome muda e a tela já mostra o novo)
+  const [gestoresFull, setGestoresFull] = useState<Gestor[]>([]);
   const [me, setMe] = useState<{ role: Role; email: string; userId: string } | null>(null);
   const [members, setMembers] = useState<Member[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -112,11 +150,16 @@ export default function AcessosPage() {
   const [senha, setSenha] = useState<{ email: string; password: string } | null>(null);
   const [emails, setEmails] = useState<Record<string, string>>({});
   const [novoEstr, setNovoEstr] = useState({ name: "", email: "" });
+  const [info, setInfo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const d = await fetch("/api/acessos", { cache: "no-store" }).then((r) => r.json());
+      const [d, g] = await Promise.all([
+        fetch("/api/acessos", { cache: "no-store" }).then((r) => r.json()),
+        fetch("/api/estrategia/prefs?key=gestores", { cache: "no-store" }).then((r) => r.json()).catch(() => ({})),
+      ]);
       if (d.error) throw new Error(d.error);
+      setGestoresFull(parseGestores(g?.value));
       setMe(d.me);
       setMembers(d.members);
     } catch (e) {
@@ -131,9 +174,11 @@ export default function AcessosPage() {
   const run = async (body: Record<string, unknown>) => {
     setBusy(true);
     setError(null);
+    setInfo(null);
     try {
       const r = await call(body);
       if (r.password && r.email) setSenha({ email: r.email, password: r.password });
+      if (body.action === "substituir") setInfo(`Gestor trocado${typeof r.contas === "number" ? ` — ${r.contas} ${r.contas === 1 ? "conta passou" : "contas passaram"} pro novo nome` : ""}.`);
       await load();
       return true;
     } catch (e) {
@@ -154,6 +199,7 @@ export default function AcessosPage() {
       <PageHeader title="Acessos" sub="Quem entra no Hub — cada pessoa com o próprio e-mail e senha" noFilter />
       <div className="flex max-w-4xl flex-col gap-4 p-4 lg:p-6">
         {error ? <div className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-700 dark:text-red-300">{error}</div> : null}
+        {info ? <div className="rounded-lg bg-blue-500/10 px-3 py-2 text-sm text-blue-800 dark:text-blue-300">{info}</div> : null}
         {senha ? <Senha email={senha.email} password={senha.password} onClose={() => setSenha(null)} /> : null}
 
         <Card>
