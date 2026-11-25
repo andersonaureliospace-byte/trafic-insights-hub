@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { syncDescriptionsFromAsana } from "@/lib/asana/descriptions";
+import { withAsanaFor } from "@/lib/asana/scope";
 import { withRunLog } from "@/lib/automation-runs";
 
 // Etapa 115: endpoint público chamado pelo n8n a cada 30 minutos em horário comercial (seg-sex,
@@ -30,7 +31,7 @@ export const POST = withRunLog("asana-descriptions", async (request: Request) =>
   for (const cred of creds ?? []) {
     const userId = cred.user_id as string;
     try {
-      const s = await syncDescriptionsFromAsana(supabase, userId);
+      const s = await withAsanaFor(supabase, userId, () => syncDescriptionsFromAsana(supabase, userId)); // Etapa 353: Asana de cada estrategista
       results.push({ userId, configured: s.configured, checked: s.checked, updated: s.updated.length, notFound: s.notFound.length, ambiguous: s.ambiguous.length, ...(s.errors.length ? { errors: s.errors } : {}) });
     } catch (e) {
       results.push({ userId, error: (e as Error).message });

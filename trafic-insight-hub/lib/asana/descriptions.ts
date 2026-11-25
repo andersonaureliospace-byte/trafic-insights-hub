@@ -163,7 +163,7 @@ export async function sendDescriptionToAsana(
   opts: { force?: boolean } = {},
 ): Promise<SendDescriptionResult> {
   if (!asanaConfigured()) {
-    return { ok: false, code: "not_configured", message: "Falta configurar ASANA_ACCESS_TOKEN na Vercel." };
+    return { ok: false, code: "not_configured", message: "Asana não configurado (Configurações → Conexões → Asana)." };
   }
   const { data, error } = await db.from("client_descriptions").select("*").eq("user_id", userId).eq("ad_account_id", accountId).maybeSingle();
   if (error) throw error;
@@ -228,7 +228,7 @@ export async function sendHtmlToAsana(
   opts: { force?: boolean } = {},
 ): Promise<SendDescriptionResult> {
   if (!asanaConfigured()) {
-    return { ok: false, code: "not_configured", message: "Falta configurar ASANA_ACCESS_TOKEN na Vercel." };
+    return { ok: false, code: "not_configured", message: "Asana não configurado (Configurações → Conexões → Asana)." };
   }
   const { data, error } = await db.from("client_descriptions").select("*").eq("user_id", userId).eq("ad_account_id", accountId).maybeSingle();
   if (error) throw error;

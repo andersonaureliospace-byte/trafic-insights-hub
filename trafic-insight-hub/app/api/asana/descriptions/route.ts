@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/current-user";
+import { withAsanaFor } from "@/lib/asana/scope";
 import { asanaConfigured } from "@/lib/asana/priority-sync";
 import { getLiveHtml, sendDescriptionToAsana, sendHtmlToAsana, syncDescriptionsFromAsana } from "@/lib/asana/descriptions";
 
@@ -15,7 +16,7 @@ export async function GET() {
     const { supabase, user } = await requireUser();
     const { data, error } = await supabase.from("client_descriptions").select("*").eq("user_id", user.id);
     if (error) throw error;
-    return NextResponse.json({ rows: data ?? [], configured: asanaConfigured() });
+    return NextResponse.json({ rows: data ?? [], configured: await withAsanaFor(supabase as never, user.id, async () => asanaConfigured()) });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }
@@ -53,26 +54,27 @@ export async function POST(request: Request) {
     const { supabase, user } = await requireUser();
     const body = (await request.json()) as { action?: string; ad_account_id?: string; force?: boolean; html?: string };
     if (body.action === "sync") {
-      const summary = await syncDescriptionsFromAsana(supabase, user.id);
+      const summary = await withAsanaFor(supabase as never, user.id, () => syncDescriptionsFromAsana(supabase, user.id));
       return NextResponse.json({ summary });
     }
     if (body.action === "send") {
       const accountId = String(body.ad_account_id ?? "").trim();
       if (!accountId) throw new Error("ad_account_id é obrigatório.");
-      const result = await sendDescriptionToAsana(supabase, user.id, accountId, { force: Boolean(body.force) });
+      const result = await withAsanaFor(supabase as never, user.id, () => sendDescriptionToAsana(supabase, user.id, accountId, { force: Boolean(body.force) }));
       return NextResponse.json(result);
     }
     if (body.action === "html") {
       const accountId = String(body.ad_account_id ?? "").trim();
       if (!accountId) throw new Error("ad_account_id é obrigatório.");
-      const live = await getLiveHtml(supabase, user.id, accountId);
+      const live = await withAsanaFor(supabase as never, user.id, () => getLiveHtml(supabase, user.id, accountId));
       return NextResponse.json({ html: live?.html ?? null, notes: live?.notes ?? null });
     }
     if (body.action === "send_html") {
       const accountId = String(body.ad_account_id ?? "").trim();
       if (!accountId) throw new Error("ad_account_id é obrigatório.");
       if (typeof body.html !== "string" || body.html.length > 60000) throw new Error("Texto inválido ou grande demais.");
-      const result = await sendHtmlToAsana(supabase, user.id, accountId, body.html, { force: Boolean(body.force) });
+      const html = body.html;
+      const result = await withAsanaFor(supabase as never, user.id, () => sendHtmlToAsana(supabase, user.id, accountId, html, { force: Boolean(body.force) }));
       return NextResponse.json(result);
     }
     throw new Error("action inválida.");

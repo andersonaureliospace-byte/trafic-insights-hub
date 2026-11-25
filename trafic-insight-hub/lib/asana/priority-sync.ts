@@ -7,7 +7,15 @@
 // Precisa da variável ASANA_ACCESS_TOKEN (Personal Access Token do Asana) na Vercel. Sem ela,
 // a sincronização fica desligada e nada acontece (não dá erro).
 
+import { currentAsana } from "@/lib/asana/scope";
+
 const ASANA_API = "https://app.asana.com/api/1.0";
+
+// Etapa 353: token do estrategista da vez (withAsanaFor); fora dele, o da Vercel (como sempre foi).
+const asanaToken = (): string | null => {
+  const s = currentAsana();
+  return s ? s.token : (process.env.ASANA_ACCESS_TOKEN ?? null);
+};
 
 // GIDs do workspace do Anderson (os mesmos da skill asana-speed).
 export const ASANA_SECTION_GID = "1215678225685772"; // Anderson - (Denner)
@@ -37,7 +45,7 @@ export interface AsanaSyncSummary {
 }
 
 export function asanaConfigured(): boolean {
-  return Boolean(process.env.ASANA_ACCESS_TOKEN);
+  return Boolean(asanaToken());
 }
 
 // Sem maiúsculas, sem acento, sem pontuação (hífen, parênteses, colchetes) e sem espaços sobrando
@@ -64,7 +72,7 @@ export async function asanaFetch(path: string, init?: RequestInit): Promise<unkn
   const res = await fetch(`${ASANA_API}${path}`, {
     ...init,
     headers: {
-      Authorization: `Bearer ${process.env.ASANA_ACCESS_TOKEN}`,
+      Authorization: `Bearer ${asanaToken() ?? ""}`,
       "Content-Type": "application/json",
       Accept: "application/json",
       ...(init?.headers ?? {}),
@@ -86,10 +94,14 @@ export async function listMySectionGids(): Promise<string[]> {
     const json = (await asanaFetch(`/projects/${ASANA_PROJECT}/sections?opt_fields=name&limit=100`)) as {
       data?: Array<{ gid: string; name?: string }>;
     };
-    const gids = (json.data ?? []).filter((s) => SECTION_MATCH.test(s.name ?? "")).map((s) => s.gid);
-    return gids.length ? gids : [ASANA_SECTION_GID];
+    const scope = currentAsana();
+    const match = scope?.match ?? SECTION_MATCH;
+    const fallback = !scope || scope.isMaster ? [ASANA_SECTION_GID] : []; // a seção fixa é a do Anderson
+    const gids = (json.data ?? []).filter((s) => match.test(s.name ?? "")).map((s) => s.gid);
+    return gids.length ? gids : fallback;
   } catch {
-    return [ASANA_SECTION_GID];
+    const scope = currentAsana();
+    return !scope || scope.isMaster ? [ASANA_SECTION_GID] : [];
   }
 }
 
