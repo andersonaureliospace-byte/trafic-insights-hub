@@ -103,7 +103,7 @@ export const CHECKS: CheckInfo[] = [
   {
     id: "plano",
     name: "Plano de ação da manhã",
-    what: "\"Suas contas para olhar\": só o nome da conta e o motivo — CPA alto (CPL de ontem mais de R$ 4 acima do ideal) e/ou investimento abaixo da meta. Vai no WhatsApp pessoal de cada gestor (Configurações → Gestores); sem número, vai pro grupo desta linha.",
+    what: "\"Suas contas para olhar\": só o nome da conta e o motivo — CPA alto (CPL de ontem mais de R$ 4 acima do ideal) e/ou investimento abaixo/acima da meta (R$ 100 ou mais de diferença até ontem). Vai no WhatsApp pessoal de cada gestor (Configurações → Gestores); sem número, vai pro grupo desta linha.",
     when: "08h (com o retrato das ofertas das 05h20, o backup da madrugada e as pausas das 07h)",
     calls: "0 (só o que já está guardado)",
   },

@@ -34,13 +34,16 @@ const SEM = "Sem responsável";
 export function AvisarGestores({
   linhas,
   periodLabel,
+  dataAt = null,
   onClose,
 }: {
   linhas: LinhaAviso[];
   periodLabel: string;
+  dataAt?: number | null;
   onClose: () => void;
 }) {
-  const cal = useMemo(() => calendarSP(), []);
+  // Mesmo dia em que os números foram buscados (ver Acompanhamento) — o "até ontem" tem que bater com a meta do período.
+  const cal = useMemo(() => calendarSP(dataAt ? new Date(dataAt) : undefined), [dataAt]);
   const mes = useMemo(() => new Intl.DateTimeFormat("pt-BR", { month: "long", timeZone: "America/Sao_Paulo" }).format(new Date()), []);
   const [metricas, setMetricas] = useState<Set<Metrica>>(new Set(["invest", "acima", "cpa"]));
   const gestoresDasContas = useMemo(

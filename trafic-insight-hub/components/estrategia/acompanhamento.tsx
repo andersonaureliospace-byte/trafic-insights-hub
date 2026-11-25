@@ -108,6 +108,7 @@ export function Acompanhamento({
   soSensiveis = false,
   onSoSensiveis,
   nSensiveis = 0,
+  dataAt = null,
 }: {
   linhas: Linha[];
   activities: Record<string, ActivityItem[]> | null;
@@ -120,6 +121,8 @@ export function Acompanhamento({
   soSensiveis?: boolean;
   onSoSensiveis?: (v: boolean) => void;
   nSensiveis?: number;
+  // Quando os números da carteira foram buscados na Meta (o cache do navegador pode ser de outro dia).
+  dataAt?: number | null;
 }) {
   const { ui, setUi } = useEstr();
   const { options } = usePriorityOptions();
@@ -190,6 +193,9 @@ export function Acompanhamento({
   const [now] = useState(() => Date.now());
   const period = (CPA_PERIODS.some((p) => p.id === ui.period) ? ui.period : "u3") as CpaPeriod;
   const cal = useMemo(() => calendarSP(), []);
+  // Ritmo (atrasado/adiantado) usa o dia em que os números foram buscados — senão, com o cache de ontem, comparava a meta
+  // até hoje com o gasto só até anteontem e a conta aparecia "atrasada" a mais (um dia inteiro de gasto).
+  const calDados = useMemo(() => (dataAt ? calendarSP(new Date(dataAt)) : cal), [dataAt, cal]);
   // Etapa 306: período personalizado (duas datas). As datas ficam lembradas neste navegador.
   const custom = ui.period === "custom";
   const addD = (ymd: string, k: number) => {
@@ -231,7 +237,7 @@ export function Acompanhamento({
         })
       : porPrio;
     const list = found.map((l) => {
-      const r = ritmoOf(l.monthly, l.nums?.untilYesterday ?? 0, cal);
+      const r = ritmoOf(l.monthly, l.nums?.untilYesterday ?? 0, calDados);
       const sum = custom
         ? l.daily
           ? l.daily.filter((p) => p.date >= ini && p.date <= fim).reduce((a, p) => ({ spend: a.spend + p.spend, results: a.results + p.results }), { spend: 0, results: 0 })
@@ -266,7 +272,7 @@ export function Acompanhamento({
       if (i > 0) list.unshift(...list.splice(i, 1));
     }
     return list;
-  }, [linhas, period, custom, ini, fim, ui.sort, cal, activities, q, pinned, prioFiltro]);
+  }, [linhas, period, custom, ini, fim, ui.sort, cal, calDados, activities, q, pinned, prioFiltro]);
   const nPrio = (id: string) => linhas.filter((l) => (id === "__none" ? !l.priority : l.priority === id)).length;
   const pinnedVisible = !!pinned && linhas.some((l) => l.id === pinned);
 
@@ -636,6 +642,7 @@ export function Acompanhamento({
         <AvisarGestores
           linhas={rows.filter((x) => marcadas.has(x.l.id)).map((x) => ({ l: x.l, cpa: x.cpa, spend: x.spend, leads: x.leads }))}
           periodLabel={periodLabel}
+          dataAt={dataAt}
           onClose={() => setAvisar(false)}
         />
       ) : null}

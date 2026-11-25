@@ -13,6 +13,18 @@ import { Btn, hhmm } from "@/components/estrategia/ui";
 // Os Alertas saíram daqui e foram pra Configurações → Alertas; a aba "Sensíveis e críticas" virou o filtro "Só sensíveis".
 const SENS_KEY = "estr_so_sensiveis";
 
+// Atualização automática do quadro e aviso de números velhos (nov/2026).
+const AUTO_REFRESH_MS = 30 * 60_000; // em horário comercial, atualiza sozinho a cada 30 min
+const STALE_AVISO_MS = 60 * 60_000; // mais de 1 hora sem atualizar = faixa de aviso no topo
+function fmtIdade(ms: number): string {
+  const min = Math.floor(ms / 60_000);
+  if (min < 60) return `${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}`;
+  const d = Math.floor(h / 24);
+  return `${d} dia${d > 1 ? "s" : ""}`;
+}
+
 export default function TrafegoPage() {
   const { ui } = useEstr();
   const { linhas, loading, error, at, reload, refreshFicha } = useCarteira();
@@ -110,22 +122,34 @@ export default function TrafegoPage() {
     if (tab === "alertas" && ids) void loadAlertas(ids.split(","));
   }
 
-  // Etapa 341: aba Alertas aberta = atualiza sozinha a cada 30 min, das 08h às 18h (Brasília)
+  // Etapa 341 → nov/2026: com a tela aberta e visível (qualquer aba), atualiza sozinha a cada 30 min, das 07h às 20h (Brasília).
+  // Fora desse horário, ou se a aba ficou escondida, atualiza assim que voltar pra tela com os números de mais de 1 hora.
+  // Custo: ~6 pedidos à Meta por conta a cada atualização (hoje + orçamento + otimização) — por conta de anúncio isso dá
+  // ~12 por hora, bem longe do limite da Meta (que é por conta de anúncio).
   const refreshRef = useRef(refresh);
   useEffect(() => {
     refreshRef.current = refresh;
   });
+  const [agora, setAgora] = useState(() => Date.now());
   useEffect(() => {
-    if (tab !== "alertas") return;
     const check = () => {
+      setAgora(Date.now());
+      if (loading || document.visibilityState !== "visible") return;
       const h = Number(new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", hour: "2-digit", hour12: false }).format(new Date())) % 24;
-      if (h < 8 || h >= 18 || loading) return;
-      if (at == null || Date.now() - at >= 30 * 60_000) refreshRef.current();
+      const idade = at == null ? Infinity : Date.now() - at;
+      const outroDia = at != null && new Date(at).toDateString() !== new Date().toDateString();
+      const comercial = h >= 7 && h < 20;
+      if (outroDia || idade >= (comercial ? AUTO_REFRESH_MS : STALE_AVISO_MS)) refreshRef.current();
     };
     check();
     const t = setInterval(check, 60_000);
-    return () => clearInterval(t);
-  }, [tab, at, loading]);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [at, loading]);
+  const desatualizado = at != null && (agora - at >= STALE_AVISO_MS || new Date(at).toDateString() !== new Date(agora).toDateString());
   const geladeira = useGeladeira();
   const nAlertas = useMemo(
     () => visible.filter((l) => alertasDe(l, srv, undefined, at ?? 0).some((a) => !naGeladeira(geladeira.gel, l.id, a.key))).length,
@@ -144,6 +168,18 @@ export default function TrafegoPage() {
           {loading ? "Atualizando…" : "Atualizar"}
         </Btn>
       </PageHeader>
+
+      {desatualizado && at != null ? (
+        <div className="mx-4 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 lg:mx-6 dark:text-amber-300">
+          <span>
+            <b>Números desatualizados</b> — última atualização {new Date(at).toDateString() === new Date(agora).toDateString() ? `às ${hhmm(at)}` : `em ${new Date(at).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })} às ${hhmm(at)}`}
+            {" "}(há {fmtIdade(agora - at)}). O atrasado/adiantado e o CPA podem não bater com a Meta.
+          </span>
+          <Btn primary onClick={refresh} disabled={loading}>
+            {loading ? "Atualizando…" : "Atualizar agora"}
+          </Btn>
+        </div>
+      ) : null}
 
       <div className="px-4 lg:px-6">
         <div role="tablist" className="flex gap-1 border-b border-zinc-200 dark:border-white/10">
@@ -195,6 +231,7 @@ export default function TrafegoPage() {
             soSensiveis={soSens}
             onSoSensiveis={trocarSoSens}
             nSensiveis={nSens}
+            dataAt={at}
           />
         ) : tab === "graficos" ? (
           <CardsContas linhas={visible} isSens={isSens} loading={loading} activities={srv?.activities ?? null} />
