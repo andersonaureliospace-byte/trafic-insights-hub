@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     const token = await getUserMetaToken(supabase, user.id);
 
     const [{ data: bind }, { data: avisos }] = await Promise.all([
-      supabase.from("account_bindings").select("client_name, whatsapp_contact").eq("user_id", user.id).in("ad_account_id", [acc, `act_${acc}`]).limit(1).maybeSingle(),
+      supabase.from("account_bindings").select("*").eq("user_id", user.id).in("ad_account_id", [acc, `act_${acc}`]).limit(1).maybeSingle(),
       supabase
         .from("estr_digest_items")
         .select("line, created_at, sent_at, group_name, dedupe_key")
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
         whatsapp_no_anuncio: nums,
       };
     });
-    return NextResponse.json({ conta: acc, cliente: bind?.client_name ?? null, ficha: bind?.whatsapp_contact ?? null, avisos: avisos ?? [], conjuntos });
+    return NextResponse.json({ conta: acc, cliente: bind?.client_name ?? null, ficha: bind?.whatsapp_contact ?? null, ficha2: bind?.whatsapp_contact_2 ?? null, avisos: avisos ?? [], conjuntos });
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }

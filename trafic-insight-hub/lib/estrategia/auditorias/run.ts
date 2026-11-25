@@ -45,7 +45,7 @@ export async function loadConfig(db: SupabaseClient, userId: string): Promise<Au
 export async function loadCarteira(db: SupabaseClient, userId: string): Promise<Acc[]> {
   const [{ data: sel }, { data: binds }, off] = await Promise.all([
     db.from("user_selected_accounts").select("ad_account_id").eq("user_id", userId),
-    db.from("account_bindings").select("ad_account_id, client_name, responsible, cpa_target, monthly_investment, whatsapp_contact, archived, priority").eq("user_id", userId),
+    db.from("account_bindings").select("*") /* "*" = funciona antes e depois do SQL 0048 (whatsapp_contact_2) */.eq("user_id", userId),
     inactiveAccountIds(db as never, userId),
   ]);
   const norm = (s: string) => String(s).replace(/^act_/, "");
@@ -61,6 +61,7 @@ export async function loadCarteira(db: SupabaseClient, userId: string): Promise<
       cpaTarget: b?.cpa_target != null ? Number(b.cpa_target) : null,
       monthly: b?.monthly_investment != null ? Number(b.monthly_investment) : null,
       whatsapp: ((b?.whatsapp_contact as string | null) ?? "").trim() || null,
+      whatsapp2: ((b?.whatsapp_contact_2 as string | null) ?? "").trim() || null,
       priority: (b?.priority as string | null) ?? null,
     };
   });

@@ -52,6 +52,7 @@ export async function PATCH(request: Request) {
       "wa_group_name",
       "meta_leads",
       "whatsapp_contact",
+      "whatsapp_contact_2", // nov/2026: segundo WhatsApp do cliente (SQL 0048)
       "address",
       "sort_order",
       // Etapa 238: ficha do cliente no Hub estratégico.

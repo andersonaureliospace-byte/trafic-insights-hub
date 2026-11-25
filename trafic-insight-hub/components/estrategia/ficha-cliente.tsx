@@ -33,6 +33,7 @@ interface Form {
   cpaTarget: string;
   payment: string;
   whatsapp: string;
+  whatsapp2: string; // nov/2026: segundo WhatsApp (opcional)
   exame: boolean;
   promo: boolean;
   sensivel: boolean;
@@ -114,6 +115,7 @@ function formOf(d: Dados): Form {
     cpaTarget: c.cpaTarget != null ? String(c.cpaTarget) : "",
     payment: d.pay ?? "",
     whatsapp: c.whatsapp ?? "",
+    whatsapp2: c.whatsapp2 ?? "",
     exame: !!d.flags?.exame,
     promo: !!d.flags?.promo,
     sensivel: d.sens,
@@ -180,6 +182,7 @@ export function FichaCliente({
       };
       if (form.name.trim() !== cur.name) body.client_name = form.name.trim();
       if (form.whatsapp.trim() !== (cur.whatsapp ?? "")) body.whatsapp_contact = form.whatsapp.trim() || null;
+      if (form.whatsapp2.trim() !== (cur.whatsapp2 ?? "")) body.whatsapp_contact_2 = form.whatsapp2.trim() || null;
       const before = statusOf(cur);
       if (form.status !== before) {
         body.active = form.status !== "pausado";
@@ -344,6 +347,17 @@ export function FichaCliente({
                 value={form.whatsapp}
                 onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
                 className={cls("WhatsApp do cliente")}
+              />
+            </Field>
+            <div />
+            <Field label="2º WhatsApp (opcional)" htmlFor={`f-wa2-${cur.id}`}>
+              <input
+                id={`f-wa2-${cur.id}`}
+                inputMode="tel"
+                placeholder="Só se a conta anuncia com outro número"
+                value={form.whatsapp2}
+                onChange={(e) => setForm({ ...form, whatsapp2: e.target.value })}
+                className={inputCls}
               />
             </Field>
           </div>

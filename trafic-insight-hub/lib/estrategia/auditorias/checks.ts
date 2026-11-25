@@ -28,6 +28,7 @@ export interface Acc {
   cpaTarget: number | null;
   monthly: number | null;
   whatsapp: string | null;
+  whatsapp2?: string | null; // nov/2026: segundo WhatsApp da ficha (opcional) — o conjunto pode usar qualquer um dos dois
   priority?: string | null; // Etapa 261: prioridade da conta (prazo de otimização)
 }
 
@@ -200,11 +201,11 @@ export async function runExpansaoWhatsapp(
               dedupe: `whatsapp-ficha-eu:${a.id}:${day.slice(0, 7)}`, // 1x por mês por conta (Etapa 331: chave nova — agora vai pro seu WhatsApp)
             });
           }
-          if (num && a.whatsapp && !sameWhatsapp(num, a.whatsapp)) {
+          if (num && a.whatsapp && !sameWhatsapp(num, a.whatsapp) && !(a.whatsapp2 && sameWhatsapp(num, a.whatsapp2))) {
             findings.push({
               check: "whatsapp",
               acc: a,
-              line: `${nome}: WhatsApp do conjunto ${num} ≠ ficha ${a.whatsapp}`,
+              line: `${nome}: WhatsApp do conjunto ${num} ≠ ficha ${a.whatsapp}${a.whatsapp2 ? ` / ${a.whatsapp2}` : ""}`,
               dedupe: `whatsapp:${r.id}:${digits(num)}`,
             });
           }

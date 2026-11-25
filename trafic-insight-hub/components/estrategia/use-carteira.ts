@@ -21,6 +21,7 @@ export interface Cliente {
   selected: boolean; // está nas "Contas exibidas"
   clientSince: string | null;
   whatsapp: string | null;
+  whatsapp2: string | null; // nov/2026: segundo WhatsApp (opcional)
   waGroup: string | null; // Etapa 248: nome do grupo de WhatsApp do cliente (pesquisa)
 }
 
@@ -35,6 +36,7 @@ export interface Binding {
   archived?: boolean;
   client_since?: string | null;
   whatsapp_contact?: string | null;
+  whatsapp_contact_2?: string | null;
   wa_group_name?: string | null;
 }
 
@@ -55,6 +57,7 @@ export function clienteFrom(b: Binding, selected: Set<string>): Cliente {
     selected: selected.has(id),
     clientSince: b.client_since ?? null,
     whatsapp: b.whatsapp_contact ?? null,
+    whatsapp2: b.whatsapp_contact_2?.trim() || null,
     waGroup: b.wa_group_name?.trim() || null,
   };
 }
