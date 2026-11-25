@@ -131,6 +131,7 @@ export default function TrafegoPage() {
     refreshRef.current = refresh;
   });
   const [agora, setAgora] = useState(() => Date.now());
+  const ultimaTentativa = useRef(0); // se a Meta falhar, não fica tentando a cada minuto
   useEffect(() => {
     const check = () => {
       setAgora(Date.now());
@@ -139,8 +140,13 @@ export default function TrafegoPage() {
       const idade = at == null ? Infinity : Date.now() - at;
       const outroDia = at != null && new Date(at).toDateString() !== new Date().toDateString();
       const comercial = h >= 7 && h < 20;
-      if (outroDia || idade >= (comercial ? AUTO_REFRESH_MS : STALE_AVISO_MS)) refreshRef.current();
+      if (Date.now() - ultimaTentativa.current < 10 * 60_000) return;
+      if (outroDia || idade >= (comercial ? AUTO_REFRESH_MS : STALE_AVISO_MS)) {
+        ultimaTentativa.current = Date.now();
+        refreshRef.current();
+      }
     };
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- relógio da tela + atualização automática
     check();
     const t = setInterval(check, 60_000);
     document.addEventListener("visibilitychange", check);
