@@ -9,6 +9,7 @@ const TABS = [
   { href: "/estrategia/configuracoes/cobrancas", label: "Cobranças" },
   { href: "/estrategia/configuracoes/clientes", label: "Clientes" },
   { href: "/estrategia/configuracoes/gestores", label: "Gestores" },
+  { href: "/estrategia/configuracoes/acessos", label: "Acessos" }, // Etapa 351
   { href: "/estrategia/configuracoes/automacoes", label: "Automações" },
   { href: "/estrategia/configuracoes/conexoes", label: "Conexões" },
 ];

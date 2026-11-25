@@ -48,6 +48,18 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Etapa 351: senha provisória → só a tela de criar a senha (e a rota que salva) até trocar.
+  const TROCA_PATHS = ["/trocar-senha", "/api/acessos/trocar-senha"];
+  if (user && user.app_metadata?.must_change_password === true && !isPublicPath && !TROCA_PATHS.includes(pathname)) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "Crie sua senha antes de continuar." }, { status: 403 });
+    }
+    const url = request.nextUrl.clone();
+    url.pathname = "/trocar-senha";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   if (user && OPERATIONAL_STANDBY && STANDBY_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     const url = request.nextUrl.clone();
     url.pathname = "/estrategia/trafego";
