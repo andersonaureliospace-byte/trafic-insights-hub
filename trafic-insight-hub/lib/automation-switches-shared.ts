@@ -13,7 +13,7 @@ export const SWITCHES_PREF_KEY = "automation_switches";
 // Etapa 257: Hub operacional em standby — as automações antigas ficam TODAS pausadas (o que importa agora roda pelas
 // Auditorias do Hub estratégico, numa agenda só que cabe no limite da Meta). Continuam só as que alimentam o Hub:
 // backup das métricas (telas e verba mensal), saldo por fundos (saldo), ofertas e descrições do Asana (sem Meta).
-export const STANDBY_KEEP = new Set<string>(["metrics-sync", "funds-balance", "offers", "asana-descriptions"]);
+export const STANDBY_KEEP = new Set<string>(["metrics-sync", "funds-balance", "offers", "asana-descriptions", "rotina-clientes"]); // Etapa 355: + Rotina da manhã
 
 // Pausadas por padrão: tudo que é operação da conta (o estrategista não mexe mais nas contas) e avisos que o Hub
 // estratégico já mostra na tela. Ficam LIGADAS por padrão: saldo/pagamento, verificação de localização/expansão de

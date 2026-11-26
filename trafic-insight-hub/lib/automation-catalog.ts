@@ -14,6 +14,15 @@ export interface AutomationInfo {
 }
 
 export const AUTOMATION_CATALOG: AutomationInfo[] = [
+  // Etapa 355: Rotina da manhã pros grupos dos clientes (fluxo do n8n "Rotina da manhã — clientes")
+  {
+    id: "rotina-clientes",
+    group: "Avisos",
+    name: "Rotina da manhã (grupos dos clientes)",
+    when: "Seg a sex: monta às 06h30, envia a partir das 07h50 (sem feriado)",
+    what: "Mensagem curta no grupo de cada cliente, pelo cenário do dia (seg/qui todas pela prioridade; ter a sex CPA ruim ontem + críticas, sensíveis e reclamando). Fica pré-aprovada em Feedback → Programado até sair. Pausar aqui só para de montar as novas.",
+    whatsapp: true,
+  },
   // ---------- Pausas e orçamento (uma cadeia: backup → criativos → fila → conjuntos) ----------
   {
     id: "pause-backup",

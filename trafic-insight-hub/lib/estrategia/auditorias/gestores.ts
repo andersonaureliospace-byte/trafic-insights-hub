@@ -21,11 +21,19 @@ export async function loadGestorNumbers(db: SupabaseClient, userId: string): Pro
 }
 
 // Cabeçalho do gestor dentro de uma mensagem de grupo: "👤 @5563…" (marca) ou o nome, se não tiver número.
+// Etapa 356: no fim de semana só o nome, SEM marcar (@) — o grupo não notifica ninguém no sábado e no domingo.
 export function gestorHeader(nome: string, nums: Map<string, string>, mentions: string[]): string {
   const n = nums.get(nome.trim().toLowerCase());
-  if (n) {
+  if (n && !fimDeSemanaSP()) {
     mentions.push(n);
     return `👤 @${n}`;
   }
   return `👤 *${nome.toUpperCase()}*`;
+}
+
+// Etapa 356: sábado e domingo (Brasília) — as notificações que vão PRO GESTOR (privado, plano de ação, prazo de
+// otimização) ficam pausadas. O que vai pro grupo interno continua.
+export function fimDeSemanaSP(now = new Date()): boolean {
+  const wd = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", weekday: "short" }).format(now);
+  return wd === "Sat" || wd === "Sun";
 }

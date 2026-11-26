@@ -13,7 +13,7 @@ import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { groupFor, isDireto, OTIM_PRAZO, type AuditConfig, type OtimFaixa } from "./config";
 import type { Acc, CheckResult } from "./checks";
-import { ROBO, gestorHeader, loadGestorNumbers } from "./gestores";
+import { ROBO, fimDeSemanaSP, gestorHeader, loadGestorNumbers } from "./gestores";
 
 const act = (id: string) => (id.startsWith("act_") ? id : `act_${id}`);
 
@@ -32,6 +32,8 @@ export async function runOtimizacao(
   lot: { index: number; total: number },
   deadline: number,
 ): Promise<CheckResult> {
+  // Etapa 356: prazo de otimização é cobrança dos gestores — pausa no fim de semana
+  if (fimDeSemanaSP()) return { findings: [], calls: 0, skipped: 0, errors: [] };
   const errors: string[] = [];
   let calls = 0;
   const { data: sensRow } = await db.from("user_ui_prefs").select("pref_value").eq("user_id", userId).eq("pref_key", "contas_sensiveis").maybeSingle();

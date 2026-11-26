@@ -13,7 +13,7 @@ import { calendarSP, ritmoOf } from "@/lib/estrategia/calc";
 import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { groupFor, isDireto, type AuditConfig } from "./config";
-import { ROBO, gestorHeader, loadGestorNumbers } from "./gestores";
+import { ROBO, fimDeSemanaSP, gestorHeader, loadGestorNumbers } from "./gestores";
 import type { Acc } from "./checks";
 
 export const PLANO_REGRAS = {
@@ -89,6 +89,7 @@ const linha = (c: ContaPlano) => {
 const respOf = (a: Acc) => a.responsible || "Sem responsável";
 
 export async function runPlano(db: SupabaseClient, userId: string, cfg: AuditConfig, accounts: Acc[]): Promise<{ contas: number; error: string | null }> {
+  if (fimDeSemanaSP()) return { contas: 0, error: null }; // Etapa 356: plano de ação é pro gestor — pausa no fim de semana
   const contas = await buildPlano(db, userId, accounts);
   if (contas.length === 0) return { contas: 0, error: null };
   const nums = await loadGestorNumbers(db, userId);

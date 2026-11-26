@@ -10,6 +10,8 @@ export interface Agendado {
   quando: string; // ISO
   proximo?: string | null; // próximo feedback (Demandas), se marcado
   cliente?: string | null;
+  rotina?: boolean; // Etapa 355: mensagem da Rotina da manhã (sai pela fila ordenada da rotina-clientes-tick)
+  ordem?: number; // posição na fila da Rotina da manhã
 }
 
 export async function lerAgendados(db: SupabaseClient, userId: string): Promise<Agendado[]> {
@@ -28,10 +30,13 @@ export async function gravarAgendados(db: SupabaseClient, userId: string, list: 
 export async function enviarAgendados(db: SupabaseClient, userId: string): Promise<{ enviados: number; erros: string[] }> {
   const list = await lerAgendados(db, userId);
   const agora = Date.now();
-  const vencidos = list.filter((a) => Date.parse(a.quando) <= agora);
+  // Etapa 355: as da Rotina da manhã saem pela fila própria (em ordem e espaçadas). Só se ficarem 30 min atrasadas
+  // (a fila não rodou) é que este envio geral manda, pra nunca ficarem presas.
+  const vencidos = list.filter((a) => Date.parse(a.quando) <= agora && !(a.rotina && agora - Date.parse(a.quando) < 30 * 60_000));
   if (vencidos.length === 0) return { enviados: 0, erros: [] };
   // tira da fila antes de mandar (não manda duas vezes se dois ticks se cruzarem); erro fica gravado no feedback
-  await gravarAgendados(db, userId, list.filter((a) => Date.parse(a.quando) > agora));
+  const saem = new Set(vencidos.map((a) => a.id));
+  await gravarAgendados(db, userId, list.filter((a) => !saem.has(a.id)));
   let enviados = 0;
   const erros: string[] = [];
   for (const a of vencidos) {

@@ -6,7 +6,7 @@ import { requireWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { fmtCurrency } from "@/lib/format";
 import { CHECK_BY_ID, groupFor, isDireto, type AuditConfig, type CheckId } from "./config";
-import { ROBO, gestorHeader, loadGestorNumbers } from "./gestores";
+import { ROBO, fimDeSemanaSP, gestorHeader, loadGestorNumbers } from "./gestores";
 import type { Finding } from "./checks";
 
 // Etapa (nov/2026): notificação só em horário comercial (08h às 17h, Brasília). Fora disso as conferências rodam
@@ -234,7 +234,12 @@ export async function sendDigest(db: SupabaseClient, userId: string, cfg: AuditC
     if (num && isDireto(cfg, (i.check_id === "custo_pausa" ? "custo" : i.check_id) as CheckId)) porNumero.set(num, [...(porNumero.get(num) ?? []), i]);
     else restantes.push(i);
   }
+  const fds = fimDeSemanaSP(); // Etapa 356: no fim de semana nada vai pro privado do gestor (descarta, não acumula pra segunda)
   for (const [num, list] of porNumero) {
+    if (fds) {
+      await marcar(list.map((i) => i.id));
+      continue;
+    }
     try {
       for (const part of chunks(buildDigest(list, nums, true, ideals).text)) await sendText(creds, num, part);
       await marcar(list.map((i) => i.id));
@@ -317,6 +322,7 @@ export async function sendUrgent(
     else doGrupo.push(n);
   }
   for (const [num, list] of privados) {
+    if (fimDeSemanaSP()) continue; // Etapa 356: fim de semana — não manda no privado do gestor
     try {
       for (const part of chunks([cab, "", ...list.map((n) => `• ${n.client_name} — ${n.line}`)].join("\n"))) await sendText(creds0, num, part);
       enviados += list.length;

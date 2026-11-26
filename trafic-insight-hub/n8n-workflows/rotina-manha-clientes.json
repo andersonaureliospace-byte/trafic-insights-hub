@@ -1,0 +1,154 @@
+{
+  "name": "Rotina da manhã — clientes (Trafic Insight Hub)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Rotina da manhã — grupos dos clientes\n\nSeg a sex. 06h30: o Hub monta as mensagens de cada cliente (pelo cenário do dia) e deixa PROGRAMADAS em Feedback → Programado pras 07h50 — pré-aprovadas, dá pra editar ou cancelar até lá. 07h50: o Hub manda a fila em ordem (sensíveis → reclamando → inauguração → críticas → altas → médias → baixas), alguns segundos entre um grupo e outro; o que não couber continua sozinho. Feriado: o Hub não monta nada.\n\nAntes de ativar: troque COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET nos dois nós HTTP (o mesmo segredo dos outros fluxos). Fuso do workflow: America/Sao_Paulo.",
+        "height": 220,
+        "width": 700,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -260
+      ],
+      "id": "4fdd2c93-5958-47a6-a60b-03efa72170b7",
+      "name": "Leia antes de ativar"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 6 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "86acad54-39c0-4918-8fb7-2f0f17a6904a",
+      "name": "06h30 seg a sex"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://trafic-insight-hub.vercel.app/api/public/hooks/rotina-clientes-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"acao\": \"gerar\" }",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        0
+      ],
+      "id": "b3155f92-ca9c-4304-9f51-c2873849f018",
+      "name": "Montar mensagens (programa pras 7h50)",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "50 7 * * 1-5"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        200
+      ],
+      "id": "2350a6df-4df1-4014-b22b-443e71af4ba6",
+      "name": "07h50 seg a sex"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://trafic-insight-hub.vercel.app/api/public/hooks/rotina-clientes-tick",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "COLOQUE_AQUI_O_WHATSAPP_DISPATCH_SECRET"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"acao\": \"enviar\" }",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        300,
+        200
+      ],
+      "id": "d33c50a6-7e92-471f-8411-5ca2eb2dc989",
+      "name": "Enviar a fila",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 10000
+    }
+  ],
+  "connections": {
+    "06h30 seg a sex": {
+      "main": [
+        [
+          {
+            "node": "Montar mensagens (programa pras 7h50)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "07h50 seg a sex": {
+      "main": [
+        [
+          {
+            "node": "Enviar a fila",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "timezone": "America/Sao_Paulo",
+    "executionOrder": "v1"
+  },
+  "active": false
+}

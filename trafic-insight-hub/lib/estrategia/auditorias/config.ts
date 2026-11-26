@@ -261,7 +261,8 @@ export function normalizeConfig(raw: unknown): AuditConfig {
 export const isCheckOn = (cfg: AuditConfig, id: CheckId) => cfg.checks[id]?.on !== false; // ligada por padrão
 export const groupFor = (cfg: AuditConfig, id: CheckId): GroupRef | null => cfg.checks[id]?.group ?? cfg.defaultGroup;
 // O plano de ação já nasceu indo pro privado; as demais vão pro grupo até você trocar.
-export const isDireto = (cfg: AuditConfig, id: CheckId): boolean => cfg.checks[id]?.direto ?? id === "plano";
+// Etapa 355: o CPA do dia também nasce indo pro privado do gestor (não pro grupo interno).
+export const isDireto = (cfg: AuditConfig, id: CheckId): boolean => cfg.checks[id]?.direto ?? (id === "plano" || id === "cpa_dia");
 
 // Hub operacional em standby (Etapa 257): telas antigas redirecionam pro estratégico e as automações antigas ficam
 // pausadas (menos as que alimentam o Hub). Pra reativar, troque pra false.
