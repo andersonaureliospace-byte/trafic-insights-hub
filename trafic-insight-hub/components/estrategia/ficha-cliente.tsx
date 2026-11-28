@@ -9,6 +9,48 @@ import { usePriorityOptions } from "@/lib/priority-context";
 import { NotasCliente } from "./notas-cliente";
 import { calendarSP } from "@/lib/estrategia/calc";
 import { adsManagerUrl } from "@/lib/meta/ads-manager-link";
+import { GroupPicker } from "./auditorias-config";
+import type { GroupRef } from "@/lib/estrategia/auditorias/config";
+
+// Etapa 359: trocar o grupo de WhatsApp do cliente aqui na ficha.
+function TrocarGrupo({ accountId, atual, onSaved }: { accountId: string; atual: string | null; onSaved: () => void }) {
+  const [groups, setGroups] = useState<GroupRef[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const loadGroups = useCallback(() => {
+    if (groups) return;
+    fetch("/api/whatsapp/groups", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+      .then((r) => r.json())
+      .then((d) => setGroups(((d.groups ?? []) as Array<{ id: string; name: string }>).map((g) => ({ id: g.id, name: g.name }))))
+      .catch(() => setGroups([]));
+  }, [groups]);
+  async function trocar(g: GroupRef | null) {
+    if (!g) return;
+    setSalvando(true);
+    setErro(null);
+    try {
+      const d = await fetch("/api/estrategia/grupo-cliente", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accountId, group: g }),
+      }).then((r) => r.json());
+      if (d.error) throw new Error(d.error);
+      onSaved();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      {atual ? <span>{atual}</span> : <span className="font-semibold text-red-600 dark:text-red-400">sem grupo ligado</span>}
+      <GroupPicker value={null} groups={groups} onLoad={loadGroups} onChange={(g) => void trocar(g)} />
+      {salvando ? <span className="text-xs text-zinc-500">Salvando…</span> : null}
+      {erro ? <span className="text-xs text-red-600 dark:text-red-400">{erro}</span> : null}
+    </div>
+  );
+}
 
 // Etapa 296: ficha do cliente num componente só — usada em Clientes (coluna da direita) e no Acompanhamento (caixa
 // grande que abre pelo 📝). Carrega tudo sozinha a partir do id da conta. "Cliente desde" saiu; o WhatsApp passou a
@@ -391,7 +433,9 @@ export function FichaCliente({
             <dt className="text-zinc-500">Prioridade Asana</dt>
             <dd className="font-medium">{prioLabel}</dd>
             <dt className="text-zinc-500">Grupo WhatsApp</dt>
-            <dd>{dados.grupo ?? <span className="font-semibold text-red-600 dark:text-red-400">sem grupo ligado</span>}</dd>
+            <dd>
+              <TrocarGrupo accountId={cur.id} atual={dados.grupo} onSaved={() => void load()} />
+            </dd>
           </dl>
           <NotasCliente clienteId={cur.id} />
           {msg ? <div className={`text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>{msg.text}</div> : null}

@@ -21,7 +21,7 @@ import { getUserMetaToken } from "@/lib/current-user";
 import { getWhatsappInstance } from "@/lib/whatsapp/instance";
 import { sendText } from "@/lib/whatsapp/client";
 import { toWhats } from "@/lib/estrategia/auditorias/gestores";
-import { CENARIOS, MANTEVE, MUDANCA, complementoDoDia, montarMensagem, FRASE_DETALHES, FRASE_GESTOR } from "./cenarios";
+import { CENARIOS, MANTEVE, MUDANCA, SITUACAO, complementoDoDia, fraseFimDeSemana, fraseGestor, montarMensagem, FRASE_DETALHES, FRASE_GESTOR, type Cenario } from "./cenarios";
 
 export const ROTINA_TITULO = "Rotina da manhã";
 export const ROTINA_HORA_UTC = "10:50:00.000Z"; // 7h50 em Brasília (UTC-3 o ano todo)
@@ -47,8 +47,16 @@ function estado(d: Dia | undefined, alvo: number | null): Estado {
   return "neutro";
 }
 
+// Etapa 358: o fim de semana caiu bruscamente? (média de conversas de sáb+dom < metade da média de seg–sex anterior)
+export const QUEDA_FDS_LIMITE = 0.5;
+function domingoAnterior(hoje: string): string {
+  const wd = new Date(`${hoje}T12:00:00Z`).getUTCDay(); // 0 = domingo
+  return addDaysYmd(hoje, -(wd === 0 ? 7 : wd));
+}
+
 export interface Escolha {
   acc: Acc;
+  quedaFds?: boolean;
   cenario: number;
   ordem: number; // posição na fila
   motivo: string;
@@ -121,12 +129,13 @@ async function variar(itens: Array<{ id: string; texto: string }>): Promise<Map<
     const r = await llmJson<{ itens?: Array<{ id?: string; texto?: string }> }>(
       `Você reescreve mensagens curtas de WhatsApp que uma agência de tráfego manda no grupo do cliente, de manhã.
 Responda SOMENTE em JSON: {"itens":[{"id":"...","texto":"..."}]} — um item pra cada id recebido.
-Regras: mantenha o MESMO sentido e mais ou menos o mesmo tamanho (no máximo 20% maior); só troque palavras e a ordem pra
-não ficar repetitivo entre clientes; comece com uma saudação de bom dia pro grupo; português do Brasil, tom humano e próximo;
-NADA técnico (proibido CPA, CPL, lead, criativo, conjunto, campanha, público, algoritmo, métricas); não invente números,
-fatos nem promessas que não estejam no texto.`,
+Regras: o texto SEMPRE começa com "Bom dia, pessoal!" (não troque a saudação). Depois dela, mantenha o MESMO sentido
+e mais ou menos o mesmo tamanho (no máximo 20% maior); só troque algumas palavras pra não ficar igual entre clientes;
+frases simples e claras, sem expressões vagas ou sem sentido; português do Brasil, tom humano e próximo;
+NADA técnico (proibido CPA, CPL, lead, criativo, conjunto, campanha, público, algoritmo, métricas); não acrescente
+frases novas, números, fatos nem promessas que não estejam no texto.`,
       JSON.stringify(itens),
-      { temperature: 0.8, maxTokens: 4000 },
+      { temperature: 0.5, maxTokens: 4000 },
     );
     for (const it of r.itens ?? []) {
       const t = String(it.texto ?? "").trim();
@@ -134,6 +143,7 @@ fatos nem promessas que não estejam no texto.`,
       if (!base || !t) continue;
       if (t.length > base.texto.length * 1.5 + 20) continue; // passou do tamanho: fica o texto aprovado
       if (/\b(cpa|cpl|lead|criativo|conjunto|campanha|algoritmo|m[ée]trica)/i.test(t)) continue;
+      if (!t.startsWith("Bom dia, pessoal!")) continue; // saudação travada
       out.set(base.id, t);
     }
   } catch (e) {
@@ -169,7 +179,8 @@ export async function gerarRotinaClientes(
   if (feriadoEm(hoje) && !simular) return { ...vazio, pulado: `feriado (${feriadoEm(hoje)})` };
 
   const ontem = addDaysYmd(hoje, -1);
-  const desde = addDaysYmd(hoje, -Math.max(cal.day, 5)); // mês até ontem (recorde) e pelo menos 4 dias pra trás (sequência)
+  const desde = addDaysYmd(hoje, -Math.max(cal.day, 14)); // mês até ontem (recorde) e a última semana inteira (fim de semana)
+  const dom = domingoAnterior(hoje);
   const inicioHojeUtc = `${hoje}T03:00:00.000Z`;
 
   const [carteira, prefsRes, jaHoje] = await Promise.all([
@@ -254,7 +265,15 @@ export async function gerarRotinaClientes(
       semCenario++;
       continue;
     }
-    escolhas.push({ acc, cenario: esc.n, ordem: rank(acc, sens, recl), motivo: esc.motivo });
+    // queda do fim de semana (só importa na segunda)
+    let quedaFds = false;
+    if (diaSemana === 1) {
+      const res = (d: string) => diaDe(d)?.results ?? 0;
+      const fds = (res(dom) + res(addDaysYmd(dom, -1))) / 2;
+      const uteis = [2, 3, 4, 5, 6].map((k) => res(addDaysYmd(dom, -k))).reduce((a, b) => a + b, 0) / 5;
+      quedaFds = uteis >= 3 && fds < uteis * QUEDA_FDS_LIMITE;
+    }
+    escolhas.push({ acc, cenario: esc.n, ordem: rank(acc, sens, recl), motivo: esc.motivo + (quedaFds ? " · fim de semana caiu" : ""), quedaFds });
   }
   escolhas.sort((a, b) => a.ordem - b.ordem || a.acc.name.localeCompare(b.acc.name, "pt-BR"));
 
@@ -267,12 +286,18 @@ export async function gerarRotinaClientes(
     else semGrupo.push(e.acc.name);
   }
 
-  const comp = complementoDoDia({ diaSemana, diaMes: cal.day, diasNoMes: cal.daysInMonth, vesperaFeriado: !!proximoFeriado(hoje, 1) });
-  const bases = comGrupo.map((e, i) => {
-    const cen = CENARIOS[e.cenario];
-    return { id: String(i), texto: [cen.abertura, comp].filter(Boolean).join(" ") };
-  });
+  // Etapa 357: a IA varia só a abertura; o complemento do dia entra fixo (texto aprovado) e a frase do gestor vem pela situação.
+  const vespera = !!proximoFeriado(hoje, 1);
+  const compDe = (n: number, e: Escolha) =>
+    complementoDoDia({ diaSemana, diaMes: cal.day, diasNoMes: cal.daysInMonth, vesperaFeriado: vespera, contaBoa: SITUACAO[n] === "boa", quedaFds: e.quedaFds, semente: `${e.acc.id}${hoje}` });
+  const bases = comGrupo.map((e, i) => ({ id: String(i), texto: CENARIOS[e.cenario].abertura }));
   const variacoes = await variar(bases);
+  const textoFinal = (i: number) => {
+    const e = comGrupo[i];
+    const cen = CENARIOS[e.cenario];
+    const abertura = tirarFrases(variacoes.get(String(i)) ?? bases[i].texto);
+    return montarMensagem({ ...cen, abertura }, compDe(cen.n, e), fraseGestor(cen.n, `${e.acc.id}${hoje}`, abertura));
+  };
 
   if (simular) {
     return {
@@ -288,7 +313,7 @@ export async function gerarRotinaClientes(
           motivo: e.motivo,
           grupo: e.grupo.name,
           ordem: i + 1,
-          texto: montarMensagem({ ...cen, abertura: tirarFrases(variacoes.get(String(i)) ?? bases[i].texto) }, null),
+          texto: textoFinal(i),
         };
       }),
     };
@@ -301,8 +326,7 @@ export async function gerarRotinaClientes(
   for (let i = 0; i < comGrupo.length; i++) {
     const e = comGrupo[i];
     const cen = CENARIOS[e.cenario];
-    const abertura = tirarFrases(variacoes.get(String(i)) ?? bases[i].texto);
-    const texto = montarMensagem({ ...cen, abertura }, null);
+    const texto = textoFinal(i);
     const { data: row, error } = await db
       .from("client_feedbacks")
       .insert({
@@ -346,4 +370,29 @@ export async function gerarRotinaClientes(
   }
 
   return { programadas: itens.length, semGrupo, jaTinham, semCenario, itens };
+}
+
+
+// Etapa 357: simulação de TODOS os cenários (inclusive as trocas de prioridade), pra conferir as respostas.
+// Não lê conta nenhuma nem grava nada: um exemplo de cada cenário, com a variação da IA e o complemento do dia escolhido.
+export async function exemplosDeCenarios(diaSemana: number): Promise<Array<{ cenario: number; nome: string; texto: string }>> {
+  const cal = calendarSP();
+  const lista: Cenario[] = Object.values(CENARIOS).sort((a, b) => a.n - b.n);
+  const variacoes = await variar(lista.map((c) => ({ id: String(c.n), texto: c.abertura })));
+  return lista.map((c) => {
+    const comp = complementoDoDia({ diaSemana, diaMes: cal.day, diasNoMes: cal.daysInMonth, vesperaFeriado: false, contaBoa: SITUACAO[c.n] === "boa", quedaFds: false });
+    const abertura = tirarFrases(variacoes.get(String(c.n)) ?? c.abertura);
+    return { cenario: c.n, nome: c.nome, texto: montarMensagem({ ...c, abertura }, comp, fraseGestor(c.n, `exemplo${c.n}`, abertura)) };
+  }).concat(
+    diaSemana === 1
+      ? [2, 16].map((n) => {
+          const c = CENARIOS[n];
+          return {
+            cenario: n,
+            nome: `${c.nome} — segunda COM queda brusca no fim de semana`,
+            texto: montarMensagem(c, fraseFimDeSemana(`fds${n}`), fraseGestor(n, `exemplo${n}`, c.abertura)),
+          };
+        })
+      : [],
+  );
 }

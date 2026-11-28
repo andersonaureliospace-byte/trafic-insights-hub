@@ -2,7 +2,7 @@ import { NextResponse, after } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { listOwners } from "@/lib/master";
 import { automationPaused } from "@/lib/automation-switches";
-import { gerarRotinaClientes } from "@/lib/estrategia/rotina-clientes/gerar";
+import { exemplosDeCenarios, gerarRotinaClientes } from "@/lib/estrategia/rotina-clientes/gerar";
 import { enviarRotinaClientes } from "@/lib/estrategia/rotina-clientes/enviar";
 
 // Etapa 355: Rotina da manhã pros grupos dos clientes. O n8n chama (fluxo "Rotina da manhã — clientes"):
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   if (request.headers.get("x-webhook-secret") !== secret) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const started = Date.now();
-  const body = (await request.json().catch(() => ({}))) as { acao?: string; userId?: string; diaSemana?: number };
+  const body = (await request.json().catch(() => ({}))) as { acao?: string; userId?: string; diaSemana?: number; exemplos?: boolean };
   const db = createServiceClient();
   const owners = await listOwners(db);
   const alvo = typeof body.userId === "string" ? owners.filter((o) => o === body.userId) : owners;
@@ -46,6 +46,10 @@ export async function POST(request: Request) {
     }
 
     // Modo teste: { "acao": "simular", "diaSemana": 5 } → devolve as mensagens que sairiam, sem gravar nem enviar nada
+    if (body.acao === "simular" && body.exemplos) {
+      const ds = Number(body.diaSemana) >= 1 && Number(body.diaSemana) <= 5 ? Number(body.diaSemana) : 1;
+      return NextResponse.json({ ok: true, simulacao: true, exemplos: await exemplosDeCenarios(ds) });
+    }
     if (body.acao === "simular") {
       const id = alvo[0];
       if (!id) return NextResponse.json({ ok: true, owners: 0 });
