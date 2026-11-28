@@ -150,16 +150,23 @@ export interface GerarResultado {
   semGrupo: string[];
   jaTinham: number;
   semCenario: number;
-  itens: Array<{ cliente: string; cenario: number; motivo: string }>;
+  itens: Array<{ cliente: string; cenario: number; motivo: string; texto?: string; grupo?: string; ordem?: number }>;
 }
 
-export async function gerarRotinaClientes(db: SupabaseClient, ownerId: string, opts: { avisar?: boolean } = {}): Promise<GerarResultado> {
+// simular = modo teste: usa os dados reais, pode fingir outro dia da semana (diaSemana 1–5) e só DEVOLVE as mensagens —
+// não grava em Feedback, não programa e não manda nada no WhatsApp.
+export async function gerarRotinaClientes(
+  db: SupabaseClient,
+  ownerId: string,
+  opts: { avisar?: boolean; simular?: boolean; diaSemana?: number } = {},
+): Promise<GerarResultado> {
   const cal = calendarSP();
   const hoje = cal.today;
-  const diaSemana = new Date(`${hoje}T12:00:00Z`).getUTCDay();
+  const simular = opts.simular === true;
+  const diaSemana = simular && opts.diaSemana && opts.diaSemana >= 1 && opts.diaSemana <= 5 ? opts.diaSemana : new Date(`${hoje}T12:00:00Z`).getUTCDay();
   const vazio: GerarResultado = { programadas: 0, semGrupo: [], jaTinham: 0, semCenario: 0, itens: [] };
   if (diaSemana === 0 || diaSemana === 6) return { ...vazio, pulado: "fim de semana" };
-  if (feriadoEm(hoje)) return { ...vazio, pulado: `feriado (${feriadoEm(hoje)})` };
+  if (feriadoEm(hoje) && !simular) return { ...vazio, pulado: `feriado (${feriadoEm(hoje)})` };
 
   const ontem = addDaysYmd(hoje, -1);
   const desde = addDaysYmd(hoje, -Math.max(cal.day, 5)); // mês até ontem (recorde) e pelo menos 4 dias pra trás (sequência)
@@ -266,6 +273,26 @@ export async function gerarRotinaClientes(db: SupabaseClient, ownerId: string, o
     return { id: String(i), texto: [cen.abertura, comp].filter(Boolean).join(" ") };
   });
   const variacoes = await variar(bases);
+
+  if (simular) {
+    return {
+      programadas: 0,
+      semGrupo,
+      jaTinham,
+      semCenario,
+      itens: comGrupo.map((e, i) => {
+        const cen = CENARIOS[e.cenario];
+        return {
+          cliente: e.acc.name,
+          cenario: cen.n,
+          motivo: e.motivo,
+          grupo: e.grupo.name,
+          ordem: i + 1,
+          texto: montarMensagem({ ...cen, abertura: tirarFrases(variacoes.get(String(i)) ?? bases[i].texto) }, null),
+        };
+      }),
+    };
+  }
 
   const quando = `${hoje}T${ROTINA_HORA_UTC}`;
   const agendados = await lerAgendados(db, ownerId);

@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   if (request.headers.get("x-webhook-secret") !== secret) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
   const started = Date.now();
-  const body = (await request.json().catch(() => ({}))) as { acao?: string; userId?: string };
+  const body = (await request.json().catch(() => ({}))) as { acao?: string; userId?: string; diaSemana?: number };
   const db = createServiceClient();
   const owners = await listOwners(db);
   const alvo = typeof body.userId === "string" ? owners.filter((o) => o === body.userId) : owners;
@@ -43,6 +43,14 @@ export async function POST(request: Request) {
       }
       const r = await gerarRotinaClientes(db, primeiro);
       return NextResponse.json({ ok: true, userId: primeiro, ...r });
+    }
+
+    // Modo teste: { "acao": "simular", "diaSemana": 5 } → devolve as mensagens que sairiam, sem gravar nem enviar nada
+    if (body.acao === "simular") {
+      const id = alvo[0];
+      if (!id) return NextResponse.json({ ok: true, owners: 0 });
+      const r = await gerarRotinaClientes(db, id, { simular: true, diaSemana: Number(body.diaSemana) || undefined, avisar: false });
+      return NextResponse.json({ ok: true, simulacao: true, userId: id, ...r });
     }
 
     if (body.acao === "enviar") {
